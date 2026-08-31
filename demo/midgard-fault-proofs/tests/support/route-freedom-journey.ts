@@ -64,6 +64,7 @@ import {
   expectSingleUtxoWithUnit,
   network,
   publishFaultProofWitnessReferenceScriptsV1,
+  publishOperatorLifecycleReferenceScriptsV1,
   publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
@@ -316,7 +317,7 @@ export const prepareRouteFreedomJourneyV1 = async ({
   if (nonceUtxo === undefined) {
     throw new Error("Expected operator wallet to expose a nonce UTxO");
   }
-  const contracts = await buildMinimalFaultProofContracts(
+  const baseContracts = await buildMinimalFaultProofContracts(
     realBlueprint,
     alwaysBlueprint,
     nonceUtxo,
@@ -325,10 +326,22 @@ export const prepareRouteFreedomJourneyV1 = async ({
       alwaysFraudProofCatalogue: true,
     },
   );
+  // Operator registration and activation source their four directory
+  // validators from published reference scripts, so the roster has to exist
+  // before the setup transaction samples the header clock.
+  const contracts = {
+    ...baseContracts,
+    operatorLifecycleReferenceScripts:
+      await publishOperatorLifecycleReferenceScriptsV1({
+        lucid: challengerLucid,
+        contracts: baseContracts,
+      }),
+  };
   const witnessReferenceScripts =
     await publishFaultProofWitnessReferenceScriptsV1({
       lucid: challengerLucid,
       realBlueprint,
+      claimRegistrySpendingScript: contracts.claimRegistry.spendingScript,
       computationThreadMintingScript: contracts.computationThread.mintingScript,
       fraudProofMintingScript: contracts.fraudProof.mintingScript,
     });
@@ -457,6 +470,7 @@ export const prepareRouteFreedomJourneyV1 = async ({
   };
   const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
     validationDisputePublication,
+    claimRegistrySpendReference: witnessReferenceScripts.claimRegistrySpend,
     validationItemSemanticReference: {
       scriptHash: itemSemanticContract.spendingScriptHash,
       utxo: itemSemanticPublication.utxo,

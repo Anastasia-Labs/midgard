@@ -63,6 +63,11 @@ import {
   witnessSpendingValidatorCarriageV1,
   witnessWithdrawalValidatorCarriageV1,
 } from "../witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "../workflow/transaction-boundary-v1.js";
 import type { ValueNotPreservedContractsV1 } from "./contracts-v1.js";
 import {
   claimedAssetIsWellFormedV1,
@@ -113,6 +118,7 @@ export const submitValueNotPreservedStep01 = async ({
   prevUtxosRoot,
   referenceScriptUtxo,
   witnessReferenceScripts,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -138,6 +144,7 @@ export const submitValueNotPreservedStep01 = async ({
   readonly referenceScriptUtxo?: UTxO;
   /** Published witness reference scripts required by this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitValueNotPreservedStep01Result> => {
   const { threadUtxo, threadToken } =
@@ -273,7 +280,7 @@ export const submitValueNotPreservedStep01 = async ({
                 `${STEP_LABEL} state-queue node`,
               ),
               native_tx_id: txInclusion.nativeTxId,
-              native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
+              l2_transaction_source_cbor: txInclusion.l2TransactionSourceCbor,
               transactions_phas_root: txInclusion.transactionsPhasRoot,
               tx_membership_proof: txInclusion.txMembershipProof,
               inclusion_proof_script_withdraw_redeemer_index:
@@ -307,7 +314,7 @@ export const submitValueNotPreservedStep01 = async ({
       encodeRawPhasMembershipProofRedeemer({
         root: txInclusion.transactionsPhasRoot,
         keyBytes: txInclusion.nativeTxId,
-        valueBytes: txInclusion.nativeTxCompactCbor,
+        valueBytes: txInclusion.l2TransactionSourceCbor,
         membershipProofCbor: txInclusion.txMembershipProofCbor,
       }),
     )
@@ -326,7 +333,31 @@ export const submitValueNotPreservedStep01 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof value-not-preserved step-01",
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.steps[0].spendingScript,
+        },
+        {
+          role: "membership proof withdrawal",
+          utxo: witnessReferenceScripts?.phasMembershipWithdraw,
+          expectedScript: phasMembershipScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw valueNotPreservedSubmitError(
+      `step-01 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

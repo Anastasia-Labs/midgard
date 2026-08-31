@@ -322,10 +322,8 @@ describe("fault-proof CLI argument parsing", () => {
       "block-transactions.json",
       "--header-hash",
       "33".repeat(28),
-      "--block-valid-from",
+      "--block-slot",
       "1000",
-      "--block-valid-to",
-      "2000",
       "--tx-id",
       "44".repeat(32),
     ]);
@@ -334,8 +332,7 @@ describe("fault-proof CLI argument parsing", () => {
       command: "prepare-invalid-range",
       transactionsPath: "block-transactions.json",
       headerHash: "33".repeat(28),
-      blockValidFrom: "1000",
-      blockValidTo: "2000",
+      blockSlot: "1000",
       txId: "44".repeat(32),
     });
 

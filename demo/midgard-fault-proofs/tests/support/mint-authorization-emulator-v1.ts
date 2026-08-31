@@ -475,6 +475,8 @@ export const setupMintAuthorizationScenarioV1 = async ({
     await publishFaultProofWitnessReferenceScriptsV1({
       lucid: harness.proverLucid,
       realBlueprint: harness.realBlueprint,
+      claimRegistrySpendingScript:
+        harness.contracts.claimRegistry.spendingScript,
       computationThreadMintingScript:
         harness.family.computationThread.mintingScript,
       fraudProofMintingScript: harness.family.fraudProof.mintingScript,

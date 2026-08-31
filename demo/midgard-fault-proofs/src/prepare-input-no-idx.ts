@@ -62,11 +62,11 @@ import {
   decodeTransactionMaterial,
   type FetchLike,
   fetchNodeBlockTransactions,
-  nativeTrieItem,
   type NodeTransactionPayload,
   type PreparedTxInclusionJson,
   readNodeTransactionPayloadsFile,
   requireProof,
+  transactionSourceTrieItemV1,
 } from "./prepare-double-spend.js";
 
 type LucidDataSchema = Parameters<typeof Data.to>[1];
@@ -540,6 +540,55 @@ type Candidate = {
   readonly producingOutputs: readonly Buffer[];
 };
 
+export type InputNoIdxDetectedViolationV1 = Readonly<{
+  badTxIndex: number;
+  badTxId: string;
+  badInputsIndex: number;
+  producingTxId: string;
+  badInputOutputIndex: bigint;
+  producingTxOutputCount: number;
+}>;
+
+/**
+ * Complete same-block scan used by the sealed production replay bundle. An
+ * input whose producer is absent belongs to `nonExistentInput`; only an
+ * out-of-range index into a producer committed by this same block is emitted.
+ */
+export const detectInputNoIdxViolationsFromTransactionsV1 = async (
+  transactions: readonly NodeTransactionPayload[],
+): Promise<readonly InputNoIdxDetectedViolationV1[]> => {
+  const decoded = await Promise.all(
+    transactions.map(decodeTransactionMaterial),
+  );
+  const byTxId = new Map(decoded.map((tx) => [tx.nodeTxId, tx] as const));
+  const detections: InputNoIdxDetectedViolationV1[] = [];
+  for (const [badTxIndex, badTx] of decoded.entries()) {
+    for (const [badInputsIndex, badInput] of spendInputsOf(badTx).entries()) {
+      const producingTx = byTxId.get(badInput.tx_id);
+      if (producingTx === undefined) continue;
+      const producingTxOutputCount = nativeOutputItems(producingTx).length;
+      if (
+        SDK.isInputNoIdxViolationV1({
+          badInputOutputIndex: badInput.output_index,
+          producingTxOutputCount,
+        })
+      ) {
+        detections.push(
+          Object.freeze({
+            badTxIndex,
+            badTxId: badTx.nodeTxId,
+            badInputsIndex,
+            producingTxId: producingTx.nodeTxId,
+            badInputOutputIndex: badInput.output_index,
+            producingTxOutputCount,
+          }),
+        );
+      }
+    }
+  }
+  return Object.freeze(detections);
+};
+
 const findCandidate = ({
   decoded,
   byTxId,
@@ -654,6 +703,7 @@ const txInclusionOf = (
   nativeTxId: tx.nodeTxId,
   nativeTx: tx.nativeTxCompact,
   nativeTxCompactCbor: tx.nativeCompactCbor,
+  l2TransactionSourceCbor: tx.l2TransactionSourceCbor,
   transactionsPhasRoot,
   txMembershipProofCbor,
 });
@@ -723,7 +773,7 @@ export const prepareInputNoIdxFromTransactions = async ({
     headerHash: normalizedHeaderHash,
   });
 
-  const trie = await buildTrieView(decoded.map(nativeTrieItem));
+  const trie = await buildTrieView(decoded.map(transactionSourceTrieItemV1));
   const committedTransactionsRoot = await Effect.runPromise(
     SDK.commitCountedRootProgram({
       domain: SDK.ROOT_DOMAINS.transactionsV1,
@@ -815,14 +865,18 @@ export const prepareInputNoIdxFromTransactions = async ({
     badTxInclusion: txInclusionOf(
       candidate.badTx,
       trie.root,
-      requireProof(trie, nativeTrieItem(candidate.badTx).key, "bad tx"),
+      requireProof(
+        trie,
+        transactionSourceTrieItemV1(candidate.badTx).key,
+        "bad tx",
+      ),
     ),
     producingTxInclusion: txInclusionOf(
       candidate.producingTx,
       trie.root,
       requireProof(
         trie,
-        nativeTrieItem(candidate.producingTx).key,
+        transactionSourceTrieItemV1(candidate.producingTx).key,
         "producing tx",
       ),
     ),

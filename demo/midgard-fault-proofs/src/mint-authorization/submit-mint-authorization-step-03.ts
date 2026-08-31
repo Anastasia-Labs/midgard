@@ -69,6 +69,11 @@ import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriageV1 } from "../witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "../workflow/transaction-boundary-v1.js";
 import type { MintAuthorizationContractsV1 } from "./contracts-v1.js";
 import {
   mintAuthorizationStepLabelV1,
@@ -109,6 +114,7 @@ type Step03Shared = {
   readonly certificateUtxo?: UTxO;
   /** The mandatory published step-03 reference script. */
   readonly referenceScriptUtxo?: UTxO;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 };
 
@@ -261,7 +267,26 @@ const submitPreparedStep03 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof mint-authorization step-03",
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.steps[2].spendingScript,
+        },
+      ],
+    }),
+    boundary: shared.preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw mintAuthorizationSubmitError(
+      `step-03 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

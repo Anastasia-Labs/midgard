@@ -368,7 +368,7 @@ export const buildNativeScriptDecodingChainV1 = ({
   ];
 };
 
-/** Applies the six validators backwards in their blueprint-declared order. */
+/** Applies the eight validators backwards in their blueprint-declared order. */
 export const buildMissingNativeScriptTxChainV1 = ({
   realBlueprint,
   computationThreadPolicyId,
@@ -390,12 +390,38 @@ export const buildMissingNativeScriptTxChainV1 = ({
   SdkSpendingValidator,
   SdkSpendingValidator,
   SdkSpendingValidator,
+  SdkSpendingValidator,
+  SdkSpendingValidator,
 ] => {
+  const step08 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1.step08,
+      [
+        computationThreadPolicyId,
+        fraudProofPolicyId,
+        fraudProofTokenAddressData,
+        fieldPreimageCertificatePolicyId,
+      ],
+    ),
+  );
+  const step07 = makeSpendingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1.step07,
+      [
+        step08.spendingScriptHash,
+        computationThreadPolicyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+    ),
+  );
   const step06 = makeSpendingValidator(
     applyCompiledScript(
       realBlueprint,
       MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1.step06,
       [
+        step07.spendingScriptHash,
         computationThreadPolicyId,
         fraudProofPolicyId,
         fraudProofTokenAddressData,
@@ -446,7 +472,7 @@ export const buildMissingNativeScriptTxChainV1 = ({
       [step02.spendingScriptHash, computationThreadPolicyId, hubOraclePolicyId],
     ),
   );
-  return [step01, step02, step03, step04, step05, step06];
+  return [step01, step02, step03, step04, step05, step06, step07, step08];
 };
 
 /** Applies the two-step canonical-decodability family backwards. */
@@ -1007,14 +1033,58 @@ export const buildMinimalFaultProofContracts = async (
     fraudProofCatalogue,
   };
 
+  const retiredOperatorsMinting = makeMintingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      "operator_directory/retired_operators.mint.mint",
+      [hubOracle.policyId],
+    ),
+  );
+  const retiredOperators: AuthenticatedValidator = {
+    ...retiredOperatorsMinting,
+    ...makeSpendingValidator(
+      applyCompiledScript(
+        realBlueprint,
+        "operator_directory/retired_operators.spend.spend",
+        [retiredOperatorsMinting.policyId],
+      ),
+    ),
+  };
+  const withRetiredOperators = {
+    ...withCatalogue,
+    retiredOperators,
+  };
+
+  const registeredOperatorsMinting = makeMintingValidator(
+    applyCompiledScript(
+      realBlueprint,
+      "operator_directory/registered_operators.mint.mint",
+      [retiredOperators.policyId, hubOracle.policyId],
+    ),
+  );
+  const registeredOperators: AuthenticatedValidator = {
+    ...registeredOperatorsMinting,
+    ...makeSpendingValidator(
+      applyCompiledScript(
+        realBlueprint,
+        "operator_directory/registered_operators.spend.spend",
+        [registeredOperatorsMinting.policyId],
+      ),
+    ),
+  };
+  const withRegisteredOperators = {
+    ...withRetiredOperators,
+    registeredOperators,
+  };
+
   const activeOperatorsMinting = makeMintingValidator(
     applyCompiledScript(
       realBlueprint,
       "operator_directory/active_operators.mint.mint",
       [
         hubOracle.policyId,
-        withCatalogue.registeredOperators.policyId,
-        withCatalogue.retiredOperators.policyId,
+        registeredOperators.policyId,
+        retiredOperators.policyId,
       ],
     ),
   );
@@ -1029,7 +1099,7 @@ export const buildMinimalFaultProofContracts = async (
     ),
   };
   const withActiveOperators = {
-    ...withCatalogue,
+    ...withRegisteredOperators,
     activeOperators,
   };
 
@@ -1209,9 +1279,27 @@ export const buildMinimalFaultProofContracts = async (
     ...withActiveOperators,
     scheduler,
   };
+  // The availability-challenge policy is a stand-in here, mirroring the sdk
+  // state-queue harness: these emulator flows never open a challenge, the
+  // parameter only has to be a distinct policy id.
+  const availabilityChallengePolicyId = base.escapeHatch.policyId;
+  const correctionLock = makeSpendingValidator(
+    applyCompiledScript(realBlueprint, "correction_lock.spend.spend", [
+      hubOracle.policyId,
+      availabilityChallengePolicyId,
+    ]),
+  );
+  const claimRegistry = makeSpendingValidator(
+    applyCompiledScript(realBlueprint, "claim_registry.spend.spend", [
+      hubOracle.policyId,
+    ]),
+  );
   const stateQueueMinting = makeMintingValidator(
     applyCompiledScript(realBlueprint, "state_queue.mint.mint", [
       hubOracle.policyId,
+      correctionLock.spendingScriptHash,
+      claimRegistry.spendingScriptHash,
+      doubleSpendContracts.computationThread.policyId,
       withScheduler.activeOperators.policyId,
       activeOperatorsAddressData,
       withScheduler.retiredOperators.policyId,
@@ -1219,12 +1307,14 @@ export const buildMinimalFaultProofContracts = async (
       doubleSpendContracts.fraudProof.policyId,
       withScheduler.settlement.policyId,
       withScheduler.daAttestation.policyId,
+      availabilityChallengePolicyId,
     ]),
   );
   const stateQueueSpending = makeSpendingValidator(
     applyCompiledScript(realBlueprint, "state_queue.spend.spend", [
       stateQueueMinting.policyId,
       withScheduler.daAttestation.policyId,
+      availabilityChallengePolicyId,
     ]),
   );
   const stateQueue = alwaysStateQueue
@@ -1245,6 +1335,7 @@ export const buildMinimalFaultProofContracts = async (
           computationThread: fabricatedDepositContracts.computationThread,
           fraudProof: fabricatedDepositContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
+          claimRegistry,
           stateQueuePolicyId: stateQueue.policyId,
           categoryId: FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID_V1,
         };
@@ -1269,6 +1360,7 @@ export const buildMinimalFaultProofContracts = async (
           computationThread: nativeScriptDecodingContracts.computationThread,
           fraudProof: nativeScriptDecodingContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
+          claimRegistry,
           stateQueuePolicyId: stateQueue.policyId,
           fieldPreimageCertificatePolicyId,
         };
@@ -1280,6 +1372,7 @@ export const buildMinimalFaultProofContracts = async (
           computationThread: missingSignatureContracts.computationThread,
           fraudProof: missingSignatureContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
+          claimRegistry,
           stateQueuePolicyId: stateQueueMinting.policyId,
           fieldPreimageCertificatePolicyId,
         };
@@ -1291,6 +1384,7 @@ export const buildMinimalFaultProofContracts = async (
           computationThread: missingNativeScriptTxContracts.computationThread,
           fraudProof: missingNativeScriptTxContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
+          claimRegistry,
           stateQueuePolicyId: stateQueueMinting.policyId,
           fieldPreimageCertificatePolicyId,
         };
@@ -1302,6 +1396,7 @@ export const buildMinimalFaultProofContracts = async (
           computationThread: canonicalDecodabilityContracts.computationThread,
           fraudProof: canonicalDecodabilityContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
+          claimRegistry,
           stateQueuePolicyId: stateQueueMinting.policyId,
           fieldPreimageCertificatePolicyId,
         };
@@ -1313,6 +1408,7 @@ export const buildMinimalFaultProofContracts = async (
           computationThread: committedFieldShapeContracts.computationThread,
           fraudProof: committedFieldShapeContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
+          claimRegistry,
           stateQueuePolicyId: stateQueueMinting.policyId,
           fieldPreimageCertificatePolicyId,
         };
@@ -1326,6 +1422,7 @@ export const buildMinimalFaultProofContracts = async (
           computationThread: withdrawnReferenceInputContracts.computationThread,
           fraudProof: withdrawnReferenceInputContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
+          claimRegistry,
           stateQueuePolicyId: stateQueueMinting.policyId,
           fieldPreimageCertificatePolicyId,
         };
@@ -1335,6 +1432,7 @@ export const buildMinimalFaultProofContracts = async (
         computationThread: minFeeContracts!.computationThread,
         fraudProof: minFeeContracts!.fraudProof,
         hubOraclePolicyId: hubOracle.policyId,
+        claimRegistry,
         stateQueuePolicyId: stateQueueMinting.policyId,
         fieldPreimageCertificatePolicyId,
       }
@@ -1347,6 +1445,7 @@ export const buildMinimalFaultProofContracts = async (
           computationThread: doubleWithdrawContracts.computationThread,
           fraudProof: doubleWithdrawContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
+          claimRegistry,
           stateQueuePolicyId: stateQueueMinting.policyId,
         };
   const crossBlockDuplicateEvent:
@@ -1361,6 +1460,7 @@ export const buildMinimalFaultProofContracts = async (
             crossBlockDuplicateEventContracts.computationThread,
           fraudProof: crossBlockDuplicateEventContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
+          claimRegistry,
           stateQueuePolicyId: stateQueueMinting.policyId,
         };
   const l2TxMistag: L2TxMistagContractsV1 | undefined =
@@ -1371,6 +1471,7 @@ export const buildMinimalFaultProofContracts = async (
           computationThread: l2TxMistagContracts.computationThread,
           fraudProof: l2TxMistagContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
+          claimRegistry,
           stateQueuePolicyId: stateQueueMinting.policyId,
         };
   const withdrawnInput: WithdrawnInputContractsV1 | undefined =
@@ -1381,6 +1482,7 @@ export const buildMinimalFaultProofContracts = async (
           computationThread: withdrawnInputContracts.computationThread,
           fraudProof: withdrawnInputContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
+          claimRegistry,
           stateQueuePolicyId: stateQueueMinting.policyId,
           fieldPreimageCertificatePolicyId,
         };
@@ -1392,6 +1494,7 @@ export const buildMinimalFaultProofContracts = async (
           computationThread: withdrawalMistagContracts.computationThread,
           fraudProof: withdrawalMistagContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
+          claimRegistry,
           stateQueuePolicyId: stateQueueMinting.policyId,
         };
   const valueNotPreserved: ValueNotPreservedContractsV1 | undefined =
@@ -1402,6 +1505,7 @@ export const buildMinimalFaultProofContracts = async (
           computationThread: valueNotPreservedContracts.computationThread,
           fraudProof: valueNotPreservedContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
+          claimRegistry,
           stateQueuePolicyId: stateQueueMinting.policyId,
           fieldPreimageCertificatePolicyId,
         };
@@ -1413,6 +1517,7 @@ export const buildMinimalFaultProofContracts = async (
           computationThread: inputSetUniquenessContracts.computationThread,
           fraudProof: inputSetUniquenessContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
+          claimRegistry,
           stateQueuePolicyId: stateQueueMinting.policyId,
           fieldPreimageCertificatePolicyId,
         };
@@ -1424,6 +1529,7 @@ export const buildMinimalFaultProofContracts = async (
           computationThread: mintAuthorizationContracts.computationThread,
           fraudProof: mintAuthorizationContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
+          claimRegistry,
           stateQueuePolicyId: stateQueueMinting.policyId,
           fieldPreimageCertificatePolicyId,
         };
@@ -1435,6 +1541,7 @@ export const buildMinimalFaultProofContracts = async (
           computationThread: fabricatedWithdrawalContracts.computationThread,
           fraudProof: fabricatedWithdrawalContracts.fraudProof,
           hubOraclePolicyId: hubOracle.policyId,
+          claimRegistry,
           stateQueuePolicyId: stateQueue.policyId,
           categoryId: FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1,
         };
@@ -1575,6 +1682,8 @@ export const buildMinimalFaultProofContracts = async (
         fieldPreimageCertificateMinting.mintingScriptCBOR,
       ),
     },
+    correctionLock,
+    claimRegistry,
     stateQueue,
     // Canonical computation-thread minting validator shared by every family
     // (each family chain is parameterized with the same dual-purpose script).

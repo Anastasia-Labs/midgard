@@ -25,7 +25,6 @@ import {
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
-  requireWithdrawalRedeemerIndex,
   ROOT_DOMAINS,
 } from "@al-ft/midgard-sdk";
 import {
@@ -34,22 +33,23 @@ import {
   Data,
   type LucidEvolution,
   type Network,
-  type Script,
   scriptHashToCredential,
   toUnit,
   type UTxO,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { prepareNativeTxInclusionCarriageV1 } from "./native-inclusion-carriage-v1.js";
+import {
+  type PublishedProofChunkV1,
+  walletInputsExcludingChunks,
+} from "./proof-chunk-carriage.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
-  encodeRawPhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
-  getCompiledScript,
   makeLucidForSubmit,
   outRefLabel,
   parseOutRef,
-  phasMembershipRewardAddress,
   readJsonFile,
   requireSingletonUtxo,
   type ResolvedProverSigner,
@@ -60,7 +60,6 @@ import {
 } from "./runtime.js";
 import {
   parseSubmitStep01TxInclusion,
-  PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   requireComputationThreadToken,
   requireNativeTxMatchesCompactCbor,
   selectFeeInput,
@@ -70,8 +69,12 @@ import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
   type FaultProofWitnessReferenceScriptsV1,
   witnessSpendingValidatorCarriageV1,
-  witnessWithdrawalValidatorCarriageV1,
 } from "./witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "./workflow/transaction-boundary-v1.js";
 
 export type SubmitInputNoIdxStep03CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;
@@ -159,8 +162,10 @@ export const submitInputNoIdxStep03 = async ({
   threadOutRef,
   stateQueueBlockOutRef,
   txInclusion,
+  publishedProofChunks,
   referenceScriptUtxo,
   witnessReferenceScripts,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -171,10 +176,12 @@ export const submitInputNoIdxStep03 = async ({
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
+  readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
   /** The mandatory published step-03 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitInputNoIdxStep03Result> => {
   const resolvedDeployment = await resolveInputNoIdxDeploymentContracts({
@@ -262,31 +269,31 @@ export const submitInputNoIdxStep03 = async ({
   const badInputOutputIndex = inputDatum.data.bad_input_output_index;
 
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const phasMembershipScript: Script = {
-    type: "PlutusV3",
-    script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
-  };
-  const phasRewardAddress = phasMembershipRewardAddress(
-    network,
-    phasMembershipScript,
+  const chunks = publishedProofChunks ?? [];
+  const feeInput = selectFeeInput(
+    walletInputsExcludingChunks({
+      walletUtxos: await lucid.wallet().getUtxos(),
+      chunks,
+    }),
   );
   const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
     script: chain.steps[2].spendingScript,
     referenceUtxo: referenceScriptUtxo,
     label: "input-no-idx step 03 validator",
   });
-  const phasCarriage = witnessWithdrawalValidatorCarriageV1({
-    script: phasMembershipScript,
-    referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
-    label: "input-no-idx step 03 PHAS membership",
+  const inclusionCarriage = prepareNativeTxInclusionCarriageV1({
+    blueprint,
+    network,
+    txInclusion,
+    publishedProofChunks: chunks,
+    witnessReferenceScripts,
+    label: "input-no-idx step 03",
+    baseReferenceInputs: [
+      hubOracleUtxo,
+      stateQueueBlockUtxo,
+      ...stepScriptCarriage.referenceInputs,
+    ],
   });
-  const referenceInputs = [
-    hubOracleUtxo,
-    stateQueueBlockUtxo,
-    ...stepScriptCarriage.referenceInputs,
-    ...phasCarriage.referenceInputs,
-  ];
   const step04Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -327,23 +334,13 @@ export const submitInputNoIdxStep03 = async ({
     return Data.to(
       {
         Continue: [
-          {
+          inclusionCarriage.redeemer(ctx, {
             input_index: layout.inputIndex,
             output_index: layout.outputIndex,
             hub_ref_input_index: layout.hubOracleRefInputIndex,
             state_queue_node_ref_input_index:
               layout.stateQueueNodeRefInputIndex,
-            native_tx_id: txInclusion.nativeTxId,
-            native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
-            transactions_phas_root: txInclusion.transactionsPhasRoot,
-            tx_membership_proof: txInclusion.txMembershipProof,
-            inclusion_proof_script_withdraw_redeemer_index:
-              requireWithdrawalRedeemerIndex(
-                ctx,
-                phasRewardAddress,
-                "input-no-idx step 03 PHAS membership",
-              ),
-          },
+          }),
         ],
       },
       InputNoIdxStep03SpendRedeemer,
@@ -358,24 +355,16 @@ export const submitInputNoIdxStep03 = async ({
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
-    .readFrom(referenceInputs)
-    .withdraw(
-      phasRewardAddress,
-      0n,
-      encodeRawPhasMembershipProofRedeemer({
-        root: txInclusion.transactionsPhasRoot,
-        keyBytes: txInclusion.nativeTxId,
-        valueBytes: txInclusion.nativeTxCompactCbor,
-        membershipProofCbor: txInclusion.txMembershipProofCbor,
-      }),
-    )
+    .readFrom(inclusionCarriage.referenceInputs)
     .pay.ToContract(
       chain.steps[3].spendingScriptAddress,
       { kind: "inline", value: step04Datum },
       threadAssets,
     )
     .addSignerKey(signer.paymentKeyHash);
-  const completedTx = phasCarriage.attach(stepScriptCarriage.attach(tx));
+  const completedTx = inclusionCarriage.attachWithdrawal(
+    stepScriptCarriage.attach(tx),
+  );
 
   const unsigned = await completedTx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {
@@ -384,7 +373,28 @@ export const submitInputNoIdxStep03 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof non-existent-input-no-index step-03",
+          utxo: referenceScriptUtxo,
+          expectedScript:
+            contracts.nonExistentInputNoIndex.steps[2].spendingScript,
+        },
+        ...inclusionCarriage.referenceScriptCandidates,
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw new Error(
+      `input-no-idx step-03 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

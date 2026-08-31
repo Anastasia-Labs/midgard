@@ -31,6 +31,11 @@ import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptV1,
+} from "../workflow/transaction-boundary-v1.js";
+import {
   WITHDRAWN_INPUT_CATEGORY_LABEL,
   type WithdrawnInputContractsV1,
 } from "./contracts-v1.js";
@@ -65,6 +70,10 @@ export const submitWithdrawnInputStep02 = async ({
   evidence,
   referenceScriptUtxo,
   publishCarriage = false,
+  publishedCarriageUtxos,
+  certificateUtxo,
+  publishMissingCarriage = true,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -75,6 +84,13 @@ export const submitWithdrawnInputStep02 = async ({
   readonly evidence: WithdrawnInputSpendInputsEvidenceV1;
   readonly referenceScriptUtxo: UTxO;
   readonly publishCarriage?: boolean;
+  /** Pre-authenticated §8 field-carriage UTxOs for production workflows. */
+  readonly publishedCarriageUtxos?: readonly UTxO[];
+  /** Pre-authenticated §8.6 certificate when the opening selects tier 3. */
+  readonly certificateUtxo?: UTxO;
+  /** Diagnostic/emulator fallback only. Production workflows set false. */
+  readonly publishMissingCarriage?: boolean;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitWithdrawnInputStep02Result> => {
   const { threadUtxo, threadToken } = await requireWithdrawnInputThreadUtxoV1({
@@ -111,14 +127,33 @@ export const submitWithdrawnInputStep02 = async ({
     label: `${WITHDRAWN_INPUT_CATEGORY_LABEL} spend inputs`,
   });
   signer.selectWallet(lucid);
-  const carriageUtxos = await publishFaultProofFieldCarriageV1({
-    lucid,
-    signer,
-    planned,
-    publisherAddress: signer.address,
-    label: `${WITHDRAWN_INPUT_CATEGORY_LABEL} spend inputs`,
-  });
-  const referenceInputs = [...carriageUtxos, stepReference];
+  const carriageUtxos =
+    publishedCarriageUtxos ??
+    (planned.plan.publications.length === 0
+      ? []
+      : publishMissingCarriage
+        ? await publishFaultProofFieldCarriageV1({
+            lucid,
+            signer,
+            planned,
+            publisherAddress: signer.address,
+            label: `${WITHDRAWN_INPUT_CATEGORY_LABEL} spend inputs`,
+          })
+        : (() => {
+            throw withdrawnInputSubmitError(
+              "step-02 requires authenticated pre-published field carriage",
+            );
+          })());
+  if (planned.plan.tier === "Certified" && certificateUtxo === undefined) {
+    throw withdrawnInputSubmitError(
+      "step-02 requires its authenticated field-preimage certificate",
+    );
+  }
+  const referenceInputs = [
+    ...carriageUtxos,
+    ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+    stepReference,
+  ];
   const opening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
     referenceInputs,
@@ -205,7 +240,23 @@ export const submitWithdrawnInputStep02 = async ({
     throw withdrawnInputSubmitError("step-02 layout was not resolved.");
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: [
+      workflowReferenceScriptV1({
+        role: "V1 fraud-proof withdrawn-input step-02",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[1].spendingScript,
+      }),
+    ],
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw withdrawnInputSubmitError(
+      `step-02 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

@@ -74,6 +74,11 @@ import {
   type FaultProofWitnessReferenceScriptsV1,
   witnessWithdrawalValidatorCarriageV1,
 } from "../witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "../workflow/transaction-boundary-v1.js";
 import type { NativeScriptDecodingContractsV1 } from "./contracts-v1.js";
 import {
   nativeScriptDecodingStepLabelV1,
@@ -136,6 +141,7 @@ export const submitNativeScriptDecodingStep01BindNormal = async ({
   publishedProofChunks,
   referenceScriptUtxo,
   witnessReferenceScripts,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -153,6 +159,7 @@ export const submitNativeScriptDecodingStep01BindNormal = async ({
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNativeScriptDecodingStep01Result> => {
   const { threadUtxo, threadToken } =
@@ -290,7 +297,7 @@ export const submitNativeScriptDecodingStep01BindNormal = async ({
         `${STEP_LABEL} state-queue node`,
       ),
       native_tx_id: txInclusion.nativeTxId,
-      native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
+      l2_transaction_source_cbor: txInclusion.l2TransactionSourceCbor,
       transactions_phas_root: txInclusion.transactionsPhasRoot,
     };
     requireBuiltChunkReferenceIndices({
@@ -342,7 +349,7 @@ export const submitNativeScriptDecodingStep01BindNormal = async ({
         chunkedMembershipClaimRedeemer({
           merkleRoot: txInclusion.transactionsPhasRoot,
           keyBytes: txInclusion.nativeTxId,
-          valueBytes: txInclusion.nativeTxCompactCbor,
+          valueBytes: txInclusion.l2TransactionSourceCbor,
           orderedChunkReferenceInputIndices: resolvedChunkIndices,
         })) satisfies BuildTxWithRedeemer)
     : base.withdraw(
@@ -351,7 +358,7 @@ export const submitNativeScriptDecodingStep01BindNormal = async ({
         encodeRawPhasMembershipProofRedeemer({
           root: txInclusion.transactionsPhasRoot,
           keyBytes: txInclusion.nativeTxId,
-          valueBytes: txInclusion.nativeTxCompactCbor,
+          valueBytes: txInclusion.l2TransactionSourceCbor,
           membershipProofCbor: txInclusion.txMembershipProofCbor,
         }),
       );
@@ -371,7 +378,36 @@ export const submitNativeScriptDecodingStep01BindNormal = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof native-script-decoding step-01",
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.steps[0].spendingScript,
+        },
+        {
+          role: "V1 MPF chunked-verify withdrawal",
+          utxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
+          expectedScript: chunkedVerifyScript,
+        },
+        {
+          role: "membership proof withdrawal",
+          utxo: witnessReferenceScripts?.phasMembershipWithdraw,
+          expectedScript: phasMembershipScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw nativeScriptDecodingSubmitError(
+      `step-01 bind-normal provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }
@@ -401,6 +437,7 @@ export const submitNativeScriptDecodingStep01RecordForced = async ({
   threadOutRef,
   direction,
   referenceScriptUtxo,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -411,6 +448,7 @@ export const submitNativeScriptDecodingStep01RecordForced = async ({
   /** 0 (wrongful acceptance) or 1 (wrongful rejection); fixed for the thread's life. */
   readonly direction: bigint;
   readonly referenceScriptUtxo: UTxO;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNativeScriptDecodingStep01Result> => {
   if (
@@ -503,7 +541,26 @@ export const submitNativeScriptDecodingStep01RecordForced = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof native-script-decoding step-01",
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.steps[0].spendingScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw nativeScriptDecodingSubmitError(
+      `step-01 record-forced provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

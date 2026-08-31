@@ -34,6 +34,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { prepareDeploymentClaimRegistryMutationV1 } from "../../src/claim-registry-transaction-v1.js";
 import {
   faultProofFieldOpeningV1,
   planFaultProofFieldOpeningV1,
@@ -43,6 +44,7 @@ import {
   requireFaultProofStepReferenceScriptV1,
   resolveInvalidSignatureDeploymentContracts,
 } from "../../src/runtime.js";
+import { excludeUtxo } from "../../src/spend-input-witness.js";
 import type { SubmitStep01TxInclusion } from "../../src/submit-step-01.js";
 import {
   nativeTxFromCoreCompact,
@@ -53,6 +55,7 @@ import { outputWithDatumAndUnitPredicate } from "../../src/tx-layout.js";
 import { witnessMintingPolicyCarriageV1 } from "../../src/witness-reference-scripts-v1.js";
 import { setupFraudulentBlockV1 } from "./submit-init-emulator-fixtures.js";
 import {
+  l2TransactionSourceCborV1,
   makeFaultProofEmulatorHarnessV1,
   makeNativeTx,
   network,
@@ -183,10 +186,14 @@ export const buildInvalidSignatureBlockFixtureV1 = async (
 }> => {
   const nativeTxId = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
   const compactCbor = encodeMidgardNativeTxCompactV1(nativeTx.compact);
+  const l2TransactionSourceCbor = l2TransactionSourceCborV1(nativeTx);
   const store = new Store(undefined);
   await store.ready();
   const trie = new Trie(store);
-  await trie.insert(Buffer.from(nativeTxId, "hex"), compactCbor);
+  await trie.insert(
+    Buffer.from(nativeTxId, "hex"),
+    Buffer.from(l2TransactionSourceCbor, "hex"),
+  );
   const proof = await trie.prove(Buffer.from(nativeTxId, "hex"));
   const proofCbor = proof.toCBOR().toString("hex");
   const transactionsRoot = trieRootHex(trie);
@@ -199,6 +206,7 @@ export const buildInvalidSignatureBlockFixtureV1 = async (
       nativeTxId,
       nativeTx: nativeTxFromCoreCompact(nativeTx.compact),
       nativeTxCompactCbor: compactCbor.toString("hex"),
+      l2TransactionSourceCbor,
       transactionsPhasRoot: transactionsRoot,
       txMembershipProof: Data.from(proofCbor, SDK.Proof),
       txMembershipProofCbor: proofCbor,
@@ -434,15 +442,35 @@ export const submitRawInvalidSignatureStep02V1 = async ({
     expectedScriptHash: contracts.invalidSignature.steps[1].spendingScriptHash,
     label: "raw invalid-signature step 02",
   });
-  const referenceInputs = [...published, stepReference];
+  // `computation_thread.mint` requires the claim-registry input in every arm,
+  // so the raw driver closes the claim exactly as the submitter does.
+  const claimRegistryMutation = await prepareDeploymentClaimRegistryMutationV1({
+    lucid,
+    blueprint: harness.realBlueprint,
+    deploymentInfo,
+    network,
+    computationThreadPolicyId: contracts.computationThread.policyId,
+    claimRegistryReferenceUtxo:
+      harness.witnessReferenceScripts.claimRegistrySpend,
+    claimId: threadToken.assetName,
+    kind: "close",
+  });
+  const referenceInputs = [
+    ...published,
+    stepReference,
+    ...claimRegistryMutation.referenceInputs,
+  ];
   const addrTxWitsOpening = faultProofFieldOpeningV1({
     planned,
     referenceInputs,
     label: "Raw invalid-signature step 02",
   });
   const feeInput = selectFeeInput(
-    (await lucid.wallet().getUtxos()).filter(
-      (utxo) => utxo.datum == null && utxo.datumHash == null,
+    claimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
+      (utxos, reference) => excludeUtxo(utxos, reference),
+      (await lucid.wallet().getUtxos()).filter(
+        (utxo) => utxo.datum == null && utxo.datumHash == null,
+      ),
     ),
   );
   const fraudProofUnit = toUnit(
@@ -542,7 +570,7 @@ export const submitRawInvalidSignatureStep02V1 = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const unsigned = await fraudProofCarriage
-    .attach(computationThreadCarriage.attach(base))
+    .attach(computationThreadCarriage.attach(claimRegistryMutation.apply(base)))
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();

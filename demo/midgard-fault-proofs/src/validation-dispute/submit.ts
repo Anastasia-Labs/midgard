@@ -120,6 +120,11 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import {
+  type PreparedClaimRegistryMutationV1,
+  prepareDeploymentClaimRegistryMutationV1,
+  requirePreparedClaimRegistryMutationV1,
+} from "../claim-registry-transaction-v1.js";
 import { type ContractDeploymentInfo } from "../inspect-contracts.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -131,6 +136,7 @@ import {
   resolveFraudulentHeaderHash,
   resolveValidationTraceDisputeDeploymentContracts,
 } from "../runtime.js";
+import { excludeUtxo } from "../spend-input-witness.js";
 import {
   requireComputationThreadToken,
   requireInitialStepDatum,
@@ -2979,6 +2985,7 @@ export const submitValidationDisputeTimeout = async ({
   threadOutRef,
   timeoutReferenceScriptUtxo,
   witnessReferenceScripts,
+  claimRegistryMutation,
   validityRange,
   now = Date.now(),
   awaitConfirmation = true,
@@ -2993,6 +3000,7 @@ export const submitValidationDisputeTimeout = async ({
   readonly timeoutReferenceScriptUtxo?: UTxO;
   /** Required published shared minting witnesses for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly now?: number;
   readonly awaitConfirmation?: boolean;
@@ -3047,7 +3055,29 @@ export const submitValidationDisputeTimeout = async ({
     | undefined;
   let computationThreadMintRedeemerIndex: bigint | undefined;
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const resolvedClaimRegistryMutation = requirePreparedClaimRegistryMutationV1({
+    mutation:
+      claimRegistryMutation ??
+      (await prepareDeploymentClaimRegistryMutationV1({
+        lucid,
+        claimRegistryReferenceUtxo: witnessReferenceScripts?.claimRegistrySpend,
+        blueprint,
+        deploymentInfo,
+        network,
+        computationThreadPolicyId: contracts.computationThread.policyId,
+        claimId: token.assetName,
+        kind: "close",
+      })),
+    kind: "close",
+    claimId: token.assetName,
+    label: "Validation-dispute timeout",
+  });
+  const feeInput = selectFeeInput(
+    resolvedClaimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
+      (utxos, reference) => excludeUtxo(utxos, reference),
+      await lucid.wallet().getUtxos(),
+    ),
+  );
   const timeoutScriptCarriage = witnessSpendingValidatorCarriageV1({
     script: disputeContract.spendingScript,
     referenceUtxo: timeoutReferenceScriptUtxo,
@@ -3116,7 +3146,9 @@ export const submitValidationDisputeTimeout = async ({
     referenceInputs.length === 0 ? base : base.readFrom(referenceInputs);
   const tx = fraudProofMintCarriage.attach(
     computationThreadMintCarriage.attach(
-      timeoutScriptCarriage.attach(withReferenceScripts),
+      timeoutScriptCarriage.attach(
+        resolvedClaimRegistryMutation.apply(withReferenceScripts),
+      ),
     ),
   );
   const unsigned = await tx.complete({ localUPLCEval: true });
@@ -4513,6 +4545,9 @@ const makeValidationFinalizingSpendRedeemer = ({
 
 type ValidationFinalizationTransactionParams = {
   readonly lucid: LucidEvolution;
+  readonly blueprint: unknown;
+  readonly deploymentInfo: unknown;
+  readonly network: Network;
   readonly contracts: Awaited<
     ReturnType<typeof resolveValidationTraceDisputeDeploymentContracts>
   >["contracts"];
@@ -4532,6 +4567,7 @@ type ValidationFinalizationTransactionParams = {
   readonly spendingScriptReferenceUtxo?: UTxO;
   /** Required published shared minting witnesses for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
   readonly spendLabel: string;
   readonly encodeSpendRedeemer: (
     layout: ValidationFinalizingSpendLayout,
@@ -4552,6 +4588,9 @@ type PreparedValidationFinalizationTransaction = {
 
 const prepareValidationFinalizationTransaction = async ({
   lucid,
+  blueprint,
+  deploymentInfo,
+  network,
   contracts,
   signer,
   threadUtxo,
@@ -4560,6 +4599,7 @@ const prepareValidationFinalizationTransaction = async ({
   spendingScript,
   spendingScriptReferenceUtxo,
   witnessReferenceScripts,
+  claimRegistryMutation,
   spendLabel,
   encodeSpendRedeemer,
   materialReferenceUtxos = [],
@@ -4573,7 +4613,29 @@ const prepareValidationFinalizationTransaction = async ({
   let partialLayout: ValidationFinalizingSpendLayout | undefined;
   let computationThreadMintRedeemerIndex: bigint | undefined;
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const resolvedClaimRegistryMutation = requirePreparedClaimRegistryMutationV1({
+    mutation:
+      claimRegistryMutation ??
+      (await prepareDeploymentClaimRegistryMutationV1({
+        lucid,
+        claimRegistryReferenceUtxo: witnessReferenceScripts?.claimRegistrySpend,
+        blueprint,
+        deploymentInfo,
+        network,
+        computationThreadPolicyId: contracts.computationThread.policyId,
+        claimId: token.assetName,
+        kind: "close",
+      })),
+    kind: "close",
+    claimId: token.assetName,
+    label: spendLabel,
+  });
+  const feeInput = selectFeeInput(
+    resolvedClaimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
+      (utxos, reference) => excludeUtxo(utxos, reference),
+      await lucid.wallet().getUtxos(),
+    ),
+  );
   const materialOutRefs = materialReferenceUtxos.map(outRefLabel);
   if (new Set(materialOutRefs).size !== materialOutRefs.length) {
     throw new Error(`${spendLabel} CEK material references must be unique`);
@@ -4653,7 +4715,9 @@ const prepareValidationFinalizationTransaction = async ({
     .validFrom(validityRange.validFrom)
     .validTo(validityRange.validTo);
   const tx = fraudProofMintCarriage.attach(
-    computationThreadMintCarriage.attach(spendingScriptCarriage.attach(base)),
+    computationThreadMintCarriage.attach(
+      spendingScriptCarriage.attach(resolvedClaimRegistryMutation.apply(base)),
+    ),
   );
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (
@@ -7412,6 +7476,7 @@ export const submitValidationDisputeAward = async ({
   threadOutRef,
   awardReferenceScriptUtxo,
   witnessReferenceScripts,
+  claimRegistryMutation,
   validityRange = validationDisputeValidityRange(Date.now()),
   awaitConfirmation = true,
 }: {
@@ -7425,6 +7490,7 @@ export const submitValidationDisputeAward = async ({
   readonly awardReferenceScriptUtxo?: UTxO;
   /** Required published shared minting witnesses for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
   readonly validityRange?: ValidationDisputeValidityRange;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitValidationDisputeAwardResult> => {
@@ -7461,6 +7527,9 @@ export const submitValidationDisputeAward = async ({
   }
   return await submitValidationFinalizationTransaction({
     lucid,
+    blueprint,
+    deploymentInfo,
+    network,
     contracts,
     signer,
     threadUtxo,
@@ -7469,6 +7538,7 @@ export const submitValidationDisputeAward = async ({
     spendingScript: awardContract,
     spendingScriptReferenceUtxo: awardReferenceScriptUtxo,
     witnessReferenceScripts,
+    claimRegistryMutation,
     spendLabel: "Validation-dispute award",
     encodeSpendRedeemer: (layout) =>
       Data.to(

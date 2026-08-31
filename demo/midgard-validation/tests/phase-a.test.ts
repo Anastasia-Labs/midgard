@@ -37,6 +37,7 @@ import {
   makeQueued,
   nativeScriptWitness,
   outRefFromByte,
+  TEST_ADDRESS_BYTES,
 } from "./validation-fixtures.js";
 
 const phaseAConfig = {
@@ -45,6 +46,12 @@ const phaseAConfig = {
   minFeeB: 0n,
   concurrency: 1,
   strictnessProfile: "phase-a-unit",
+};
+
+const addressAtRawNetworkNibble = (networkNibble: number): Buffer => {
+  const address = Buffer.from(TEST_ADDRESS_BYTES);
+  address[0] = (address[0] & 0xf0) | networkNibble;
+  return address;
 };
 
 /**
@@ -349,6 +356,61 @@ describe("phase A validation", () => {
   it("rejects explicit Cardano network ids that do not match configuration", async () => {
     const fixture = makeNativeTx({ networkId: 1n });
     await expectSinglePhaseARejection(fixture, RejectCodes.NetworkIdMismatch);
+  });
+
+  it.each([
+    { label: "testnet output on mainnet", expected: 1n, rawNibble: 0 },
+    { label: "mainnet output on testnet", expected: 0n, rawNibble: 1 },
+    {
+      label: "foreign unprotected network nibble 2",
+      expected: 0n,
+      rawNibble: 2,
+    },
+    {
+      label: "foreign protected network nibble 15",
+      expected: 0n,
+      rawNibble: 15,
+    },
+  ])("defers $label to the staged output scan", ({ expected, rawNibble }) => {
+    const fixture = makeNativeTx({
+      outputs: [makeOutput(10n, addressAtRawNetworkNibble(rawNibble))],
+    });
+    const admitted = validatePhaseASingle(
+      makeQueued(fixture.txId, fixture.txCbor),
+      {
+        ...phaseAConfig,
+        expectedNetworkId: expected,
+      },
+    );
+    expect(admitted).toHaveProperty("ledgerTx");
+    if ("ledgerTx" in admitted) {
+      expect(admitted.derived.expectedNetworkId).toBe(expected);
+    }
+  });
+
+  it("accepts matching protected output networks", () => {
+    const fixture = makeNativeTx({
+      outputs: [makeOutput(10n, addressAtRawNetworkNibble(8))],
+    });
+    expect(
+      validatePhaseASingle(
+        makeQueued(fixture.txId, fixture.txCbor),
+        phaseAConfig,
+      ),
+    ).toHaveProperty("ledgerTx");
+  });
+
+  it("preserves validity rejection priority over a wrong-network output", () => {
+    const fixture = makeNativeTx({
+      validity: "TxIsInvalid",
+      outputs: [makeOutput(10n, addressAtRawNetworkNibble(15))],
+    });
+    expect(
+      validatePhaseASingle(
+        makeQueued(fixture.txId, fixture.txCbor),
+        phaseAConfig,
+      ),
+    ).toMatchObject({ code: RejectCodes.IsValidFalseForbidden });
   });
 
   it("rejects transactions below the configured minimum fee", async () => {

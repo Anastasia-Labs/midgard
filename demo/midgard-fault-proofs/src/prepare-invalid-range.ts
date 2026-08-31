@@ -14,12 +14,12 @@ import {
   decodeTransactionMaterial,
   type FetchLike,
   fetchNodeBlockTransactions,
-  nativeTrieItem,
   type NodeTransactionPayload,
   type PreparedTxInclusionJson,
   readNodeTransactionPayloadsFile,
   requireProof,
   requireTransactionsRootMatchV1,
+  transactionSourceTrieItemV1,
 } from "./prepare-double-spend.js";
 
 export type InvalidRangeViolationReason = NonNullable<
@@ -29,8 +29,7 @@ export type InvalidRangeViolationReason = NonNullable<
 export type PrepareInvalidRangeCliConfig = {
   readonly midgardNodeUrl: string;
   readonly headerHash: string;
-  readonly blockValidFrom: string | number | bigint;
-  readonly blockValidTo: string | number | bigint;
+  readonly blockSlot: string | number | bigint;
   readonly expectedTransactionsRoot?: string;
   readonly txId?: string;
   readonly outputDir?: string;
@@ -40,8 +39,7 @@ export type PrepareInvalidRangeCliConfig = {
 export type PrepareInvalidRangeFromFileConfig = {
   readonly transactionsPath: string;
   readonly headerHash: string;
-  readonly blockValidFrom: string | number | bigint;
-  readonly blockValidTo: string | number | bigint;
+  readonly blockSlot: string | number | bigint;
   readonly expectedTransactionsRoot?: string;
   readonly txId?: string;
   readonly outputDir?: string;
@@ -59,10 +57,7 @@ export type PreparedInvalidRangeTx = {
 export type PreparedInvalidRangeOutput = {
   readonly headerHash: string;
   readonly txCount: number;
-  readonly blockValidity: {
-    readonly validFrom: bigint;
-    readonly validTo: bigint;
-  };
+  readonly blockSlot: bigint;
   readonly commitmentEncodings: {
     readonly nativeNode: {
       readonly transactionsRoot: string;
@@ -76,23 +71,6 @@ export type PreparedInvalidRangeOutput = {
     readonly txInclusionPath: string;
     readonly planPath: string;
   };
-};
-
-const parseBlockValidity = ({
-  blockValidFrom,
-  blockValidTo,
-}: {
-  readonly blockValidFrom: string | number | bigint;
-  readonly blockValidTo: string | number | bigint;
-}): { readonly validFrom: bigint; readonly validTo: bigint } => {
-  const validFrom = parseSignedInteger(blockValidFrom, "--block-valid-from");
-  const validTo = parseSignedInteger(blockValidTo, "--block-valid-to");
-  if (validFrom > validTo) {
-    throw new Error(
-      "--block-valid-from must be less than or equal to --block-valid-to.",
-    );
-  }
-  return { validFrom, validTo };
 };
 
 const writePreparedFiles = async ({
@@ -113,7 +91,7 @@ const writePreparedFiles = async ({
       paths.planPath,
       stringifyJson({
         headerHash: output.headerHash,
-        blockValidity: output.blockValidity,
+        blockSlot: output.blockSlot,
         txNodeTxId: output.tx.nodeTxId,
         normalizedValidityRange: output.tx.normalizedValidityRange,
         violationReason: output.tx.violationReason,
@@ -127,22 +105,20 @@ const writePreparedFiles = async ({
 export const prepareInvalidRangeFromTransactions = async ({
   headerHash,
   transactions,
-  blockValidFrom,
-  blockValidTo,
+  blockSlot,
   expectedTransactionsRoot,
   txId,
   outputDir,
 }: {
   readonly headerHash: string;
   readonly transactions: readonly NodeTransactionPayload[];
-  readonly blockValidFrom: string | number | bigint;
-  readonly blockValidTo: string | number | bigint;
+  readonly blockSlot: string | number | bigint;
   readonly expectedTransactionsRoot?: string;
   readonly txId?: string;
   readonly outputDir?: string;
 }): Promise<PreparedInvalidRangeOutput> => {
   const normalizedHeaderHash = parseHex(headerHash, "--header-hash", 28);
-  const blockValidity = parseBlockValidity({ blockValidFrom, blockValidTo });
+  const normalizedBlockSlot = parseSignedInteger(blockSlot, "--block-slot");
   const normalizedExpectedRoot =
     expectedTransactionsRoot === undefined
       ? undefined
@@ -158,8 +134,7 @@ export const prepareInvalidRangeFromTransactions = async ({
         tx.nativeTxCompact.body,
       );
       const violationReason = invalidRangeViolationReason({
-        blockValidFrom: blockValidity.validFrom,
-        blockValidTo: blockValidity.validTo,
+        blockSlot: normalizedBlockSlot,
         normalizedRange: normalizedValidityRange,
       });
       return {
@@ -187,30 +162,32 @@ export const prepareInvalidRangeFromTransactions = async ({
       const exists = decoded.some((tx) => tx.nodeTxId === normalizedTxId);
       throw new Error(
         exists
-          ? `Requested --tx-id ${normalizedTxId} does not violate the block validity range.`
+          ? `Requested --tx-id ${normalizedTxId} is valid at --block-slot ${normalizedBlockSlot.toString()}.`
           : `Requested --tx-id ${normalizedTxId} was not found in the block.`,
       );
     }
     throw new Error(
-      "No invalid-range transaction found in the selected block.",
+      `No transaction with a validity interval excluding --block-slot ${normalizedBlockSlot.toString()} was found in the selected block.`,
     );
   }
 
-  const nativeTrie = await buildTrieView(decoded.map(nativeTrieItem));
+  const nativeTrie = await buildTrieView(
+    decoded.map(transactionSourceTrieItemV1),
+  );
   const proofCbor = requireProof(
     nativeTrie,
-    nativeTrieItem(selected.tx).key,
+    transactionSourceTrieItemV1(selected.tx).key,
     "invalid-range tx",
   );
   await requireTransactionsRootMatchV1({
-    nativeRoot: nativeTrie.root,
+    sourceRoot: nativeTrie.root,
     expectedTransactionsRoot: normalizedExpectedRoot,
     count: BigInt(decoded.length),
   });
   const baseOutput: PreparedInvalidRangeOutput = {
     headerHash: normalizedHeaderHash,
     txCount: decoded.length,
-    blockValidity,
+    blockSlot: normalizedBlockSlot,
     commitmentEncodings: {
       nativeNode: {
         transactionsRoot: nativeTrie.root,
@@ -231,6 +208,7 @@ export const prepareInvalidRangeFromTransactions = async ({
         nativeTxId: selected.tx.nodeTxId,
         nativeTx: selected.tx.nativeTxCompact,
         nativeTxCompactCbor: selected.tx.nativeCompactCbor,
+        l2TransactionSourceCbor: selected.tx.l2TransactionSourceCbor,
         transactionsPhasRoot: nativeTrie.root,
         txMembershipProofCbor: proofCbor,
       },
@@ -260,8 +238,7 @@ export const prepareInvalidRangeFromNode = async (
   return await prepareInvalidRangeFromTransactions({
     headerHash,
     transactions,
-    blockValidFrom: config.blockValidFrom,
-    blockValidTo: config.blockValidTo,
+    blockSlot: config.blockSlot,
     expectedTransactionsRoot: config.expectedTransactionsRoot,
     txId: config.txId,
     outputDir: config.outputDir,
@@ -277,8 +254,7 @@ export const prepareInvalidRangeFromFile = async (
   return await prepareInvalidRangeFromTransactions({
     headerHash: config.headerHash,
     transactions,
-    blockValidFrom: config.blockValidFrom,
-    blockValidTo: config.blockValidTo,
+    blockSlot: config.blockSlot,
     expectedTransactionsRoot: config.expectedTransactionsRoot,
     txId: config.txId,
     outputDir: config.outputDir,

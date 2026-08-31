@@ -22,15 +22,26 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  type PreparedClaimRegistryMutationV1,
+  prepareFamilyClaimRegistryMutationV1,
+  requirePreparedClaimRegistryMutationV1,
+} from "../claim-registry-transaction-v1.js";
+import {
   DEFAULT_CONFIRMATION_POLL_MS,
   type ResolvedProverSigner,
 } from "../runtime.js";
+import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScriptsV1,
   witnessMintingPolicyCarriageV1,
 } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import {
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "../workflow/transaction-boundary-v1.js";
 import type { CanonicalDecodabilityContractsV1 } from "./contracts-v1.js";
 import {
   canonicalDecodabilityStepLabelV1,
@@ -77,6 +88,8 @@ export const submitCanonicalDecodabilityStep02 = async ({
   threadOutRef,
   referenceScriptUtxo,
   witnessReferenceScripts,
+  claimRegistryMutation,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -88,6 +101,8 @@ export const submitCanonicalDecodabilityStep02 = async ({
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitCanonicalDecodabilityStep02Result> => {
   const { threadUtxo, threadToken } =
@@ -136,7 +151,28 @@ export const submitCanonicalDecodabilityStep02 = async ({
   ];
 
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const resolvedClaimRegistryMutation = requirePreparedClaimRegistryMutationV1({
+    mutation:
+      claimRegistryMutation ??
+      (await prepareFamilyClaimRegistryMutationV1({
+        lucid,
+        claimRegistry: contracts.claimRegistry,
+        claimRegistryReferenceUtxo: witnessReferenceScripts?.claimRegistrySpend,
+        hubOraclePolicyId: contracts.hubOraclePolicyId,
+        computationThreadPolicyId: contracts.computationThread.policyId,
+        claimId: threadToken.assetName,
+        kind: "close",
+      })),
+    kind: "close",
+    claimId: threadToken.assetName,
+    label: STEP_LABEL,
+  });
+  const feeInput = selectFeeInput(
+    resolvedClaimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
+      (utxos, reference) => excludeUtxo(utxos, reference),
+      await lucid.wallet().getUtxos(),
+    ),
+  );
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -231,7 +267,11 @@ export const submitCanonicalDecodabilityStep02 = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const unsigned = await fraudProofMintCarriage
-    .attach(computationThreadMintCarriage.attach(chainedTx))
+    .attach(
+      computationThreadMintCarriage.attach(
+        resolvedClaimRegistryMutation.apply(chainedTx),
+      ),
+    )
     .complete({ localUPLCEval: true });
   if (
     spendLayout === undefined ||
@@ -242,7 +282,41 @@ export const submitCanonicalDecodabilityStep02 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof canonical-decodability step-02",
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.steps[1].spendingScript,
+        },
+        {
+          role: "V1 fraud-proof computation-thread minting",
+          utxo: witnessReferenceScripts?.computationThreadMint,
+          expectedScript: contracts.computationThread.mintingScript,
+        },
+        {
+          role: "V1 fraud-proof token minting",
+          utxo: witnessReferenceScripts?.fraudProofMint,
+          expectedScript: contracts.fraudProof.mintingScript,
+        },
+        {
+          role: "claim-registry spending",
+          utxo: resolvedClaimRegistryMutation.referenceScriptUtxo,
+          expectedScript: resolvedClaimRegistryMutation.registryScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw canonicalDecodabilitySubmitError(
+      `step-02 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

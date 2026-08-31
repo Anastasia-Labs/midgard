@@ -22,6 +22,11 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  type PreparedClaimRegistryMutationV1,
+  prepareFamilyClaimRegistryMutationV1,
+  requirePreparedClaimRegistryMutationV1,
+} from "./claim-registry-transaction-v1.js";
+import {
   MIN_FEE_CATEGORY_LABEL,
   type MinFeeContractsV1,
 } from "./min-fee-contracts-v1.js";
@@ -47,6 +52,11 @@ import {
   witnessMintingPolicyCarriageV1,
   witnessWithdrawalValidatorCarriageV1,
 } from "./witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "./workflow/transaction-boundary-v1.js";
 
 type LucidDataSchema = Parameters<typeof Data.to>[1];
 
@@ -71,6 +81,8 @@ export const submitMinFeeInit = async ({
   fraudulentBlockOutRef,
   fraudulentHeaderHash,
   witnessReferenceScripts,
+  claimRegistryMutation,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -88,6 +100,8 @@ export const submitMinFeeInit = async ({
   readonly fraudulentHeaderHash?: string;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMinFeeInitResult> => {
   if (category.scriptHash !== contracts.steps[0].spendingScriptHash) {
@@ -209,6 +223,27 @@ export const submitMinFeeInit = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
+  // The computation-thread `Init` arm requires the atomic claim-registry
+  // `OpenClaim` in the same transaction, so every family init opens its
+  // `(category, header)` claim here.
+  const resolvedClaimRegistryMutation = requirePreparedClaimRegistryMutationV1({
+    mutation:
+      claimRegistryMutation ??
+      (await prepareFamilyClaimRegistryMutationV1({
+        lucid,
+        claimRegistry: contracts.claimRegistry,
+        claimRegistryReferenceUtxo: witnessReferenceScripts?.claimRegistrySpend,
+        hubOraclePolicyId: contracts.hubOraclePolicyId,
+        computationThreadPolicyId: contracts.computationThread.policyId,
+        categoryId: category.categoryId,
+        headerHash: resolvedHeaderHash,
+        kind: "open",
+      })),
+    kind: "open",
+    claimId: assetName,
+    label: `${MIN_FEE_CATEGORY_LABEL} init`,
+  });
+
   signer.selectWallet(lucid);
   const base = lucid
     .newTx()
@@ -243,14 +278,45 @@ export const submitMinFeeInit = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const tx = phasMembershipCarriage.attach(
-    computationThreadMintCarriage.attach(base),
+    computationThreadMintCarriage.attach(
+      resolvedClaimRegistryMutation.apply(base),
+    ),
   );
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (firstOutputIndex === undefined) {
     throw minFeeSubmitError("init output index was not resolved.");
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof computation-thread minting",
+          utxo: witnessReferenceScripts?.computationThreadMint,
+          expectedScript: contracts.computationThread.mintingScript,
+        },
+        {
+          role: "membership proof withdrawal",
+          utxo: witnessReferenceScripts?.phasMembershipWithdraw,
+          expectedScript: phasScript,
+        },
+        {
+          role: "claim-registry spending",
+          utxo: resolvedClaimRegistryMutation.referenceScriptUtxo,
+          expectedScript: resolvedClaimRegistryMutation.registryScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw minFeeSubmitError(
+      `init provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

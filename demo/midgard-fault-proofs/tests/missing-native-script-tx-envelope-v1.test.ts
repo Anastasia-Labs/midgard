@@ -18,13 +18,23 @@ import {
   realBlueprintPath,
 } from "./support/submit-init-emulator-shared.js";
 
+// Derivation: half the hex length of the blueprint body, and `parameters.length`,
+// for each `fraud_proofs/missing_native_script_tx/step_NN.main.spend` entry of
+// `onchain/aiken/plutus.json`, built with `aiken build --env testnet`. Both are
+// read through `measureBlueprintValidatorBytes`, so this file never touches a
+// blueprint body itself — the #610 bare-loader scan in
+// `zz605-semantic-resolver-arity.test.ts` is a deliberately dumb text scan, and
+// its own instruction is to word comments around the field name rather than
+// grow the allowlist for a file that loads nothing.
 const EXPECTED_UNAPPLIED_SIZES_BYTES = {
-  step01: 5_775,
-  step02: 7_117,
-  step03: 5_846,
-  step04: 8_736,
-  step05: 1_570,
-  step06: 7_642,
+  step01: 7_872,
+  step02: 7_199,
+  step03: 7_935,
+  step04: 8_795,
+  step05: 1_579,
+  step06: 9_899,
+  step07: 10_292,
+  step08: 9_523,
 } as const;
 const EXPECTED_DECLARED_ARITIES = {
   step01: 3,
@@ -32,13 +42,15 @@ const EXPECTED_DECLARED_ARITIES = {
   step03: 3,
   step04: 3,
   step05: 2,
-  step06: 4,
+  step06: 5,
+  step07: 3,
+  step08: 4,
 } as const;
 
 describe("missing-native-script-tx envelope and reference-script deployment", () => {
   const blueprint = readBlueprint(realBlueprintPath);
 
-  it("pins all six nonzero unapplied sizes to the audited blueprint", () => {
+  it("pins all eight nonzero unapplied sizes to the audited blueprint", () => {
     let found = 0;
     for (const [step, title] of Object.entries(
       MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1,
@@ -60,10 +72,10 @@ describe("missing-native-script-tx envelope and reference-script deployment", ()
       );
       found += 1;
     }
-    expect(found).toBe(6);
+    expect(found).toBe(8);
   });
 
-  it("applies six distinct scripts and fits each oversized publication host", async () => {
+  it("applies eight distinct scripts and fits each oversized publication host", async () => {
     const addressData = await Effect.runPromise(
       addressDataFromBech32(
         credentialToAddress(network, scriptHashToCredential("22".repeat(28))),
@@ -77,7 +89,7 @@ describe("missing-native-script-tx envelope and reference-script deployment", ()
       fieldPreimageCertificatePolicyId: "44".repeat(28),
       hubOraclePolicyId: "55".repeat(28),
     });
-    expect(new Set(steps.map((step) => step.spendingScriptHash)).size).toBe(6);
+    expect(new Set(steps.map((step) => step.spendingScriptHash)).size).toBe(8);
     for (const [index, step] of steps.entries()) {
       const appliedBytes = step.spendingScriptCBOR.length / 2;
       expect(appliedBytes).toBeGreaterThanOrEqual(

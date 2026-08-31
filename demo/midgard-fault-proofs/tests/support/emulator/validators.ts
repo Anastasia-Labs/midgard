@@ -225,7 +225,7 @@ export const makeAlwaysSucceedsContracts = (
     fabricatedWithdrawal: scaffoldChain(appendedFamilyFallback, 4),
     nativeScriptDecoding: scaffoldChain(appendedFamilyFallback, 6),
     missingSignature: scaffoldChain(appendedFamilyFallback, 4),
-    missingNativeScriptTx: scaffoldChain(appendedFamilyFallback, 6),
+    missingNativeScriptTx: scaffoldChain(appendedFamilyFallback, 8),
     withdrawnReferenceInput: scaffoldChain(appendedFamilyFallback, 3),
     canonicalDecodability: scaffoldChain(appendedFamilyFallback, 2),
     committedFieldShape: scaffoldChain(appendedFamilyFallback, 2),
@@ -238,6 +238,10 @@ export const makeAlwaysSucceedsContracts = (
     valueNotPreserved: scaffoldChain(appendedFamilyFallback, 4),
     inputSetUniqueness: scaffoldChain(appendedFamilyFallback, 2),
     mintAuthorization: scaffoldChain(appendedFamilyFallback, 5),
+    networkId: scaffoldChain(appendedFamilyFallback, 2),
+    missingNativeScriptUtxo: scaffoldChain(appendedFamilyFallback, 7),
+    nativeScriptInvalid: scaffoldChain(appendedFamilyFallback, 5),
+    minAda: scaffoldChain(appendedFamilyFallback, 5),
   };
   const fraudProofs = fraudProofContractsToFirstSteps(fraudProofContracts);
   const fieldPreimageV1 = makeSpendingValidator(
@@ -268,6 +272,13 @@ export const makeAlwaysSucceedsContracts = (
     },
     daParamsGovernor: alwaysAuthenticated(blueprint, "state_queue"),
     daAttestation: alwaysAuthenticated(blueprint, "state_queue"),
+    availabilityChallenge: alwaysAuthenticated(blueprint, "state_queue"),
+    correctionLock: makeSpendingValidator(
+      alwaysScript(blueprint, "midgard", "state_queue", "spend"),
+    ),
+    claimRegistry: makeSpendingValidator(
+      alwaysScript(blueprint, "midgard", "state_queue", "spend"),
+    ),
     stateQueue: alwaysAuthenticated(blueprint, "state_queue"),
     scheduler: alwaysAuthenticated(blueprint, "scheduler"),
     registeredOperators: alwaysAuthenticated(blueprint, "registered_operators"),
@@ -278,7 +289,10 @@ export const makeAlwaysSucceedsContracts = (
       blueprint,
       "fraud_proof_catalogue",
     ),
+    computationThread: fieldPreimageCertificateV1,
     fraudProof: alwaysAuthenticated(blueprint, "fraud_proof"),
+    chunkedVerify: reserve,
+    pexcludes: reserve,
     deposit: alwaysAuthenticated(blueprint, "deposit"),
     withdrawal: alwaysAuthenticated(blueprint, "withdrawal"),
     txOrder: alwaysAuthenticated(blueprint, "tx_order"),

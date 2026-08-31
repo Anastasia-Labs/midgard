@@ -9,7 +9,6 @@ import {
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
-  requireWithdrawalRedeemerIndex,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -17,7 +16,6 @@ import {
   Data,
   type LucidEvolution,
   type Network,
-  type Script,
   scriptHashToCredential,
   toUnit,
   type UTxO,
@@ -31,29 +29,32 @@ import {
   requireMinFeeReferenceScriptV1,
   requireMinFeeThreadUtxoV1,
 } from "./min-fee-submit-common-v1.js";
+import { prepareNativeTxInclusionCarriageV1 } from "./native-inclusion-carriage-v1.js";
+import {
+  type PublishedProofChunkV1,
+  walletInputsExcludingChunks,
+} from "./proof-chunk-carriage.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
-  encodeRawPhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
-  getCompiledScript,
   parseOutRef,
-  phasMembershipRewardAddress,
   requireSingletonUtxo,
   type ResolvedProverSigner,
   resolveFraudulentHeaderHash,
 } from "./runtime.js";
 import {
-  PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   requireInitialStepDatum,
   requireNativeTxMatchesCompactCbor,
   selectFeeInput,
   type SubmitStep01TxInclusion,
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
+import type { FaultProofWitnessReferenceScriptsV1 } from "./witness-reference-scripts-v1.js";
 import {
-  type FaultProofWitnessReferenceScriptsV1,
-  witnessWithdrawalValidatorCarriageV1,
-} from "./witness-reference-scripts-v1.js";
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "./workflow/transaction-boundary-v1.js";
 
 const STEP_LABEL = minFeeStepLabelV1(0);
 
@@ -81,8 +82,10 @@ export const submitMinFeeStep01 = async ({
   threadOutRef,
   stateQueueBlockOutRef,
   txInclusion,
+  publishedProofChunks,
   referenceScriptUtxo,
   witnessReferenceScripts,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -94,10 +97,12 @@ export const submitMinFeeStep01 = async ({
   readonly threadOutRef: string;
   readonly stateQueueBlockOutRef: string;
   readonly txInclusion: SubmitStep01TxInclusion;
+  readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
   /** Mandatory: min-fee validators are reference-script-only. */
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMinFeeStep01Result> => {
   const { threadUtxo, threadToken } = await requireMinFeeThreadUtxoV1({
@@ -162,22 +167,16 @@ export const submitMinFeeStep01 = async ({
     expectedScriptHash: contracts.steps[0].spendingScriptHash,
     stepIndex: 0,
   });
-  const phasScript: Script = {
-    type: "PlutusV3",
-    script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
-  };
-  const phasRewardAddress = phasMembershipRewardAddress(network, phasScript);
-  const phasMembershipCarriage = witnessWithdrawalValidatorCarriageV1({
-    script: phasScript,
-    referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
-    label: `${STEP_LABEL} PHAS membership`,
+  const chunks = publishedProofChunks ?? [];
+  const inclusionCarriage = prepareNativeTxInclusionCarriageV1({
+    blueprint,
+    network,
+    txInclusion,
+    publishedProofChunks: chunks,
+    witnessReferenceScripts,
+    label: STEP_LABEL,
+    baseReferenceInputs: [hubOracleUtxo, stateQueueBlockUtxo, stepReference],
   });
-  const referenceInputs = [
-    hubOracleUtxo,
-    stateQueueBlockUtxo,
-    stepReference,
-    ...phasMembershipCarriage.referenceInputs,
-  ];
   let resolved:
     | { readonly inputIndex: bigint; readonly outputIndex: bigint }
     | undefined;
@@ -193,7 +192,7 @@ export const submitMinFeeStep01 = async ({
     return Data.to(
       {
         Continue: [
-          {
+          inclusionCarriage.redeemer(ctx, {
             input_index: inputIndex,
             output_index: outputIndex,
             hub_ref_input_index: requireReferenceInputIndex(
@@ -206,17 +205,7 @@ export const submitMinFeeStep01 = async ({
               stateQueueBlockUtxo,
               `${STEP_LABEL} state-queue block`,
             ),
-            native_tx_id: txInclusion.nativeTxId,
-            native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
-            transactions_phas_root: txInclusion.transactionsPhasRoot,
-            tx_membership_proof: txInclusion.txMembershipProof,
-            inclusion_proof_script_withdraw_redeemer_index:
-              requireWithdrawalRedeemerIndex(
-                ctx,
-                phasRewardAddress,
-                `${STEP_LABEL} PHAS membership`,
-              ),
-          },
+          }),
         ],
       },
       MinFeeStep01SpendRedeemer,
@@ -224,22 +213,17 @@ export const submitMinFeeStep01 = async ({
   }) satisfies BuildTxWithRedeemer;
 
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const feeInput = selectFeeInput(
+    walletInputsExcludingChunks({
+      walletUtxos: await lucid.wallet().getUtxos(),
+      chunks,
+    }),
+  );
   const base = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
-    .readFrom(referenceInputs)
-    .withdraw(
-      phasRewardAddress,
-      0n,
-      encodeRawPhasMembershipProofRedeemer({
-        root: txInclusion.transactionsPhasRoot,
-        keyBytes: txInclusion.nativeTxId,
-        valueBytes: txInclusion.nativeTxCompactCbor,
-        membershipProofCbor: txInclusion.txMembershipProofCbor,
-      }),
-    )
+    .readFrom(inclusionCarriage.referenceInputs)
     .pay.ToContract(
       contracts.steps[1].spendingScriptAddress,
       { kind: "inline", value: step02Datum },
@@ -249,13 +233,33 @@ export const submitMinFeeStep01 = async ({
       },
     )
     .addSignerKey(signer.paymentKeyHash);
-  const tx = phasMembershipCarriage.attach(base);
+  const tx = inclusionCarriage.attachWithdrawal(base);
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (resolved === undefined) {
     throw minFeeSubmitError("step-01 layout was not resolved.");
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof min-fee step-01",
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.steps[0].spendingScript,
+        },
+        ...inclusionCarriage.referenceScriptCandidates,
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw minFeeSubmitError(
+      `step-01 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

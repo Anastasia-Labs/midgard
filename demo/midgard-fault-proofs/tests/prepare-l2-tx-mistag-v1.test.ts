@@ -15,8 +15,8 @@ import { prepareL2TxMistagFromTransactionsV1 } from "../src/index.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
-  nativeTrieItem,
   type NodeTransactionPayload,
+  transactionSourceTrieItemV1,
 } from "../src/prepare-double-spend.js";
 
 const payload = (
@@ -57,7 +57,7 @@ const expectedRoot = async (
   const decoded = await Promise.all(
     transactions.map(decodeTransactionMaterial),
   );
-  const trie = await buildTrieView(decoded.map(nativeTrieItem));
+  const trie = await buildTrieView(decoded.map(transactionSourceTrieItemV1));
   return Effect.runPromise(
     commitCountedRootProgram({
       domain: ROOT_DOMAINS.transactionsV1,

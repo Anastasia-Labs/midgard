@@ -3,7 +3,10 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { CanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
 import { keyValuePhasProof } from "../transition-trace/phas.js";
 
-export type CrossBlockDuplicateEventKindInputV1 = "deposit" | "withdrawal";
+export type CrossBlockDuplicateEventKindInputV1 =
+  | "deposit"
+  | "withdrawal"
+  | "forced-transaction";
 
 export type PreparedCrossBlockDuplicateEventV1 = {
   readonly challengedHeaderHash: string;
@@ -28,7 +31,10 @@ const keyEquals = (a: SDK.OutputReference, b: SDK.OutputReference): boolean =>
   a.transactionId === b.transactionId && a.outputIndex === b.outputIndex;
 
 const proofFor = async <K, V>(
-  root: CanonicalBlockEvidenceV1["reconstruction"]["rootData"]["deposits"],
+  root:
+    | CanonicalBlockEvidenceV1["reconstruction"]["rootData"]["deposits"]
+    | CanonicalBlockEvidenceV1["reconstruction"]["rootData"]["withdrawals"]
+    | CanonicalBlockEvidenceV1["reconstruction"]["rootData"]["forcedTransactions"],
   entry: {
     readonly key: K;
     readonly value: V;
@@ -96,11 +102,15 @@ export const prepareCrossBlockDuplicateEventV1 = async ({
   const settledCommittedRoot =
     kind === "deposit"
       ? settled.header.depositsRoot
-      : settled.header.withdrawalsRoot;
+      : kind === "withdrawal"
+        ? settled.header.withdrawalsRoot
+        : settled.header.forcedTransactionsRoot;
   const settlementRoot =
     kind === "deposit"
       ? settlement.datum.deposits_root
-      : settlement.datum.withdrawals_root;
+      : kind === "withdrawal"
+        ? settlement.datum.withdrawals_root
+        : settlement.datum.forced_transactions_root;
   if (settlementRoot !== settledCommittedRoot) {
     throw new Error(
       "cross-block-duplicate-event settlement datum does not preserve the historical counted root",
@@ -136,7 +146,7 @@ export const prepareCrossBlockDuplicateEventV1 = async ({
         ),
       },
     };
-  } else {
+  } else if (kind === "withdrawal") {
     const first = challenged.reconstruction.withdrawals.find((entry) =>
       keyEquals(entry.key, eventKey),
     );
@@ -160,6 +170,34 @@ export const prepareCrossBlockDuplicateEventV1 = async ({
       CommittedDuplicateWithdrawalV1: {
         membership: await proofFor(
           settled.reconstruction.rootData.withdrawals,
+          second,
+        ),
+      },
+    };
+  } else {
+    const first = challenged.reconstruction.forcedTransactions.find((entry) =>
+      keyEquals(entry.key, eventKey),
+    );
+    const second = settled.reconstruction.forcedTransactions.find((entry) =>
+      keyEquals(entry.key, eventKey),
+    );
+    if (first === undefined || second === undefined) {
+      throw new Error(
+        "cross-block-duplicate-event forced transaction-order key is absent from one canonical block",
+      );
+    }
+    challengedEvent = {
+      CommittedDuplicateForcedTransactionV1: {
+        membership: await proofFor(
+          challenged.reconstruction.rootData.forcedTransactions,
+          first,
+        ),
+      },
+    };
+    settledEvent = {
+      CommittedDuplicateForcedTransactionV1: {
+        membership: await proofFor(
+          settled.reconstruction.rootData.forcedTransactions,
           second,
         ),
       },

@@ -64,12 +64,18 @@ import {
   resolveProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
+import { excludeUtxo } from "./spend-input-witness.js";
 import {
   requireComputationThreadToken,
   selectFeeInput,
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import { witnessSpendingValidatorCarriageV1 } from "./witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "./workflow/transaction-boundary-v1.js";
 
 const toMidgardTxInput = (
   entry: NoReferenceInputPreimageEntry,
@@ -156,7 +162,11 @@ export const submitNoReferenceInputStep02 = async ({
   referenceInputsPreimage,
   nativeTxCompactCbor,
   badReferenceInputIndex,
+  publishedCarriageUtxos,
+  certificateUtxo,
+  certificatePolicyId,
   referenceScriptUtxo,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -169,8 +179,15 @@ export const submitNoReferenceInputStep02 = async ({
   /** The disputed transaction's §2.5 compact structure, as committed. */
   readonly nativeTxCompactCbor: string;
   readonly badReferenceInputIndex: bigint;
+  /** Pre-reconciled §8 raw carriage; production workflows must supply it. */
+  readonly publishedCarriageUtxos?: readonly UTxO[];
+  /** Authenticated tier-3 field-preimage certificate, when selected. */
+  readonly certificateUtxo?: UTxO;
+  /** Exact manifest-bound certificate policy for the tier-3 route. */
+  readonly certificatePolicyId?: string;
   /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNoReferenceInputStep02Result> => {
   const { noReferenceInputCategory, contracts } =
@@ -227,13 +244,20 @@ export const submitNoReferenceInputStep02 = async ({
   signer.selectWallet(lucid);
   // Publish tier-2 field carriage before selecting the final fee input and
   // resolving indices into the complete reference-input set.
-  const published = await publishFaultProofFieldCarriageV1({
-    lucid,
-    signer,
-    planned,
-    publisherAddress: signer.address,
-    label: "No-reference-input step 02 reference-inputs field",
-  });
+  const published =
+    publishedCarriageUtxos ??
+    (await publishFaultProofFieldCarriageV1({
+      lucid,
+      signer,
+      planned,
+      publisherAddress: signer.address,
+      label: "No-reference-input step 02 reference-inputs field",
+    }));
+  if ((certificateUtxo === undefined) !== (certificatePolicyId === undefined)) {
+    throw new Error(
+      "No-reference-input tier-3 certificate UTxO and policy identity must be supplied together.",
+    );
+  }
   const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
     script: steps[1].spendingScript,
     referenceUtxo: referenceScriptUtxo,
@@ -241,21 +265,24 @@ export const submitNoReferenceInputStep02 = async ({
   });
   // The complete reference-input set the built transaction will declare, in
   // build order — the opening derivation must see all of it (bug fc635c8f).
-  const referenceInputs = [...published, ...stepScriptCarriage.referenceInputs];
+  const referenceInputs = [
+    ...published,
+    ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+    ...stepScriptCarriage.referenceInputs,
+  ];
   const referenceInputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
     referenceInputs,
+    ...(certificatePolicyId === undefined ? {} : { certificatePolicyId }),
     label: "No-reference-input step 02 reference-inputs",
   });
   const missingReferenceInput =
     midgardReferenceInputs[Number(badReferenceInputIndex)]!;
 
-  // A tier-2 publication sits at the prover address under a large inline datum
-  // (and its min-ADA), so it tops the fee selector's descending-lovelace sort;
-  // exclude datum-carrying UTxOs so the referenced publication is never spent.
   const feeInput = selectFeeInput(
-    (await lucid.wallet().getUtxos()).filter(
-      (utxo) => utxo.datum == null && utxo.datumHash == null,
+    published.reduce<readonly UTxO[]>(
+      (candidates, utxo) => excludeUtxo(candidates, utxo),
+      await lucid.wallet().getUtxos(),
     ),
   );
   const step03Datum = Data.to(
@@ -335,7 +362,26 @@ export const submitNoReferenceInputStep02 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof no-reference-input step-02",
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.noReferenceInput.steps[1].spendingScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw new Error(
+      `no-reference-input step-02 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

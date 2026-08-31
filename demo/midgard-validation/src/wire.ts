@@ -94,6 +94,7 @@ export type WirePhaseACandidateV1 = {
     readonly produced: readonly WireLedgerEntry[];
   };
   readonly derived: {
+    readonly expectedNetworkId: bigint;
     readonly outputSum: MidgardValue;
     readonly mintDelta: MidgardValueDelta;
     readonly witnessKeyHashHexes: readonly string[];
@@ -120,6 +121,7 @@ const phaseACandidateWireIsExhaustive: Exclude<
 void phaseACandidateWireIsExhaustive;
 
 type DerivedWireFields =
+  | "expectedNetworkId"
   | "outputSum"
   | "mintDelta"
   | "witnessKeyHashHexes"
@@ -311,6 +313,7 @@ export const serializePhaseACandidate = (
       produced: candidate.graph.produced.map(serializeLedgerEntry),
     },
     derived: {
+      expectedNetworkId: candidate.derived.expectedNetworkId,
       outputSum: candidate.derived.outputSum,
       mintDelta: candidate.derived.mintDelta,
       witnessKeyHashHexes: candidate.derived.witnessKeyHashHexes,
@@ -389,6 +392,7 @@ export const deserializePhaseACandidate = (
     produced: candidate.graph.produced.map(deserializeLedgerEntry),
   },
   derived: {
+    expectedNetworkId: candidate.derived.expectedNetworkId,
     outputSum: candidate.derived.outputSum,
     mintDelta: candidate.derived.mintDelta,
     witnessKeyHashHexes: candidate.derived.witnessKeyHashHexes,

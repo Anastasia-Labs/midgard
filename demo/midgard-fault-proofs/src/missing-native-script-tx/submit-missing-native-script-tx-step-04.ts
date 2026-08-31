@@ -33,6 +33,11 @@ import {
 import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "../workflow/transaction-boundary-v1.js";
 import type { MissingNativeScriptTxContractsV1 } from "./contracts-v1.js";
 import {
   missingNativeScriptTxStepLabelV1,
@@ -62,7 +67,11 @@ export const submitMissingNativeScriptTxStep04 = async ({
   nativeTxCompactCbor,
   outputItemCbors,
   publishCarriage = false,
+  publishedCarriageUtxos,
+  certificateUtxo,
   referenceScriptUtxo,
+  publicationPreSubmitBoundary,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -74,7 +83,14 @@ export const submitMissingNativeScriptTxStep04 = async ({
   readonly outputItemCbors: readonly Uint8Array[];
   readonly nativeTxCompactCbor: string;
   readonly publishCarriage?: boolean;
+  /** Pre-observed publications supplied by a journaled production action. */
+  readonly publishedCarriageUtxos?: readonly UTxO[];
+  /** Pre-observed tier-3 certificate supplied by its journaled mint action. */
+  readonly certificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
+  /** Durable boundary for each prerequisite carriage publication. */
+  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMissingNativeScriptTxStep04Result> => {
   const { threadUtxo, threadToken } =
@@ -117,19 +133,26 @@ export const submitMissingNativeScriptTxStep04 = async ({
     label: `${STEP_LABEL} outputs`,
   });
   signer.selectWallet(lucid);
-  const carriageUtxos = await publishFaultProofFieldCarriageV1({
-    lucid,
-    signer,
-    planned,
-    publisherAddress: signer.address,
-    label: `${STEP_LABEL} outputs`,
-  });
+  const carriageUtxos =
+    publishedCarriageUtxos ??
+    (await publishFaultProofFieldCarriageV1({
+      lucid,
+      signer,
+      planned,
+      publisherAddress: signer.address,
+      label: `${STEP_LABEL} outputs`,
+      preSubmitBoundary: publicationPreSubmitBoundary,
+    }));
   const stepReference = requireMissingNativeScriptTxReferenceScriptV1({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[3].spendingScriptHash,
     stepIndex: 3,
   });
-  const referenceInputs = [...carriageUtxos, stepReference];
+  const referenceInputs = [
+    ...carriageUtxos,
+    ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+    stepReference,
+  ];
   const opening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
     referenceInputs,
@@ -210,7 +233,26 @@ export const submitMissingNativeScriptTxStep04 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof missing-native-script-tx step-04",
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.steps[3].spendingScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw missingNativeScriptTxSubmitError(
+      `step-04 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

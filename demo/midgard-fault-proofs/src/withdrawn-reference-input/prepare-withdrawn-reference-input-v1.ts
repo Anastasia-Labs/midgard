@@ -24,6 +24,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import type { NodeTransactionPayload } from "../prepare-double-spend.js";
+import { deriveL2TransactionSourceCborV1 } from "../prepare-double-spend.js";
 import { spendInputsWitnessFromCbors } from "../spend-input-witness.js";
 import {
   nativeTxFromCoreCompact,
@@ -59,6 +60,7 @@ type DecodedBlockTxV1 = {
   readonly txId: string;
   readonly nativeTx: ReturnType<typeof nativeTxFromCoreCompact>;
   readonly nativeTxCompactCbor: string;
+  readonly l2TransactionSourceCbor: string;
   readonly referenceInputs: readonly MidgardTxInput[];
 };
 
@@ -133,6 +135,9 @@ const decodeBlockTxV1 = (payload: NodeTransactionPayload): DecodedBlockTxV1 => {
     nativeTx: nativeTxFromCoreCompact(full.compact),
     nativeTxCompactCbor: encodeMidgardNativeTxCompactV1(full.compact).toString(
       "hex",
+    ),
+    l2TransactionSourceCbor: deriveL2TransactionSourceCborV1(
+      exactHexBytes(payload.txCbor, `tx ${listedTxId} txCbor`),
     ),
     referenceInputs: spendInputsWitnessFromCbors(
       referenceInputCbors,
@@ -259,7 +264,7 @@ export const prepareWithdrawnReferenceInputV1 = async ({
   const decoded = blockTxs.map(decodeBlockTxV1);
   const transactionEntries: KeyValuePhasEntry[] = decoded.map((tx) => ({
     key: Buffer.from(tx.txId, "hex"),
-    value: Buffer.from(tx.nativeTxCompactCbor, "hex"),
+    value: Buffer.from(tx.l2TransactionSourceCbor, "hex"),
   }));
   const transactionsRoot = await buildCountedRoot(
     ROOT_DOMAINS.transactionsV1,
@@ -349,7 +354,7 @@ export const prepareWithdrawnReferenceInputV1 = async ({
   const txProof = await keyValuePhasProof(
     { ...transactionsRoot, root: transactionsRoot.phasRoot },
     Buffer.from(selected.tx.txId, "hex"),
-    Buffer.from(selected.tx.nativeTxCompactCbor, "hex"),
+    Buffer.from(selected.tx.l2TransactionSourceCbor, "hex"),
   );
   const withdrawalKey = Buffer.from(
     committedWithdrawalKeyBytesV1(selected.withdrawal.id),
@@ -395,6 +400,7 @@ export const prepareWithdrawnReferenceInputV1 = async ({
       nativeTxId: selected.tx.txId,
       nativeTx: selected.tx.nativeTx,
       nativeTxCompactCbor: selected.tx.nativeTxCompactCbor,
+      l2TransactionSourceCbor: selected.tx.l2TransactionSourceCbor,
       transactionsPhasRoot: transactionsRoot.phasRoot,
       txMembershipProof: txProof,
       txMembershipProofCbor: Data.to(txProof, Proof),

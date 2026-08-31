@@ -21,6 +21,7 @@ import {
   toUnit,
 } from "@lucid-evolution/lucid";
 
+import { prepareBlueprintClaimRegistryMutationV1 } from "../claim-registry-transaction-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodePhasMembershipProofRedeemer,
@@ -39,6 +40,11 @@ import {
   witnessMintingPolicyCarriageV1,
   witnessWithdrawalValidatorCarriageV1,
 } from "../witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptV1,
+} from "../workflow/transaction-boundary-v1.js";
 import {
   CANONICAL_DECODABILITY_CATEGORY_LABEL,
   type CanonicalDecodabilityContractsV1,
@@ -78,6 +84,7 @@ export const submitCanonicalDecodabilityInit = async ({
   fraudulentBlockOutRef,
   fraudulentHeaderHash,
   witnessReferenceScripts,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -95,6 +102,8 @@ export const submitCanonicalDecodabilityInit = async ({
   readonly fraudulentHeaderHash?: string;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  /** Runs after local evaluation/signing and before provider submission. */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitCanonicalDecodabilityInitResult> => {
   if (category.scriptHash !== contracts.steps[0].spendingScriptHash) {
@@ -228,6 +237,21 @@ export const submitCanonicalDecodabilityInit = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
+  // The computation-thread `Init` arm requires the atomic claim-registry
+  // `OpenClaim` in the same transaction, so every family init opens its
+  // `(category, header)` claim here.
+  const claimRegistryMutation = await prepareBlueprintClaimRegistryMutationV1({
+    lucid,
+    blueprint,
+    network,
+    hubOraclePolicyId: contracts.hubOraclePolicyId,
+    claimRegistryReferenceUtxo: witnessReferenceScripts?.claimRegistrySpend,
+    computationThreadPolicyId: contracts.computationThread.policyId,
+    categoryId: category.categoryId,
+    headerHash: resolvedHeaderHash,
+    kind: "open",
+  });
+
   signer.selectWallet(lucid);
   const chainedTx = lucid
     .newTx()
@@ -261,8 +285,12 @@ export const submitCanonicalDecodabilityInit = async ({
       { [computationThreadUnit]: 1n },
     )
     .addSignerKey(signer.paymentKeyHash);
-  const unsigned = await phasMembershipCarriage
-    .attach(computationThreadMintCarriage.attach(chainedTx))
+  const unsigned = await claimRegistryMutation
+    .apply(
+      phasMembershipCarriage.attach(
+        computationThreadMintCarriage.attach(chainedTx),
+      ),
+    )
     .complete({ localUPLCEval: true });
   if (firstStepOutputIndex === undefined) {
     throw canonicalDecodabilitySubmitError(
@@ -270,7 +298,33 @@ export const submitCanonicalDecodabilityInit = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: [
+      workflowReferenceScriptV1({
+        role: "canonical-decodability-init-computation-thread-mint",
+        utxo: witnessReferenceScripts?.computationThreadMint,
+        expectedScript: contracts.computationThread.mintingScript,
+      }),
+      workflowReferenceScriptV1({
+        role: "canonical-decodability-init-phas-membership",
+        utxo: witnessReferenceScripts?.phasMembershipWithdraw,
+        expectedScript: phasMembershipScript,
+      }),
+      workflowReferenceScriptV1({
+        role: "canonical-decodability-init-claim-registry-spend",
+        utxo: claimRegistryMutation.referenceScriptUtxo,
+        expectedScript: claimRegistryMutation.registryScript,
+      }),
+    ],
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw canonicalDecodabilitySubmitError(
+      `provider returned transaction hash ${txHash}, expected ${expectedTxHash}`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

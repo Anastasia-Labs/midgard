@@ -238,6 +238,8 @@ describe("fault-proof maximum proof fit", () => {
     const { headerHash } = setup;
     const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
       removalReferenceScripts: removalReferenceScriptPublications.published,
+      claimRegistrySpendReference:
+        harness.witnessReferenceScripts.claimRegistrySpend,
     });
 
     const proofFit: Record<string, CompleteSignedTransactionMeasurement> = {};
@@ -504,6 +506,8 @@ describe("fault-proof maximum proof fit", () => {
     const { headerHash } = setup;
     const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
       removalReferenceScripts: removalReferenceScriptPublications.published,
+      claimRegistrySpendReference:
+        harness.witnessReferenceScripts.claimRegistrySpend,
     });
 
     const proofFit: Record<string, CompleteSignedTransactionMeasurement> = {};
@@ -717,11 +721,10 @@ describe("fault-proof maximum proof fit", () => {
         emulator.now() + 120_000,
       ) - 1;
     const fixture = await buildInvalidRangeTransactionInclusionFixture({
-      blockValidFrom: BigInt(headerStartTime),
-      blockValidTo: BigInt(headerStartTime + 1_000),
+      blockSlot: 0n,
       adversarialBranchLevels: branchLevels,
     });
-    expect(fixture.violationReason).toBe("lower-before-block");
+    expect(fixture.violationReason).toBe("starts-after-block-slot");
 
     const fraudulentHeader = makeHeader(
       await funderPaymentKeyHash(funderLucid),
@@ -742,6 +745,8 @@ describe("fault-proof maximum proof fit", () => {
     const { headerHash } = setup;
     const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
       removalReferenceScripts: removalReferenceScriptPublications.published,
+      claimRegistrySpendReference:
+        harness.witnessReferenceScripts.claimRegistrySpend,
     });
 
     const proofFit: Record<string, CompleteSignedTransactionMeasurement> = {};
@@ -785,7 +790,7 @@ describe("fault-proof maximum proof fit", () => {
     );
     proofFit["step-01"] = step01Capture.measurement;
     const step01Result = step01Capture.result;
-    expect(step01Result.violationReason).toBe("lower-before-block");
+    expect(step01Result.violationReason).toBe("starts-after-block-slot");
 
     const secondStepUtxo = await expectSingleUtxoWithUnit(
       proverLucid,
@@ -931,6 +936,8 @@ describe("fault-proof maximum proof fit", () => {
     const { headerHash } = setup;
     const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
       removalReferenceScripts: removalReferenceScriptPublications.published,
+      claimRegistrySpendReference:
+        harness.witnessReferenceScripts.claimRegistrySpend,
     });
 
     const proofFit: Record<string, CompleteSignedTransactionMeasurement> = {};

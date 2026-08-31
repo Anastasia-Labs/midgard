@@ -38,6 +38,7 @@ import {
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
   ActiveOperatorDatum,
   ActiveOperatorSpendRedeemer,
+  CORRECTION_LOCK_ASSET_NAME,
   encodeLinkedListNodeView,
   encodeMidgardTxInputCanonicalV1,
   fieldPreimagePublicationDatumCborV1,
@@ -60,6 +61,7 @@ import {
   requireWithdrawalRedeemerIndex,
   SCHEDULER_ASSET_NAME,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
+  STATE_QUEUE_ROOT_ASSET_NAME,
   utxoToStateQueueUTxO,
 } from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerOutputMaterialV1 } from "@al-ft/midgard-validation";
@@ -74,6 +76,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { prepareFamilyClaimRegistryMutationV1 } from "../../src/claim-registry-transaction-v1.js";
 import {
   encodeRawPhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
@@ -82,6 +85,7 @@ import {
   phasMembershipRewardAddress,
   requireSingletonUtxo,
 } from "../../src/runtime.js";
+import { excludeUtxo } from "../../src/spend-input-witness.js";
 import {
   nativeTxFromCoreCompact,
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
@@ -125,6 +129,7 @@ import {
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
   funderPaymentKeyHash,
+  l2TransactionSourceCborV1,
   makeFaultProofEmulatorHarnessV1,
   makeHeader,
   makeNativeTx,
@@ -335,6 +340,8 @@ export const buildValueNotPreservedFixtureV1 = async ({
   const badTxCompactCbor = Buffer.from(
     encodeMidgardNativeTxCompactV1(badTx.compact),
   ).toString("hex");
+  const badTxSourceCbor = l2TransactionSourceCborV1(badTx);
+  const decoyTxSourceCbor = l2TransactionSourceCborV1(decoyTx);
   const decoyTxId = computeMidgardNativeTxIdV1(decoyTx).toString("hex");
   if (decoyTxId === badTxId) {
     throw new Error("fixture decoy collides with the disputed transaction");
@@ -344,11 +351,11 @@ export const buildValueNotPreservedFixtureV1 = async ({
   const txTrie = new Trie(txStore);
   await txTrie.insert(
     Buffer.from(badTxId, "hex"),
-    Buffer.from(badTxCompactCbor, "hex"),
+    Buffer.from(badTxSourceCbor, "hex"),
   );
   await txTrie.insert(
     Buffer.from(decoyTxId, "hex"),
-    Buffer.from(encodeMidgardNativeTxCompactV1(decoyTx.compact)),
+    Buffer.from(decoyTxSourceCbor, "hex"),
   );
   const proof = await txTrie.prove(Buffer.from(badTxId, "hex"));
   const txMembershipProofCbor = proof.toCBOR().toString("hex");
@@ -400,6 +407,7 @@ export const buildValueNotPreservedFixtureV1 = async ({
       nativeTxId: badTxId,
       nativeTx: nativeTxFromCoreCompact(badTx.compact),
       nativeTxCompactCbor: badTxCompactCbor,
+      l2TransactionSourceCbor: badTxSourceCbor,
       transactionsPhasRoot: trieRootHex(txTrie),
       txMembershipProof: Data.from(txMembershipProofCbor, Proof),
       txMembershipProofCbor,
@@ -488,6 +496,7 @@ export const setupValueNotPreservedScenarioV1 = async ({
     await publishFaultProofWitnessReferenceScriptsV1({
       lucid: proverLucid,
       realBlueprint,
+      claimRegistrySpendingScript: contracts.claimRegistry.spendingScript,
       computationThreadMintingScript: family.computationThread.mintingScript,
       fraudProofMintingScript: family.fraudProof.mintingScript,
     });
@@ -581,6 +590,12 @@ const commitHeaderAfterAnchorBlockV1 = async ({
     unit: toUnit(contracts.scheduler.policyId, SCHEDULER_ASSET_NAME),
     label: "value-not-preserved commit scheduler",
   });
+  const correctionLockUtxo = await requireSingletonUtxo({
+    lucid,
+    address: contracts.correctionLock.spendingScriptAddress,
+    unit: toUnit(contracts.hubOracle.policyId, CORRECTION_LOCK_ASSET_NAME),
+    label: "value-not-preserved commit correction lock",
+  });
   const activeOperatorNodeUnit = toUnit(
     contracts.activeOperators.policyId,
     ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX + header.operatorVkey,
@@ -651,6 +666,15 @@ const commitHeaderAfterAnchorBlockV1 = async ({
       "value-not-preserved second commit found no funder fee UTxO",
     );
   }
+  const [confirmedStateRefInput] = await lucid.utxosAtWithUnit(
+    contracts.stateQueue.spendingScriptAddress,
+    toUnit(contracts.stateQueue.policyId, STATE_QUEUE_ROOT_ASSET_NAME),
+  );
+  if (confirmedStateRefInput === undefined) {
+    throw new Error(
+      "value-not-preserved second commit found no confirmed-state root witness",
+    );
+  }
   const commitTx = await Effect.runPromise(
     incompleteEmulatorCommitBlockHeaderTxProgram(
       lucid,
@@ -665,6 +689,12 @@ const commitHeaderAfterAnchorBlockV1 = async ({
         validFrom: commitValidFrom,
         validTo: commitValidTo,
         schedulerRefInput: schedulerUtxo,
+        correctionLockRefInput: {
+          utxo: correctionLockUtxo,
+          datum: "Idle",
+          assetName: CORRECTION_LOCK_ASSET_NAME,
+        },
+        confirmedStateRefInput,
         additionalRefInputs: [hubOracleUtxo],
         activeOperatorInput: activeOperatorNode,
         activeOperatorSpendRedeemer: activeOperatorCommitRedeemer,
@@ -1074,7 +1104,7 @@ export const submitRawValueNotPreservedBindV1 = async ({
                 "raw value-not-preserved state-queue node",
               ),
               native_tx_id: txInclusion.nativeTxId,
-              native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
+              l2_transaction_source_cbor: txInclusion.l2TransactionSourceCbor,
               transactions_phas_root: txInclusion.transactionsPhasRoot,
               tx_membership_proof: txInclusion.txMembershipProof,
               inclusion_proof_script_withdraw_redeemer_index:
@@ -1160,7 +1190,21 @@ export const submitRawValueNotPreservedFinalizeV1 = async ({
       threadOutRef,
     });
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const claimRegistryMutation = await prepareFamilyClaimRegistryMutationV1({
+    lucid,
+    claimRegistry: contracts.claimRegistry,
+    claimRegistryReferenceUtxo: witnessReferenceScripts.claimRegistrySpend,
+    hubOraclePolicyId: contracts.hubOraclePolicyId,
+    computationThreadPolicyId: contracts.computationThread.policyId,
+    claimId: threadToken.assetName,
+    kind: "close",
+  });
+  const feeInput = selectFeeInput(
+    claimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
+      (utxos, reference) => excludeUtxo(utxos, reference),
+      await lucid.wallet().getUtxos(),
+    ),
+  );
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -1266,7 +1310,9 @@ export const submitRawValueNotPreservedFinalizeV1 = async ({
     .addSignerKey(signer.paymentKeyHash);
   const withReferences = base.readFrom(referenceInputs);
   const tx = fraudProofMintCarriage.attach(
-    computationThreadMintCarriage.attach(stepCarriage.attach(withReferences)),
+    computationThreadMintCarriage.attach(
+      stepCarriage.attach(claimRegistryMutation.apply(withReferences)),
+    ),
   );
   const unsigned = await tx.complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();

@@ -63,6 +63,11 @@ import {
   type FaultProofWitnessReferenceScriptsV1,
   witnessWithdrawalValidatorCarriageV1,
 } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import {
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "../workflow/transaction-boundary-v1.js";
 import type { CommittedFieldShapeContractsV1 } from "./contracts-v1.js";
 import type { PreparedCommittedFieldShapeV1 } from "./prepare-committed-field-shape-v1.js";
 import {
@@ -203,6 +208,7 @@ export const submitCommittedFieldShapeStep01 = async ({
   publishedProofChunks,
   referenceScriptUtxo,
   witnessReferenceScripts,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -221,6 +227,7 @@ export const submitCommittedFieldShapeStep01 = async ({
   readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitCommittedFieldShapeStep01Result> => {
   const { threadUtxo, threadToken } =
@@ -387,7 +394,7 @@ export const submitCommittedFieldShapeStep01 = async ({
         `${STEP_LABEL} state-queue node`,
       ),
       native_tx_id: txInclusion.nativeTxId,
-      native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
+      l2_transaction_source_cbor: txInclusion.l2TransactionSourceCbor,
       transactions_phas_root: txInclusion.transactionsPhasRoot,
     };
     requireBuiltChunkReferenceIndices({
@@ -438,7 +445,7 @@ export const submitCommittedFieldShapeStep01 = async ({
         chunkedMembershipClaimRedeemer({
           merkleRoot: txInclusion.transactionsPhasRoot,
           keyBytes: txInclusion.nativeTxId,
-          valueBytes: txInclusion.nativeTxCompactCbor,
+          valueBytes: txInclusion.l2TransactionSourceCbor,
           orderedChunkReferenceInputIndices: resolvedChunkIndices,
         })) satisfies BuildTxWithRedeemer)
     : base.withdraw(
@@ -447,7 +454,7 @@ export const submitCommittedFieldShapeStep01 = async ({
         encodeRawPhasMembershipProofRedeemer({
           root: txInclusion.transactionsPhasRoot,
           keyBytes: txInclusion.nativeTxId,
-          valueBytes: txInclusion.nativeTxCompactCbor,
+          valueBytes: txInclusion.l2TransactionSourceCbor,
           membershipProofCbor: txInclusion.txMembershipProofCbor,
         }),
       );
@@ -466,7 +473,36 @@ export const submitCommittedFieldShapeStep01 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof committed-field-shape step-01",
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.steps[0].spendingScript,
+        },
+        {
+          role: "membership proof withdrawal",
+          utxo: witnessReferenceScripts?.phasMembershipWithdraw,
+          expectedScript: phasMembershipScript,
+        },
+        {
+          role: "V1 MPF chunked-verify withdrawal",
+          utxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
+          expectedScript: chunkedVerifyScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw committedFieldShapeSubmitError(
+      `step-01 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

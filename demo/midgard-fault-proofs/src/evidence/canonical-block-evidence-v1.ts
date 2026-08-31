@@ -34,24 +34,15 @@ import {
   type EvidenceGradeV1,
   type EvidenceProvenanceV1,
   type HeaderV1,
-  ROOT_DOMAINS,
   type TransactionsInclusionRootAuthenticationV1,
 } from "@al-ft/midgard-sdk";
 
-import {
-  decodeTransactionMaterial,
-  nativeTrieItem,
-  type NodeTransactionPayload,
-} from "../prepare-double-spend.js";
+import type { NodeTransactionPayload } from "../prepare-double-spend.js";
 import {
   fetchRetainedDaPayloadByHeaderHash,
   type RetainedDaFetchAttempt,
   type RetainedDaPayloadSource,
 } from "../transition-trace/fetch.js";
-import {
-  commitCountedRoot,
-  keyValuePhasRootWithCount,
-} from "../transition-trace/phas.js";
 import {
   reconstructDaPayloadV1,
   type TransitionTraceReconstruction,
@@ -66,7 +57,10 @@ export const CANONICAL_BLOCK_EVIDENCE_V1_SCHEMA_VERSION =
  * by `reconstructDaPayloadV1` against the payload's `transactions` entry and
  * therefore against the L1-committed `transactions_root`.
  */
-export type CanonicalBlockTransactionV1 = NodeTransactionPayload;
+export type CanonicalBlockTransactionV1 = NodeTransactionPayload & {
+  /** Canonical Data(L2TransactionSourceV1) bytes committed by the header. */
+  readonly l2TransactionSourceCbor: string;
+};
 
 export type CanonicalBlockEvidenceProvenanceV1 = {
   readonly l1: EvidenceProvenanceV1;
@@ -96,43 +90,25 @@ export type CanonicalBlockEvidenceFetchAttemptV1 = {
   readonly status: RetainedDaFetchAttempt["status"];
 };
 
-/**
- * Re-derives both transactions-root leaf conventions and reports which one the
- * L1-committed header actually authenticates. See
- * `TransactionsInclusionRootAuthenticationV1` for why two exist.
- */
+/** Re-derives the one normative transaction-source leaf convention. */
 export const authenticateTransactionsInclusionRootsV1 = async ({
   header,
   reconstruction,
-  transactions,
 }: {
   readonly header: HeaderV1;
   readonly reconstruction: TransitionTraceReconstruction;
   readonly transactions: readonly CanonicalBlockTransactionV1[];
 }): Promise<TransactionsInclusionRootAuthenticationV1> => {
-  const decoded = await Promise.all(
-    transactions.map(decodeTransactionMaterial),
-  );
-  const nativeCompactPhas = await keyValuePhasRootWithCount(
-    decoded.map(nativeTrieItem),
-  );
-  const nativeCompactCountedRoot = await commitCountedRoot({
-    domain: ROOT_DOMAINS.transactionsV1,
-    phasRoot: nativeCompactPhas.root,
-    count: nativeCompactPhas.count,
-  });
-  const payloadSource = reconstruction.rootData.transactions;
+  const source = reconstruction.rootData.transactions;
   return {
     headerTransactionsRoot: header.transactionsRoot,
     l2TransactionCount: header.l2TransactionCount,
-    payloadSourcePhasRoot: payloadSource.phasRoot,
-    payloadSourceCountedRoot: payloadSource.root,
-    nativeCompactPhasRoot: nativeCompactPhas.root,
-    nativeCompactCountedRoot,
-    nativeInclusionAuthenticated:
-      nativeCompactCountedRoot === header.transactionsRoot &&
-      nativeCompactPhas.count === header.l2TransactionCount,
-    payloadSourceAuthenticated: payloadSource.root === header.transactionsRoot,
+    sourceValuePhasRoot: source.phasRoot,
+    sourceValueCountedRoot: source.root,
+    sourceValueCount: source.count,
+    sourceInclusionAuthenticated:
+      source.root === header.transactionsRoot &&
+      source.count === header.l2TransactionCount,
   };
 };
 
@@ -182,6 +158,7 @@ export const canonicalBlockEvidenceFromVerifiedPayloadV1 = async ({
     reconstruction.transactions.map((entry) => ({
       nodeTxId: entry.txId,
       txCbor: entry.fullTransactionCbor.toString("hex"),
+      l2TransactionSourceCbor: entry.valueBytes.toString("hex"),
     }));
   const inclusionRootAuthentication =
     await authenticateTransactionsInclusionRootsV1({

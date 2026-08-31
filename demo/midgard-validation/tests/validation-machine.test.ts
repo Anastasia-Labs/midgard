@@ -883,6 +883,52 @@ describe("deterministic validation machine", { timeout: 60_000 }, () => {
     expect(oneStepAbi.maxArgumentsBytes).toBeLessThan(16 * 1024);
   });
 
+  it.each([
+    { label: "foreign raw network nibble 2", rawNibble: 2 },
+    { label: "protected foreign raw network nibble 15", rawNibble: 15 },
+  ])(
+    "rejects a $label at the authenticated output-finalize instruction",
+    async ({ rawNibble }) => {
+      const spent = outRefFromByte(0x7d);
+      const spentOutput = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+      const foreignAddress = Buffer.from(TEST_ADDRESS_BYTES);
+      foreignAddress[0] = (foreignAddress[0]! & 0xf0) | rawNibble;
+      const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1, foreignAddress);
+      const transaction = makeNativeTx({
+        version: 1n,
+        spendInputs: [spent],
+        outputs: [output],
+      });
+      const unchangedRoot = root(3);
+      const trace = await Effect.runPromise(
+        buildDeterministicValidationMachineTrace({
+          ...context,
+          transactionId: transaction.txId,
+          canonicalTransactionCbor: transaction.txCbor,
+          priorUtxosRoot: unchangedRoot,
+          postUtxosRoot: unchangedRoot,
+          ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
+          expectedLedgerOps: [],
+          ledgerMutationSteps: [],
+          expectedVerdict: "rejected",
+          expectedRejectionCode: RejectCodes.NetworkIdMismatch,
+        }),
+      );
+
+      expect(trace.verdict).toBe("rejected");
+      expect(trace.rejectionCode).toBe(RejectCodes.NetworkIdMismatch);
+      expect(
+        trace.witnesses
+          .filter((witness) => witness.phase === "scriptSources")
+          .at(-1),
+      ).toMatchObject({
+        phase: "scriptSources",
+        auxiliary: { kind: "ledgerOutputProofFinalize" },
+      });
+    },
+    60_000,
+  );
+
   it("matches the L1 resolved-input accumulator vector", () => {
     const initial = initialMidgardResolvedInputsAccumulatorV1();
     expect(initial.toString("hex")).toBe(

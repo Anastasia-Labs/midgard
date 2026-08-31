@@ -24,6 +24,8 @@ import {
  * transaction would otherwise inline-attach.
  */
 export type FaultProofWitnessReferenceScriptsV1 = {
+  /** The deployment-bound claim-registry spending validator. */
+  readonly claimRegistrySpend?: UTxO;
   /** The computation-thread token minting policy. */
   readonly computationThreadMint?: UTxO;
   /** The fraud-proof token minting policy. */

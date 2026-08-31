@@ -90,7 +90,7 @@ describe("canonical-decodability envelope and deployment frontiers", () => {
       hub_ref_input_index: 0n,
       state_queue_node_ref_input_index: 1n,
       native_tx_id: fixture.badTxId,
-      native_tx_compact_cbor: fixture.nativeTxCompactCbor,
+      l2_transaction_source_cbor: fixture.txInclusion.l2TransactionSourceCbor,
       transactions_phas_root: fixture.transactionsRoot,
     };
     const redeemerCarried: Step01Redeemer = {

@@ -33,6 +33,11 @@ import {
 } from "../runtime.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptV1,
+} from "../workflow/transaction-boundary-v1.js";
 import type { MissingSignatureContractsV1 } from "./contracts-v1.js";
 import {
   missingSignatureStepLabelV1,
@@ -68,6 +73,7 @@ export const submitMissingSignatureStep03 = async ({
   threadOutRef,
   missingRequiredSignerVkey,
   referenceScriptUtxo,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -79,6 +85,7 @@ export const submitMissingSignatureStep03 = async ({
   readonly missingRequiredSignerVkey: string;
   /** §2.3: the published step-03 reference script (required; never inline). */
   readonly referenceScriptUtxo: UTxO;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMissingSignatureStep03Result> => {
   const { threadUtxo, threadToken } = await requireMissingSignatureThreadUtxoV1(
@@ -181,7 +188,23 @@ export const submitMissingSignatureStep03 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: [
+      workflowReferenceScriptV1({
+        role: "V1 fraud-proof missing-signature step-03",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[2].spendingScript,
+      }),
+    ],
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw missingSignatureSubmitError(
+      `step-03 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

@@ -20,11 +20,15 @@ import {
   buildInvalidRangeFaultProofContracts,
   buildInvalidSignatureFaultProofContracts,
   buildL2TxMistagFaultProofContracts,
+  buildMinAdaFaultProofContracts,
   buildMinFeeFaultProofContracts,
   buildMintAuthorizationFaultProofContracts,
   buildMissingNativeScriptTxFaultProofContracts,
+  buildMissingNativeScriptUtxoFaultProofContracts,
   buildMissingSignatureFaultProofContracts,
   buildNativeScriptDecodingFaultProofContracts,
+  buildNativeScriptInvalidFaultProofContracts,
+  buildNetworkIdFaultProofContracts,
   buildNonExistentInputFaultProofContracts,
   buildNoReferenceInputFaultProofContracts,
   buildReferenceInputNoIdxFaultProofContracts,
@@ -206,12 +210,16 @@ const resolveSeedSigner = (
   source: string,
   network: Network,
 ): ResolvedProverSigner => {
-  const wallet = walletFromSeed(seedPhrase, { network });
+  const wallet = walletFromSeed(seedPhrase, {
+    addressType: "Enterprise",
+    network,
+  });
   return {
     source,
     address: wallet.address,
     paymentKeyHash: paymentKeyHashFromAddress(wallet.address),
-    selectWallet: (lucid) => lucid.selectWallet.fromSeed(seedPhrase),
+    selectWallet: (lucid) =>
+      lucid.selectWallet.fromSeed(seedPhrase, { addressType: "Enterprise" }),
   };
 };
 
@@ -578,6 +586,8 @@ export const FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY = {
     "fraudProofMissingNativeScriptTxStep04",
     "fraudProofMissingNativeScriptTxStep05",
     "fraudProofMissingNativeScriptTxStep06",
+    "fraudProofMissingNativeScriptTxStep07",
+    "fraudProofMissingNativeScriptTxStep08",
   ],
   withdrawnReferenceInput: [
     "fraudProofWithdrawnReferenceInput",
@@ -630,6 +640,30 @@ export const FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY = {
     "fraudProofMintAuthorizationStep03",
     "fraudProofMintAuthorizationStep04",
     "fraudProofMintAuthorizationStep05",
+  ],
+  networkId: ["fraudProofNetworkId", "fraudProofNetworkIdStep02"],
+  missingNativeScriptUtxo: [
+    "fraudProofMissingNativeScriptUtxo",
+    "fraudProofMissingNativeScriptUtxoStep02",
+    "fraudProofMissingNativeScriptUtxoStep03",
+    "fraudProofMissingNativeScriptUtxoStep04",
+    "fraudProofMissingNativeScriptUtxoStep05",
+    "fraudProofMissingNativeScriptUtxoStep06",
+    "fraudProofMissingNativeScriptUtxoStep07",
+  ],
+  nativeScriptInvalid: [
+    "fraudProofNativeScriptInvalid",
+    "fraudProofNativeScriptInvalidStep02",
+    "fraudProofNativeScriptInvalidStep03",
+    "fraudProofNativeScriptInvalidStep04",
+    "fraudProofNativeScriptInvalidStep05",
+  ],
+  minAda: [
+    "fraudProofMinAda",
+    "fraudProofMinAdaStep02",
+    "fraudProofMinAdaStep03",
+    "fraudProofMinAdaStep04",
+    "fraudProofMinAdaStep05",
   ],
 } as const satisfies Record<
   SupportedFaultProofCategoryName,
@@ -696,6 +730,14 @@ const categoryLabel = (
       return "input-set-uniqueness";
     case "mintAuthorization":
       return "mint-authorization";
+    case "networkId":
+      return "network-id";
+    case "missingNativeScriptUtxo":
+      return "missing-native-script-utxo";
+    case "nativeScriptInvalid":
+      return "native-script-invalid";
+    case "minAda":
+      return "min-ada";
   }
 };
 
@@ -835,6 +877,18 @@ const buildOneCategoryFaultProofContracts = async ({
       return await Effect.runPromise(
         buildMintAuthorizationFaultProofContracts(params),
       );
+    case "networkId":
+      return await Effect.runPromise(buildNetworkIdFaultProofContracts(params));
+    case "missingNativeScriptUtxo":
+      return await Effect.runPromise(
+        buildMissingNativeScriptUtxoFaultProofContracts(params),
+      );
+    case "nativeScriptInvalid":
+      return await Effect.runPromise(
+        buildNativeScriptInvalidFaultProofContracts(params),
+      );
+    case "minAda":
+      return await Effect.runPromise(buildMinAdaFaultProofContracts(params));
   }
 };
 

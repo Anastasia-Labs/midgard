@@ -27,9 +27,12 @@ const fixture = async (fee: bigint) => {
     spendInputs: [outRefCbor(0x21, 0n)],
     fee,
   });
+  // The header's normative transactions MPF commits
+  // `Data(L2TransactionSourceV1)` per transaction id, which is the value
+  // `prepareMinFeeFromTransactions` recounts, so the authenticated root this
+  // fixture hands it is the payload-source one.
   const block = await buildCanonicalBlockFixtureV1({
     transactions: [tx],
-    transactionsRootMode: "nativeCompact",
   });
   const transactions: readonly NodeTransactionPayload[] = [
     { nodeTxId: tx.txId, txCbor: tx.canonicalCbor.toString("hex") },
@@ -43,7 +46,7 @@ describe("prepare-min-fee", () => {
     const output = await prepareMinFeeFromTransactions({
       headerHash: h28(0xaa),
       transactions,
-      expectedTransactionsRoot: block.nativeCompactTransactionsRoot,
+      expectedTransactionsRoot: block.payloadSourceTransactionsRoot,
       minFeeA: 2n,
       minFeeB: 7n,
       categoryId: CATEGORY_ID,
@@ -67,7 +70,7 @@ describe("prepare-min-fee", () => {
     ]);
     expect(output.threadTokenAssetName).toBe(`${CATEGORY_ID}${h28(0xaa)}`);
     expect(output.committedTransactionsRoot).toBe(
-      block.nativeCompactTransactionsRoot,
+      block.payloadSourceTransactionsRoot,
     );
   });
 
@@ -85,7 +88,7 @@ describe("prepare-min-fee", () => {
         prepareMinFeeFromTransactions({
           headerHash: h28(0xaa),
           transactions,
-          expectedTransactionsRoot: block.nativeCompactTransactionsRoot,
+          expectedTransactionsRoot: block.payloadSourceTransactionsRoot,
           minFeeA: 0n,
           minFeeB: boundary,
           txId: tx.txId,
@@ -138,7 +141,7 @@ describe("prepare-min-fee", () => {
       const output = await prepareMinFeeFromTransactions({
         headerHash: h28(0xaa),
         transactions,
-        expectedTransactionsRoot: block.nativeCompactTransactionsRoot,
+        expectedTransactionsRoot: block.payloadSourceTransactionsRoot,
         minFeeA: 2n,
         minFeeB: 7n,
         categoryId: CATEGORY_ID,

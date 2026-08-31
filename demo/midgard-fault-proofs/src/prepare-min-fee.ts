@@ -24,11 +24,11 @@ import {
   decodeTransactionMaterial,
   type FetchLike,
   fetchNodeBlockTransactions,
-  nativeTrieItem,
   type NodeTransactionPayload,
   type PreparedTxInclusionJson,
   readNodeTransactionPayloadsFile,
   requireProof,
+  transactionSourceTrieItemV1,
 } from "./prepare-double-spend.js";
 
 export type PreparedMinFeeTx = {
@@ -229,10 +229,10 @@ export const prepareMinFeeFromTransactions = async ({
     }
     throw new Error("No min-fee violation found in the selected block.");
   }
-  const trie = await buildTrieView(decoded.map(nativeTrieItem));
+  const trie = await buildTrieView(decoded.map(transactionSourceTrieItemV1));
   const proofCbor = requireProof(
     trie,
-    nativeTrieItem(selected.material).key,
+    transactionSourceTrieItemV1(selected.material).key,
     "min-fee tx",
   );
   const committedTransactionsRoot = await Effect.runPromise(
@@ -272,6 +272,7 @@ export const prepareMinFeeFromTransactions = async ({
         nativeTxId: material.nodeTxId,
         nativeTx: material.nativeTxCompact,
         nativeTxCompactCbor: material.nativeCompactCbor,
+        l2TransactionSourceCbor: material.l2TransactionSourceCbor,
         transactionsPhasRoot: trie.root,
         txMembershipProofCbor: proofCbor,
       },

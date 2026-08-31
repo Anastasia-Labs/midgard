@@ -32,6 +32,7 @@ import { nativeTxFromCoreCompact } from "../../src/submit-step-01.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,
+  l2TransactionSourceCborV1,
   makeFaultProofEmulatorHarnessV1,
   makeHeader,
   makeNativeTx,
@@ -130,10 +131,14 @@ export const buildWithdrawnInputBlockFixtureV1 = async (
   });
   const txId = computeMidgardNativeTxIdV1(transaction).toString("hex");
   const compactCbor = encodeMidgardNativeTxCompactV1(transaction.compact);
+  const l2TransactionSourceCbor = l2TransactionSourceCborV1(transaction);
   const txStore = new Store(undefined);
   await txStore.ready();
   const txTrie = new Trie(txStore);
-  await txTrie.insert(Buffer.from(txId, "hex"), compactCbor);
+  await txTrie.insert(
+    Buffer.from(txId, "hex"),
+    Buffer.from(l2TransactionSourceCbor, "hex"),
+  );
   const txProof = await txTrie.prove(Buffer.from(txId, "hex"));
   const transactionsRoot = trieRootHex(txTrie);
   const committedTransactionsRoot = await Effect.runPromise(
@@ -188,6 +193,7 @@ export const buildWithdrawnInputBlockFixtureV1 = async (
     nativeTxId: txId,
     nativeTx: nativeTxFromCoreCompact(transaction.compact),
     nativeTxCompactCbor: compactCbor.toString("hex"),
+    l2TransactionSourceCbor,
     transactionsPhasRoot: transactionsRoot,
     txMembershipProof: Data.from(txProof.toCBOR().toString("hex"), Proof),
     txMembershipProofCbor: txProof.toCBOR().toString("hex"),

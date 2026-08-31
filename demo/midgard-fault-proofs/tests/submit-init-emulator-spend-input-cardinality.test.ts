@@ -230,6 +230,23 @@ const executionCeilings = () => ({
     100n,
 });
 
+/**
+ * Pinned execution-memory ceiling for the binding steps of the routed
+ * (`RawUtxo`) rows. The claim-registry close now runs `claim_registry.spend`
+ * in the same transaction that burns the computation thread — a constant
+ * addition that put these rows past the former `ceilings.memory / 10n` band,
+ * so the "an order of magnitude clear" phrasing no longer holds and the band
+ * is restated here as an exact pin.
+ *
+ * Measured 2026-08-31, double-spend step-04: the inline rows bill 1,109,685
+ * at cardinality 296 and 1,111,821 at cardinality 75 — flat across a 4x
+ * change in item count, so the per-item cost this band exists to catch did
+ * NOT come back. The routed rows bill 1,133,683 and 1,136,551, 24k-27k above
+ * inline. The pin keeps roughly 5% of margin, so a per-item regression still
+ * goes red here first.
+ */
+const ROUTED_BINDING_STEP_MEMORY_CEILING = 1_200_000n;
+
 const printCardinalityFit = (
   label: string,
   cardinality: number,
@@ -620,7 +637,9 @@ describe("fault-proof spend-input preimage cardinality", () => {
   });
 
   it("adds reference-script headroom at the former double-spend byte boundary", async () => {
-    const ceilings = executionCeilings();
+    // Both memory bands in this test are now the restated
+    // `ROUTED_BINDING_STEP_MEMORY_CEILING` pin, so `executionCeilings()` has no
+    // remaining reader here.
     const { stages: fitting } = await runDoubleSpendCardinalityJourney(
       DOUBLE_SPEND_LARGEST_FITTING_CARDINALITY,
     );
@@ -639,11 +658,17 @@ describe("fault-proof spend-input preimage cardinality", () => {
     );
 
     // The former inline-witness boundary now has substantial byte headroom;
-    // execution remains far below its reserve.
+    // execution stays inside the pinned binding-step band. The inline row
+    // measures 1,111,821 here, which sat within 8k of the former
+    // `ceilings.memory / 10n` band and crossed it once the claim-registry
+    // close was added, so it is restated against the same measured pin as the
+    // routed rows. See ROUTED_BINDING_STEP_MEMORY_CEILING.
     const boundaryStep04 = fitting["step-04"]!;
     expect(boundaryStep04.l1ByteMargin).toBeGreaterThanOrEqual(0);
     expect(boundaryStep04.l1ByteMargin).toBeGreaterThan(1_000);
-    expect(boundaryStep04.executionMemory < ceilings.memory / 10n).toBe(true);
+    expect(
+      boundaryStep04.executionMemory < ROUTED_BINDING_STEP_MEMORY_CEILING,
+    ).toBe(true);
     // step-03 carries tx1's preimage and is the smaller of the two, which is
     // why the pair above is a step-04 boundary.
     expect(boundaryStep04.completeSignedBytes).toBeGreaterThan(
@@ -660,7 +685,13 @@ describe("fault-proof spend-input preimage cardinality", () => {
     );
     const step04 = overBytes["step-04"]!;
     expect(step04.l1ByteMargin).toBeGreaterThan(0);
-    expect(step04.executionMemory < ceilings.memory / 10n).toBe(true);
+    // Same restated band as its sibling row above — this is the same
+    // double-spend step-04 measurement one cardinality along, and the former
+    // `ceilings.memory / 10n` band now cuts through the middle of that
+    // family. See ROUTED_BINDING_STEP_MEMORY_CEILING.
+    expect(step04.executionMemory < ROUTED_BINDING_STEP_MEMORY_CEILING).toBe(
+      true,
+    );
   }, 900_000);
 
   it("adds reference-script headroom at the former no-input byte boundary", async () => {
@@ -734,11 +765,16 @@ describe("fault-proof spend-input preimage cardinality", () => {
     const ceilings = executionCeilings();
     const binding = [noInput["step-02"]!, doubleSpend["step-04"]!];
     for (const measurement of binding) {
-      // Execution: comfortably inside even the conservative emulator reserve,
-      // by more than an order of magnitude. This is the assertion Q1X-F6's
-      // resolution rests on, and it is the one that would go red first if the
-      // per-item cost ever came back.
-      expect(measurement.executionMemory < ceilings.memory / 10n).toBe(true);
+      // Execution: inside the pinned binding-step band, and steps still an
+      // order of magnitude inside the conservative emulator reserve. This is
+      // the assertion Q1X-F6's resolution rests on, and it is the one that
+      // would go red first if the per-item cost ever came back — the memory
+      // half is now pinned by measurement rather than by the 10x reserve,
+      // because the claim-registry close moved every step-04 row by a
+      // constant. See ROUTED_BINDING_STEP_MEMORY_CEILING.
+      expect(
+        measurement.executionMemory < ROUTED_BINDING_STEP_MEMORY_CEILING,
+      ).toBe(true);
       expect(measurement.executionSteps < ceilings.steps / 10n).toBe(true);
       expect(measurement.l1ByteMargin).toBeGreaterThan(0);
     }
@@ -789,13 +825,16 @@ describe("fault-proof spend-input preimage cardinality", () => {
       }
     }
 
-    // Execution stays an order of magnitude clear on the binding steps, same
-    // as the inline rows — routing moved bytes, not computation.
+    // Execution stays inside the pinned binding-step band, same as the inline
+    // rows — routing moved bytes, not per-item computation. See
+    // ROUTED_BINDING_STEP_MEMORY_CEILING for the measured restatement.
     for (const measurement of [
       noInput.stages["step-02"]!,
       doubleSpend.stages["step-04"]!,
     ]) {
-      expect(measurement.executionMemory < ceilings.memory / 10n).toBe(true);
+      expect(
+        measurement.executionMemory < ROUTED_BINDING_STEP_MEMORY_CEILING,
+      ).toBe(true);
       expect(measurement.executionSteps < ceilings.steps / 10n).toBe(true);
     }
   }, 900_000);
@@ -839,11 +878,16 @@ describe("fault-proof spend-input preimage cardinality", () => {
       }
     }
 
+    // Same pinned band as the routed row above: the size-selected journey
+    // reaches tier 2 the same way, so it bills the same constant
+    // claim-registry close on top of the same per-item work.
     for (const measurement of [
       noInput.stages["step-02"]!,
       doubleSpend.stages["step-04"]!,
     ]) {
-      expect(measurement.executionMemory < ceilings.memory / 10n).toBe(true);
+      expect(
+        measurement.executionMemory < ROUTED_BINDING_STEP_MEMORY_CEILING,
+      ).toBe(true);
       expect(measurement.executionSteps < ceilings.steps / 10n).toBe(true);
     }
   }, 900_000);

@@ -33,7 +33,6 @@ import {
   DA_TRANSPORT_LIMITS_V1,
 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import { stringifyJson } from "./json-file.js";
@@ -57,8 +56,7 @@ export type DaHashPreimageRejectionCodeV1 =
   | "header_hash_mismatch"
   | "transactions_root_mismatch"
   | "no_violating_leaf"
-  | "leaf_not_committed"
-  | "payload_source_convention_block";
+  | "leaf_not_committed";
 
 /** Deterministic, value-free rejection; `detail` carries only public data. */
 export class DaHashPreimageRejectionV1 extends Error {
@@ -76,7 +74,9 @@ export type CommittedTransactionsLeafV1 = {
   readonly index: number;
   readonly committedTxId: string;
   readonly committedLeafValueCbor: string;
-  readonly derivedTxId: string;
+  readonly verdict: SDK.DaHashPreimageVerdictV1;
+  readonly embeddedTxId: string | null;
+  readonly derivedTxId: string | null;
   readonly committedLeafByteCount: number;
   readonly isViolation: boolean;
 };
@@ -92,9 +92,7 @@ export type PreparedDaHashPreimageInclusionJson = {
 
 /** Exactly the step-02 state the on-chain step-01 validator will derive. */
 export type PreparedDaHashPreimageStateJson = {
-  readonly committedTxId: string;
-  readonly derivedTxId: string;
-  readonly committedLeafByteCount: number;
+  readonly verdict: SDK.DaHashPreimageVerdictV1;
 };
 
 export type PreparedDaHashPreimageOutput = {
@@ -145,28 +143,13 @@ export const classifyCommittedTransactionsLeavesV1 = (
       index,
       committedTxId: evidence.committedTxId,
       committedLeafValueCbor: evidence.committedLeafValueCbor,
+      verdict: evidence.verdict,
+      embeddedTxId: evidence.embeddedTxId,
       derivedTxId: evidence.derivedTxId,
-      committedLeafByteCount: evidence.committedLeafByteCount,
+      committedLeafByteCount: value.length,
       isViolation: evidence.isViolation,
     };
   });
-
-/**
- * A block whose every leaf value decodes as `L2TransactionSourceV1`
- * PlutusData is using the payload-source leaf convention, which the deployed
- * L1 verifier does not open at all
- * (`fraud-proof/evidence-source-v1.ts:373-390`). That is a whole-block ABI
- * divergence to escalate, not a per-leaf hash/preimage fault, so the builder
- * refuses to claim `da-hash-preimage` for it.
- */
-const isPayloadSourceConventionLeaf = (valueHex: string): boolean => {
-  try {
-    Data.from(valueHex, SDK.L2TransactionSourceV1);
-    return true;
-  } catch {
-    return false;
-  }
-};
 
 export type PrepareDaHashPreimageFromCommittedLeavesOptions = {
   readonly headerHash: string;
@@ -212,16 +195,6 @@ export const prepareDaHashPreimageFromCommittedLeavesV1 = async ({
   }
 
   const leaves = classifyCommittedTransactionsLeavesV1(entries);
-  if (
-    leaves.length > 0 &&
-    entries.every(([, valueHex]) => isPayloadSourceConventionLeaf(valueHex))
-  ) {
-    throw new DaHashPreimageRejectionV1(
-      "payload_source_convention_block",
-      `every committed leaf decodes as L2TransactionSourceV1; escalate the leaf-convention divergence instead of claiming da-hash-preimage (header_hash=${headerHash})`,
-    );
-  }
-
   const violation =
     committedTxId === undefined
       ? leaves.find((leaf) => leaf.isViolation)
@@ -260,9 +233,7 @@ export const prepareDaHashPreimageFromCommittedLeavesV1 = async ({
     violation,
     txInclusion,
     step02State: {
-      committedTxId: violation.committedTxId,
-      derivedTxId: violation.derivedTxId,
-      committedLeafByteCount: violation.committedLeafByteCount,
+      verdict: violation.verdict,
     },
   };
   if (outputDir === undefined) {
@@ -301,6 +272,10 @@ export type DaHashPreimageBlockEvidenceV1 = {
   readonly headerHash: string;
   readonly payloadEnvelopeSha256: string;
   readonly payloadSha256: string;
+  readonly l1ChainPoint: {
+    readonly blockHash: string;
+    readonly slot: bigint;
+  };
   readonly committedTransactionsRoot: string;
   readonly l2TransactionCount: bigint;
   readonly entries: readonly (readonly [string, string])[];
@@ -399,6 +374,7 @@ export const daHashPreimageBlockEvidenceFromVerifiedPayloadV1 = async ({
       Buffer.from(payloadEnvelopeCbor),
     ).toString("hex"),
     payloadSha256: computeDaSha256Hash(payloadCbor).toString("hex"),
+    l1ChainPoint: admittedObservation.chainPoint,
     committedTransactionsRoot: admittedObservation.header.transactionsRoot,
     l2TransactionCount: admittedObservation.header.l2TransactionCount,
     entries: body.transactions.map(

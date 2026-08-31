@@ -51,6 +51,11 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  type PreparedClaimRegistryMutationV1,
+  prepareDeploymentClaimRegistryMutationV1,
+  requirePreparedClaimRegistryMutationV1,
+} from "./claim-registry-transaction-v1.js";
+import {
   faultProofFieldOpeningV1,
   parseNativeTxCompactCborV1,
   planFaultProofFieldOpeningV1,
@@ -73,6 +78,7 @@ import {
   resolveProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
+import { excludeUtxo } from "./spend-input-witness.js";
 import { parseSubmitInvalidSignatureWitnessSetCompact } from "./submit-invalid-signature-step-01.js";
 import {
   requireComputationThreadToken,
@@ -84,6 +90,11 @@ import {
   witnessMintingPolicyCarriageV1,
   witnessSpendingValidatorCarriageV1,
 } from "./witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "./workflow/transaction-boundary-v1.js";
 
 /**
  * Complete positional address-witness list, as `prepare-invalid-signature`
@@ -347,6 +358,12 @@ export const submitInvalidSignatureStep02 = async ({
   badAddrTxWitIndex,
   referenceScriptUtxo,
   witnessReferenceScripts,
+  claimRegistryMutation,
+  certificatePolicyId,
+  certificateUtxos = [],
+  existingPublicationUtxos = [],
+  publishMissingCarriage = true,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -366,6 +383,20 @@ export const submitInvalidSignatureStep02 = async ({
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  /** Pre-prepared claim-registry `CloseClaim`; self-prepared when omitted. */
+  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
+  /** Manifest-bound certificate policy for a tier-3 field opening. */
+  readonly certificatePolicyId?: string;
+  /** Existing authenticated tier-3 certificate output. */
+  readonly certificateUtxos?: readonly UTxO[];
+  /** Existing authenticated tier-2/tier-3 field publications. */
+  readonly existingPublicationUtxos?: readonly UTxO[];
+  /**
+   * Compatibility path for manual callers. Production workflows set this
+   * false and journal every publication/certificate before this proof step.
+   */
+  readonly publishMissingCarriage?: boolean;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitInvalidSignatureStep02Result> => {
   const { invalidSignatureCategory, contracts } =
@@ -419,12 +450,34 @@ export const submitInvalidSignatureStep02 = async ({
   signer.selectWallet(lucid);
   // §8.4: publish tier-2 field carriage before the final transaction selects
   // fee inputs or resolves indices into the complete reference-input set.
-  const published = await publishFaultProofFieldCarriageV1({
-    lucid,
-    signer,
-    planned,
-    publisherAddress: signer.address,
-    label: "Invalid-signature step 02 address-witnesses field",
+  const published = [
+    ...existingPublicationUtxos,
+    ...(publishMissingCarriage
+      ? await publishFaultProofFieldCarriageV1({
+          lucid,
+          signer,
+          planned,
+          publisherAddress: signer.address,
+          label: "Invalid-signature step 02 address-witnesses field",
+        })
+      : []),
+  ];
+  const resolvedClaimRegistryMutation = requirePreparedClaimRegistryMutationV1({
+    mutation:
+      claimRegistryMutation ??
+      (await prepareDeploymentClaimRegistryMutationV1({
+        lucid,
+        claimRegistryReferenceUtxo: witnessReferenceScripts?.claimRegistrySpend,
+        blueprint,
+        deploymentInfo,
+        network,
+        computationThreadPolicyId: contracts.computationThread.policyId,
+        claimId: threadToken.assetName,
+        kind: "close",
+      })),
+    kind: "close",
+    claimId: threadToken.assetName,
+    label: "invalid-signature step 02",
   });
   const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
     script: contracts.invalidSignature.steps[1].spendingScript,
@@ -445,13 +498,16 @@ export const submitInvalidSignatureStep02 = async ({
   // any carriage indices from it.
   const referenceInputs = [
     ...published,
+    ...certificateUtxos,
     ...stepScriptCarriage.referenceInputs,
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
+    ...resolvedClaimRegistryMutation.referenceInputs,
   ];
   const addrTxWitsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
     referenceInputs,
+    ...(certificatePolicyId === undefined ? {} : { certificatePolicyId }),
     label: "Invalid-signature step 02 address-witnesses",
   });
   const badAddrTxWit = addrTxWitsPreimage[Number(badAddrTxWitIndex)];
@@ -470,8 +526,11 @@ export const submitInvalidSignatureStep02 = async ({
   // (and its min-ADA), so it tops the fee selector's descending-lovelace sort;
   // exclude datum-carrying UTxOs so the referenced publication is never spent.
   const feeInput = selectFeeInput(
-    (await lucid.wallet().getUtxos()).filter(
-      (utxo) => utxo.datum == null && utxo.datumHash == null,
+    resolvedClaimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
+      (utxos, reference) => excludeUtxo(utxos, reference),
+      (await lucid.wallet().getUtxos()).filter(
+        (utxo) => utxo.datum == null && utxo.datumHash == null,
+      ),
     ),
   );
   const fraudProofUnit = toUnit(
@@ -538,7 +597,9 @@ export const submitInvalidSignatureStep02 = async ({
       ? withInputs
       : withInputs.readFrom(referenceInputs);
   const tx = fraudProofMintCarriage.attach(
-    computationThreadMintCarriage.attach(stepScriptCarriage.attach(chained)),
+    computationThreadMintCarriage.attach(
+      stepScriptCarriage.attach(resolvedClaimRegistryMutation.apply(chained)),
+    ),
   );
 
   const unsigned = await tx.complete({ localUPLCEval: true });
@@ -555,7 +616,41 @@ export const submitInvalidSignatureStep02 = async ({
     computationThreadMintRedeemerIndex,
   };
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof invalid-signature step-02",
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.invalidSignature.steps[1].spendingScript,
+        },
+        {
+          role: "V1 fraud-proof computation-thread minting",
+          utxo: witnessReferenceScripts?.computationThreadMint,
+          expectedScript: contracts.computationThread.mintingScript,
+        },
+        {
+          role: "V1 fraud-proof token minting",
+          utxo: witnessReferenceScripts?.fraudProofMint,
+          expectedScript: contracts.fraudProof.mintingScript,
+        },
+        {
+          role: "claim-registry spending",
+          utxo: resolvedClaimRegistryMutation.referenceScriptUtxo,
+          expectedScript: resolvedClaimRegistryMutation.registryScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw new Error(
+      `invalid-signature step-02 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

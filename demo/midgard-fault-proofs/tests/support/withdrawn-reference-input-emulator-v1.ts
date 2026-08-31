@@ -14,7 +14,9 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { prepareFamilyClaimRegistryMutationV1 } from "../../src/claim-registry-transaction-v1.js";
 import type { ResolvedProverSigner } from "../../src/runtime.js";
+import { excludeUtxo } from "../../src/spend-input-witness.js";
 import {
   nativeTxFromCoreCompact,
   selectFeeInput,
@@ -44,6 +46,7 @@ import { decodingSubjectTransactionV1 } from "./native-script-decoding-emulator-
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,
+  l2TransactionSourceCborV1,
   makeFaultProofEmulatorHarnessV1,
   makeHeader,
   publishPlainReferenceScriptUtxo,
@@ -171,11 +174,19 @@ export const setupWithdrawnReferenceInputScenarioV1 = async ({
     fee: 1_000n,
   });
   const txId = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
-  const compactCbor = encodeMidgardNativeTxCompactV1(nativeTx.compact);
   const fullCbor = encodeMidgardNativeTxCanonicalV1(nativeTx);
+  // The header's normative transactions MPF commits
+  // `Data(L2TransactionSourceV1)` per transaction id, which is the value the
+  // preparer recounts, so the committed leaf is the source value rather than
+  // the bare compact CBOR.
   const countedTransactions = await buildCountedRoot(
     SDK.ROOT_DOMAINS.transactionsV1,
-    [{ key: Buffer.from(txId, "hex"), value: compactCbor }],
+    [
+      {
+        key: Buffer.from(txId, "hex"),
+        value: Buffer.from(l2TransactionSourceCborV1(nativeTx), "hex"),
+      },
+    ],
   );
   const withdrawal: SDK.WithdrawalEvent = {
     id: { transactionId: "42".repeat(32), outputIndex: 0n },
@@ -254,14 +265,20 @@ export const setupWithdrawnReferenceInputUncheckedScenarioV1 = async ({
   });
   const txId = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
   const compactCbor = encodeMidgardNativeTxCompactV1(nativeTx.compact);
+  const l2TransactionSourceCbor = l2TransactionSourceCborV1(nativeTx);
   const countedTransactions = await buildCountedRoot(
     SDK.ROOT_DOMAINS.transactionsV1,
-    [{ key: Buffer.from(txId, "hex"), value: compactCbor }],
+    [
+      {
+        key: Buffer.from(txId, "hex"),
+        value: Buffer.from(l2TransactionSourceCbor, "hex"),
+      },
+    ],
   );
   const txProof = await keyValuePhasProof(
     { ...countedTransactions, root: countedTransactions.phasRoot },
     Buffer.from(txId, "hex"),
-    compactCbor,
+    Buffer.from(l2TransactionSourceCbor, "hex"),
   );
   const withdrawal: SDK.WithdrawalEvent = {
     id: { transactionId: "42".repeat(32), outputIndex: 0n },
@@ -320,6 +337,7 @@ export const setupWithdrawnReferenceInputUncheckedScenarioV1 = async ({
       nativeTxId: txId,
       nativeTx: nativeTxFromCoreCompact(nativeTx.compact),
       nativeTxCompactCbor: compactCbor.toString("hex"),
+      l2TransactionSourceCbor,
       transactionsPhasRoot: countedTransactions.phasRoot,
       txMembershipProof: txProof,
       txMembershipProofCbor: Data.to(txProof, SDK.Proof),
@@ -460,7 +478,21 @@ export const submitRawWithdrawnReferenceInputStep03V1 = async ({
       threadOutRef,
     });
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const claimRegistryMutation = await prepareFamilyClaimRegistryMutationV1({
+    lucid,
+    claimRegistry: contracts.claimRegistry,
+    claimRegistryReferenceUtxo: witnessReferenceScripts.claimRegistrySpend,
+    hubOraclePolicyId: contracts.hubOraclePolicyId,
+    computationThreadPolicyId: contracts.computationThread.policyId,
+    claimId: threadToken.assetName,
+    kind: "close",
+  });
+  const feeInput = selectFeeInput(
+    claimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
+      (utxos, reference) => excludeUtxo(utxos, reference),
+      await lucid.wallet().getUtxos(),
+    ),
+  );
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -561,7 +593,7 @@ export const submitRawWithdrawnReferenceInputStep03V1 = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const unsigned = await fraudProofCarriage
-    .attach(computationThreadCarriage.attach(base))
+    .attach(computationThreadCarriage.attach(claimRegistryMutation.apply(base)))
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
@@ -598,7 +630,21 @@ export const submitRawWithdrawnReferenceInputCancelV1 = async ({
       threadOutRef,
     });
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const claimRegistryMutation = await prepareFamilyClaimRegistryMutationV1({
+    lucid,
+    claimRegistry: contracts.claimRegistry,
+    claimRegistryReferenceUtxo: witnessReferenceScripts.claimRegistrySpend,
+    hubOraclePolicyId: contracts.hubOraclePolicyId,
+    computationThreadPolicyId: contracts.computationThread.policyId,
+    claimId: threadToken.assetName,
+    kind: "cancel",
+  });
+  const feeInput = selectFeeInput(
+    claimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
+      (utxos, reference) => excludeUtxo(utxos, reference),
+      await lucid.wallet().getUtxos(),
+    ),
+  );
   const spendRedeemer = ((ctx) => {
     SDK.requireOwnSpendPurpose(ctx, threadUtxo, "raw withdrawn cancel");
     return Data.to(
@@ -652,7 +698,7 @@ export const submitRawWithdrawnReferenceInputCancelV1 = async ({
     .mintAssets({ [threadToken.unit]: -1n }, threadBurn)
     .addSignerKey(signer.paymentKeyHash);
   const unsigned = await computationThreadCarriage
-    .attach(base)
+    .attach(claimRegistryMutation.apply(base))
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();

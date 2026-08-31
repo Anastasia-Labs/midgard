@@ -56,6 +56,11 @@ import {
 import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptV1,
+} from "../workflow/transaction-boundary-v1.js";
 import type { WithdrawnReferenceInputContractsV1 } from "./contracts-v1.js";
 import {
   requireWithdrawnReferenceInputReferenceScriptV1,
@@ -99,6 +104,10 @@ export const submitWithdrawnReferenceInputStep02 = async ({
   nativeTxCompactCbor,
   badReferenceInputIndex,
   referenceScriptUtxo,
+  publishedCarriageUtxos,
+  certificateUtxo,
+  publishMissingCarriage = true,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -111,6 +120,13 @@ export const submitWithdrawnReferenceInputStep02 = async ({
   readonly nativeTxCompactCbor: string;
   readonly badReferenceInputIndex: bigint;
   readonly referenceScriptUtxo: UTxO;
+  /** Pre-authenticated §8 field-carriage UTxOs for production workflows. */
+  readonly publishedCarriageUtxos?: readonly UTxO[];
+  /** Pre-authenticated §8.6 certificate when the opening selects tier 3. */
+  readonly certificateUtxo?: UTxO;
+  /** Diagnostic/emulator fallback only. Production workflows set false. */
+  readonly publishMissingCarriage?: boolean;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitWithdrawnReferenceInputStep02Result> => {
   const steps = contracts.steps;
@@ -162,17 +178,37 @@ export const submitWithdrawnReferenceInputStep02 = async ({
   // publishes nothing; tier 2 publishes raw carriage located by content
   // (§8.7), and a publication that already exists at this address is reused
   // rather than republished.
-  const carriageUtxos = await publishFaultProofFieldCarriageV1({
-    lucid,
-    signer,
-    planned,
-    publisherAddress: signer.address,
-    label: "Withdrawn-reference-input step 02 reference-inputs",
-  });
-  const transactionReferenceInputs = [...carriageUtxos, stepReference];
+  const carriageUtxos =
+    publishedCarriageUtxos ??
+    (planned.plan.publications.length === 0
+      ? []
+      : publishMissingCarriage
+        ? await publishFaultProofFieldCarriageV1({
+            lucid,
+            signer,
+            planned,
+            publisherAddress: signer.address,
+            label: "Withdrawn-reference-input step 02 reference-inputs",
+          })
+        : (() => {
+            throw withdrawnReferenceInputSubmitError(
+              "step-02 requires authenticated pre-published field carriage",
+            );
+          })());
+  if (planned.plan.tier === "Certified" && certificateUtxo === undefined) {
+    throw withdrawnReferenceInputSubmitError(
+      "step-02 requires its authenticated field-preimage certificate",
+    );
+  }
+  const transactionReferenceInputs = [
+    ...carriageUtxos,
+    ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+    stepReference,
+  ];
   const referenceInputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
     referenceInputs: transactionReferenceInputs,
+    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
     label: "Withdrawn-reference-input step 02 reference-inputs",
   });
   const missingReferenceInput =
@@ -259,7 +295,23 @@ export const submitWithdrawnReferenceInputStep02 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: [
+      workflowReferenceScriptV1({
+        role: "V1 fraud-proof withdrawn-reference-input step-02",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[1].spendingScript,
+      }),
+    ],
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw withdrawnReferenceInputSubmitError(
+      `step-02 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

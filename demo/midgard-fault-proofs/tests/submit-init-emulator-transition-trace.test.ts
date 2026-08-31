@@ -28,7 +28,10 @@ import {
   submitRemoveFraudulentBlock,
   submitTransitionTraceProof,
 } from "../src/index.js";
-import { publishFaultProofWitnessReferenceScriptsV1 } from "./support/emulator/reference-scripts.js";
+import {
+  publishFaultProofWitnessReferenceScriptsV1,
+  publishOperatorLifecycleReferenceScriptsV1,
+} from "./support/emulator/reference-scripts.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
 import {
   buildInvalidForcedTransitionTraceFixture,
@@ -42,6 +45,7 @@ import {
   buildRemovalDeploymentInfo,
   EMULATOR_PROTOCOL_PARAMETERS,
   expectSingleUtxoWithUnit,
+  fundedProverEmulatorAccount,
   network,
   publishFraudProofChainReferenceScripts,
   publishRemovalReferenceScripts,
@@ -57,7 +61,7 @@ describe("fault-proof emulator integration", () => {
     const realBlueprint = readBlueprint(realBlueprintPath);
     const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
     const funder = generateEmulatorAccount({ lovelace: 40_000_000_000n });
-    const prover = generateEmulatorAccount({ lovelace: 20_000_000_000n });
+    const prover = fundedProverEmulatorAccount(20_000_000_000n);
     const emulator = new Emulator(
       [funder, prover],
       EMULATOR_PROTOCOL_PARAMETERS,
@@ -65,11 +69,13 @@ describe("fault-proof emulator integration", () => {
     const funderLucid = await Lucid(emulator, "Custom");
     const proverLucid = await Lucid(emulator, "Custom");
     funderLucid.selectWallet.fromSeed(funder.seedPhrase);
-    proverLucid.selectWallet.fromSeed(prover.seedPhrase);
     const proverSigner = resolveProverSigner({
       network,
       walletSeedPhrase: prover.seedPhrase,
     });
+    // Selected through the signer so the prover Lucid instance and every
+    // `signer.selectWallet(lucid)` call site address the same funded wallet.
+    proverSigner.selectWallet(proverLucid);
 
     await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
     const nonceUtxo = (await funderLucid.wallet().getUtxos())[0];
@@ -77,7 +83,7 @@ describe("fault-proof emulator integration", () => {
       throw new Error("Expected funder wallet to expose a nonce UTxO");
     }
 
-    const contracts = {
+    const baseContracts = {
       ...(await buildMinimalFaultProofContracts(
         realBlueprint,
         alwaysBlueprint,
@@ -89,11 +95,24 @@ describe("fault-proof emulator integration", () => {
         emulator.now(),
       ),
     };
+    // Operator registration and activation source their four directory
+    // validators from published reference scripts. Published from the prover
+    // wallet before the header clock is sampled so the funder's nonce UTxO
+    // survives and the whole fixture timeline shifts uniformly.
+    const contracts = {
+      ...baseContracts,
+      operatorLifecycleReferenceScripts:
+        await publishOperatorLifecycleReferenceScriptsV1({
+          lucid: proverLucid,
+          contracts: baseContracts,
+        }),
+    };
     const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
     const witnessReferenceScripts =
       await publishFaultProofWitnessReferenceScriptsV1({
         lucid: proverLucid,
         realBlueprint,
+        claimRegistrySpendingScript: contracts.claimRegistry.spendingScript,
         computationThreadMintingScript:
           contracts.computationThread.mintingScript,
         fraudProofMintingScript: contracts.fraudProof.mintingScript,
@@ -151,6 +170,7 @@ describe("fault-proof emulator integration", () => {
     const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
       removalReferenceScripts: removalReferenceScriptPublications.published,
       fraudProofReferenceScripts: transitionTraceReferenceScripts,
+      claimRegistrySpendReference: witnessReferenceScripts.claimRegistrySpend,
     });
     const initResult = await submitInit({
       lucid: proverLucid,

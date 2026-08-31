@@ -6,6 +6,7 @@ import {
 } from "@al-ft/midgard-sdk";
 import {
   Emulator,
+  type EmulatorAccount,
   generateEmulatorAccount,
   getAddressDetails,
   Lucid,
@@ -29,6 +30,30 @@ export const firstWalletUtxo = async (
   label: string,
 ): Promise<UTxO> => {
   const [utxo] = await lucid.wallet().getUtxos();
+  if (utxo === undefined) {
+    throw new Error(`Expected wallet UTxO for ${label}`);
+  }
+  return utxo;
+};
+
+/**
+ * The wallet's largest-lovelace UTxO. The operator-registration and
+ * -activation funding inputs are named explicitly rather than coin-selected,
+ * so a single UTxO has to cover the whole bond; wallets seeded with a main
+ * balance plus small fee UTxOs expose one of the fee UTxOs first.
+ */
+export const largestWalletUtxo = async (
+  lucid: Awaited<ReturnType<typeof Lucid>>,
+  label: string,
+): Promise<UTxO> => {
+  const utxos = await lucid.wallet().getUtxos();
+  const [utxo] = [...utxos].sort((left, right) =>
+    right.assets["lovelace"] === left.assets["lovelace"]
+      ? 0
+      : (right.assets["lovelace"] ?? 0n) > (left.assets["lovelace"] ?? 0n)
+        ? 1
+        : -1,
+  );
   if (utxo === undefined) {
     throw new Error(`Expected wallet UTxO for ${label}`);
   }
@@ -122,22 +147,89 @@ export const runEmulatorLifecycleStage = async <T>(
 };
 
 /**
+ * A prover account funded at the address the PROVER SIGNER resolves.
+ *
+ * `resolveProverSigner` derives the seed's enterprise address — the
+ * fraud-prover reward output is matched by payment credential with no stake
+ * part — while `generateEmulatorAccount` seeds the ledger at the same seed's
+ * base address. Left unaligned, every `signer.selectWallet(lucid)` call site
+ * builds against an empty wallet. The address is asked of the production
+ * resolver rather than restated here, so the harness cannot drift from it.
+ */
+export const fundedProverEmulatorAccount = (
+  lovelace: bigint,
+): EmulatorAccount => {
+  const account = generateEmulatorAccount({ lovelace });
+  return {
+    ...account,
+    address: resolveProverSigner({
+      network,
+      walletSeedPhrase: account.seedPhrase,
+    }).address,
+  };
+};
+
+/**
+ * One party's emulator ledger entries: a main balance plus `feeUtxoCount`
+ * small UTxOs, seeded twice — once at the base address `selectWallet.fromSeed`
+ * derives, once at the enterprise address `resolveProverSigner` derives. A
+ * journey mixes both selections, so funding only one of them strands whichever
+ * half the next transaction happens to build from.
+ */
+export const seedDualAddressPartyAccountsV1 = ({
+  account,
+  feeUtxoCount,
+  feeUtxoLovelace,
+}: {
+  readonly account: EmulatorAccount;
+  readonly feeUtxoCount: number;
+  readonly feeUtxoLovelace: bigint;
+}): readonly EmulatorAccount[] => {
+  const main = {
+    lovelace:
+      account.assets["lovelace"]! - BigInt(feeUtxoCount) * feeUtxoLovelace,
+  };
+  const fees = { lovelace: feeUtxoLovelace };
+  const proverAccount: EmulatorAccount = {
+    ...account,
+    address: resolveProverSigner({
+      network,
+      walletSeedPhrase: account.seedPhrase,
+    }).address,
+  };
+  return [
+    { ...account, assets: main },
+    ...Array.from({ length: feeUtxoCount }, () => ({
+      ...account,
+      assets: fees,
+    })),
+    { ...proverAccount, assets: main },
+    ...Array.from({ length: feeUtxoCount }, () => ({
+      ...proverAccount,
+      assets: fees,
+    })),
+  ];
+};
+
+/**
  * Two funded emulator wallets and their Lucid instances: the funder that
  * publishes the fraudulent block and the prover that drives the correction
  * path.
  */
 export const newEmulatorParty = async () => {
   const funder = generateEmulatorAccount({ lovelace: 40_000_000_000n });
-  const prover = generateEmulatorAccount({ lovelace: 20_000_000_000n });
+  const prover = fundedProverEmulatorAccount(20_000_000_000n);
   const emulator = new Emulator([funder, prover], EMULATOR_PROTOCOL_PARAMETERS);
   const funderLucid = await Lucid(emulator, "Custom");
   const proverLucid = await Lucid(emulator, "Custom");
   funderLucid.selectWallet.fromSeed(funder.seedPhrase);
-  proverLucid.selectWallet.fromSeed(prover.seedPhrase);
   const proverSigner = resolveProverSigner({
     network,
     walletSeedPhrase: prover.seedPhrase,
   });
+  // Selected through the signer so the prover Lucid instance and every
+  // `signer.selectWallet(lucid)` call site address the same funded wallet.
+  proverSigner.selectWallet(proverLucid);
   return { emulator, funderLucid, proverLucid, proverSigner };
 };
 

@@ -45,6 +45,11 @@ import {
 } from "../runtime.js";
 import { requireInitialStepDatum, selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import {
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptV1,
+} from "../workflow/transaction-boundary-v1.js";
 import type { DoubleWithdrawContractsV1 } from "./contracts-v1.js";
 import {
   doubleWithdrawSubmitError,
@@ -162,6 +167,7 @@ export const submitDoubleWithdrawStep01 = async ({
   stateQueueBlockOutRef,
   inclusion,
   referenceScriptUtxo,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -173,6 +179,7 @@ export const submitDoubleWithdrawStep01 = async ({
   readonly stateQueueBlockOutRef: string;
   readonly inclusion: SubmitDoubleWithdrawInclusionV1;
   readonly referenceScriptUtxo: UTxO;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitDoubleWithdrawStep01Result> => {
   const [{ threadUtxo, threadToken }, hubOracleUtxo, stateQueueBlockUtxo] =
@@ -311,7 +318,23 @@ export const submitDoubleWithdrawStep01 = async ({
     throw doubleWithdrawSubmitError("step-01 layout was not resolved.");
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: [
+      workflowReferenceScriptV1({
+        role: "V1 fraud-proof double-withdraw step-01",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[0].spendingScript,
+      }),
+    ],
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw doubleWithdrawSubmitError(
+      `step-01 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation)
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   return {

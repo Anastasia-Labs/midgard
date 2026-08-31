@@ -2,11 +2,15 @@ import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   computeMidgardNativeTxIdV1,
   deriveMidgardNativeTxCompactV1,
+  deriveMidgardNativeTxWitnessSetCompactV1,
   encodeMidgardNativeTxCompactV1,
+  encodeMidgardNativeTxProofFieldLengthsV1,
+  encodeMidgardNativeTxWitnessSetCompactV1,
   MIDGARD_NATIVE_TX_V1_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxCanonicalV1,
   type MidgardNativeTxFullV1,
+  midgardNativeTxProofFieldPreimageLengthsV1,
 } from "@al-ft/midgard-core";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -40,12 +44,14 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { prepareFamilyClaimRegistryMutationV1 } from "../../src/claim-registry-transaction-v1.js";
 import type { CommittedFieldShapeContractsV1 } from "../../src/committed-field-shape/contracts-v1.js";
 import type { PreparedCommittedFieldShapeV1 } from "../../src/committed-field-shape/prepare-committed-field-shape-v1.js";
 import {
   type CommittedFieldShapeCatalogueCategoryV1,
   requireCommittedFieldShapeThreadUtxoV1,
 } from "../../src/committed-field-shape/submit-common-v1.js";
+import { encodeL2TransactionSourceValueV1 } from "../../src/prepare-double-spend.js";
 import {
   encodeRawPhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
@@ -57,6 +63,7 @@ import {
   resolveFraudulentHeaderHash,
   resolveProverSigner,
 } from "../../src/runtime.js";
+import { excludeUtxo } from "../../src/spend-input-witness.js";
 import {
   nativeTxFromCoreCompact,
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
@@ -198,19 +205,37 @@ const scenarioMaterialV1 = (
   readonly canonicalTx: MidgardNativeTxCanonicalV1 | null;
   readonly fullTx: MidgardNativeTxFullV1 | null;
   readonly compact: ReturnType<typeof deriveMidgardNativeTxCompactV1>;
+  readonly l2TransactionSourceCbor: string;
   readonly fieldIndex: number;
   readonly committedPreimage: Buffer;
 } => {
   if (kind === "non-envelope") {
     const invalid = invalidNonEnvelopeCanonicalV1();
+    const compact = deriveMidgardNativeTxCompactV1(
+      invalid.body,
+      invalid.witnessSet,
+      invalid.validity,
+    );
+    const nativeTxId = computeMidgardNativeTxIdV1(compact).toString("hex");
     return {
       canonicalTx: null,
       fullTx: null,
-      compact: deriveMidgardNativeTxCompactV1(
-        invalid.body,
-        invalid.witnessSet,
-        invalid.validity,
-      ),
+      compact,
+      l2TransactionSourceCbor: encodeL2TransactionSourceValueV1({
+        txId: nativeTxId,
+        proofSource: {
+          compactCbor: encodeMidgardNativeTxCompactV1(compact),
+          witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompactV1(
+            deriveMidgardNativeTxWitnessSetCompactV1(invalid.witnessSet),
+          ),
+          fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengthsV1(
+            midgardNativeTxProofFieldPreimageLengthsV1({
+              body: invalid.body,
+              witnessSet: invalid.witnessSet,
+            }),
+          ),
+        },
+      }),
       fieldIndex: 2,
       committedPreimage: Buffer.from(invalid.body.outputsPreimageCbor),
     };
@@ -224,6 +249,21 @@ const scenarioMaterialV1 = (
     canonicalTx: fullTx,
     fullTx,
     compact: fullTx.compact,
+    l2TransactionSourceCbor: encodeL2TransactionSourceValueV1({
+      txId: computeMidgardNativeTxIdV1(fullTx).toString("hex"),
+      proofSource: {
+        compactCbor: encodeMidgardNativeTxCompactV1(fullTx.compact),
+        witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompactV1(
+          deriveMidgardNativeTxWitnessSetCompactV1(fullTx.witnessSet),
+        ),
+        fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengthsV1(
+          midgardNativeTxProofFieldPreimageLengthsV1({
+            body: fullTx.body,
+            witnessSet: fullTx.witnessSet,
+          }),
+        ),
+      },
+    }),
     fieldIndex: 0,
     committedPreimage: Buffer.from(fullTx.body.spendInputsPreimageCbor),
   };
@@ -245,13 +285,17 @@ export const setupCommittedFieldShapeScenarioV1 = async ({
   const store = new Store(undefined);
   await store.ready();
   const trie = new Trie(store);
-  await trie.insert(Buffer.from(nativeTxId, "hex"), compact);
+  await trie.insert(
+    Buffer.from(nativeTxId, "hex"),
+    Buffer.from(material.l2TransactionSourceCbor, "hex"),
+  );
   const proof = await trie.prove(Buffer.from(nativeTxId, "hex"));
   const transactionsRoot = Buffer.from(trie.hash).toString("hex");
   const inclusion: SubmitStep01TxInclusion = {
     nativeTxId,
     nativeTx: nativeTxFromCoreCompact(material.compact),
     nativeTxCompactCbor: compact.toString("hex"),
+    l2TransactionSourceCbor: material.l2TransactionSourceCbor,
     transactionsPhasRoot: transactionsRoot,
     txMembershipProof: Data.from(proof.toCBOR().toString("hex"), SDK.Proof),
     txMembershipProofCbor: proof.toCBOR().toString("hex"),
@@ -278,7 +322,14 @@ export const setupCommittedFieldShapeScenarioV1 = async ({
   };
 };
 
-/** Funds the outsider after setup has consumed the parameterizing nonce. */
+/**
+ * Funds the outsider after setup has consumed the parameterizing nonce.
+ *
+ * Both of its addresses are funded. `selectWallet.fromSeed` derives the seed's
+ * base address while `resolveProverSigner` derives its enterprise address, and
+ * the raw drivers re-select through the signer, so funding only the base
+ * address strands every transaction the outsider builds after that call.
+ */
 export const fundCommittedFieldShapeOutsiderV1 = async (
   harness: CommittedFieldShapeEmulatorHarnessV1,
 ): Promise<void> => {
@@ -287,6 +338,8 @@ export const fundCommittedFieldShapeOutsiderV1 = async (
     .newTx()
     .pay.ToAddress(outsiderAddress, { lovelace: 1_000_000_000n })
     .pay.ToAddress(outsiderAddress, { lovelace: 1_000_000_000n })
+    .pay.ToAddress(harness.outsiderSigner.address, { lovelace: 1_000_000_000n })
+    .pay.ToAddress(harness.outsiderSigner.address, { lovelace: 1_000_000_000n })
     .complete();
   const signed = await unsigned.sign.withWallet().complete();
   await harness.funderLucid.awaitTx(await signed.submit());
@@ -415,8 +468,8 @@ export const submitRawCommittedFieldShapeStep01V1 = async ({
                     "raw committed-field-shape block",
                   ),
                   native_tx_id: scenario.inclusion.nativeTxId,
-                  native_tx_compact_cbor:
-                    scenario.inclusion.nativeTxCompactCbor,
+                  l2_transaction_source_cbor:
+                    scenario.inclusion.l2TransactionSourceCbor,
                   transactions_phas_root:
                     scenario.inclusion.transactionsPhasRoot,
                   tx_membership_proof: scenario.inclusion.txMembershipProof,
@@ -452,7 +505,7 @@ export const submitRawCommittedFieldShapeStep01V1 = async ({
       encodeRawPhasMembershipProofRedeemer({
         root: scenario.inclusion.transactionsPhasRoot,
         keyBytes: scenario.inclusion.nativeTxId,
-        valueBytes: scenario.inclusion.nativeTxCompactCbor,
+        valueBytes: scenario.inclusion.l2TransactionSourceCbor,
         membershipProofCbor: scenario.inclusion.txMembershipProofCbor,
       }),
     )
@@ -496,8 +549,24 @@ export const submitRawCommittedFieldShapeStep02V1 = async ({
       threadOutRef,
     });
   harness.proverSigner.selectWallet(harness.proverLucid);
+  // `computation_thread.mint` requires the claim-registry input in every arm,
+  // so the raw finalizer closes the claim exactly as the submitter does.
+  const claimRegistryMutation = await prepareFamilyClaimRegistryMutationV1({
+    lucid: harness.proverLucid,
+    claimRegistry: harness.committedFieldShape.claimRegistry,
+    claimRegistryReferenceUtxo:
+      harness.witnessReferenceScripts.claimRegistrySpend,
+    hubOraclePolicyId: harness.committedFieldShape.hubOraclePolicyId,
+    computationThreadPolicyId:
+      harness.committedFieldShape.computationThread.policyId,
+    claimId: threadToken.assetName,
+    kind: "close",
+  });
   const feeInput = selectFeeInput(
-    await harness.proverLucid.wallet().getUtxos(),
+    claimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
+      (utxos, reference) => excludeUtxo(utxos, reference),
+      await harness.proverLucid.wallet().getUtxos(),
+    ),
   );
   const fraudProofUnit = toUnit(
     harness.committedFieldShape.fraudProof.policyId,
@@ -603,7 +672,7 @@ export const submitRawCommittedFieldShapeStep02V1 = async ({
     )
     .addSignerKey(harness.proverSigner.paymentKeyHash);
   const unsigned = await fraudProofCarriage
-    .attach(computationThreadCarriage.attach(base))
+    .attach(computationThreadCarriage.attach(claimRegistryMutation.apply(base)))
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
@@ -641,7 +710,23 @@ export const submitRawCommittedFieldShapeCancelV1 = async ({
     throw new Error("raw cancel thread is not at the named family step");
   }
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  // `computation_thread.mint` requires the claim-registry input in every arm,
+  // so the raw cancel deletes the live claim exactly as the submitter does.
+  const claimRegistryMutation = await prepareFamilyClaimRegistryMutationV1({
+    lucid,
+    claimRegistry: contracts.claimRegistry,
+    claimRegistryReferenceUtxo: witnessReferenceScripts.claimRegistrySpend,
+    hubOraclePolicyId: contracts.hubOraclePolicyId,
+    computationThreadPolicyId: contracts.computationThread.policyId,
+    claimId: threadAssetName,
+    kind: "cancel",
+  });
+  const feeInput = selectFeeInput(
+    claimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
+      (utxos, reference) => excludeUtxo(utxos, reference),
+      await lucid.wallet().getUtxos(),
+    ),
+  );
   const spendRedeemer = ((ctx) => {
     requireOwnSpendPurpose(ctx, threadUtxo, "raw committed-field-shape cancel");
     return Data.to(
@@ -689,7 +774,7 @@ export const submitRawCommittedFieldShapeCancelV1 = async ({
     .mintAssets({ [threadUnit]: -1n }, burnRedeemer)
     .addSignerKey(signer.paymentKeyHash);
   const unsigned = await computationThreadCarriage
-    .attach(base)
+    .attach(claimRegistryMutation.apply(base))
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();

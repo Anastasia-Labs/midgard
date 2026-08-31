@@ -14,6 +14,7 @@ import {
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
+import type { FaultProofClaimRegistryContractV1 } from "../claim-registry-transaction-v1.js";
 import { applyBlueprintParamsExact } from "../runtime.js";
 
 export const L2_TX_MISTAG_CATEGORY_LABEL = "l2-tx-mistag";
@@ -41,6 +42,12 @@ export type L2TxMistagContractsV1 = {
     readonly spendingScriptAddress: string;
   };
   readonly hubOraclePolicyId: string;
+  /**
+   * The applied `claim_registry.spend` validator. Every arm of
+   * `computation_thread.mint` requires the claim-registry input in the same
+   * transaction, so each submitter resolves its mutation from here.
+   */
+  readonly claimRegistry: FaultProofClaimRegistryContractV1;
   readonly stateQueuePolicyId: string;
 };
 

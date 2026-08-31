@@ -18,6 +18,7 @@ import {
   type CanonicalDecodabilityStep02State,
   canonicalDecodabilityStep02StateFromEvidenceV1,
   type CommittedFieldClaimV1,
+  type FieldCarriageV1,
   isMidgardWitnessSetFieldV1,
   MIDGARD_COMMITTED_FIELD_COUNT_V1,
   MIDGARD_FIELD_INDEX_V1,
@@ -136,12 +137,18 @@ export const prepareCanonicalDecodabilityV1 = ({
   fieldIndex,
   committedPreimage,
   witnessSet,
+  carriage,
 }: {
   readonly badTxId: string;
   readonly nativeTxCompactCbor: string;
   readonly fieldIndex: number;
   readonly committedPreimage: Uint8Array;
   readonly witnessSet?: NativeTxWitnessSetCompact;
+  /**
+   * Exact §8 carriage resolved against the step transaction's complete
+   * reference-input set. Omit only for an inline-sized preimage.
+   */
+  readonly carriage?: FieldCarriageV1;
 }): PreparedCanonicalDecodabilityV1 => {
   const normalizedBadTxId = requireHash32(badTxId, "bad transaction id");
   if (
@@ -188,7 +195,10 @@ export const prepareCanonicalDecodabilityV1 = ({
     ...(witnessSet === undefined ? {} : { witnessSet }),
   });
   const preimage = Buffer.from(committedPreimage);
-  if (preimage.length > MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1) {
+  if (
+    carriage === undefined &&
+    preimage.length > MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1
+  ) {
     throw canonicalDecodabilitySubmitError(
       `committed preimage is ${preimage.length.toString()} bytes, above the ${MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1.toString()}-byte inline frontier; publish a RawUtxo/Certified carriage before submission.`,
     );
@@ -210,19 +220,20 @@ export const prepareCanonicalDecodabilityV1 = ({
       `field ${fieldIndex.toString()} has verdict 0 (grammatical); a valid block cannot be challenged.`,
     );
   }
-  const carriage = { Inline: { preimage: preimage.toString("hex") } } as const;
+  const resolvedCarriage =
+    carriage ?? ({ Inline: { preimage: preimage.toString("hex") } } as const);
   const claim: CommittedFieldClaimV1 = isMidgardWitnessSetFieldV1(fieldIndex)
     ? {
         WitnessFieldClaim: {
           field_index: BigInt(fieldIndex),
           witness_set: witnessSet!,
-          carriage,
+          carriage: resolvedCarriage,
         },
       }
     : {
         BodyFieldClaim: {
           field_index: BigInt(fieldIndex),
-          carriage,
+          carriage: resolvedCarriage,
         },
       };
   return Object.freeze({

@@ -38,6 +38,15 @@ const WITHDRAWAL_VALUE: SDK.WithdrawalInfo = {
   signature: ["76".repeat(32), "77".repeat(64)],
   validity: "WithdrawalIsValid",
 };
+const FORCED_TRANSACTION_VALUE: SDK.ForcedInclusionTxV1 = {
+  tx_id: "78".repeat(32),
+  source: {
+    compact_cbor: "80",
+    witness_set_compact_cbor: "80",
+    field_preimage_lengths_cbor: "80",
+  },
+  verdict: "ForcedTxValid",
+};
 
 const L1_PROVENANCE: SDK.EvidenceProvenanceV1 = {
   trustClass: "authenticated_cardano_l1",
@@ -54,15 +63,25 @@ const emptyRoot = (domain: SDK.RootDomain): CountedRoot => ({
 });
 
 const evidence = async (
-  kind: "deposit" | "withdrawal",
+  kind: "deposit" | "withdrawal" | "forced-transaction",
   headerHash: string,
 ): Promise<{
   readonly block: CanonicalBlockEvidenceV1;
   readonly root: string;
 }> => {
   const keyBytes = Buffer.from(Data.to(EVENT_KEY, SDK.OutputReference), "hex");
-  const value = kind === "deposit" ? DEPOSIT_VALUE : WITHDRAWAL_VALUE;
-  const valueSchema = kind === "deposit" ? SDK.DepositInfo : SDK.WithdrawalInfo;
+  const value =
+    kind === "deposit"
+      ? DEPOSIT_VALUE
+      : kind === "withdrawal"
+        ? WITHDRAWAL_VALUE
+        : FORCED_TRANSACTION_VALUE;
+  const valueSchema =
+    kind === "deposit"
+      ? SDK.DepositInfo
+      : kind === "withdrawal"
+        ? SDK.WithdrawalInfo
+        : SDK.ForcedInclusionTxV1;
   const valueBytes = Buffer.from(
     Data.to(value as never, valueSchema as never),
     "hex",
@@ -70,13 +89,16 @@ const evidence = async (
   const domain =
     kind === "deposit"
       ? SDK.ROOT_DOMAINS.deposits
-      : SDK.ROOT_DOMAINS.withdrawals;
+      : kind === "withdrawal"
+        ? SDK.ROOT_DOMAINS.withdrawals
+        : SDK.ROOT_DOMAINS.forcedTransactionsV1;
   const counted = await buildCountedRoot(domain, [
     { key: keyBytes, value: valueBytes },
   ]);
   const entry = { key: EVENT_KEY, value, keyBytes, valueBytes };
   const deposits = kind === "deposit" ? [entry] : [];
   const withdrawals = kind === "withdrawal" ? [entry] : [];
+  const forcedTransactions = kind === "forced-transaction" ? [entry] : [];
   const block = {
     provenance: { l1: L1_PROVENANCE },
     headerHash,
@@ -85,10 +107,15 @@ const evidence = async (
         kind === "deposit" ? counted.root : SDK.EMPTY_MERKLE_TREE_ROOT,
       withdrawalsRoot:
         kind === "withdrawal" ? counted.root : SDK.EMPTY_MERKLE_TREE_ROOT,
+      forcedTransactionsRoot:
+        kind === "forced-transaction"
+          ? counted.root
+          : SDK.EMPTY_MERKLE_TREE_ROOT,
     },
     reconstruction: {
       deposits,
       withdrawals,
+      forcedTransactions,
       rootData: {
         deposits:
           kind === "deposit" ? counted : emptyRoot(SDK.ROOT_DOMAINS.deposits),
@@ -96,6 +123,10 @@ const evidence = async (
           kind === "withdrawal"
             ? counted
             : emptyRoot(SDK.ROOT_DOMAINS.withdrawals),
+        forcedTransactions:
+          kind === "forced-transaction"
+            ? counted
+            : emptyRoot(SDK.ROOT_DOMAINS.forcedTransactionsV1),
       },
     },
   } as unknown as CanonicalBlockEvidenceV1;
@@ -109,7 +140,7 @@ const settlementEvidence = ({
 }: {
   readonly headerHash: string;
   readonly root: string;
-  readonly kind: "deposit" | "withdrawal";
+  readonly kind: "deposit" | "withdrawal" | "forced-transaction";
 }): AuthenticatedSettlementEvidenceV1 => ({
   observation: {
     schemaVersion: SDK.CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION,
@@ -124,13 +155,14 @@ const settlementEvidence = ({
   datum: {
     deposits_root: kind === "deposit" ? root : SDK.EMPTY_MERKLE_TREE_ROOT,
     withdrawals_root: kind === "withdrawal" ? root : SDK.EMPTY_MERKLE_TREE_ROOT,
-    forced_transactions_root: SDK.EMPTY_MERKLE_TREE_ROOT,
+    forced_transactions_root:
+      kind === "forced-transaction" ? root : SDK.EMPTY_MERKLE_TREE_ROOT,
     transactions_root: SDK.EMPTY_MERKLE_TREE_ROOT,
     resolution_claim: null,
   },
 });
 
-describe.each(["deposit", "withdrawal"] as const)(
+describe.each(["deposit", "withdrawal", "forced-transaction"] as const)(
   "cross-block duplicate %s preparation",
   (kind) => {
     it("builds two canonical counted-root openings", async () => {

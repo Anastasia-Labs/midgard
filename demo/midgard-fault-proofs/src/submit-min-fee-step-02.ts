@@ -30,6 +30,11 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  type PreparedClaimRegistryMutationV1,
+  prepareFamilyClaimRegistryMutationV1,
+  requirePreparedClaimRegistryMutationV1,
+} from "./claim-registry-transaction-v1.js";
+import {
   faultProofFieldCarriageV1,
   type FaultProofFieldOpeningPlanV1,
   planFaultProofFieldOpeningV1,
@@ -54,6 +59,11 @@ import {
   type FaultProofWitnessReferenceScriptsV1,
   witnessMintingPolicyCarriageV1,
 } from "./witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "./workflow/transaction-boundary-v1.js";
 
 const STEP_LABEL = minFeeStepLabelV1(1);
 const FIELD_COUNT = 9;
@@ -146,9 +156,13 @@ export const submitMinFeeStep02 = async ({
   fieldItemCbors,
   referenceScriptUtxo,
   witnessReferenceScripts,
+  claimRegistryMutation,
   certificateUtxos = [],
+  existingPublicationUtxos = [],
+  publishMissingCarriages = true,
   publishCarriages = false,
   unsafeSkipLocalViolationCheckForTest = false,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -163,12 +177,21 @@ export const submitMinFeeStep02 = async ({
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
   /** Existing §8.6 certificates, needed only when a field selects tier 3. */
   readonly certificateUtxos?: readonly UTxO[];
+  /** Existing authenticated tier-2/tier-3 publication outputs. */
+  readonly existingPublicationUtxos?: readonly UTxO[];
+  /**
+   * Compatibility path for direct/manual callers. Production resumable
+   * workflows set this false and journal every prerequisite publication.
+   */
+  readonly publishMissingCarriages?: boolean;
   /** Force publication of otherwise-inline fields to reduce redeemer size. */
   readonly publishCarriages?: boolean;
   /** Emulator negative only: submit an honest boundary to the real validator. */
   readonly unsafeSkipLocalViolationCheckForTest?: boolean;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMinFeeStep02Result> => {
   if (fieldItemCbors.length !== FIELD_COUNT) {
@@ -226,19 +249,22 @@ export const submitMinFeeStep02 = async ({
   }
 
   signer.selectWallet(lucid);
-  const published: UTxO[] = [];
-  // Publication transactions share the prover wallet, so serialize them to
-  // avoid selecting the same fee input before the preceding spend confirms.
-  for (const [fieldIndex, planned] of plans.entries()) {
-    published.push(
-      ...(await publishFaultProofFieldCarriageV1({
-        lucid,
-        signer,
-        planned,
-        publisherAddress: signer.address,
-        label: `${STEP_LABEL} field ${fieldIndex.toString()}`,
-      })),
-    );
+  const published: UTxO[] = [...existingPublicationUtxos];
+  if (publishMissingCarriages) {
+    // Direct/manual callers retain the legacy convenience behavior. The
+    // production workflow disables it so every publication is a distinct,
+    // durable, authenticated action before this proof step is captured.
+    for (const [fieldIndex, planned] of plans.entries()) {
+      published.push(
+        ...(await publishFaultProofFieldCarriageV1({
+          lucid,
+          signer,
+          planned,
+          publisherAddress: signer.address,
+          label: `${STEP_LABEL} field ${fieldIndex.toString()}`,
+        })),
+      );
+    }
   }
   const stepReference = requireMinFeeReferenceScriptV1({
     utxo: referenceScriptUtxo,
@@ -255,6 +281,22 @@ export const submitMinFeeStep02 = async ({
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: `${STEP_LABEL} fraud-proof mint`,
   });
+  const resolvedClaimRegistryMutation = requirePreparedClaimRegistryMutationV1({
+    mutation:
+      claimRegistryMutation ??
+      (await prepareFamilyClaimRegistryMutationV1({
+        lucid,
+        claimRegistry: contracts.claimRegistry,
+        claimRegistryReferenceUtxo: witnessReferenceScripts?.claimRegistrySpend,
+        hubOraclePolicyId: contracts.hubOraclePolicyId,
+        computationThreadPolicyId: contracts.computationThread.policyId,
+        claimId: threadToken.assetName,
+        kind: "close",
+      })),
+    kind: "close",
+    claimId: threadToken.assetName,
+    label: STEP_LABEL,
+  });
   // The complete reference-input set, built before the field carriages derive
   // any reference indices from it.
   const referenceInputs = uniqueUtxos([
@@ -263,6 +305,7 @@ export const submitMinFeeStep02 = async ({
     stepReference,
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
+    ...resolvedClaimRegistryMutation.referenceInputs,
   ]);
   const fieldCarriages = plans.map(
     (planned, fieldIndex): FieldCarriageV1 =>
@@ -383,7 +426,9 @@ export const submitMinFeeStep02 = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const tx = fraudProofMintCarriage.attach(
-    computationThreadMintCarriage.attach(base),
+    computationThreadMintCarriage.attach(
+      resolvedClaimRegistryMutation.apply(base),
+    ),
   );
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (
@@ -393,7 +438,41 @@ export const submitMinFeeStep02 = async ({
     throw minFeeSubmitError("step-02 layout was not resolved.");
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof min-fee step-02",
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.steps[1].spendingScript,
+        },
+        {
+          role: "V1 fraud-proof computation-thread minting",
+          utxo: witnessReferenceScripts?.computationThreadMint,
+          expectedScript: contracts.computationThread.mintingScript,
+        },
+        {
+          role: "V1 fraud-proof token minting",
+          utxo: witnessReferenceScripts?.fraudProofMint,
+          expectedScript: contracts.fraudProof.mintingScript,
+        },
+        {
+          role: "claim-registry spending",
+          utxo: resolvedClaimRegistryMutation.referenceScriptUtxo,
+          expectedScript: resolvedClaimRegistryMutation.registryScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw minFeeSubmitError(
+      `step-02 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

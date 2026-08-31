@@ -552,7 +552,10 @@ const publishCarriage = async ({
       plan,
       certificatePolicyId: policy.policyId,
       certificateAddress: policy.address,
-      certificateScript: policy.script,
+      certificateWitness: {
+        kind: "inline_emulator_only",
+        certificateScript: policy.script,
+      },
       // Handed in reverse ledger order on purpose: the redeemer's indices must
       // be indices into the canonically-sorted reference-input list, not into
       // the order the builder was given.

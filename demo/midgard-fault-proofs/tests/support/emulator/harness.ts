@@ -30,6 +30,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
+import { prepareFamilyClaimRegistryMutationV1 } from "../../../src/claim-registry-transaction-v1.js";
 import {
   encodePhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
@@ -61,11 +62,16 @@ import {
   type LucidDataSchema,
 } from "./catalogue.js";
 import { buildMinimalFaultProofContracts } from "./contracts.js";
-import { registerPhasMembershipRewardAccount } from "./emulator-context.js";
+import {
+  fundedProverEmulatorAccount,
+  registerPhasMembershipRewardAccount,
+} from "./emulator-context.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./protocol-parameters.js";
 import {
+  type OperatorLifecycleReferenceScriptsV1,
   publishFaultProofWitnessReferenceScriptsV1,
   publishHarnessFaultProofReferenceScriptsV1,
+  publishOperatorLifecycleReferenceScriptsV1,
 } from "./reference-scripts.js";
 
 const encodeCatalogueMembershipRedeemer = ({
@@ -259,6 +265,18 @@ export const submitFabricatedFamilyInitV1 = async ({
     referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
     label: `${familyLabel} init phas membership withdrawal`,
   });
+  // The `Init` arm of `computation_thread.mint` requires the atomic
+  // claim-registry `OpenClaim` in the same transaction.
+  const claimRegistryMutation = await prepareFamilyClaimRegistryMutationV1({
+    lucid,
+    claimRegistry: family.claimRegistry,
+    claimRegistryReferenceUtxo: witnessReferenceScripts?.claimRegistrySpend,
+    hubOraclePolicyId: family.hubOraclePolicyId,
+    computationThreadPolicyId: family.computationThread.policyId,
+    categoryId: category.categoryId,
+    headerHash: fraudulentHeaderHash,
+    kind: "open",
+  });
   const chainedTx = lucid
     .newTx()
     .readFrom([
@@ -286,7 +304,11 @@ export const submitFabricatedFamilyInitV1 = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const unsigned = await phasMembershipCarriage
-    .attach(computationThreadMintCarriage.attach(chainedTx))
+    .attach(
+      computationThreadMintCarriage.attach(
+        claimRegistryMutation.apply(chainedTx),
+      ),
+    )
     .complete({ localUPLCEval: true });
   if (firstStepOutputIndex === undefined) {
     throw new Error(
@@ -317,7 +339,9 @@ export type FaultProofEmulatorHarnessV1 = {
   readonly nonceUtxo: UTxO;
   readonly contracts: Awaited<
     ReturnType<typeof buildMinimalFaultProofContracts>
-  >;
+  > & {
+    readonly operatorLifecycleReferenceScripts: OperatorLifecycleReferenceScriptsV1;
+  };
   readonly catalogue: Awaited<ReturnType<typeof buildCatalogueDeploymentInfo>>;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
   readonly faultProofReferenceScripts: Awaited<
@@ -363,7 +387,7 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
   const funder =
     accounts?.funder ?? generateEmulatorAccount({ lovelace: 40_000_000_000n });
   const prover =
-    accounts?.prover ?? generateEmulatorAccount({ lovelace: 20_000_000_000n });
+    accounts?.prover ?? fundedProverEmulatorAccount(20_000_000_000n);
   const emulator = new Emulator([funder, prover], EMULATOR_PROTOCOL_PARAMETERS);
   if (emulatorTimeMs !== undefined) {
     emulator.time = emulatorTimeMs;
@@ -371,11 +395,13 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
   const funderLucid = await Lucid(emulator, "Custom", lucidOptions);
   const proverLucid = await Lucid(emulator, "Custom", lucidOptions);
   funderLucid.selectWallet.fromSeed(funder.seedPhrase);
-  proverLucid.selectWallet.fromSeed(prover.seedPhrase);
   const proverSigner = resolveProverSigner({
     network,
     walletSeedPhrase: prover.seedPhrase,
   });
+  // Selected through the signer so the prover Lucid instance and every
+  // `signer.selectWallet(lucid)` call site address the same funded wallet.
+  proverSigner.selectWallet(proverLucid);
 
   await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
   if (registerAdditionalRewardAccounts !== undefined) {
@@ -385,7 +411,7 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
   if (nonceUtxo === undefined) {
     throw new Error("Expected funder wallet to expose a nonce UTxO");
   }
-  const contracts = {
+  const baseContracts = {
     ...(await buildMinimalFaultProofContracts(
       realBlueprint,
       alwaysBlueprint,
@@ -401,16 +427,39 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
       emulator.now(),
     ),
   };
-  const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
+  const operatorLifecycleReferenceScripts =
+    await publishOperatorLifecycleReferenceScriptsV1({
+      // Keep the funder's deployment nonce unspent. These immutable reference
+      // scripts are chain-global and the prover wallet is already the harness
+      // publisher for the fraud-proof witness roster below.
+      lucid: proverLucid,
+      contracts: baseContracts,
+    });
+  const stagedContracts = {
+    ...baseContracts,
+    operatorLifecycleReferenceScripts,
+  };
+  const catalogue = await buildCatalogueDeploymentInfo(
+    stagedContracts.fraudProofs,
+  );
   const witnessReferenceScripts =
     await publishFaultProofWitnessReferenceScriptsV1({
       lucid: proverLucid,
       realBlueprint,
-      computationThreadMintingScript: contracts.computationThread.mintingScript,
-      fraudProofMintingScript: contracts.fraudProof.mintingScript,
+      claimRegistrySpendingScript: stagedContracts.claimRegistry.spendingScript,
+      computationThreadMintingScript:
+        stagedContracts.computationThread.mintingScript,
+      fraudProofMintingScript: stagedContracts.fraudProof.mintingScript,
       includeChunkedVerify: true,
       includePexcludes: true,
     });
+  // The published witness roster travels with the contracts record so the
+  // removal manifests can name the claim-registry reference script without
+  // every call site re-threading it.
+  const contracts = {
+    ...stagedContracts,
+    faultProofWitnessReferenceScripts: witnessReferenceScripts,
+  };
   const faultProofReferenceScripts =
     await publishHarnessFaultProofReferenceScriptsV1({
       lucid: proverLucid,

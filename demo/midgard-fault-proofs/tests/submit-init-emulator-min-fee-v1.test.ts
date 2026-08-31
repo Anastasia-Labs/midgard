@@ -100,9 +100,11 @@ const setupScenario = async ({
     spendInputs,
     fee,
   });
+  // The header's normative transactions MPF commits
+  // `Data(L2TransactionSourceV1)` per transaction id, which is the value
+  // step-01 authenticates and `prepareMinFeeFromTransactions` recounts.
   const block = await buildCanonicalBlockFixtureV1({
     transactions: [tx],
-    transactionsRootMode: "nativeCompact",
   });
   const operatorVkey = await funderPaymentKeyHash(harness.funderLucid);
   const start =
@@ -111,7 +113,7 @@ const setupScenario = async ({
       harness.emulator.now() + 120_000,
     ) - 1;
   const header: SDK.HeaderV1 = {
-    ...makeHeader(operatorVkey, start, block.nativeCompactTransactionsRoot, 1n),
+    ...makeHeader(operatorVkey, start, block.payloadSourceTransactionsRoot, 1n),
     minFeeA: 0n,
     minFeeB: headerMinimum,
   };
@@ -131,7 +133,7 @@ const setupScenario = async ({
     transactions: [
       { nodeTxId: tx.txId, txCbor: tx.canonicalCbor.toString("hex") },
     ],
-    expectedTransactionsRoot: block.nativeCompactTransactionsRoot,
+    expectedTransactionsRoot: block.payloadSourceTransactionsRoot,
     minFeeA: 0n,
     minFeeB: fee + 1n,
     categoryId: SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.minFee,

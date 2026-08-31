@@ -62,11 +62,13 @@ import {
   network,
   publishAuthenticatedValidationDisputeControl,
   publishFaultProofWitnessReferenceScriptsV1,
+  publishOperatorLifecycleReferenceScriptsV1,
   publishPlainReferenceScriptUtxo,
   readBlueprint,
   realBlueprintPath,
   registerPhasMembershipRewardAccount,
   runEmulatorLifecycleStage,
+  seedDualAddressPartyAccountsV1,
   submitSetupTx,
   type ValidationDisputeControlPublicationTarget,
   validationDisputeControlPublicationTargets,
@@ -362,32 +364,22 @@ describe("fault-proof emulator integration", () => {
       const challenger = generateEmulatorAccount({ lovelace: 20_000_000_000n });
       const feeUtxoCount = 12;
       const feeUtxoLovelace = 100_000_000n;
+      // Both parties are seeded at the base address `selectWallet.fromSeed`
+      // derives and at the enterprise address `resolveProverSigner` derives,
+      // because this journey selects through both; see
+      // `seedDualAddressPartyAccountsV1`.
       const emulator = new Emulator(
         [
-          {
-            ...operator,
-            assets: {
-              lovelace:
-                operator.assets.lovelace -
-                BigInt(feeUtxoCount) * feeUtxoLovelace,
-            },
-          },
-          ...Array.from({ length: feeUtxoCount }, () => ({
-            ...operator,
-            assets: { lovelace: feeUtxoLovelace },
-          })),
-          {
-            ...challenger,
-            assets: {
-              lovelace:
-                challenger.assets.lovelace -
-                BigInt(feeUtxoCount) * feeUtxoLovelace,
-            },
-          },
-          ...Array.from({ length: feeUtxoCount }, () => ({
-            ...challenger,
-            assets: { lovelace: feeUtxoLovelace },
-          })),
+          ...seedDualAddressPartyAccountsV1({
+            account: operator,
+            feeUtxoCount,
+            feeUtxoLovelace,
+          }),
+          ...seedDualAddressPartyAccountsV1({
+            account: challenger,
+            feeUtxoCount,
+            feeUtxoLovelace,
+          }),
         ],
         EMULATOR_PROTOCOL_PARAMETERS,
       );
@@ -411,7 +403,7 @@ describe("fault-proof emulator integration", () => {
       if (nonceUtxo === undefined) {
         throw new Error("Expected operator wallet to expose a nonce UTxO");
       }
-      const contracts = await buildMinimalFaultProofContracts(
+      const baseContracts = await buildMinimalFaultProofContracts(
         realBlueprint,
         alwaysBlueprint,
         nonceUtxo,
@@ -420,10 +412,22 @@ describe("fault-proof emulator integration", () => {
           alwaysFraudProofCatalogue: true,
         },
       );
+      // Operator registration and activation source their four directory
+      // validators from published reference scripts, so the roster has to
+      // exist before the setup transaction samples the header clock.
+      const contracts = {
+        ...baseContracts,
+        operatorLifecycleReferenceScripts:
+          await publishOperatorLifecycleReferenceScriptsV1({
+            lucid: challengerLucid,
+            contracts: baseContracts,
+          }),
+      };
       const witnessReferenceScripts =
         await publishFaultProofWitnessReferenceScriptsV1({
           lucid: challengerLucid,
           realBlueprint,
+          claimRegistrySpendingScript: contracts.claimRegistry.spendingScript,
           computationThreadMintingScript:
             contracts.computationThread.mintingScript,
           fraudProofMintingScript: contracts.fraudProof.mintingScript,
@@ -635,6 +639,7 @@ describe("fault-proof emulator integration", () => {
         );
       const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
         validationDisputePublication,
+        claimRegistrySpendReference: witnessReferenceScripts.claimRegistrySpend,
         validationItemSemanticReference: {
           scriptHash: itemSemanticContract.spendingScriptHash,
           utxo: itemSemanticPublication.utxo,

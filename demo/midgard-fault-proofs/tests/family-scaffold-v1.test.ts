@@ -1581,13 +1581,20 @@ describe("Q02 generated shape matches the deployed families", () => {
         "zero-input/step-02.ak",
         "double-spend/step-04.ak",
         "no-input/step-04.ak",
-        "missing-native-script-tx/step-06.ak",
+        "missing-native-script-tx/step-08.ak",
         "invalid-signature/step-02.ak",
         "no-reference-input/step-04.ak",
         "withdrawn-reference-input/step-03.ak",
       ]),
     );
 
+    // Terminals whose family accumulates a semantic absence across a bounded
+    // self-loop: `Args` is the closed `ResumeSemanticScan`/`FinalizeSemanticScan`
+    // sum, checked exactly below rather than by the one-record shape.
+    const SEMANTIC_ABSENCE_SCAN_TERMINAL_IDS = new Set([
+      "missing-native-script-tx/step-08.ak",
+      "missing-native-script-utxo/step-07.ak",
+    ]);
     const deviating: string[] = [];
     const conforming: string[] = [];
     for (const terminal of terminals) {
@@ -1612,6 +1619,75 @@ describe("Q02 generated shape matches the deployed families", () => {
         expect(
           aikenSumConstructorFieldNames(source, "Args", "Finalize"),
         ).toEqual([...prefix, "addr_tx_wits_opening", "checkpoint_cbor"]);
+        expect(source).toContain(
+          "pub type SpendRedeemer =\n  ct.StepRedeemer<Args>",
+        );
+        conforming.push(terminal.id);
+        continue;
+      }
+      if (SEMANTIC_ABSENCE_SCAN_TERMINAL_IDS.has(terminal.id)) {
+        // Structurally the same exception as `missing-signature/step-04.ak`:
+        // the semantic absence accumulator is a bounded self-loop plus a
+        // distinct finalizer, so Args is a closed two-constructor sum rather
+        // than the ordinary one-record terminal shape. Keep this exception
+        // exact: the resuming arm cannot mint, while the finalizing arm
+        // retains the standard positional/mint prefix and the same
+        // authenticated scan inputs.
+        expect(aikenSumConstructorNames(source, "Args")).toEqual([
+          "ResumeSemanticScan",
+          "FinalizeSemanticScan",
+        ]);
+        expect(
+          aikenSumConstructorFieldNames(source, "Args", "ResumeSemanticScan"),
+        ).toEqual([
+          "input_index",
+          "output_index",
+          "script_tx_wits_opening",
+          "checkpoint_bytes",
+          "item_budget",
+        ]);
+        expect(
+          aikenSumConstructorFieldNames(source, "Args", "FinalizeSemanticScan"),
+        ).toEqual([
+          ...prefix,
+          "script_tx_wits_opening",
+          "checkpoint_bytes",
+          "item_budget",
+        ]);
+        expect(source).toContain(
+          "pub type SpendRedeemer =\n  ct.StepRedeemer<Args>",
+        );
+        conforming.push(terminal.id);
+        continue;
+      }
+      if (terminal.id === "native-script-invalid/step-05.ak") {
+        // The native-script walk is a bounded scan with a distinct entry and
+        // resume form, each of which can either self-loop or finalize, so Args
+        // is a closed four-constructor sum rather than the ordinary one-record
+        // terminal shape. Keep this exception exact: only the two finalizing
+        // arms carry the mint-redeemer index, and both scanning arms are
+        // otherwise the same carriage as the finalizer they lead to.
+        expect(aikenSumConstructorNames(source, "Args")).toEqual([
+          "StartScriptScan",
+          "ResumeScriptScan",
+          "StartScriptFinalize",
+          "FinalizeScriptScan",
+        ]);
+        const start = ["script_item_cbor"];
+        const resume = ["script_item_cbor", "cursor_bytes", "frames"];
+        const tail = ["node_budget", "signer_queries"];
+        expect(
+          aikenSumConstructorFieldNames(source, "Args", "StartScriptScan"),
+        ).toEqual(["input_index", "output_index", ...start, ...tail]);
+        expect(
+          aikenSumConstructorFieldNames(source, "Args", "ResumeScriptScan"),
+        ).toEqual(["input_index", "output_index", ...resume, ...tail]);
+        expect(
+          aikenSumConstructorFieldNames(source, "Args", "StartScriptFinalize"),
+        ).toEqual([...prefix, ...start, ...tail]);
+        expect(
+          aikenSumConstructorFieldNames(source, "Args", "FinalizeScriptScan"),
+        ).toEqual([...prefix, ...resume, ...tail]);
         expect(source).toContain(
           "pub type SpendRedeemer =\n  ct.StepRedeemer<Args>",
         );

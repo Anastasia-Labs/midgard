@@ -24,10 +24,10 @@ import { stringifyJson } from "./json-file.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
-  nativeTrieItem,
   type NodeTransactionPayload,
   requireProof,
   requireTransactionsRootMatchV1,
+  transactionSourceTrieItemV1,
 } from "./prepare-double-spend.js";
 import { type SubmitStep01TxInclusion } from "./submit-step-01.js";
 import {
@@ -127,9 +127,11 @@ export const prepareWithdrawnInputFromMaterialV1 = async ({
   }
   const selected = candidate;
 
-  const transactionTrie = await buildTrieView(decoded.map(nativeTrieItem));
+  const transactionTrie = await buildTrieView(
+    decoded.map(transactionSourceTrieItemV1),
+  );
   await requireTransactionsRootMatchV1({
-    nativeRoot: transactionTrie.root,
+    sourceRoot: transactionTrie.root,
     expectedTransactionsRoot,
     count: BigInt(decoded.length),
   }).catch((cause: unknown) =>
@@ -172,6 +174,7 @@ export const prepareWithdrawnInputFromMaterialV1 = async ({
     nativeTxId: selected.transaction.nodeTxId,
     nativeTx: selected.transaction.nativeTxCompact,
     nativeTxCompactCbor: selected.transaction.nativeCompactCbor,
+    l2TransactionSourceCbor: selected.transaction.l2TransactionSourceCbor,
     transactionsPhasRoot: transactionTrie.root,
     txMembershipProof: Data.from(txProofCbor, Proof),
     txMembershipProofCbor: txProofCbor,
@@ -233,10 +236,10 @@ export const prepareWithdrawnInputFromCanonicalEvidenceV1 = async ({
   readonly outputDir?: string;
 }): Promise<PreparedWithdrawnInputEvidenceV1> => {
   const transactions = blockTransactionsFromCanonicalEvidenceV1(evidence);
-  if (!evidence.inclusionRootAuthentication.nativeInclusionAuthenticated) {
+  if (!evidence.inclusionRootAuthentication.sourceInclusionAuthenticated) {
     withdrawnInputEvidenceRejectV1(
       "transactions_root_mismatch",
-      "canonical evidence does not authenticate native compact transaction leaves",
+      "canonical evidence does not authenticate L2TransactionSourceV1 leaves",
     );
   }
   return await prepareWithdrawnInputFromMaterialV1({

@@ -99,6 +99,7 @@ import {
   getAddressDetails,
   Lucid,
   PROTOCOL_PARAMETERS_DEFAULT,
+  type Script,
   walletFromSeed,
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -106,6 +107,7 @@ import { describe, it } from "vitest";
 
 import {
   resolveProverSigner,
+  resolveValidationTraceDisputeDeploymentContracts,
   submitValidationDisputeAward,
   submitValidationDisputeEnterResolution,
   submitValidationDisputeOpen,
@@ -134,13 +136,17 @@ import {
   expectSingleUtxoWithUnit,
   measureCompleteSignedTransaction,
   network,
+  publishFaultProofWitnessReferenceScriptsV1,
+  publishOperatorLifecycleReferenceScriptsV1,
   publishPlainReferenceScriptUtxo,
-  publishValidationDisputeReferenceScript,
   readBlueprint,
   realBlueprintPath,
   registerPhasMembershipRewardAccount,
   runEmulatorLifecycleStage,
+  seedDualAddressPartyAccountsV1,
+  stageAuthenticatedValidationDisputePublication,
   submitSetupTx,
+  withRealL1MaxTxSize,
 } from "./support/submit-init-emulator-shared.js";
 
 const REGENERATE = process.env.MIDGARD_REGENERATE_RESOLVER_SWEEP === "1";
@@ -276,30 +282,21 @@ const runResolverScenario = async ({
   const challenger = deterministicEmulatorAccount(CHALLENGER_SEED_PHRASE, {
     lovelace: 20_000_000_000n,
   });
+  // Both parties are seeded at their base AND enterprise addresses: Lucid
+  // wallets select through the base address while the prover signer resolves
+  // the enterprise one (same dual-address seam as the dispute journeys).
   const emulator = new Emulator(
     [
-      {
-        ...operator,
-        assets: {
-          lovelace:
-            operator.assets.lovelace - BigInt(feeUtxoCount) * feeUtxoLovelace,
-        },
-      },
-      ...Array.from({ length: feeUtxoCount }, () => ({
-        ...operator,
-        assets: { lovelace: feeUtxoLovelace },
-      })),
-      {
-        ...challenger,
-        assets: {
-          lovelace:
-            challenger.assets.lovelace - BigInt(feeUtxoCount) * feeUtxoLovelace,
-        },
-      },
-      ...Array.from({ length: feeUtxoCount }, () => ({
-        ...challenger,
-        assets: { lovelace: feeUtxoLovelace },
-      })),
+      ...seedDualAddressPartyAccountsV1({
+        account: operator,
+        feeUtxoCount,
+        feeUtxoLovelace,
+      }),
+      ...seedDualAddressPartyAccountsV1({
+        account: challenger,
+        feeUtxoCount,
+        feeUtxoLovelace,
+      }),
     ],
     EMULATOR_PROTOCOL_PARAMETERS,
   );
@@ -326,12 +323,34 @@ const runResolverScenario = async ({
   if (nonceUtxo === undefined) {
     throw new Error("Expected operator wallet to expose a nonce UTxO");
   }
-  const contracts = await buildMinimalFaultProofContracts(
+  const baseContracts = await buildMinimalFaultProofContracts(
     realBlueprint,
     alwaysBlueprint,
     nonceUtxo,
     { realValidationTraceDispute: true, alwaysFraudProofCatalogue: true },
   );
+  // Operator registration and activation source their four directory
+  // validators from published reference scripts, so the roster has to exist
+  // before the setup transaction samples the header clock.
+  const contracts = {
+    ...baseContracts,
+    operatorLifecycleReferenceScripts:
+      await publishOperatorLifecycleReferenceScriptsV1({
+        lucid: challengerLucid,
+        contracts: baseContracts,
+      }),
+  };
+  // The init's claim-registry open sources claim_registry.spend from the
+  // published fault-proof witness roster, mirroring the dispute-scenario
+  // harness.
+  const witnessReferenceScripts =
+    await publishFaultProofWitnessReferenceScriptsV1({
+      lucid: challengerLucid,
+      realBlueprint,
+      claimRegistrySpendingScript: contracts.claimRegistry.spendingScript,
+      computationThreadMintingScript: contracts.computationThread.mintingScript,
+      fraudProofMintingScript: contracts.fraudProof.mintingScript,
+    });
 
   let itemSemanticContract:
     | Effect.Effect.Success<
@@ -347,6 +366,11 @@ const runResolverScenario = async ({
     | Effect.Effect.Success<
         ReturnType<typeof buildValidationTraceDisputeFaultProofContracts>
       >["validationTraceDispute"]["prepareResolvers"][number]
+    | undefined;
+  let canonicalDecodeItemStages:
+    | Effect.Effect.Success<
+        ReturnType<typeof buildValidationTraceDisputeFaultProofContracts>
+      >["validationTraceDispute"]["canonicalDecodeItemStages"]
     | undefined;
   if (needsItemSemanticPublication) {
     const validationDisputeSdkContracts = await Effect.runPromise(
@@ -370,6 +394,12 @@ const runResolverScenario = async ({
     // reference script as well.
     canonicalDecodePrepareContract =
       validationDisputeSdkContracts.validationTraceDispute.prepareResolvers[0];
+    // The canonical-decode item stage transactions (source binding, proof,
+    // settlement) source their stage validators from published reference
+    // scripts as well — same roster route-freedom-journey publishes.
+    canonicalDecodeItemStages =
+      validationDisputeSdkContracts.validationTraceDispute
+        .canonicalDecodeItemStages;
   }
 
   const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
@@ -400,88 +430,65 @@ const runResolverScenario = async ({
       header: fixture.header as never,
     }),
   );
-  const publicationSlotConfig = operatorLucid.config().slotConfig;
-  if (publicationSlotConfig === undefined) {
-    throw new Error(
-      "Expected reference-script publisher Lucid to expose its Custom slot config",
-    );
-  }
   const setupProtocolParameters = emulator.protocolParameters;
-  emulator.protocolParameters = {
-    ...setupProtocolParameters,
-    maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
-  };
-  const referenceScriptPublisherLucid = await Lucid(emulator, "Custom", {
-    slotConfig: publicationSlotConfig,
+  // The current dispute stages source their source/game/boundary/award
+  // control validators from the authenticated control publication set, so
+  // the sweep publishes the same roster the dispute-scenario harness does.
+  const {
+    referenceScriptPublisherLucid,
+    validationDisputePublication,
+    validationDisputeControlPublications,
+  } = await stageAuthenticatedValidationDisputePublication({
+    emulator,
+    operatorLucid,
+    operatorSeedPhrase: operator.seedPhrase,
+    contracts,
+    runStage: runEmulatorLifecycleStage,
   });
-  referenceScriptPublisherLucid.selectWallet.fromSeed(operator.seedPhrase);
-  const validationDisputePublication = await runEmulatorLifecycleStage(
-    "reference-script.publish-authenticated",
-    async () => {
-      try {
-        return await publishValidationDisputeReferenceScript({
+  // The prepare-selected step sources the fixture's selected prepare-resolver
+  // validator from a published reference script (dispute-scenario precedent).
+  const prepareResolverContract =
+    contracts.fraudProofContracts.validationTraceDispute.prepareResolvers[
+      (fixture.evidence.oneStepArgument as { resolverIndex: number })
+        .resolverIndex
+    ];
+  if (prepareResolverContract === undefined) {
+    throw new Error("Selected validation prepare resolver is not deployed");
+  }
+  const prepareResolverPublication = await runEmulatorLifecycleStage(
+    "reference-script.publish-prepare-resolver",
+    () =>
+      withRealL1MaxTxSize(emulator, () =>
+        publishPlainReferenceScriptUtxo({
           lucid: referenceScriptPublisherLucid,
-          contracts,
-          now: emulator.now(),
-        });
-      } finally {
-        emulator.protocolParameters = setupProtocolParameters;
-      }
-    },
+          script: prepareResolverContract.spendingScript,
+          label: "validation prepare resolver",
+        }),
+      ),
   );
 
-  const deploymentInfo = needsItemSemanticPublication
-    ? await (async () => {
-        if (itemSemanticContract === undefined) {
-          throw new Error("Expected item-semantic contract to be resolved");
-        }
-        if (itemObserveContract === undefined) {
-          throw new Error("Expected item-observe contract to be resolved");
-        }
-        if (canonicalDecodePrepareContract === undefined) {
-          throw new Error(
-            "Expected canonical-decode prepare contract to be resolved",
-          );
-        }
-        const itemSemanticPublication = await runEmulatorLifecycleStage(
-          "reference-script.publish-item-semantic",
-          async () => {
-            emulator.protocolParameters = {
-              ...setupProtocolParameters,
-              maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
-            };
-            try {
-              return await publishPlainReferenceScriptUtxo({
-                lucid: referenceScriptPublisherLucid,
-                script: itemSemanticContract.spendingScript,
-                label: "validation item-semantic",
-              });
-            } finally {
-              emulator.protocolParameters = setupProtocolParameters;
-            }
-          },
-        );
-        const itemObservePublication = await runEmulatorLifecycleStage(
-          "reference-script.publish-item-observe",
-          async () => {
-            emulator.protocolParameters = {
-              ...setupProtocolParameters,
-              maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
-            };
-            try {
-              return await publishPlainReferenceScriptUtxo({
-                lucid: referenceScriptPublisherLucid,
-                script: itemObserveContract.spendingScript,
-                label: "validation item-observe",
-              });
-            } finally {
-              emulator.protocolParameters = setupProtocolParameters;
-            }
-          },
-        );
-        const canonicalDecodePreparePublication =
-          await runEmulatorLifecycleStage(
-            "reference-script.publish-canonical-decode-prepare",
+  const { deploymentInfo, canonicalDecodeStageReferenceScriptUtxos } =
+    needsItemSemanticPublication
+      ? await (async () => {
+          if (itemSemanticContract === undefined) {
+            throw new Error("Expected item-semantic contract to be resolved");
+          }
+          if (canonicalDecodeItemStages === undefined) {
+            throw new Error(
+              "Expected canonical-decode item stages to be resolved",
+            );
+          }
+          const stages = canonicalDecodeItemStages;
+          if (itemObserveContract === undefined) {
+            throw new Error("Expected item-observe contract to be resolved");
+          }
+          if (canonicalDecodePrepareContract === undefined) {
+            throw new Error(
+              "Expected canonical-decode prepare contract to be resolved",
+            );
+          }
+          const itemSemanticPublication = await runEmulatorLifecycleStage(
+            "reference-script.publish-item-semantic",
             async () => {
               emulator.protocolParameters = {
                 ...setupProtocolParameters,
@@ -490,33 +497,112 @@ const runResolverScenario = async ({
               try {
                 return await publishPlainReferenceScriptUtxo({
                   lucid: referenceScriptPublisherLucid,
-                  script: canonicalDecodePrepareContract.spendingScript,
-                  label: "validation canonical-decode prepare",
+                  script: itemSemanticContract.spendingScript,
+                  label: "validation item-semantic",
                 });
               } finally {
                 emulator.protocolParameters = setupProtocolParameters;
               }
             },
           );
-        return buildRemovalDeploymentInfo(contracts, catalogue, {
-          validationDisputePublication,
-          validationItemSemanticReference: {
-            scriptHash: itemSemanticContract.spendingScriptHash,
-            utxo: itemSemanticPublication.utxo,
-          },
-          validationItemObserveReference: {
-            scriptHash: itemObserveContract.spendingScriptHash,
-            utxo: itemObservePublication.utxo,
-          },
-          validationCanonicalDecodePrepareReference: {
-            scriptHash: canonicalDecodePrepareContract.spendingScriptHash,
-            utxo: canonicalDecodePreparePublication.utxo,
-          },
-        });
-      })()
-    : buildRemovalDeploymentInfo(contracts, catalogue, {
-        validationDisputePublication,
-      });
+          const itemObservePublication = await runEmulatorLifecycleStage(
+            "reference-script.publish-item-observe",
+            async () => {
+              emulator.protocolParameters = {
+                ...setupProtocolParameters,
+                maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
+              };
+              try {
+                return await publishPlainReferenceScriptUtxo({
+                  lucid: referenceScriptPublisherLucid,
+                  script: itemObserveContract.spendingScript,
+                  label: "validation item-observe",
+                });
+              } finally {
+                emulator.protocolParameters = setupProtocolParameters;
+              }
+            },
+          );
+          const canonicalDecodePreparePublication =
+            await runEmulatorLifecycleStage(
+              "reference-script.publish-canonical-decode-prepare",
+              async () => {
+                emulator.protocolParameters = {
+                  ...setupProtocolParameters,
+                  maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
+                };
+                try {
+                  return await publishPlainReferenceScriptUtxo({
+                    lucid: referenceScriptPublisherLucid,
+                    script: canonicalDecodePrepareContract.spendingScript,
+                    label: "validation canonical-decode prepare",
+                  });
+                } finally {
+                  emulator.protocolParameters = setupProtocolParameters;
+                }
+              },
+            );
+          const publishStagePlain = (label: string, script: Script) =>
+            withRealL1MaxTxSize(emulator, () =>
+              publishPlainReferenceScriptUtxo({
+                lucid: referenceScriptPublisherLucid,
+                script,
+                label,
+              }),
+            );
+          const itemSourcePublication = await runEmulatorLifecycleStage(
+            "reference-script.publish-canonical-decode-item-source",
+            () =>
+              publishStagePlain(
+                "validation canonical-decode item source",
+                stages.source.spendingScript,
+              ),
+          );
+          const itemProofPublication = await runEmulatorLifecycleStage(
+            "reference-script.publish-canonical-decode-item-proof",
+            () =>
+              publishStagePlain(
+                "validation canonical-decode item proof",
+                stages.proof.spendingScript,
+              ),
+          );
+          const itemSettlementPublication = await runEmulatorLifecycleStage(
+            "reference-script.publish-canonical-decode-item-settlement",
+            () =>
+              publishStagePlain(
+                "validation canonical-decode item settlement",
+                stages.settlement.spendingScript,
+              ),
+          );
+          return {
+            deploymentInfo: buildRemovalDeploymentInfo(contracts, catalogue, {
+              validationDisputePublication,
+              validationItemSemanticReference: {
+                scriptHash: itemSemanticContract.spendingScriptHash,
+                utxo: itemSemanticPublication.utxo,
+              },
+              validationItemObserveReference: {
+                scriptHash: itemObserveContract.spendingScriptHash,
+                utxo: itemObservePublication.utxo,
+              },
+              validationCanonicalDecodePrepareReference: {
+                scriptHash: canonicalDecodePrepareContract.spendingScriptHash,
+                utxo: canonicalDecodePreparePublication.utxo,
+              },
+            }),
+            canonicalDecodeStageReferenceScriptUtxos: {
+              canonicalDecodeItemSource: itemSourcePublication.utxo,
+              canonicalDecodeItemProof: itemProofPublication.utxo,
+              canonicalDecodeItemSettlement: itemSettlementPublication.utxo,
+            },
+          };
+        })()
+      : {
+          deploymentInfo: buildRemovalDeploymentInfo(contracts, catalogue, {
+            validationDisputePublication,
+          }),
+          canonicalDecodeStageReferenceScriptUtxos: undefined,
+        };
 
   const initResult = await runEmulatorLifecycleStage("init", () =>
     submitInit({
@@ -527,6 +613,7 @@ const runResolverScenario = async ({
       signer: challengerSigner,
       fraudCategory: "validationTraceDispute",
       fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+      witnessReferenceScripts,
       awaitConfirmation: true,
     }),
   );
@@ -577,6 +664,8 @@ const runResolverScenario = async ({
       network,
       signer: challengerSigner,
       threadOutRef: openResult.nextThreadOutRef,
+      sourceReferenceScriptUtxo:
+        validationDisputeControlPublications.source.utxo,
       validityRange: validityRange(),
       awaitConfirmation: true,
     }),
@@ -599,6 +688,8 @@ const runResolverScenario = async ({
           threadOutRef,
           role: move.role,
           proof: move.proof as never,
+          gameReferenceScriptUtxo:
+            validationDisputeControlPublications.game.utxo,
           validityRange: validityRange(),
           awaitConfirmation: true,
         }),
@@ -616,6 +707,7 @@ const runResolverScenario = async ({
         network,
         signer: challengerSigner,
         threadOutRef,
+        gameReferenceScriptUtxo: validationDisputeControlPublications.game.utxo,
         validityRange: validityRange(),
         awaitConfirmation: true,
       }),
@@ -640,6 +732,8 @@ const runResolverScenario = async ({
         challengerPost: validationTraceProofDataFromCore(
           fixture.challengerTrace.tree.proofs[highIndex] as never,
         ),
+        boundaryReferenceScriptUtxo:
+          validationDisputeControlPublications.boundary.utxo,
         validityRange: validityRange(),
         awaitConfirmation: true,
       }),
@@ -657,12 +751,68 @@ const runResolverScenario = async ({
           signer: challengerSigner,
           threadOutRef: prepareResult.nextThreadOutRef,
           oneStepArgument: fixture.evidence.oneStepArgument as never,
+          referenceScriptUtxo: prepareResolverPublication.utxo,
           validityRange: validityRange(),
           awaitConfirmation: true,
         }),
       ),
   );
   const selectedResult = prepareSelectedCapture.result;
+
+  // Publish the exact selected semantic resolver once, resolved through the
+  // very helper the submit path uses, so the published body is byte-identical
+  // to the one the resolution will hash-check (dispute-scenario precedent).
+  const sweepSemanticGlobalIndex = validationSemanticResolverGlobalIndexV1(
+    (fixture.evidence.oneStepArgument as { resolverIndex: number })
+      .resolverIndex,
+    (fixture.evidence.oneStepArgument as { semanticResolverIndex: number })
+      .semanticResolverIndex,
+  );
+  const semanticContract = (
+    await resolveValidationTraceDisputeDeploymentContracts({
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+    })
+  ).contracts.validationTraceDispute.semanticResolvers[
+    sweepSemanticGlobalIndex
+  ];
+  if (semanticContract === undefined) {
+    throw new Error("Selected validation semantic resolver is not deployed");
+  }
+  const semanticIsOversized =
+    semanticContract.spendingScript.script.length / 2 >
+    PROTOCOL_PARAMETERS_DEFAULT.maxTxSize;
+  const semanticPublication = await runEmulatorLifecycleStage(
+    `reference-script.publish.validationSemanticResolver${sweepSemanticGlobalIndex.toString()}`,
+    async () => {
+      if (semanticIsOversized) {
+        const prePublicationProtocolParameters = emulator.protocolParameters;
+        emulator.protocolParameters = functionalProtocolParameters;
+        try {
+          const oversizedPublisherLucid = await Lucid(emulator, "Custom", {
+            slotConfig: functionalSlotConfig,
+          });
+          oversizedPublisherLucid.selectWallet.fromSeed(operator.seedPhrase);
+          return await publishPlainReferenceScriptUtxo({
+            lucid: oversizedPublisherLucid,
+            script: semanticContract.spendingScript,
+            label: "validation semantic resolver",
+            oversized: true,
+          });
+        } finally {
+          emulator.protocolParameters = prePublicationProtocolParameters;
+        }
+      }
+      return await withRealL1MaxTxSize(emulator, () =>
+        publishPlainReferenceScriptUtxo({
+          lucid: referenceScriptPublisherLucid,
+          script: semanticContract.spendingScript,
+          label: "validation semantic resolver",
+        }),
+      );
+    },
+  );
 
   const semanticCapture = await runEmulatorLifecycleStage(
     "semantic-resolution",
@@ -676,6 +826,13 @@ const runResolverScenario = async ({
           signer: challengerSigner,
           threadOutRef: selectedResult.nextThreadOutRef,
           oneStepArgument: fixture.evidence.oneStepArgument as never,
+          referenceScriptUtxo: semanticPublication.utxo,
+          ...(canonicalDecodeStageReferenceScriptUtxos === undefined
+            ? {}
+            : {
+                stageReferenceScriptUtxos:
+                  canonicalDecodeStageReferenceScriptUtxos,
+              }),
           validityRange: validityRange(),
           awaitConfirmation: true,
         }),
@@ -691,6 +848,8 @@ const runResolverScenario = async ({
       network,
       signer: challengerSigner,
       threadOutRef: semanticResult.nextThreadOutRef,
+      awardReferenceScriptUtxo: validationDisputeControlPublications.award.utxo,
+      witnessReferenceScripts,
       validityRange: validityRange(),
       awaitConfirmation: true,
     }),

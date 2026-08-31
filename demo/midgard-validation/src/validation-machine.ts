@@ -4171,6 +4171,10 @@ export const buildDeterministicValidationMachineTrace = (
               rejection.detail?.startsWith(
                 "missing witness for protected output signer ",
               ) === true;
+            const outputNetworkRejection =
+              rejection !== null &&
+              terminalPhase === "scriptSources" &&
+              rejection.code === RejectCodes.NetworkIdMismatch;
             for (const outputCbor of outputCbors) {
               const outputItem = outputsCollection.items[outputCursor];
               if (
@@ -4266,6 +4270,13 @@ export const buildDeterministicValidationMachineTrace = (
               );
               const output = decodeMidgardTxOutput(outputCbor);
               const address = decodeMidgardAddressBytes(output.address);
+              if (
+                outputNetworkRejection &&
+                BigInt(address.networkId) !== input.expectedNetworkId
+              ) {
+                stoppedAtRejection = true;
+                break;
+              }
               if (
                 protectedSignerRejection &&
                 address.protected &&

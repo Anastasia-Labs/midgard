@@ -37,6 +37,11 @@ import {
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriageV1 } from "../witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "../workflow/transaction-boundary-v1.js";
 import type { ValueNotPreservedContractsV1 } from "./contracts-v1.js";
 import { witnessClaimedQuantityV1 } from "./evidence-v1.js";
 import {
@@ -84,6 +89,7 @@ export const submitValueNotPreservedStep02Fold = async ({
   spendInputsOpening,
   valueWitness,
   referenceScriptUtxo,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -97,6 +103,7 @@ export const submitValueNotPreservedStep02Fold = async ({
   readonly valueWitness: SpentInputValueWitnessV1;
   /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitValueNotPreservedStep02FoldResult> => {
   const { threadUtxo, threadToken } =
@@ -210,7 +217,26 @@ export const submitValueNotPreservedStep02Fold = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof value-not-preserved step-02",
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.steps[1].spendingScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw valueNotPreservedSubmitError(
+      `step-02 fold provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }
@@ -258,6 +284,7 @@ export const submitValueNotPreservedStep02Finish = async ({
   spendInputsOpening,
   spendInputCount,
   referenceScriptUtxo,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -271,6 +298,7 @@ export const submitValueNotPreservedStep02Finish = async ({
   readonly spendInputCount: bigint;
   /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitValueNotPreservedStep02FinishResult> => {
   const { threadUtxo, threadToken } =
@@ -382,7 +410,26 @@ export const submitValueNotPreservedStep02Finish = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof value-not-preserved step-02",
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.steps[1].spendingScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw valueNotPreservedSubmitError(
+      `step-02 finish provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

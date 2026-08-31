@@ -3,6 +3,7 @@ import {
   createReferenceScriptAuthPolicy,
   type MidgardValidators,
   referenceScriptAuthPolicyDeploymentInfo,
+  type ReferenceScriptPublication,
   referenceScriptPublicationFundingTarget,
   selectReferenceScriptFundingUtxos,
 } from "@al-ft/midgard-sdk";
@@ -10,6 +11,7 @@ import {
   CML,
   credentialToAddress,
   Lucid,
+  PROTOCOL_PARAMETERS_DEFAULT,
   type Script,
   scriptHashToCredential,
   type UTxO,
@@ -231,6 +233,67 @@ export const publishPlainReferenceScriptUtxo = async ({
   return { utxo: published[0]!, publicationMeasurement };
 };
 
+export type OperatorLifecycleReferenceScriptsV1 = {
+  readonly registered: readonly ReferenceScriptPublication[];
+  readonly active: readonly ReferenceScriptPublication[];
+};
+
+/**
+ * Publish the exact four reference scripts consumed by the genuine
+ * register-then-activate setup lifecycle. Each script is deliberately placed
+ * in its own bounded transaction so adding the production roster cannot push
+ * a shared publication over the L1 transaction-size limit.
+ */
+export const publishOperatorLifecycleReferenceScriptsV1 = async ({
+  lucid,
+  contracts,
+}: {
+  readonly lucid: Awaited<ReturnType<typeof Lucid>>;
+  readonly contracts: MidgardValidators;
+}): Promise<OperatorLifecycleReferenceScriptsV1> => {
+  const roster = [
+    {
+      group: "registered" as const,
+      name: "registered-operators spending",
+      script: contracts.registeredOperators.spendingScript,
+    },
+    {
+      group: "registered" as const,
+      name: "registered-operators minting",
+      script: contracts.registeredOperators.mintingScript,
+    },
+    {
+      group: "active" as const,
+      name: "active-operators spending",
+      script: contracts.activeOperators.spendingScript,
+    },
+    {
+      group: "active" as const,
+      name: "active-operators minting",
+      script: contracts.activeOperators.mintingScript,
+    },
+  ] as const;
+  const registered: ReferenceScriptPublication[] = [];
+  const active: ReferenceScriptPublication[] = [];
+  for (const entry of roster) {
+    const publication = await publishPlainReferenceScriptUtxo({
+      lucid,
+      script: entry.script,
+      label: `setup ${entry.name}`,
+    });
+    (entry.group === "registered" ? registered : active).push({
+      name: entry.name,
+      utxo: publication.utxo,
+    });
+  }
+  if (registered.length !== 2 || active.length !== 2) {
+    throw new Error(
+      "Operator lifecycle reference publication omitted or duplicated a canonical role",
+    );
+  }
+  return { registered, active };
+};
+
 /** Publishes a canonical fraud-proof chain under its production entry names. */
 export const publishFraudProofChainReferenceScripts = async ({
   lucid,
@@ -343,6 +406,7 @@ export const publishHarnessFaultProofReferenceScriptsV1 = async ({
 export const publishFaultProofWitnessReferenceScriptsV1 = async ({
   lucid,
   realBlueprint,
+  claimRegistrySpendingScript,
   computationThreadMintingScript,
   fraudProofMintingScript,
   includeChunkedVerify = false,
@@ -350,6 +414,7 @@ export const publishFaultProofWitnessReferenceScriptsV1 = async ({
 }: {
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
   readonly realBlueprint: unknown;
+  readonly claimRegistrySpendingScript?: Script;
   readonly computationThreadMintingScript?: Script;
   readonly fraudProofMintingScript?: Script;
   readonly includeChunkedVerify?: boolean;
@@ -384,6 +449,7 @@ export const publishFaultProofWitnessReferenceScriptsV1 = async ({
           }
         : undefined,
     ],
+    ["claimRegistrySpend", claimRegistrySpendingScript],
   ];
   const published: Partial<
     Record<keyof FaultProofWitnessReferenceScriptsV1, UTxO>
@@ -435,6 +501,7 @@ export const publishCrossBlockDuplicateEventReferenceScriptsV1 = async ({
 // `midgard-node/src/transactions/reference-scripts.ts`), so sourcing them from
 // reference inputs is the deployed shape, not a test-only shortcut.
 export type RemovalReferenceScriptName =
+  | "correctionLockSpend"
   | "stateQueueSpend"
   | "stateQueueMint"
   | "activeOperatorsSpend"
@@ -462,6 +529,7 @@ export const publishRemovalReferenceScripts = async ({
   readonly measurements: RemovalReferenceScriptMeasurements;
 }> => {
   const roster: readonly (readonly [RemovalReferenceScriptName, Script])[] = [
+    ["correctionLockSpend", contracts.correctionLock.spendingScript],
     ["stateQueueSpend", contracts.stateQueue.spendingScript],
     ["stateQueueMint", contracts.stateQueue.mintingScript],
     ["activeOperatorsSpend", contracts.activeOperators.spendingScript],
@@ -477,10 +545,20 @@ export const publishRemovalReferenceScripts = async ({
   // Sequential: each publication consumes wallet UTxOs the next one selects
   // from.
   for (const [name, script] of roster) {
+    // The 12-parameter state_queue.mint compiles past the 16,384-byte L1
+    // envelope (16,835 bytes unapplied), so its publication cannot fit a real
+    // L1 transaction; publish it through the documented oversized escape (the
+    // same one the R5 semantic resolvers use) so the measurement is still
+    // pinned honestly while the consuming transactions stay inside the
+    // envelope via readFrom. Deployability of the oversized script on real
+    // L1 parameters is tracked in #649.
+    const oversized =
+      script.script.length / 2 > PROTOCOL_PARAMETERS_DEFAULT.maxTxSize;
     const publication = await publishPlainReferenceScriptUtxo({
       lucid,
       script,
       label: `state-queue removal ${name}`,
+      oversized,
     });
     published[name] = publication.utxo;
     measurements[name] = publication.publicationMeasurement;

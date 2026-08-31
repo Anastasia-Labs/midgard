@@ -15,11 +15,11 @@ import {
   decodeTransactionMaterial,
   type FetchLike,
   fetchNodeBlockTransactions,
-  nativeTrieItem,
   type NodeTransactionPayload,
   type PreparedTxInclusionJson,
   readNodeTransactionPayloadsFile,
   requireProof,
+  transactionSourceTrieItemV1,
 } from "../prepare-double-spend.js";
 
 export type PreparedL2TxMistagOutputV1 = {
@@ -111,7 +111,7 @@ export const prepareL2TxMistagFromTransactionsV1 = async ({
     );
   }
 
-  const trie = await buildTrieView(decoded.map(nativeTrieItem));
+  const trie = await buildTrieView(decoded.map(transactionSourceTrieItemV1));
   const committedTransactionsRoot = await Effect.runPromise(
     commitCountedRootProgram({
       domain: ROOT_DOMAINS.transactionsV1,
@@ -126,13 +126,14 @@ export const prepareL2TxMistagFromTransactionsV1 = async ({
   }
   const txMembershipProofCbor = requireProof(
     trie,
-    nativeTrieItem(selected).key,
+    transactionSourceTrieItemV1(selected).key,
     "l2-tx-mistag tx",
   );
   const txInclusion: PreparedTxInclusionJson = {
     nativeTxId: selected.nodeTxId,
     nativeTx: selected.nativeTxCompact,
     nativeTxCompactCbor: selected.nativeCompactCbor,
+    l2TransactionSourceCbor: selected.l2TransactionSourceCbor,
     transactionsPhasRoot: trie.root,
     txMembershipProofCbor,
   };

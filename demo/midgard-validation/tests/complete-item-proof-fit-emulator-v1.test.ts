@@ -1123,12 +1123,20 @@ describe("complete-item proof fit V1 (emulator, applied validators)", () => {
   // 78540c1d34b10d205942372882487a00) — the #635 wave's eight decoding-engine
   // additions are appended and touch none of these identities. COUNT (91) and
   // the proof-item hash are measured unchanged under both.
+  // Re-pinned 2026-08-31: the canonical-v1 checkpoint wave's onchain changes
+  // (hub-oracle mint synthesis plus the scheduler/fraud-proof-catalogue
+  // hub-coupling move to `quantity_of`) recompiled the fraud-proof validator
+  // set, moving resolver[1]'s applied hash 28db415e... -> cb1fe93c....
+  // Attribution is measured, not argued: the C53 sweep regenerated against
+  // the same blueprint reports the identical applied hash for
+  // `canonical_decode_item_semantic_v1.main.spend` from its own independent
+  // emulator run, and COUNT (91) is measured unchanged.
   it("pins the applied §3.2 necessity identities on the measurement deployment", async () => {
     const contracts = await loadContracts();
     expect(contracts.validationTraceDispute.semanticResolvers).toHaveLength(91);
     expect(
       contracts.validationTraceDispute.semanticResolvers[1]!.spendingScriptHash,
-    ).toBe("28db415eafec8db16d39f184ecfdc446c848d52f89e59274f228a360");
+    ).toBe("cb1fe93c0c35e1318327dc8e45882c3c5e40346e2cb55282ee6f6dcb");
     expect(contracts.validationTraceDispute.proofItem.spendingScriptHash).toBe(
       "22c9a103ed3f2fa97c982d76d6e2af50c5d54ac306983b196c8fcdab",
     );

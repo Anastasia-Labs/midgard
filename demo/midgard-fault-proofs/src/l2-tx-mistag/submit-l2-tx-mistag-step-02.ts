@@ -17,15 +17,26 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  type PreparedClaimRegistryMutationV1,
+  prepareFamilyClaimRegistryMutationV1,
+  requirePreparedClaimRegistryMutationV1,
+} from "../claim-registry-transaction-v1.js";
+import {
   DEFAULT_CONFIRMATION_POLL_MS,
   type ResolvedProverSigner,
 } from "../runtime.js";
+import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScriptsV1,
   witnessMintingPolicyCarriageV1,
 } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import {
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "../workflow/transaction-boundary-v1.js";
 import type { L2TxMistagContractsV1 } from "./contracts-v1.js";
 import {
   L2TxMistagStep02Datum,
@@ -71,6 +82,8 @@ export const submitL2TxMistagStep02 = async ({
   threadOutRef,
   referenceScriptUtxo,
   witnessReferenceScripts,
+  claimRegistryMutation,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -81,6 +94,8 @@ export const submitL2TxMistagStep02 = async ({
   /** Mandatory published step-02 reference script. */
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitL2TxMistagStep02Result> => {
   const { threadUtxo, threadToken } = await requireL2TxMistagThreadUtxoV1({
@@ -113,7 +128,28 @@ export const submitL2TxMistagStep02 = async ({
   });
 
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const resolvedClaimRegistryMutation = requirePreparedClaimRegistryMutationV1({
+    mutation:
+      claimRegistryMutation ??
+      (await prepareFamilyClaimRegistryMutationV1({
+        lucid,
+        claimRegistry: contracts.claimRegistry,
+        claimRegistryReferenceUtxo: witnessReferenceScripts.claimRegistrySpend,
+        hubOraclePolicyId: contracts.hubOraclePolicyId,
+        computationThreadPolicyId: contracts.computationThread.policyId,
+        claimId: threadToken.assetName,
+        kind: "close",
+      })),
+    kind: "close",
+    claimId: threadToken.assetName,
+    label: STEP_LABEL,
+  });
+  const feeInput = selectFeeInput(
+    resolvedClaimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
+      (utxos, reference) => excludeUtxo(utxos, reference),
+      await lucid.wallet().getUtxos(),
+    ),
+  );
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -228,7 +264,9 @@ export const submitL2TxMistagStep02 = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const tx = fraudProofMintCarriage.attach(
-    computationThreadMintCarriage.attach(base),
+    computationThreadMintCarriage.attach(
+      resolvedClaimRegistryMutation.apply(base),
+    ),
   );
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (
@@ -237,7 +275,42 @@ export const submitL2TxMistagStep02 = async ({
   ) {
     throw l2TxMistagSubmitError("step-02 layout was not resolved.");
   }
-  const txHash = await (await unsigned.sign.withWallet().complete()).submit();
+  const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof l2-tx-mistag step-02",
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.steps[1].spendingScript,
+        },
+        {
+          role: "V1 fraud-proof computation-thread minting",
+          utxo: witnessReferenceScripts?.computationThreadMint,
+          expectedScript: contracts.computationThread.mintingScript,
+        },
+        {
+          role: "V1 fraud-proof token minting",
+          utxo: witnessReferenceScripts?.fraudProofMint,
+          expectedScript: contracts.fraudProof.mintingScript,
+        },
+        {
+          role: "claim-registry spending",
+          utxo: resolvedClaimRegistryMutation.referenceScriptUtxo,
+          expectedScript: resolvedClaimRegistryMutation.registryScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
+  const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw l2TxMistagSubmitError(
+      `step-02 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

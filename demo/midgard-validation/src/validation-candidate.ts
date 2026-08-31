@@ -60,11 +60,17 @@ const projectAddress = (address: Buffer): AddressProjection => {
     return cached;
   }
 
-  // Populate only after both canonical text encoding and protected-bit
-  // decoding succeed, so invalid addresses can never poison the cache.
+  // Foreign-network bytes still have to reach the staged output scan so it can
+  // classify E_NETWORK_ID_MISMATCH at the consensus-defined instruction.
+  // They cannot be rendered under addr/addr_test, so retain a deterministic
+  // non-persisted diagnostic spelling; Phase B rejects them before mutation.
+  const decoded = decodeMidgardAddressBytes(address);
   const projection = {
-    text: encodeMidgardAddressText(address),
-    protected: decodeMidgardAddressBytes(address).protected,
+    text:
+      decoded.networkId === 0 || decoded.networkId === 1
+        ? encodeMidgardAddressText(address)
+        : `foreign-network:${cacheKey}`,
+    protected: decoded.protected,
   } satisfies AddressProjection;
   addressCacheMisses += 1;
   if (addressProjectionCache.size >= addressCacheMaxEntries) {
@@ -133,6 +139,7 @@ const mintPolicyHashHexes = (tx: MidgardLedgerTx): readonly string[] => {
 
 type BuildPhaseAValidatedTxArgs = {
   readonly ledgerTx: MidgardLedgerTx;
+  readonly expectedNetworkId: bigint;
   readonly txCbor: Buffer;
   readonly programMaterialSidecarCbor?: Buffer | null;
   readonly arrivalSeq: bigint;
@@ -142,6 +149,7 @@ type BuildPhaseAValidatedTxArgs = {
 
 export const buildPhaseAValidatedTx = ({
   ledgerTx,
+  expectedNetworkId,
   txCbor,
   programMaterialSidecarCbor,
   arrivalSeq,
@@ -183,6 +191,7 @@ export const buildPhaseAValidatedTx = ({
       produced,
     },
     derived: {
+      expectedNetworkId,
       outputSum: sumMidgardValues(
         ledgerTx.outputs.map((output) => output.value),
       ),

@@ -366,6 +366,11 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
               ...[
                 harness.witnessReferenceScripts.computationThreadMint,
                 harness.witnessReferenceScripts.fraudProofMint,
+                // The proof transaction closes the claim in the same
+                // transaction that burns the thread, so `claim_registry.spend`
+                // rides as a reference script and joins the ledger-ordered
+                // reference set this event index is derived against.
+                harness.witnessReferenceScripts.claimRegistrySpend,
               ].filter((utxo): utxo is UTxO => utxo !== undefined),
               event.utxo,
             ],
@@ -512,6 +517,11 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
               ...[
                 harness.witnessReferenceScripts.computationThreadMint,
                 harness.witnessReferenceScripts.fraudProofMint,
+                // The proof transaction closes the claim in the same
+                // transaction that burns the thread, so `claim_registry.spend`
+                // rides as a reference script and joins the ledger-ordered
+                // reference set this event index is derived against.
+                harness.witnessReferenceScripts.claimRegistrySpend,
               ].filter((utxo): utxo is UTxO => utxo !== undefined),
               event.utxo,
             ],
@@ -632,6 +642,11 @@ describe("transition-trace omitted/out-of-window/count subvariant lifecycle", ()
               ...[
                 harness.witnessReferenceScripts.computationThreadMint,
                 harness.witnessReferenceScripts.fraudProofMint,
+                // The proof transaction closes the claim in the same
+                // transaction that burns the thread, so `claim_registry.spend`
+                // rides as a reference script and joins the ledger-ordered
+                // reference set this event index is derived against.
+                harness.witnessReferenceScripts.claimRegistrySpend,
               ].filter((utxo): utxo is UTxO => utxo !== undefined),
               event.utxo,
             ],

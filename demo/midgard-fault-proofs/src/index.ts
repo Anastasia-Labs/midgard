@@ -1,5 +1,6 @@
 export * from "./aiken-blueprint-data.js";
 export * from "./canonical-decodability/index.js";
+export * from "./claim-registry-transaction-v1.js";
 export * from "./committed-field-shape/index.js";
 export * from "./cross-block-duplicate-event/index.js";
 export * from "./evidence/index.js";
@@ -7,12 +8,16 @@ export * from "./family-scaffold/index.js";
 export * from "./input-set-uniqueness/index.js";
 export * from "./inspect-contracts.js";
 export * from "./l2-tx-mistag/index.js";
+export * from "./min-ada/index.js";
 export * from "./min-fee-contracts-v1.js";
 export * from "./min-fee-submit-common-v1.js";
 export * from "./mint-authorization/index.js";
 export * from "./missing-native-script-tx/index.js";
+export * from "./missing-native-script-utxo/index.js";
 export * from "./missing-signature/index.js";
 export * from "./native-script-decoding/index.js";
+export * from "./native-script-invalid/index.js";
+export * from "./network-id/index.js";
 // RF-043: legacy diagnostic submit-init/submit-step APIs are intentionally not
 // part of the production package surface.  The CLI and file entrypoints retain
 // the same retirement guard until an authenticated canonical submitter exists.
@@ -30,6 +35,7 @@ export * from "./prepare-withdrawn-input.js";
 export * from "./prepare-zero-input.js";
 export * from "./publish-proof-chunks.js";
 export * from "./remove-fraudulent-block.js";
+export * from "./remove-unattested-block.js";
 export * from "./runtime.js";
 export * from "./submit-da-hash-preimage-step-01.js";
 export * from "./submit-da-hash-preimage-step-02.js";
@@ -59,3 +65,4 @@ export * from "./withdrawal-mistag/index.js";
 export * from "./withdrawn-input/index.js";
 export * from "./withdrawn-reference-input/index.js";
 export * from "./witness-reference-scripts-v1.js";
+export * from "./workflow/index.js";

@@ -16,12 +16,18 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  type PreparedClaimRegistryMutationV1,
+  prepareFamilyClaimRegistryMutationV1,
+  requirePreparedClaimRegistryMutationV1,
+} from "../claim-registry-transaction-v1.js";
+import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   outRefLabel,
   parseOutRef,
   type ResolvedProverSigner,
 } from "../runtime.js";
+import { excludeUtxo } from "../spend-input-witness.js";
 import {
   requireComputationThreadToken,
   selectFeeInput,
@@ -30,6 +36,11 @@ import {
   type FaultProofWitnessReferenceScriptsV1,
   witnessMintingPolicyCarriageV1,
 } from "../witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptV1,
+} from "../workflow/transaction-boundary-v1.js";
 import {
   CANONICAL_DECODABILITY_CATEGORY_LABEL,
   type CanonicalDecodabilityContractsV1,
@@ -87,6 +98,8 @@ export const submitCanonicalDecodabilityCancel = async ({
   threadOutRef,
   referenceScriptUtxo,
   witnessReferenceScripts,
+  claimRegistryMutation,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -98,6 +111,9 @@ export const submitCanonicalDecodabilityCancel = async ({
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
+  /** Runs after local evaluation/signing and before provider submission. */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitCanonicalDecodabilityCancelResult> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -143,7 +159,28 @@ export const submitCanonicalDecodabilityCancel = async ({
   ];
 
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const resolvedClaimRegistryMutation = requirePreparedClaimRegistryMutationV1({
+    mutation:
+      claimRegistryMutation ??
+      (await prepareFamilyClaimRegistryMutationV1({
+        lucid,
+        claimRegistry: contracts.claimRegistry,
+        claimRegistryReferenceUtxo: witnessReferenceScripts?.claimRegistrySpend,
+        hubOraclePolicyId: contracts.hubOraclePolicyId,
+        computationThreadPolicyId: contracts.computationThread.policyId,
+        claimId: threadToken.assetName,
+        kind: "cancel",
+      })),
+    kind: "cancel",
+    claimId: threadToken.assetName,
+    label: `${CANONICAL_DECODABILITY_CATEGORY_LABEL} cancel`,
+  });
+  const feeInput = selectFeeInput(
+    resolvedClaimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
+      (utxos, reference) => excludeUtxo(utxos, reference),
+      await lucid.wallet().getUtxos(),
+    ),
+  );
   let inputIndex: bigint | undefined;
   let mintRedeemerIndex: bigint | undefined;
   const spendRedeemer = ((ctx) => {
@@ -188,7 +225,7 @@ export const submitCanonicalDecodabilityCancel = async ({
     .mintAssets({ [threadToken.unit]: -1n }, threadBurnRedeemer)
     .addSignerKey(signer.paymentKeyHash);
   const unsigned = await computationThreadMintCarriage
-    .attach(chainedTx)
+    .attach(resolvedClaimRegistryMutation.apply(chainedTx))
     .complete({ localUPLCEval: true });
   if (inputIndex === undefined || mintRedeemerIndex === undefined) {
     throw canonicalDecodabilitySubmitError(
@@ -196,7 +233,33 @@ export const submitCanonicalDecodabilityCancel = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: [
+      workflowReferenceScriptV1({
+        role: `${stepLabel}-cancel`,
+        utxo: stepReference,
+        expectedScript: contracts.steps[stepIndex].spendingScript,
+      }),
+      workflowReferenceScriptV1({
+        role: `${stepLabel}-cancel-computation-thread-mint`,
+        utxo: witnessReferenceScripts?.computationThreadMint,
+        expectedScript: contracts.computationThread.mintingScript,
+      }),
+      workflowReferenceScriptV1({
+        role: "claim-registry spending",
+        utxo: resolvedClaimRegistryMutation.referenceScriptUtxo,
+        expectedScript: resolvedClaimRegistryMutation.registryScript,
+      }),
+    ],
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw canonicalDecodabilitySubmitError(
+      `provider returned transaction hash ${txHash}, expected ${expectedTxHash}`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

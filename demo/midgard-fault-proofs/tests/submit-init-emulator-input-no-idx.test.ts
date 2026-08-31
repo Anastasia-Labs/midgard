@@ -56,6 +56,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   midgardTxOutputFromCanonicalCborV1,
+  resolveProverSigner,
   submitInputNoIdxStep01,
   submitInputNoIdxStep02,
   submitInputNoIdxStep03,
@@ -75,6 +76,7 @@ import {
   buildRemovalDeploymentInfo,
   captureEmulatorSubmission,
   expectSingleUtxoWithUnit,
+  l2TransactionSourceCborV1,
   makeFaultProofEmulatorHarnessV1,
   makeNativeTx,
   network,
@@ -119,6 +121,24 @@ const fixedBaseEmulatorAccount = (
     accountIndex: 0,
     network: "Custom",
   }).address,
+  assets: { lovelace },
+});
+
+/**
+ * The same fixed-seed determinism for the prover, funded at the address
+ * `resolveProverSigner` derives — the enterprise one, since the fraud-prover
+ * reward output is matched by payment credential with no stake part. The
+ * harness selects the prover wallet through that signer, so a base-address
+ * seeding leaves every prover transaction building against an empty wallet.
+ */
+const fixedProverEmulatorAccount = (
+  seedPhrase: string,
+  lovelace: bigint,
+): EmulatorAccount => ({
+  seedPhrase,
+  privateKey: "",
+  address: resolveProverSigner({ network, walletSeedPhrase: seedPhrase })
+    .address,
   assets: { lovelace },
 });
 
@@ -218,12 +238,20 @@ const buildInputNoIdxBlockFixture = async ({
     producingTx.compact,
   );
   const badCompactCbor = encodeMidgardNativeTxCompactV1(badTx.compact);
+  const producingSourceCbor = l2TransactionSourceCborV1(producingTx);
+  const badSourceCbor = l2TransactionSourceCborV1(badTx);
 
   const store = new Store(undefined);
   await store.ready();
   const trie = new Trie(store);
-  await trie.insert(Buffer.from(producingTxId, "hex"), producingCompactCbor);
-  await trie.insert(Buffer.from(badTxId, "hex"), badCompactCbor);
+  await trie.insert(
+    Buffer.from(producingTxId, "hex"),
+    Buffer.from(producingSourceCbor, "hex"),
+  );
+  await trie.insert(
+    Buffer.from(badTxId, "hex"),
+    Buffer.from(badSourceCbor, "hex"),
+  );
   const producingProof = await trie.prove(Buffer.from(producingTxId, "hex"));
   const badProof = await trie.prove(Buffer.from(badTxId, "hex"));
   const transactionsRoot = trieRootHex(trie);
@@ -233,12 +261,14 @@ const buildInputNoIdxBlockFixture = async ({
   const inclusionFor = (
     nativeTxId: string,
     compactCbor: Buffer,
+    l2TransactionSourceCbor: string,
     proofCbor: string,
     compact: typeof producingTx.compact,
   ): SubmitStep01TxInclusion => ({
     nativeTxId,
     nativeTx: nativeTxFromCoreCompact(compact),
     nativeTxCompactCbor: compactCbor.toString("hex"),
+    l2TransactionSourceCbor,
     transactionsPhasRoot: transactionsRoot,
     txMembershipProof: Data.from(proofCbor, Proof),
     txMembershipProofCbor: proofCbor,
@@ -258,12 +288,14 @@ const buildInputNoIdxBlockFixture = async ({
     badTxInclusion: inclusionFor(
       badTxId,
       badCompactCbor,
+      badSourceCbor,
       badProof.toCBOR().toString("hex"),
       badTx.compact,
     ),
     producingTxInclusion: inclusionFor(
       producingTxId,
       producingCompactCbor,
+      producingSourceCbor,
       producingProof.toCBOR().toString("hex"),
       producingTx.compact,
     ),
@@ -275,7 +307,10 @@ const makeEmulatorHarness = async () =>
     contractOptions: { realInputNoIdx: true, alwaysFraudProofCatalogue: true },
     accounts: {
       funder: fixedBaseEmulatorAccount(TEST_ONLY_FUNDER_SEED, 40_000_000_000n),
-      prover: fixedBaseEmulatorAccount(TEST_ONLY_PROVER_SEED, 20_000_000_000n),
+      prover: fixedProverEmulatorAccount(
+        TEST_ONLY_PROVER_SEED,
+        20_000_000_000n,
+      ),
     },
     emulatorTimeMs: FIXED_EMULATOR_UNIX_MS,
   });

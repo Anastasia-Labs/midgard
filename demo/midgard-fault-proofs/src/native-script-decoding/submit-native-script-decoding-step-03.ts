@@ -55,6 +55,11 @@ import {
 import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "../workflow/transaction-boundary-v1.js";
 import type { NativeScriptDecodingContractsV1 } from "./contracts-v1.js";
 import {
   buildNativeScriptDecodingChunkProofV1,
@@ -220,6 +225,7 @@ const advanceStep03Thread = async ({
   buildRedeemer,
   carriageUtxos,
   referenceScriptUtxo,
+  preSubmitBoundary,
   awaitConfirmation,
 }: {
   readonly lucid: LucidEvolution;
@@ -233,6 +239,7 @@ const advanceStep03Thread = async ({
   readonly buildRedeemer: (layout: Step03Layout) => string;
   readonly carriageUtxos: readonly UTxO[];
   readonly referenceScriptUtxo: UTxO;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation: boolean;
 }): Promise<{ readonly txHash: string; readonly layout: Step03Layout }> => {
   const stepLabel = nativeScriptDecodingStepLabelV1(spendingStepIndex);
@@ -308,7 +315,32 @@ const advanceStep03Thread = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const referenceRole =
+    spendingStepIndex === OPEN_SUBJECT_INDEX
+      ? "V1 fraud-proof native-script-decoding step-03 open-subject"
+      : spendingStepIndex === BIND_DESCRIPTOR_INDEX
+        ? "V1 fraud-proof native-script-decoding step-03 bind-descriptor"
+        : "V1 fraud-proof native-script-decoding step-03 advance-or-close";
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: referenceRole,
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.steps[spendingStepIndex].spendingScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw nativeScriptDecodingSubmitError(
+      `${stepLabel} provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }
@@ -363,7 +395,11 @@ export const submitNativeScriptDecodingStep03OpenSubject = async ({
   nativeTxCompactCbor,
   subjectFieldInputs,
   publishCarriage = false,
+  publishedCarriageUtxos,
+  certificateUtxo,
   referenceScriptUtxo,
+  publicationPreSubmitBoundary,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -375,7 +411,11 @@ export const submitNativeScriptDecodingStep03OpenSubject = async ({
   readonly nativeTxCompactCbor?: string;
   readonly subjectFieldInputs?: readonly MidgardTxInput[];
   readonly publishCarriage?: boolean;
+  readonly publishedCarriageUtxos?: readonly UTxO[];
+  readonly certificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
+  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNativeScriptDecodingStep03Result> => {
   const { threadUtxo, threadToken } =
@@ -433,13 +473,16 @@ export const submitNativeScriptDecodingStep03OpenSubject = async ({
       label: `${OPEN_SUBJECT_LABEL} subject field`,
     });
     signer.selectWallet(lucid);
-    carriageUtxos = await publishFaultProofFieldCarriageV1({
-      lucid,
-      signer,
-      planned,
-      publisherAddress: signer.address,
-      label: `${OPEN_SUBJECT_LABEL} subject field`,
-    });
+    const published =
+      publishedCarriageUtxos ??
+      (await publishFaultProofFieldCarriageV1({
+        lucid,
+        signer,
+        planned,
+        publisherAddress: signer.address,
+        label: `${OPEN_SUBJECT_LABEL} subject field`,
+        preSubmitBoundary: publicationPreSubmitBoundary,
+      }));
     const stepReference = requireNativeScriptDecodingReferenceScriptV1({
       utxo: referenceScriptUtxo,
       expectedScriptHash:
@@ -448,10 +491,18 @@ export const submitNativeScriptDecodingStep03OpenSubject = async ({
     });
     subjectFieldOpening = faultProofFieldOpeningV1({
       planned,
-      referenceInputs: [...carriageUtxos, stepReference],
+      referenceInputs: [
+        ...published,
+        ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+        stepReference,
+      ],
       certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
       label: `${OPEN_SUBJECT_LABEL} subject field`,
     });
+    carriageUtxos = [
+      ...published,
+      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+    ];
   }
 
   let nextState: NativeScriptDecodingScanThreadStateV1;
@@ -513,6 +564,7 @@ export const submitNativeScriptDecodingStep03OpenSubject = async ({
       ),
     carriageUtxos,
     referenceScriptUtxo,
+    preSubmitBoundary,
     awaitConfirmation,
   });
   return step03Result({
@@ -541,6 +593,7 @@ export const submitNativeScriptDecodingStep03BindDescriptor = async ({
   plan,
   referenceScriptItemBytes,
   referenceScriptUtxo,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -554,6 +607,7 @@ export const submitNativeScriptDecodingStep03BindDescriptor = async ({
   readonly plan?: NativeScriptDecodingScanPlanV1;
   readonly referenceScriptItemBytes?: Uint8Array;
   readonly referenceScriptUtxo: UTxO;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNativeScriptDecodingStep03Result> => {
   const { threadUtxo, threadToken } =
@@ -706,6 +760,7 @@ export const submitNativeScriptDecodingStep03BindDescriptor = async ({
       ),
     carriageUtxos: [],
     referenceScriptUtxo,
+    preSubmitBoundary,
     awaitConfirmation,
   });
   return step03Result({
@@ -731,6 +786,7 @@ export const submitNativeScriptDecodingStep03AdvanceOrCloseSegment = async ({
   segment,
   referenceScriptItemBytes,
   referenceScriptUtxo,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -741,6 +797,7 @@ export const submitNativeScriptDecodingStep03AdvanceOrCloseSegment = async ({
   readonly segment: NativeScriptDecodingScanSegmentPlanV1;
   readonly referenceScriptItemBytes: Uint8Array;
   readonly referenceScriptUtxo: UTxO;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNativeScriptDecodingStep03Result> => {
   const { threadUtxo, threadToken } =
@@ -817,6 +874,7 @@ export const submitNativeScriptDecodingStep03AdvanceOrCloseSegment = async ({
       ),
     carriageUtxos: [],
     referenceScriptUtxo,
+    preSubmitBoundary,
     awaitConfirmation,
   });
   return step03Result({
@@ -840,6 +898,7 @@ export const submitNativeScriptDecodingStep03AdvanceOrCloseClose = async ({
   verdict,
   referenceScriptItemBytes,
   referenceScriptUtxo,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -850,6 +909,7 @@ export const submitNativeScriptDecodingStep03AdvanceOrCloseClose = async ({
   readonly verdict: NativeScriptDecodingVerdictPlanV1;
   readonly referenceScriptItemBytes?: Uint8Array;
   readonly referenceScriptUtxo: UTxO;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNativeScriptDecodingStep03Result> => {
   const { threadUtxo, threadToken } =
@@ -963,6 +1023,7 @@ export const submitNativeScriptDecodingStep03AdvanceOrCloseClose = async ({
       ),
     carriageUtxos: [],
     referenceScriptUtxo,
+    preSubmitBoundary,
     awaitConfirmation,
   });
   return step03Result({

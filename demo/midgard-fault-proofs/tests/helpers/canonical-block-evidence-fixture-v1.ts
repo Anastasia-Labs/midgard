@@ -26,10 +26,14 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
+import { buildCanonicalMidgardLedgerEntryOutputMaterialV1 } from "@al-ft/midgard-validation";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { buildCountedRoot } from "../../src/transition-trace/phas.js";
+import {
+  buildCountedRoot,
+  keyValuePhasRootWithCount,
+} from "../../src/transition-trace/phas.js";
 import { encodeData } from "../../src/transition-trace/reconstruct.js";
 
 export const h32 = (byte: number): string =>
@@ -45,9 +49,13 @@ export const outRefCbor = (txIdByte: number, index: bigint): Buffer =>
 
 export type FixtureTransactionInputV1 = {
   readonly spendInputs: readonly Buffer[];
+  readonly referenceInputs?: readonly Buffer[];
+  readonly outputs?: readonly Buffer[];
   readonly fee: bigint;
+  readonly networkId?: bigint;
   readonly validityIntervalStart?: bigint;
   readonly validityIntervalEnd?: bigint;
+  readonly addressWitnesses?: readonly SDK.MidgardAddressWitness[];
 };
 
 export type FixtureTransactionV1 = {
@@ -60,17 +68,21 @@ export type FixtureTransactionV1 = {
 
 export const buildFixtureTransactionV1 = ({
   spendInputs,
+  referenceInputs = [],
+  outputs = [],
   fee,
+  networkId = MIDGARD_NATIVE_NETWORK_ID_NONE,
   validityIntervalStart = MIDGARD_POSIX_TIME_NONE,
   validityIntervalEnd = MIDGARD_POSIX_TIME_NONE,
+  addressWitnesses = [],
 }: FixtureTransactionInputV1): FixtureTransactionV1 => {
   const canonical: MidgardNativeTxCanonicalV1 = {
     version: MIDGARD_NATIVE_TX_V1_VERSION,
     validity: "TxIsValid",
     body: {
       spendInputsPreimageCbor: encodeCbor([...spendInputs]),
-      referenceInputsPreimageCbor: EMPTY_CBOR_LIST,
-      outputsPreimageCbor: EMPTY_CBOR_LIST,
+      referenceInputsPreimageCbor: encodeCbor([...referenceInputs]),
+      outputsPreimageCbor: encodeCbor([...outputs]),
       fee,
       validityIntervalStart,
       validityIntervalEnd,
@@ -79,10 +91,14 @@ export const buildFixtureTransactionV1 = ({
       mintPreimageCbor: EMPTY_CBOR_LIST,
       scriptIntegrityHash: EMPTY_NULL_ROOT,
       auxiliaryDataHash: EMPTY_NULL_ROOT,
-      networkId: MIDGARD_NATIVE_NETWORK_ID_NONE,
+      networkId,
     },
     witnessSet: {
-      addrTxWitsPreimageCbor: EMPTY_CBOR_LIST,
+      addrTxWitsPreimageCbor: encodeCbor(
+        addressWitnesses.map((witness) =>
+          SDK.encodeMidgardAddressWitnessCanonicalV1(witness),
+        ),
+      ),
       scriptTxWitsPreimageCbor: EMPTY_CBOR_LIST,
       redeemerTxWitsPreimageCbor: EMPTY_CBOR_LIST,
     },
@@ -132,18 +148,27 @@ export type CanonicalTransactionsRootModeV1 = "payloadSource" | "nativeCompact";
 
 export const buildCanonicalBlockFixtureV1 = async ({
   transactions,
+  utxos = [],
   startTime = 10n,
   endTime = 20n,
   minFeeA = 0n,
   minFeeB = 0n,
   transactionsRootMode = "payloadSource",
+  prevHeaderHash = h28(90),
+  prevUtxosRoot = SDK.EMPTY_MERKLE_TREE_ROOT,
 }: {
   readonly transactions: readonly FixtureTransactionV1[];
+  readonly utxos?: readonly Readonly<{
+    key: Uint8Array;
+    value: Uint8Array;
+  }>[];
   readonly startTime?: bigint;
   readonly endTime?: bigint;
   readonly minFeeA?: bigint;
   readonly minFeeB?: bigint;
   readonly transactionsRootMode?: CanonicalTransactionsRootModeV1;
+  readonly prevHeaderHash?: string;
+  readonly prevUtxosRoot?: string;
 }): Promise<CanonicalBlockFixtureV1> => {
   const transactionEntries: SDK.DaPayloadEntry[] = transactions.map((tx) => [
     tx.txId,
@@ -228,6 +253,19 @@ export const buildCanonicalBlockFixtureV1 = async ({
     SDK.ROOT_DOMAINS.validationTraces,
     bufferEntries(validationTraceEntries),
   );
+  const rawUtxoEntries: SDK.DaPayloadEntry[] = utxos.map(({ key, value }) => [
+    Buffer.from(key).toString("hex"),
+    Buffer.from(value).toString("hex"),
+  ]);
+  const utxosRoot = await keyValuePhasRootWithCount(
+    utxos.map(({ key, value }) => ({
+      key: Buffer.from(key),
+      value: buildCanonicalMidgardLedgerEntryOutputMaterialV1({
+        outRef: key,
+        outputCbor: value,
+      }).descriptorCbor,
+    })),
+  );
 
   const counts = {
     withdrawalCount: 0n,
@@ -240,8 +278,8 @@ export const buildCanonicalBlockFixtureV1 = async ({
   };
 
   const header: SDK.HeaderV1 = {
-    prevUtxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
-    utxosRoot: SDK.EMPTY_MERKLE_TREE_ROOT,
+    prevUtxosRoot,
+    utxosRoot: utxosRoot.root,
     withdrawalsRoot: withdrawalsRoot.root,
     forcedTransactionsRoot: forcedTransactionsRoot.root,
     transactionsRoot: transactionsRoot.root,
@@ -256,7 +294,7 @@ export const buildCanonicalBlockFixtureV1 = async ({
     expectedNetworkId: 0n,
     minFeeA,
     minFeeB,
-    prevHeaderHash: h28(90),
+    prevHeaderHash,
     operatorVkey: h28(91),
     protocolVersion: 1n,
   };
@@ -266,7 +304,7 @@ export const buildCanonicalBlockFixtureV1 = async ({
     block_body: {
       header_hash: headerHash,
       header,
-      utxos: [],
+      utxos: sortEntries(rawUtxoEntries),
       withdrawals: [],
       forced_transactions: [],
       transactions: sortEntries(transactionEntries),
@@ -306,7 +344,7 @@ export const authenticatedHeaderObservationV1 = (
     grade: "security",
   },
   chainPoint: { slot: 4242n, blockHash: h32(7) },
-  confirmationDepth: 12,
+  confirmationDepth: 30,
   headerHash: fixture.headerHash,
   header: fixture.header,
   ...overrides,

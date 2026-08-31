@@ -1087,6 +1087,8 @@ describe("native-script-decoding adversarial-prover emulator suite", () => {
         referenceScriptUtxo: refs[4],
         computationThreadReferenceUtxo:
           harness.witnessReferenceScripts.computationThreadMint!,
+        claimRegistryReference:
+          harness.witnessReferenceScripts.claimRegistrySpend!,
       }),
     );
     expect(cancelMessage.length).toBeGreaterThan(0);

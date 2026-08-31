@@ -17,11 +17,8 @@
  */
 
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
-import { outRefLabel } from "@al-ft/midgard-core";
-import { encodeMidgardNativeTxCompactV1 } from "@al-ft/midgard-core/codec";
+import { computeMidgardNativeTxIdV1, outRefLabel } from "@al-ft/midgard-core";
 import {
-  DA_HASH_PREIMAGE_COMPACT_V1_FRAME_BYTE_COUNT,
-  daHashPreimageEvidenceFromCommittedLeafV1,
   DaHashPreimageStep02Datum,
   FraudProofTokenDatum,
 } from "@al-ft/midgard-sdk";
@@ -34,6 +31,7 @@ import {
   type SubmitDaHashPreimageTxInclusion,
   submitRemoveFraudulentBlock,
 } from "../src/index.js";
+import { runEmulatorLifecycleStage } from "./support/emulator/emulator-context.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
 import {
   expectStateQueueHeaderOrder,
@@ -42,6 +40,7 @@ import {
 import {
   buildRemovalDeploymentInfo,
   expectSingleUtxoWithUnit,
+  l2TransactionSourceCborV1,
   makeFaultProofEmulatorHarnessV1,
   makeNativeTx,
   network,
@@ -67,10 +66,8 @@ type CommittedLeafFixture = {
 };
 
 /**
- * Commits one canonical native-V1 compact transaction as the single leaf of a
- * block's raw transactions MPF, under `committedTxId`. When that key is not
- * the value's own transaction id the block carries the `da-hash-preimage`
- * violation; when it is, the block is honest.
+ * Commits one canonical `Data(L2TransactionSourceV1)` as the single leaf of a
+ * block's transactions MPF, under `committedTxId`.
  */
 const buildCommittedLeafFixture = async (
   committedKey?: string,
@@ -82,11 +79,11 @@ const buildCommittedLeafFixture = async (
     outputByte: "63",
     witnessByte: "64",
   });
-  const committedLeafValue = encodeMidgardNativeTxCompactV1(nativeTx.compact);
-  const canonicalTxId = daHashPreimageEvidenceFromCommittedLeafV1({
-    committedTxId: FOREIGN_COMMITTED_KEY,
-    committedLeafValue,
-  }).derivedTxId;
+  const committedLeafValue = Buffer.from(
+    l2TransactionSourceCborV1(nativeTx),
+    "hex",
+  );
+  const canonicalTxId = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
   const committedTxId = committedKey ?? FOREIGN_COMMITTED_KEY;
 
   const store = new Store(undefined);
@@ -168,17 +165,19 @@ describe("da-hash-preimage fault-proof emulator lifecycle", () => {
     });
 
     // ## init
-    const initResult = await submitInit({
-      lucid: proverLucid,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      fraudCategory: "daHashPreimage",
-      fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-      awaitConfirmation: true,
-    });
+    const initResult = await runEmulatorLifecycleStage("q44.init", () =>
+      submitInit({
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        fraudCategory: "daHashPreimage",
+        fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+        awaitConfirmation: true,
+      }),
+    );
 
     expect(initResult.txHash).toHaveLength(64);
     expect(initResult.fraudulentHeaderHash).toBe(headerHash);
@@ -202,31 +201,33 @@ describe("da-hash-preimage fault-proof emulator lifecycle", () => {
     const proverPaymentKeyHash = proverPaymentCredential!.hash;
 
     // ## step-01: bind the committed leaf to the header
-    const step01Result = await submitDaHashPreimageStep01({
-      lucid: proverLucid,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      threadOutRef: outRefLabel(firstStepUtxo),
-      stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
-      txInclusion: fixture.inclusion,
-      referenceScriptUtxo:
-        harness.faultProofReferenceScripts.fraudProofDaHashPreimage.utxo,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-      awaitConfirmation: true,
-    });
+    const step01Result = await runEmulatorLifecycleStage("q44.step-01", () =>
+      submitDaHashPreimageStep01({
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(firstStepUtxo),
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion: fixture.inclusion,
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofDaHashPreimage.utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+        awaitConfirmation: true,
+      }),
+    );
 
     expect(step01Result.txHash).toHaveLength(64);
     expect(step01Result.fraudulentHeaderHash).toBe(headerHash);
     expect(step01Result.committedTxId).toBe(fixture.committedTxId);
-    expect(step01Result.derivedTxId).toBe(fixture.canonicalTxId);
+    expect(step01Result.verdict).toBe("KeyMismatch");
+    expect(step01Result.embeddedTxId).toBe(fixture.canonicalTxId);
+    expect(step01Result.derivedTxId).toBeNull();
     expect(step01Result.committedLeafByteCount).toBe(
       fixture.committedLeafValueCbor.length / 2,
     );
-    expect(step01Result.committedLeafByteCount).toBeGreaterThanOrEqual(
-      DA_HASH_PREIMAGE_COMPACT_V1_FRAME_BYTE_COUNT,
-    );
+    expect(step01Result.committedLeafByteCount).toBeGreaterThan(0);
     await expect(
       proverLucid.utxosAtWithUnit(
         initResult.firstStepAddress,
@@ -239,39 +240,34 @@ describe("da-hash-preimage fault-proof emulator lifecycle", () => {
       step01Result.secondStepAddress,
       initResult.computationThreadUnit,
     );
-    // The evidence triple the L1 step-01 validator pinned is exactly the one
-    // the off-chain rule derives from the committed bytes.
+    // The total verdict pinned by L1 matches the off-chain adjudicator.
     expect(Data.from(secondStepUtxo.datum!, DaHashPreimageStep02Datum)).toEqual(
       {
         fraud_prover: proverPaymentKeyHash,
-        data: {
-          committed_tx_id: fixture.committedTxId,
-          derived_tx_id: fixture.canonicalTxId,
-          committed_leaf_byte_count: BigInt(
-            fixture.committedLeafValueCbor.length / 2,
-          ),
-        },
+        data: { verdict: "KeyMismatch" },
       },
     );
 
     // ## step-02: adjudicate and mint the permanent fraud-proof token
-    const step02Result = await submitDaHashPreimageStep02({
-      lucid: proverLucid,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      threadOutRef: outRefLabel(secondStepUtxo),
-      referenceScriptUtxo:
-        harness.faultProofReferenceScripts.fraudProofDaHashPreimageStep02.utxo,
-      witnessReferenceScripts: harness.witnessReferenceScripts,
-      awaitConfirmation: true,
-    });
+    const step02Result = await runEmulatorLifecycleStage("q44.step-02", () =>
+      submitDaHashPreimageStep02({
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        threadOutRef: outRefLabel(secondStepUtxo),
+        referenceScriptUtxo:
+          harness.faultProofReferenceScripts.fraudProofDaHashPreimageStep02
+            .utxo,
+        witnessReferenceScripts: harness.witnessReferenceScripts,
+        awaitConfirmation: true,
+      }),
+    );
 
     expect(step02Result.txHash).toHaveLength(64);
     expect(step02Result.fraudulentHeaderHash).toBe(headerHash);
-    expect(step02Result.committedTxId).toBe(fixture.committedTxId);
-    expect(step02Result.derivedTxId).toBe(fixture.canonicalTxId);
+    expect(step02Result.verdict).toBe("KeyMismatch");
     expect(step02Result.fraudProofAssetName).toBe(
       initResult.computationThreadAssetName,
     );
@@ -299,19 +295,21 @@ describe("da-hash-preimage fault-proof emulator lifecycle", () => {
 
     // ## removal: the proven block leaves the state queue, the token stays
     const removeNow = BigInt(emulator.now());
-    const removeResult = await submitRemoveFraudulentBlock({
-      lucid: proverLucid,
-      blueprint: realBlueprint,
-      deploymentInfo,
-      network,
-      signer: proverSigner,
-      fraudCategory: "daHashPreimage",
-      fraudulentHeaderHash: headerHash,
-      awaitConfirmation: true,
-      requireReferenceScripts: true,
-      validFrom: removeNow > 120_000n ? removeNow - 120_000n : 0n,
-      validTo: removeNow + 300_000n,
-    });
+    const removeResult = await runEmulatorLifecycleStage("q44.removal", () =>
+      submitRemoveFraudulentBlock({
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        deploymentInfo,
+        network,
+        signer: proverSigner,
+        fraudCategory: "daHashPreimage",
+        fraudulentHeaderHash: headerHash,
+        awaitConfirmation: true,
+        requireReferenceScripts: true,
+        validFrom: removeNow > 120_000n ? removeNow - 120_000n : 0n,
+        validTo: removeNow + 300_000n,
+      }),
+    );
 
     expect(removeResult.fraudCategory).toBe("daHashPreimage");
     expect(removeResult.fraudCategoryId).toBe(

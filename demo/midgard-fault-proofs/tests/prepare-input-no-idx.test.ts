@@ -40,8 +40,8 @@ import * as FaultProofs from "../src/index.js";
 import {
   buildTrieView,
   decodeTransactionMaterial,
-  nativeTrieItem,
   type NodeTransactionPayload,
+  transactionSourceTrieItemV1,
 } from "../src/prepare-double-spend.js";
 import {
   InputNoIdxRejectionV1,
@@ -156,7 +156,7 @@ const committedTransactionsRoot = async (
   const decoded = await Promise.all(
     transactions.map(decodeTransactionMaterial),
   );
-  const trie = await buildTrieView(decoded.map(nativeTrieItem));
+  const trie = await buildTrieView(decoded.map(transactionSourceTrieItemV1));
   return await Effect.runPromise(
     SDK.commitCountedRootProgram({
       domain: SDK.ROOT_DOMAINS.transactionsV1,
@@ -584,7 +584,7 @@ describe("Q13 input-no-idx valid-block negatives", () => {
     const decoded = await Promise.all(
       block.transactions.map(decodeTransactionMaterial),
     );
-    const trie = await buildTrieView(decoded.map(nativeTrieItem));
+    const trie = await buildTrieView(decoded.map(transactionSourceTrieItemV1));
     expect(
       await rejectionCode(async () =>
         prepareInputNoIdxFromTransactions({
@@ -728,7 +728,11 @@ describe("Q13 input-no-idx Q03 evidence gates", () => {
   };
 
   it("builds the proof from retained public DA bound to an authenticated L1 header", async () => {
-    const fixture = await canonicalViolatingFixture("nativeCompact");
+    // The header's normative transactions MPF commits
+    // `Data(L2TransactionSourceV1)` per transaction id, which is the shape the
+    // DA payload's `transactions` map carries, so `payloadSource` is the
+    // authenticating combination and `nativeCompact` is its refusal twin below.
+    const fixture = await canonicalViolatingFixture("payloadSource");
     const output = await prepareInputNoIdxFromCanonicalEvidenceV1({
       evidence: await evidenceFor(fixture),
     });
@@ -744,14 +748,17 @@ describe("Q13 input-no-idx Q03 evidence gates", () => {
   });
 
   it("refuses evidence whose native inclusion root cannot be authenticated on-chain", async () => {
+    // A header whose transactions root was counted over bare compact CBOR no
+    // longer re-commits the source values the DA payload carries, so the
+    // inclusion gate must refuse it.
     const evidence = await evidenceFor(
-      await canonicalViolatingFixture("payloadSource"),
+      await canonicalViolatingFixture("nativeCompact"),
     );
     expect(
       await rejectionCode(async () =>
         prepareInputNoIdxFromCanonicalEvidenceV1({ evidence }),
       ),
-    ).toBe("native_inclusion_root_unauthenticated");
+    ).toBe("transaction_source_inclusion_root_unauthenticated");
   });
 
   it("refuses evidence whose DA record was downgraded to an operator diagnostic", async () => {

@@ -66,6 +66,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { prepareDeploymentClaimRegistryMutationV1 } from "../../src/claim-registry-transaction-v1.js";
 import {
   faultProofFieldOpeningV1,
   planFaultProofFieldOpeningV1,
@@ -80,6 +81,7 @@ import {
   type ResolvedProverSigner,
   resolveReferenceInputNoIdxDeploymentContracts,
 } from "../../src/runtime.js";
+import { excludeUtxo } from "../../src/spend-input-witness.js";
 import {
   nativeTxFromCoreCompact,
   requireComputationThreadToken,
@@ -95,6 +97,7 @@ import {
   witnessMintingPolicyCarriageV1,
 } from "../../src/witness-reference-scripts-v1.js";
 import {
+  l2TransactionSourceCborV1,
   makeFaultProofEmulatorHarnessV1,
   network,
   publishPlainReferenceScriptUtxo,
@@ -312,12 +315,20 @@ export const buildReferenceInputNoIdxBlockFixtureV1 = async ({
     producingTx.compact,
   );
   const badCompactCbor = encodeMidgardNativeTxCompactV1(badTx.compact);
+  const producingSourceCbor = l2TransactionSourceCborV1(producingTx);
+  const badSourceCbor = l2TransactionSourceCborV1(badTx);
 
   const store = new Store(undefined);
   await store.ready();
   const trie = new Trie(store);
-  await trie.insert(Buffer.from(producingTxId, "hex"), producingCompactCbor);
-  await trie.insert(Buffer.from(badTxId, "hex"), badCompactCbor);
+  await trie.insert(
+    Buffer.from(producingTxId, "hex"),
+    Buffer.from(producingSourceCbor, "hex"),
+  );
+  await trie.insert(
+    Buffer.from(badTxId, "hex"),
+    Buffer.from(badSourceCbor, "hex"),
+  );
   const producingProof = await trie.prove(Buffer.from(producingTxId, "hex"));
   const badProof = await trie.prove(Buffer.from(badTxId, "hex"));
   const transactionsRoot = trieRootHex(trie);
@@ -327,12 +338,14 @@ export const buildReferenceInputNoIdxBlockFixtureV1 = async ({
   const inclusionFor = (
     nativeTxId: string,
     compactCbor: Buffer,
+    l2TransactionSourceCbor: string,
     proofCbor: string,
     compact: typeof producingTx.compact,
   ): SubmitStep01TxInclusion => ({
     nativeTxId,
     nativeTx: nativeTxFromCoreCompact(compact),
     nativeTxCompactCbor: compactCbor.toString("hex"),
+    l2TransactionSourceCbor,
     transactionsPhasRoot: transactionsRoot,
     txMembershipProof: Data.from(proofCbor, Proof),
     txMembershipProofCbor: proofCbor,
@@ -357,12 +370,14 @@ export const buildReferenceInputNoIdxBlockFixtureV1 = async ({
     badTxInclusion: inclusionFor(
       badTxId,
       badCompactCbor,
+      badSourceCbor,
       badProof.toCBOR().toString("hex"),
       badTx.compact,
     ),
     producingTxInclusion: inclusionFor(
       producingTxId,
       producingCompactCbor,
+      producingSourceCbor,
       producingProof.toCBOR().toString("hex"),
       producingTx.compact,
     ),
@@ -671,15 +686,32 @@ export const submitRawReferenceInputNoIdxStep04V1 = async ({
     expectedScriptHash: chain.steps[3].spendingScriptHash,
     label: "raw reference-input-no-idx step 04",
   });
-  const referenceInputs = [...published, stepReference];
+  const claimRegistryMutation = await prepareDeploymentClaimRegistryMutationV1({
+    lucid,
+    blueprint,
+    deploymentInfo,
+    network,
+    claimRegistryReferenceUtxo: witnessReferenceScripts.claimRegistrySpend,
+    computationThreadPolicyId: contracts.computationThread.policyId,
+    claimId: threadToken.assetName,
+    kind: "close",
+  });
+  const referenceInputs = [
+    ...published,
+    stepReference,
+    ...claimRegistryMutation.referenceInputs,
+  ];
   const outputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
     referenceInputs,
     label: "Raw reference-input-no-idx step 04 outputs",
   });
   const feeInput = selectFeeInput(
-    (await lucid.wallet().getUtxos()).filter(
-      (utxo) => utxo.datum == null && utxo.datumHash == null,
+    claimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
+      (utxos, reference) => excludeUtxo(utxos, reference),
+      (await lucid.wallet().getUtxos()).filter(
+        (utxo) => utxo.datum == null && utxo.datumHash == null,
+      ),
     ),
   );
   const fraudProofUnit = toUnit(
@@ -789,7 +821,7 @@ export const submitRawReferenceInputNoIdxStep04V1 = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const unsigned = await fraudProofCarriage
-    .attach(computationThreadCarriage.attach(base))
+    .attach(computationThreadCarriage.attach(claimRegistryMutation.apply(base)))
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();

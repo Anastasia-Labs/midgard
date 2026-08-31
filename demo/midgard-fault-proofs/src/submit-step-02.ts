@@ -72,6 +72,11 @@ import {
   witnessSpendingValidatorCarriageV1,
   witnessWithdrawalValidatorCarriageV1,
 } from "./witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptV1,
+} from "./workflow/transaction-boundary-v1.js";
 
 export type SubmitStep02CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;
@@ -163,6 +168,7 @@ export const submitStep02 = async ({
   publishedProofChunks,
   referenceScriptUtxo,
   witnessReferenceScripts,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -183,6 +189,8 @@ export const submitStep02 = async ({
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  /** Production workflow seam: invoked after local evaluation, before I/O. */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitStep02Result> => {
   const resolvedDeployment = await resolveDoubleSpendDeploymentContracts({
@@ -348,7 +356,7 @@ export const submitStep02 = async ({
       hub_ref_input_index: layout.hubOracleRefInputIndex,
       state_queue_node_ref_input_index: layout.stateQueueNodeRefInputIndex,
       native_tx_id: txInclusion.nativeTxId,
-      native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
+      l2_transaction_source_cbor: txInclusion.l2TransactionSourceCbor,
       transactions_phas_root: txInclusion.transactionsPhasRoot,
     };
     // Same prover-chosen carriage as step-01: the second conflicting
@@ -400,7 +408,7 @@ export const submitStep02 = async ({
           chunkedMembershipClaimRedeemer({
             merkleRoot: txInclusion.transactionsPhasRoot,
             keyBytes: txInclusion.nativeTxId,
-            valueBytes: txInclusion.nativeTxCompactCbor,
+            valueBytes: txInclusion.l2TransactionSourceCbor,
             orderedChunkReferenceInputIndices: resolvedChunkIndices,
           })) satisfies BuildTxWithRedeemer)
       : base.withdraw(
@@ -409,7 +417,7 @@ export const submitStep02 = async ({
           encodeRawPhasMembershipProofRedeemer({
             root: txInclusion.transactionsPhasRoot,
             keyBytes: txInclusion.nativeTxId,
-            valueBytes: txInclusion.nativeTxCompactCbor,
+            valueBytes: txInclusion.l2TransactionSourceCbor,
             membershipProofCbor: txInclusion.txMembershipProofCbor,
           }),
         )
@@ -430,7 +438,34 @@ export const submitStep02 = async ({
     throw new Error("BuildTxWithRedeemer did not resolve step 02 layout.");
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: [
+      workflowReferenceScriptV1({
+        role: "V1 fraud-proof double-spend step-02",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.doubleSpend.steps[1].spendingScript,
+      }),
+      carriedByChunks
+        ? workflowReferenceScriptV1({
+            role: "V1 MPF chunked-verify withdrawal",
+            utxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
+            expectedScript: chunkedVerifyScript,
+          })
+        : workflowReferenceScriptV1({
+            role: "membership proof withdrawal",
+            utxo: witnessReferenceScripts?.phasMembershipWithdraw,
+            expectedScript: phasMembershipScript,
+          }),
+    ],
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw new Error(
+      `Provider returned transaction hash ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

@@ -66,11 +66,8 @@ const DA_PROVENANCE: SDK.EvidenceProvenanceV1 = {
 
 const sharedInput = outRefCbor(0x11, 7n);
 
-const doubleSpendBlock = async (
-  transactionsRootMode: "payloadSource" | "nativeCompact" = "payloadSource",
-): Promise<CanonicalBlockFixtureV1> =>
+const doubleSpendBlock = async (): Promise<CanonicalBlockFixtureV1> =>
   await buildCanonicalBlockFixtureV1({
-    transactionsRootMode,
     transactions: [
       buildFixtureTransactionV1({
         spendInputs: [sharedInput, outRefCbor(0x22, 0n)],
@@ -87,11 +84,8 @@ const doubleSpendBlock = async (
     ],
   });
 
-const validBlock = async (
-  transactionsRootMode: "payloadSource" | "nativeCompact" = "payloadSource",
-): Promise<CanonicalBlockFixtureV1> =>
+const validBlock = async (): Promise<CanonicalBlockFixtureV1> =>
   await buildCanonicalBlockFixtureV1({
-    transactionsRootMode,
     transactions: [
       buildFixtureTransactionV1({
         spendInputs: [outRefCbor(0x55, 0n)],
@@ -106,44 +100,12 @@ const validBlock = async (
 
 const evidenceFor = async (
   fixture: CanonicalBlockFixtureV1,
-): Promise<CanonicalBlockEvidenceV1> => {
-  // The public payload decoder intentionally authenticates the deployed node
-  // source-leaf convention.  For the native-compact control, first obtain the
-  // same canonical transaction material through that verified path, then
-  // rebind the test-only header to the compact-leaf root and recompute the
-  // inclusion authentication used by the proof builder.
-  const payloadFixture =
-    fixture.transactionsRootMode === "nativeCompact"
-      ? await buildCanonicalBlockFixtureV1({
-          transactions: fixture.transactions,
-          startTime: fixture.header.startTime,
-          endTime: fixture.header.endTime,
-          minFeeA: fixture.header.minFeeA,
-          minFeeB: fixture.header.minFeeB,
-        })
-      : fixture;
-  const evidence = await canonicalBlockEvidenceFromVerifiedPayloadV1({
-    observation: authenticatedHeaderObservationV1(payloadFixture),
-    payloadEnvelopeCbor: payloadFixture.payloadEnvelopeCbor,
+): Promise<CanonicalBlockEvidenceV1> =>
+  await canonicalBlockEvidenceFromVerifiedPayloadV1({
+    observation: authenticatedHeaderObservationV1(fixture),
+    payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
     daProvenance: DA_PROVENANCE,
   });
-  if (fixture.transactionsRootMode !== "nativeCompact") {
-    return evidence;
-  }
-  const inclusionRootAuthentication =
-    await authenticateTransactionsInclusionRootsV1({
-      header: fixture.header,
-      reconstruction: evidence.reconstruction,
-      transactions: evidence.transactions,
-    });
-  return {
-    ...evidence,
-    observation: authenticatedHeaderObservationV1(fixture),
-    headerHash: fixture.headerHash,
-    header: fixture.header,
-    inclusionRootAuthentication,
-  };
-};
 
 class StubDaSource implements RetainedDaPayloadSource {
   readonly sourceId: string;
@@ -558,24 +520,16 @@ describe("Q03 canonical block evidence", () => {
 });
 
 describe("Q03 transactions-root inclusion authentication", () => {
-  it("authenticates the payload-source convention and reports the native-compact divergence", async () => {
+  it("authenticates the exact transaction-source convention", async () => {
     const fixture = await doubleSpendBlock();
     const evidence = await evidenceFor(fixture);
     const authentication = evidence.inclusionRootAuthentication;
 
-    // The node commits `(tx_id -> Data(L2TransactionSourceV1))` leaves, so the
-    // payload-source convention is the one the header authenticates.
-    expect(authentication.payloadSourceAuthenticated).toBe(true);
-    expect(authentication.payloadSourceCountedRoot).toBe(
+    expect(authentication.sourceInclusionAuthenticated).toBe(true);
+    expect(authentication.sourceValueCountedRoot).toBe(
       fixture.header.transactionsRoot,
     );
-    // The deployed Aiken step opens `(tx_id -> native_tx_compact_cbor)` leaves.
-    // Those roots differ, so no submittable native inclusion argument exists
-    // for a node-produced block until the conventions are reconciled.
-    expect(authentication.nativeInclusionAuthenticated).toBe(false);
-    expect(authentication.nativeCompactCountedRoot).not.toBe(
-      fixture.header.transactionsRoot,
-    );
+    expect(authentication.sourceValueCount).toBe(3n);
     expect(authentication.l2TransactionCount).toBe(3n);
   });
 
@@ -590,20 +544,18 @@ describe("Q03 transactions-root inclusion authentication", () => {
     expect(recomputed).toEqual(evidence.inclusionRootAuthentication);
   });
 
-  it("accepts a native-compact root that does re-commit to the header", () => {
+  it("accepts a source-value root that re-commits to the header", () => {
     const authenticated: SDK.TransactionsInclusionRootAuthenticationV1 = {
       headerTransactionsRoot: h32(0xab),
       l2TransactionCount: 2n,
-      payloadSourcePhasRoot: h32(0xcd),
-      payloadSourceCountedRoot: h32(0xab),
-      nativeCompactPhasRoot: h32(0xef),
-      nativeCompactCountedRoot: h32(0xab),
-      nativeInclusionAuthenticated: true,
-      payloadSourceAuthenticated: true,
+      sourceValuePhasRoot: h32(0xcd),
+      sourceValueCountedRoot: h32(0xab),
+      sourceValueCount: 2n,
+      sourceInclusionAuthenticated: true,
     };
-    expect(SDK.assertNativeInclusionRootAuthenticatedV1(authenticated)).toEqual(
-      authenticated,
-    );
+    expect(
+      SDK.assertTransactionSourceInclusionRootAuthenticatedV1(authenticated),
+    ).toEqual(authenticated);
   });
 });
 
@@ -634,40 +586,31 @@ describe("Q03 canonical-evidence builders", () => {
     );
   });
 
-  it("refuses to emit a double-spend proof whose inclusion root cannot be authenticated", async () => {
+  it("refuses every builder when transaction-source inclusion is not authenticated", async () => {
     const fixture = await doubleSpendBlock();
-    const evidence = await evidenceFor(fixture);
-    expect(
-      await rejectionCode(async () =>
-        prepareDoubleSpendFromCanonicalEvidenceV1({ evidence }),
-      ),
-    ).toBe("native_inclusion_root_unauthenticated");
+    const admitted = await evidenceFor(fixture);
+    const evidence: CanonicalBlockEvidenceV1 = {
+      ...admitted,
+      inclusionRootAuthentication: {
+        ...admitted.inclusionRootAuthentication,
+        sourceValueCountedRoot: h32(0xff),
+        sourceInclusionAuthenticated: false,
+      },
+    };
+    for (const build of [
+      async () => prepareDoubleSpendFromCanonicalEvidenceV1({ evidence }),
+      async () => prepareZeroInputFromCanonicalEvidenceV1({ evidence }),
+      async () => prepareInvalidRangeFromCanonicalEvidenceV1({ evidence }),
+      async () => prepareMinFeeFromCanonicalEvidenceV1({ evidence }),
+    ]) {
+      expect(await rejectionCode(build)).toBe(
+        "transaction_source_inclusion_root_unauthenticated",
+      );
+    }
   });
 
-  it("refuses to emit zero-input, invalid-range, and min-fee proofs on the same gate", async () => {
-    const fixture = await doubleSpendBlock();
-    const evidence = await evidenceFor(fixture);
-    expect(
-      await rejectionCode(async () =>
-        prepareZeroInputFromCanonicalEvidenceV1({ evidence }),
-      ),
-    ).toBe("native_inclusion_root_unauthenticated");
-    expect(
-      await rejectionCode(async () =>
-        prepareInvalidRangeFromCanonicalEvidenceV1({ evidence }),
-      ),
-    ).toBe("native_inclusion_root_unauthenticated");
-    expect(
-      await rejectionCode(async () =>
-        prepareMinFeeFromCanonicalEvidenceV1({ evidence }),
-      ),
-    ).toBe("native_inclusion_root_unauthenticated");
-  });
-
-  it("emits each family artifact only from native-root-authenticated canonical evidence", async () => {
-    const doubleSpend = await evidenceFor(
-      await doubleSpendBlock("nativeCompact"),
-    );
+  it("emits each family artifact from source-root-authenticated canonical evidence", async () => {
+    const doubleSpend = await evidenceFor(await doubleSpendBlock());
     expect(
       (
         await executeCanonicalPrepareCommandV1({
@@ -678,7 +621,6 @@ describe("Q03 canonical-evidence builders", () => {
     ).toBe(3);
 
     const zeroInputFixture = await buildCanonicalBlockFixtureV1({
-      transactionsRootMode: "nativeCompact",
       transactions: [buildFixtureTransactionV1({ spendInputs: [], fee: 1n })],
     });
     expect(
@@ -691,7 +633,6 @@ describe("Q03 canonical-evidence builders", () => {
     ).toBe(1);
 
     const minFeeFixture = await buildCanonicalBlockFixtureV1({
-      transactionsRootMode: "nativeCompact",
       minFeeB: 2n,
       transactions: [
         buildFixtureTransactionV1({
@@ -716,7 +657,6 @@ describe("Q03 canonical-evidence builders", () => {
     );
 
     const invalidRangeFixture = await buildCanonicalBlockFixtureV1({
-      transactionsRootMode: "nativeCompact",
       startTime: 10n,
       endTime: 20n,
       transactions: [
@@ -738,7 +678,6 @@ describe("Q03 canonical-evidence builders", () => {
     ).toBe(1);
 
     const nonExistentInputFixture = await buildCanonicalBlockFixtureV1({
-      transactionsRootMode: "nativeCompact",
       transactions: [
         buildFixtureTransactionV1({
           spendInputs: [outRefCbor(0x88, 0n)],
@@ -757,7 +696,7 @@ describe("Q03 canonical-evidence builders", () => {
   });
 
   it("rejects diagnostic grade before every gated builder can emit proof material", async () => {
-    const fixture = await doubleSpendBlock("nativeCompact");
+    const fixture = await doubleSpendBlock();
     const evidence = await evidenceFor(fixture);
     const downgraded: CanonicalBlockEvidenceV1 = {
       ...evidence,
@@ -817,13 +756,13 @@ describe("Q03 canonical-evidence builders", () => {
   });
 
   it("valid-block control: a block with no double spend yields no proof", async () => {
-    const fixture = await validBlock("nativeCompact");
+    const fixture = await validBlock();
     const evidence = await evidenceFor(fixture);
     expect(
-      evidence.inclusionRootAuthentication.nativeInclusionAuthenticated,
+      evidence.inclusionRootAuthentication.sourceInclusionAuthenticated,
     ).toBe(true);
     expect(fixture.header.transactionsRoot).toBe(
-      fixture.nativeCompactTransactionsRoot,
+      fixture.payloadSourceTransactionsRoot,
     );
     const decoded = await Promise.all(
       evidence.transactions.map(decodeTransactionMaterial),
@@ -852,10 +791,8 @@ describe("Q03 labelled diagnostics", () => {
         "prepare-invalid-range",
         "--header-hash",
         "11".repeat(28),
-        "--block-valid-from",
+        "--block-slot",
         "10",
-        "--block-valid-to",
-        "20",
       ],
       ["prepare-non-existent-input", "--header-hash", "11".repeat(28)],
       [

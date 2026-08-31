@@ -7,6 +7,7 @@ import {
 } from "../native-script-decoding/submit-native-script-decoding-init.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
 import {
   type WithdrawalMistagCatalogueCategoryV1,
   type WithdrawalMistagContractsV1,
@@ -24,6 +25,7 @@ const genericInitContracts = (
   computationThread: contracts.computationThread,
   fraudProof: contracts.fraudProof,
   hubOraclePolicyId: contracts.hubOraclePolicyId,
+  claimRegistry: contracts.claimRegistry,
   stateQueuePolicyId: contracts.stateQueuePolicyId,
   // Not read by the generic Init transaction.
   fieldPreimageCertificatePolicyId: "00".repeat(28),
@@ -52,6 +54,7 @@ export const submitWithdrawalMistagInit = async ({
    * every role used by this transaction must be published.
    */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }) =>
   await submitNativeScriptDecodingInit({

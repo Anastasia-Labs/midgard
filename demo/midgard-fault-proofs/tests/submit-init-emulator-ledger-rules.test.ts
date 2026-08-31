@@ -87,10 +87,11 @@ describe("fault-proof emulator integration", () => {
       ) - 1;
     const invalidRangeInclusion =
       await buildInvalidRangeTransactionInclusionFixture({
-        blockValidFrom: BigInt(headerStartTime),
-        blockValidTo: BigInt(headerStartTime + 1_000),
+        blockSlot: 0n,
       });
-    expect(invalidRangeInclusion.violationReason).toBe("lower-before-block");
+    expect(invalidRangeInclusion.violationReason).toBe(
+      "starts-after-block-slot",
+    );
 
     const funderKeyHash = await funderPaymentKeyHash(funderLucid);
     const fraudulentHeader = makeHeader(
@@ -118,6 +119,8 @@ describe("fault-proof emulator integration", () => {
 
     const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
       removalReferenceScripts: removalReferenceScriptPublications.published,
+      claimRegistrySpendReference:
+        harness.witnessReferenceScripts.claimRegistrySpend,
     });
     const proofFit: Record<string, CompleteSignedTransactionMeasurement> = {};
     const { maxTxExMem, maxTxExSteps } = emulator.protocolParameters;
@@ -188,12 +191,11 @@ describe("fault-proof emulator integration", () => {
     expect(step01Result.nativeTxId).toBe(
       invalidRangeInclusion.badTx.nativeTxId,
     );
-    expect(step01Result.blockValidFrom).toBe(fraudulentHeader.startTime);
-    expect(step01Result.blockValidTo).toBe(fraudulentHeader.endTime);
+    expect(step01Result.blockSlot).toBe(fraudulentHeader.blockSlot);
     expect(step01Result.normalizedValidityRange).toEqual(
       invalidRangeInclusion.normalizedValidityRange,
     );
-    expect(step01Result.violationReason).toBe("lower-before-block");
+    expect(step01Result.violationReason).toBe("starts-after-block-slot");
     await expect(
       proverLucid.utxosAtWithUnit(
         initResult.firstStepAddress,
@@ -213,8 +215,7 @@ describe("fault-proof emulator integration", () => {
     expect(step02Datum).toEqual({
       fraud_prover: proverPaymentKeyHash,
       data: {
-        block_valid_from: fraudulentHeader.startTime,
-        block_valid_to: fraudulentHeader.endTime,
+        block_slot: fraudulentHeader.blockSlot,
         bad_tx_normalized_validity_range:
           invalidRangeInclusion.normalizedValidityRange,
       },
@@ -251,7 +252,7 @@ describe("fault-proof emulator integration", () => {
         initResult.computationThreadAssetName,
       ),
     );
-    expect(step02Result.violationReason).toBe("lower-before-block");
+    expect(step02Result.violationReason).toBe("starts-after-block-slot");
     expect(step02Result.normalizedValidityRange).toEqual(
       invalidRangeInclusion.normalizedValidityRange,
     );
@@ -425,6 +426,8 @@ describe("fault-proof emulator integration", () => {
 
     const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
       removalReferenceScripts: removalReferenceScriptPublications.published,
+      claimRegistrySpendReference:
+        harness.witnessReferenceScripts.claimRegistrySpend,
     });
     const proofFit: Record<string, CompleteSignedTransactionMeasurement> = {};
     const { maxTxExMem, maxTxExSteps } = emulator.protocolParameters;
@@ -720,7 +723,10 @@ describe("fault-proof emulator integration", () => {
       catalogue,
       header: fraudulentHeader,
     });
-    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue);
+    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
+      claimRegistrySpendReference:
+        harness.witnessReferenceScripts.claimRegistrySpend,
+    });
     const initResult = await submitInit({
       lucid: proverLucid,
       witnessReferenceScripts: harness.witnessReferenceScripts,
@@ -830,6 +836,8 @@ describe("fault-proof emulator integration", () => {
 
     const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
       removalReferenceScripts: removalReferenceScriptPublications.published,
+      claimRegistrySpendReference:
+        harness.witnessReferenceScripts.claimRegistrySpend,
     });
     const proofFit: Record<string, CompleteSignedTransactionMeasurement> = {};
     const { maxTxExMem, maxTxExSteps } = emulator.protocolParameters;

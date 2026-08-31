@@ -29,11 +29,11 @@ import {
   decodeTransactionMaterial,
   type FetchLike,
   fetchNodeBlockTransactions,
-  nativeTrieItem,
   type NodeTransactionPayload,
   type PreparedTxInclusionJson,
   readNodeTransactionPayloadsFile,
   requireProof,
+  transactionSourceTrieItemV1,
 } from "./prepare-double-spend.js";
 
 export type PrepareZeroInputCliConfig = {
@@ -152,10 +152,12 @@ export const prepareZeroInputFromTransactions = async ({
     throw new Error("No zero-input transaction found in the selected block.");
   }
 
-  const nativeTrie = await buildTrieView(decoded.map(nativeTrieItem));
+  const nativeTrie = await buildTrieView(
+    decoded.map(transactionSourceTrieItemV1),
+  );
   const proofCbor = requireProof(
     nativeTrie,
-    nativeTrieItem(selected).key,
+    transactionSourceTrieItemV1(selected).key,
     "zero-input tx",
   );
   const committedTransactionsRoot = await Effect.runPromise(
@@ -188,6 +190,7 @@ export const prepareZeroInputFromTransactions = async ({
         nativeTxId: selected.nodeTxId,
         nativeTx: selected.nativeTxCompact,
         nativeTxCompactCbor: selected.nativeCompactCbor,
+        l2TransactionSourceCbor: selected.l2TransactionSourceCbor,
         transactionsPhasRoot: nativeTrie.root,
         txMembershipProofCbor: proofCbor,
       },

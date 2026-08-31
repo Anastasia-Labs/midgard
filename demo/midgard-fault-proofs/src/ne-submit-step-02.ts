@@ -58,6 +58,11 @@ import {
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import { witnessSpendingValidatorCarriageV1 } from "./witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "./workflow/transaction-boundary-v1.js";
 
 /** One spend input of the bad transaction, as committed by its inputs hash. */
 export type NeInputPreimageEntry = {
@@ -148,7 +153,12 @@ export const neSubmitStep02 = async ({
   nativeTxCompactCbor,
   badInputIndex,
   publishCarriage = false,
+  publishedCarriageUtxos,
+  certificateUtxo,
+  certificatePolicyId,
   referenceScriptUtxo,
+  publicationPreSubmitBoundary,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -171,8 +181,17 @@ export const neSubmitStep02 = async ({
    * spend-input cardinality at the L1 byte frontier (#612).
    */
   readonly publishCarriage?: boolean;
+  /** Pre-reconciled §8 publications; production workflows must supply them. */
+  readonly publishedCarriageUtxos?: readonly UTxO[];
+  /** Authenticated tier-3 field-preimage certificate, when selected. */
+  readonly certificateUtxo?: UTxO;
+  /** Exact manifest-bound certificate policy for the tier-3 route. */
+  readonly certificatePolicyId?: string;
   /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
+  /** Durable boundary for legacy direct publication; production pre-publishes. */
+  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<NeSubmitStep02Result> => {
   const { nonExistentInputCategory, contracts } =
@@ -227,13 +246,21 @@ export const neSubmitStep02 = async ({
   // transaction can reference it. Tier 1 publishes nothing and the list is
   // empty; tiers 2–3 publish raw carriage located by content (§8.7), reusing
   // a chunk that already exists at this address rather than republishing.
-  const carriageUtxos = await publishFaultProofFieldCarriageV1({
-    lucid,
-    signer,
-    planned,
-    publisherAddress: signer.address,
-    label: "Non-existent-input step 02 spend-inputs",
-  });
+  const carriageUtxos =
+    publishedCarriageUtxos ??
+    (await publishFaultProofFieldCarriageV1({
+      lucid,
+      signer,
+      planned,
+      publisherAddress: signer.address,
+      label: "Non-existent-input step 02 spend-inputs",
+      preSubmitBoundary: publicationPreSubmitBoundary,
+    }));
+  if ((certificateUtxo === undefined) !== (certificatePolicyId === undefined)) {
+    throw new Error(
+      "Non-existent-input tier-3 certificate UTxO and policy identity must be supplied together.",
+    );
+  }
   const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
     script: steps[1].spendingScript,
     referenceUtxo: referenceScriptUtxo,
@@ -241,11 +268,13 @@ export const neSubmitStep02 = async ({
   });
   const referenceInputs = [
     ...carriageUtxos,
+    ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     ...stepScriptCarriage.referenceInputs,
   ];
   const spendInputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
     referenceInputs,
+    ...(certificatePolicyId === undefined ? {} : { certificatePolicyId }),
     label: "Non-existent-input step 02 spend-inputs",
   });
   const walletUtxos = await lucid.wallet().getUtxos();
@@ -344,7 +373,26 @@ export const neSubmitStep02 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof non-existent-input step-02",
+          utxo: referenceScriptUtxo,
+          expectedScript: steps[1].spendingScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw new Error(
+      `non-existent-input step-02 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

@@ -15,6 +15,9 @@
  */
 import { inputSetUniquenessSubmitError } from "./submit-common-v1.js";
 
+export const INPUT_SET_UNIQUENESS_VIOLATION_ID_V1 =
+  "input-set-uniqueness" as const;
+
 export type InputSetUniquenessClaimV1 =
   | {
       readonly kind: "duplicateSpendInputs";

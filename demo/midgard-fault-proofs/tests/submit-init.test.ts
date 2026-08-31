@@ -27,6 +27,8 @@ import {
 import {
   CML,
   Data,
+  Emulator,
+  Lucid,
   type UTxO,
   validatorToScriptHash,
   walletFromSeed,
@@ -191,9 +193,57 @@ describe("submit-init signer resolution", () => {
 
     expect(signer.source).toBe("USER_WALLET");
     expect(signer.address).toBe(
-      walletFromSeed(seedPhrase, { network: "Preprod" }).address,
+      walletFromSeed(seedPhrase, {
+        addressType: "Enterprise",
+        network: "Preprod",
+      }).address,
     );
     expect(signer.paymentKeyHash).toBe(expectedSeedPaymentKeyHash());
+  });
+
+  it("derives the same enterprise signer identity from a seed and its payment private key", () => {
+    const wallet = walletFromSeed(seedPhrase, {
+      addressType: "Enterprise",
+      network: "Preprod",
+    });
+    const seedSigner = resolveProverSigner({
+      network: "Preprod",
+      walletSeedPhrase: seedPhrase,
+    });
+    const privateKeySigner = resolveProverSigner({
+      network: "Preprod",
+      walletPrivateKey: wallet.paymentKey,
+    });
+
+    expect(seedSigner.address).toBe(wallet.address);
+    expect(privateKeySigner.address).toBe(wallet.address);
+    expect(seedSigner.paymentKeyHash).toBe(privateKeySigner.paymentKeyHash);
+  });
+
+  it("does not silently select a funded base address for an enterprise seed signer", async () => {
+    const baseWallet = walletFromSeed(seedPhrase, {
+      addressType: "Base",
+      network: "Custom",
+    });
+    const emulator = new Emulator([
+      {
+        address: baseWallet.address,
+        assets: { lovelace: 10_000_000n },
+        privateKey: "",
+        seedPhrase,
+      },
+    ]);
+    const lucid = await Lucid(emulator, "Custom");
+    const signer = resolveProverSigner({
+      network: "Custom",
+      walletSeedPhrase: seedPhrase,
+    });
+
+    signer.selectWallet(lucid);
+
+    expect(signer.address).not.toBe(baseWallet.address);
+    expect(await emulator.getUtxos(baseWallet.address)).toHaveLength(1);
+    expect(await lucid.wallet().getUtxos()).toHaveLength(0);
   });
 
   it("uses a direct seed phrase before the configured seed env var", () => {

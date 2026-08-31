@@ -97,12 +97,16 @@ const ADVERSARY_LOG2_WORK = 128;
  * Unapplied compiled sizes pinned from the wave-branch blueprint (patched fork,
  * design §2.3). This is the suite's first pinned datum: a byte drift in any
  * step validator invalidates every frontier this file derives.
+ *
+ * Derivation: `compiledCode.length / 2` for each
+ * `fraud_proofs/native_script_decoding/*.main.spend` entry of
+ * `onchain/aiken/plutus.json`, built with `aiken build --env testnet`.
  */
 const EXPECTED_UNAPPLIED_SIZES_BYTES = {
-  step01: 6_783,
+  step01: 8_879,
   step02: 11_507,
-  step03OpenSubject: 8_175,
-  step03BindDescriptor: 12_504,
+  step03OpenSubject: 8_290,
+  step03BindDescriptor: 12_481,
   step03AdvanceOrClose: 11_498,
   step04: 1_673,
 } as const;
@@ -123,6 +127,7 @@ const proofFromCbor = (proofCborHex: string) => Data.from(proofCborHex, Proof);
 type FixtureInclusion = {
   readonly nativeTxId: string;
   readonly nativeTxCompactCbor: string;
+  readonly l2TransactionSourceCbor: string;
   readonly transactionsPhasRoot: string;
   readonly txMembershipProofCbor: string;
 };
@@ -242,7 +247,7 @@ describe("step-01 redeemer envelope chart (both carriages, Q4)", () => {
       hub_ref_input_index: 0n,
       state_queue_node_ref_input_index: 1n,
       native_tx_id: inclusion.nativeTxId,
-      native_tx_compact_cbor: inclusion.nativeTxCompactCbor,
+      l2_transaction_source_cbor: inclusion.l2TransactionSourceCbor,
       transactions_phas_root: inclusion.transactionsPhasRoot,
     };
     const redeemerCarried: NativeScriptDecodingStep01SpendRedeemer = {
@@ -378,9 +383,20 @@ describe("step-01 redeemer envelope chart (both carriages, Q4)", () => {
     // Q4's second carriage is the answer to that exhaustibility: the
     // published-chunk redeemer replaces the proof with reference-input
     // indices, so its size is depth-independent up to the logarithmic index
-    // list. It must stay an order of magnitude under the carried carriage at
-    // adversarial depth.
-    expect(deepBytes.publishedChunk).toBeLessThan(512);
+    // list. The load-bearing claim is the ratio to the carried carriage at
+    // adversarial depth, asserted immediately below.
+    //
+    // Exact pin, measured 2026-08-30: 601 bytes. Step-01 now authenticates
+    // `l2_transaction_source_cbor` (492 B) where it authenticated the bare
+    // `native_tx_compact_cbor` (314 B), because the header's normative
+    // transactions MPF commits `Data(L2TransactionSourceV1)` per transaction
+    // id. That 178-byte carriage swap raised the depth-independent floor from
+    // 423 to 601, so the earlier "order of magnitude under the carried
+    // carriage" phrasing — and the 512-byte band that expressed it — no longer
+    // describes this carriage: it is a constant envelope plus a committed
+    // source value, not a short index list. Pinned exactly so any further
+    // drift is seen rather than absorbed by a band.
+    expect(deepBytes.publishedChunk).toBe(601);
     expect(deepBytes.publishedChunk).toBeLessThan(
       deepBytes.redeemerCarried / 2,
     );

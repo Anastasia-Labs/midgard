@@ -31,6 +31,11 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  type PreparedClaimRegistryMutationV1,
+  prepareFamilyClaimRegistryMutationV1,
+  requirePreparedClaimRegistryMutationV1,
+} from "../claim-registry-transaction-v1.js";
+import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodePhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
@@ -48,6 +53,11 @@ import {
   witnessMintingPolicyCarriageV1,
   witnessWithdrawalValidatorCarriageV1,
 } from "../witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "../workflow/transaction-boundary-v1.js";
 import {
   WITHDRAWN_REFERENCE_INPUT_CATEGORY_LABEL,
   type WithdrawnReferenceInputContractsV1,
@@ -88,6 +98,8 @@ export const submitWithdrawnReferenceInputInit = async ({
   fraudulentBlockOutRef,
   fraudulentHeaderHash,
   witnessReferenceScripts,
+  claimRegistryMutation,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -106,6 +118,8 @@ export const submitWithdrawnReferenceInputInit = async ({
   readonly fraudulentHeaderHash?: string;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitWithdrawnReferenceInputInitResult> => {
   // The registered category must be the very step-01 this chain deploys —
@@ -236,6 +250,27 @@ export const submitWithdrawnReferenceInputInit = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
+  // The computation-thread `Init` arm requires the atomic claim-registry
+  // `OpenClaim` in the same transaction, so every family init opens its
+  // `(category, header)` claim here.
+  const resolvedClaimRegistryMutation = requirePreparedClaimRegistryMutationV1({
+    mutation:
+      claimRegistryMutation ??
+      (await prepareFamilyClaimRegistryMutationV1({
+        lucid,
+        claimRegistry: contracts.claimRegistry,
+        claimRegistryReferenceUtxo: witnessReferenceScripts?.claimRegistrySpend,
+        hubOraclePolicyId: contracts.hubOraclePolicyId,
+        computationThreadPolicyId: contracts.computationThread.policyId,
+        categoryId: category.categoryId,
+        headerHash: resolvedHeaderHash,
+        kind: "open",
+      })),
+    kind: "open",
+    claimId: computationThreadAssetName,
+    label: `${WITHDRAWN_REFERENCE_INPUT_CATEGORY_LABEL} init`,
+  });
+
   signer.selectWallet(lucid);
   const tx = lucid
     .newTx()
@@ -271,7 +306,11 @@ export const submitWithdrawnReferenceInputInit = async ({
     .addSignerKey(signer.paymentKeyHash);
 
   const unsigned = await phasMembershipCarriage
-    .attach(computationThreadMintCarriage.attach(tx))
+    .attach(
+      computationThreadMintCarriage.attach(
+        resolvedClaimRegistryMutation.apply(tx),
+      ),
+    )
     .complete({ localUPLCEval: true });
   if (firstStepOutputIndex === undefined) {
     throw withdrawnReferenceInputSubmitError(
@@ -279,7 +318,36 @@ export const submitWithdrawnReferenceInputInit = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof computation-thread minting",
+          utxo: witnessReferenceScripts?.computationThreadMint,
+          expectedScript: contracts.computationThread.mintingScript,
+        },
+        {
+          role: "membership proof withdrawal",
+          utxo: witnessReferenceScripts?.phasMembershipWithdraw,
+          expectedScript: phasMembershipScript,
+        },
+        {
+          role: "claim-registry spending",
+          utxo: resolvedClaimRegistryMutation.referenceScriptUtxo,
+          expectedScript: resolvedClaimRegistryMutation.registryScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw withdrawnReferenceInputSubmitError(
+      `init provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

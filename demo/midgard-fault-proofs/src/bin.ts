@@ -35,6 +35,7 @@ import { neSubmitStep03FromFiles } from "./ne-submit-step-03.js";
 import { neSubmitStep04FromFiles } from "./ne-submit-step-04.js";
 import { prepareTransitionTraceFromDaEnvelopeV1 } from "./prepare-transition-trace.js";
 import { submitRemoveFraudulentBlockFromFiles } from "./remove-fraudulent-block.js";
+import { submitUnattestedTimeoutCorrectionFromFiles } from "./remove-unattested-block.js";
 import { type ProviderKind } from "./runtime.js";
 import { submitDaHashPreimageStep01FromFiles } from "./submit-da-hash-preimage-step-01.js";
 import { submitDaHashPreimageStep02FromFiles } from "./submit-da-hash-preimage-step-02.js";
@@ -85,6 +86,10 @@ import {
   submitValidationDisputeTimeoutFromFiles,
   submitValidationDisputeVerifySourceFromFiles,
 } from "./validation-dispute/from-files.js";
+import {
+  productionWorkflowReadinessReportV1,
+  runProductionFraudProofWorkflowCliV1,
+} from "./workflow/cli-v1.js";
 
 export type ParsedArgs = {
   readonly command: string | undefined;
@@ -124,8 +129,7 @@ export type ParsedArgs = {
   readonly referenceInputOutRefs: readonly string[];
   readonly awaitConfirmation: boolean;
   readonly fraudCategory: SubmitInitFraudCategory | undefined;
-  readonly blockValidFrom: string | undefined;
-  readonly blockValidTo: string | undefined;
+  readonly blockSlot: string | undefined;
   readonly txId: string | undefined;
   readonly badTxId: string | undefined;
   readonly badInputIndex: string | undefined;
@@ -162,6 +166,10 @@ export type ParsedArgs = {
   readonly scaffoldSpecPath: string | undefined;
   readonly repoRoot: string | undefined;
   readonly dryRun: boolean;
+  readonly workflowJournalDir: string | undefined;
+  readonly workflowRuntimeConfigPath: string | undefined;
+  readonly deploymentFingerprint: string | undefined;
+  readonly correctionJournalPath: string | undefined;
 };
 
 const fraudCategoryUsage = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.join("|");
@@ -169,6 +177,9 @@ const fraudCategoryUsage = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.join("|");
 const usage = `Usage:
   prepare-* security-grade execution consumes CanonicalBlockEvidenceV1 through executeCanonicalPrepareCommandV1.
   --midgard-node-url, --transactions-file, and --sample-double-spend are labelled diagnostics only and are rejected before proof construction.
+  midgard-fault-proofs workflow-readiness [--fraud-category <${fraudCategoryUsage}>]
+  midgard-fault-proofs run-workflow --fraud-category <${fraudCategoryUsage}> --deployment-fingerprint <32-byte hex> --header-hash <28-byte hex> --workflow-journal-dir <directory> --workflow-runtime-config <versioned-infrastructure-config.json>
+  midgard-fault-proofs resume-workflow --fraud-category <${fraudCategoryUsage}> --deployment-fingerprint <32-byte hex> --header-hash <28-byte hex> --workflow-journal-dir <directory> --workflow-runtime-config <versioned-infrastructure-config.json>
   midgard-fault-proofs scaffold-family --scaffold-spec <familyScaffoldSpecV1.json> [--repo-root <path>] [--dry-run]
   midgard-fault-proofs inspect-contracts --blueprint <path> --deployment-info <path> [--network <Mainnet|Preview|Preprod>]
   midgard-fault-proofs prepare-transition-trace --da-payload-envelope <retained-da-envelope.cbor(.json)> --header-hash <committed 28-byte header hash, hex> [--output-dir <dir>]
@@ -222,6 +233,7 @@ const usage = `Usage:
   midgard-fault-proofs submit-invalid-signature-step-01 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --state-queue-block-out-ref <txHash#outputIndex> --tx-inclusion <path> --witness-set-compact <invalid-signature-witness-set-compact.json> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs submit-invalid-signature-step-02 --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --addr-tx-wits-preimage <invalid-signature-addr-tx-wits-preimage.json> --native-tx-compact <native-tx-compact.json> --witness-set-compact <invalid-signature-witness-set-compact.json> --bad-addr-tx-wit-index <n> [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
   midgard-fault-proofs remove-fraudulent-block --blueprint <path> --deployment-info <path> --fraudulent-header-hash <hex> [--fraud-category <${fraudCategoryUsage}>] [--midgard-node-url <url> --midgard-node-admin-key <key> | --midgard-node-admin-key-env <envVar>] [--state-queue-lease-ttl-ms <n>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
+  midgard-fault-proofs remove-unattested-block --deployment-info <path> --correction-journal <path> [--midgard-node-url <url> --midgard-node-admin-key <key> | --midgard-node-admin-key-env <envVar>] [--state-queue-lease-ttl-ms <n>] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--no-await-confirmation] [wallet options]
 `;
 
 export const parseFraudCategory = (
@@ -283,8 +295,7 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
   const referenceInputOutRefs: string[] = [];
   let awaitConfirmation = true;
   let fraudCategory: SubmitInitFraudCategory | undefined;
-  let blockValidFrom: string | undefined;
-  let blockValidTo: string | undefined;
+  let blockSlot: string | undefined;
   let txId: string | undefined;
   let badTxId: string | undefined;
   let badInputIndex: string | undefined;
@@ -321,6 +332,10 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
   let scaffoldSpecPath: string | undefined;
   let repoRoot: string | undefined;
   let dryRun = false;
+  let workflowJournalDir: string | undefined;
+  let workflowRuntimeConfigPath: string | undefined;
+  let deploymentFingerprint: string | undefined;
+  let correctionJournalPath: string | undefined;
 
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
@@ -444,11 +459,8 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
       case "--fraud-category":
         fraudCategory = parseFraudCategory(rest[++index]);
         break;
-      case "--block-valid-from":
-        blockValidFrom = rest[++index];
-        break;
-      case "--block-valid-to":
-        blockValidTo = rest[++index];
+      case "--block-slot":
+        blockSlot = rest[++index];
         break;
       case "--tx-id":
         txId = rest[++index];
@@ -575,6 +587,18 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
       case "--dry-run":
         dryRun = true;
         break;
+      case "--workflow-journal-dir":
+        workflowJournalDir = rest[++index];
+        break;
+      case "--workflow-runtime-config":
+        workflowRuntimeConfigPath = rest[++index];
+        break;
+      case "--deployment-fingerprint":
+        deploymentFingerprint = rest[++index];
+        break;
+      case "--correction-journal":
+        correctionJournalPath = rest[++index];
+        break;
       case "--help":
       case "-h":
         console.log(usage);
@@ -622,8 +646,7 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
     referenceInputOutRefs,
     awaitConfirmation,
     fraudCategory,
-    blockValidFrom,
-    blockValidTo,
+    blockSlot,
     txId,
     badTxId,
     badInputIndex,
@@ -660,6 +683,10 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
     scaffoldSpecPath,
     repoRoot,
     dryRun,
+    workflowJournalDir,
+    workflowRuntimeConfigPath,
+    deploymentFingerprint,
+    correctionJournalPath,
   };
 };
 
@@ -694,6 +721,39 @@ export const buildRemoveFraudulentBlockCliConfig = (args: ParsedArgs) => {
     midgardNodeUrl: args.midgardNodeUrl,
     midgardNodeAdminKey: args.midgardNodeAdminKey,
     midgardNodeAdminKeyEnv: args.midgardNodeAdminKeyEnv,
+    stateQueueLeaseTtlMs:
+      args.stateQueueLeaseTtlMs === undefined
+        ? undefined
+        : Number(args.stateQueueLeaseTtlMs),
+  };
+};
+
+export const buildRemoveUnattestedBlockCliConfig = (args: ParsedArgs) => {
+  if (args.deploymentInfoPath === undefined) {
+    throw new Error(`Missing required --deployment-info <path>.\n${usage}`);
+  }
+  if (args.correctionJournalPath === undefined) {
+    throw new Error(`Missing required --correction-journal <path>.\n${usage}`);
+  }
+  const adminKeyEnvName =
+    args.midgardNodeAdminKeyEnv ?? "MIDGARD_NODE_ADMIN_KEY";
+  return {
+    deploymentInfoPath: args.deploymentInfoPath,
+    journalPath: args.correctionJournalPath,
+    network: parseNetwork(args.network),
+    provider: args.provider,
+    blockfrostApiUrl: args.blockfrostApiUrl,
+    blockfrostKey: args.blockfrostKey,
+    kupoUrl: args.kupoUrl,
+    ogmiosUrl: args.ogmiosUrl,
+    walletSeedPhrase: args.walletSeedPhrase,
+    walletSeedPhraseEnv: args.walletSeedPhraseEnv,
+    walletPrivateKey: args.walletPrivateKey,
+    walletPrivateKeyEnv: args.walletPrivateKeyEnv,
+    awaitConfirmation: args.awaitConfirmation,
+    midgardNodeUrl: args.midgardNodeUrl,
+    midgardNodeAdminKey:
+      args.midgardNodeAdminKey ?? process.env[adminKeyEnvName],
     stateQueueLeaseTtlMs:
       args.stateQueueLeaseTtlMs === undefined
         ? undefined
@@ -788,6 +848,42 @@ export const isCliEntrypoint = ({
 
 export const main = async (): Promise<void> => {
   const args = parseArgs(process.argv);
+
+  if (args.command === "workflow-readiness") {
+    writeJson(
+      productionWorkflowReadinessReportV1(
+        args.fraudCategory === undefined ? undefined : [args.fraudCategory],
+      ),
+    );
+    return;
+  }
+
+  if (args.command === "run-workflow" || args.command === "resume-workflow") {
+    if (args.fraudCategory === undefined) {
+      throw new Error(`Missing required --fraud-category.\n${usage}`);
+    }
+    if (args.deploymentFingerprint === undefined) {
+      throw new Error(`Missing required --deployment-fingerprint.\n${usage}`);
+    }
+    if (args.workflowJournalDir === undefined) {
+      throw new Error(`Missing required --workflow-journal-dir.\n${usage}`);
+    }
+    if (args.headerHash === undefined) {
+      throw new Error(`Missing required --header-hash.\n${usage}`);
+    }
+    if (args.workflowRuntimeConfigPath === undefined) {
+      throw new Error(`Missing required --workflow-runtime-config.\n${usage}`);
+    }
+    await runProductionFraudProofWorkflowCliV1({
+      mode: args.command === "run-workflow" ? "run" : "resume",
+      category: args.fraudCategory,
+      deploymentFingerprint: args.deploymentFingerprint,
+      headerHash: args.headerHash,
+      journalDirectory: args.workflowJournalDir,
+      runtimeConfigPath: args.workflowRuntimeConfigPath,
+    });
+    return;
+  }
 
   // Q02: the family scaffold generator writes source skeletons, so it takes no
   // network, wallet, or evidence input and is handled before every chain path.
@@ -904,7 +1000,8 @@ export const main = async (): Promise<void> => {
     args.command !== "submit-validation-dispute-enter-timeout" &&
     args.command !== "submit-validation-dispute-timeout" &&
     args.command !== "submit-transition-trace-proof" &&
-    args.command !== "remove-fraudulent-block"
+    args.command !== "remove-fraudulent-block" &&
+    args.command !== "remove-unattested-block"
   ) {
     throw new Error(
       `Expected a supported prepare, inspect, submit, validation-dispute, or removal command.\n${usage}`,
@@ -945,6 +1042,14 @@ export const main = async (): Promise<void> => {
     // `assertSecurityGradeEvidenceV1` always throws for these prohibited
     // diagnostic trust classes. This return documents that no prepare command
     // can fall through to blueprint/wallet/submission paths.
+    return;
+  }
+
+  if (args.command === "remove-unattested-block") {
+    const output = await submitUnattestedTimeoutCorrectionFromFiles(
+      buildRemoveUnattestedBlockCliConfig(args),
+    );
+    writeJson(output);
     return;
   }
 

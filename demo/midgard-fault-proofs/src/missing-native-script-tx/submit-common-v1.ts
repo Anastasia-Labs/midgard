@@ -22,7 +22,7 @@ export type MissingNativeScriptTxCatalogueCategoryV1 = {
 export const missingNativeScriptTxSubmitError = (message: string): Error =>
   new Error(`${MISSING_NATIVE_SCRIPT_TX_CATEGORY_LABEL}: ${message}`);
 
-export type MissingNativeScriptTxStepIndexV1 = 0 | 1 | 2 | 3 | 4 | 5;
+export type MissingNativeScriptTxStepIndexV1 = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 export const missingNativeScriptTxStepLabelV1 = (
   stepIndex: MissingNativeScriptTxStepIndexV1,

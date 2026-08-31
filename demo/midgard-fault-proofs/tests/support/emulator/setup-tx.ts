@@ -5,7 +5,13 @@ import {
   ActiveOperatorDatum,
   ActiveOperatorMintRedeemer,
   ActiveOperatorSpendRedeemer,
+  buildActivateOperatorTx,
+  buildRegisterOperatorTx,
+  CLAIM_REGISTRY_ASSET_NAME,
+  ClaimRegistryDatum,
   ConfirmedState,
+  CORRECTION_LOCK_ASSET_NAME,
+  CorrectionLockDatum,
   EMPTY_MERKLE_TREE_ROOT,
   encodeLinkedListNodeView,
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
@@ -14,6 +20,8 @@ import {
   GENESIS_HEADER_HASH,
   GENESIS_PROTOCOL_VERSION,
   getHeaderV1FromStateQueueDatum,
+  getLinkedListNodeViewFromUTxO,
+  getProtocolParameters,
   hashBlockHeaderV1,
   HeaderV1,
   HUB_ORACLE_ASSET_NAME,
@@ -21,12 +29,14 @@ import {
   incompleteEmulatorCommitBlockHeaderTxProgram,
   makeHubOracleDatum,
   type MidgardValidators,
-  outputReferenceFromUTxO,
+  type NodeWithDatum,
+  REGISTERED_OPERATOR_NODE_ASSET_NAME_PREFIX,
   REGISTERED_OPERATORS_ROOT_ASSET_NAME,
+  RegisteredOperatorDatum,
   RegisteredOperatorMintRedeemer,
+  REGISTRATION_DURATION_MS,
   requireInputIndex,
   requireMintRedeemerIndex,
-  requireOwnMintPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
   RETIRED_OPERATORS_ROOT_ASSET_NAME,
@@ -56,16 +66,20 @@ import { network } from "./blueprints.js";
 import { ledgerOrderedIndex } from "./catalogue.js";
 import {
   firstWalletUtxo,
+  largestWalletUtxo,
   requireUtxoWithUnit,
   runEmulatorLifecycleStage,
 } from "./emulator-context.js";
 import {
-  ACTIVE_OPERATOR_ACTIVATION_OUTPUT_INDEX,
   SCHEDULER_APPOINTMENT_OUTPUT_INDEX,
   SETUP_OUTPUT_INDEX,
 } from "./header-fixtures.js";
+import { type OperatorLifecycleReferenceScriptsV1 } from "./reference-scripts.js";
 
 type SetupLucid = Awaited<ReturnType<typeof Lucid>>;
+type SetupContracts = MidgardValidators & {
+  readonly operatorLifecycleReferenceScripts?: OperatorLifecycleReferenceScriptsV1;
+};
 
 /** Every asset unit the four setup transactions mint or track. */
 const setupUnits = (
@@ -74,6 +88,14 @@ const setupUnits = (
   headerHash: string,
 ) => ({
   hubOracle: toUnit(contracts.hubOracle.policyId, HUB_ORACLE_ASSET_NAME),
+  correctionLock: toUnit(
+    contracts.hubOracle.policyId,
+    CORRECTION_LOCK_ASSET_NAME,
+  ),
+  claimRegistry: toUnit(
+    contracts.hubOracle.policyId,
+    CLAIM_REGISTRY_ASSET_NAME,
+  ),
   fraudProofCatalogue: toUnit(
     contracts.fraudProofCatalogue.policyId,
     FRAUD_PROOF_CATALOGUE_ASSET_NAME,
@@ -108,6 +130,26 @@ const setupUnits = (
 type SetupUnits = ReturnType<typeof setupUnits>;
 
 /**
+ * Lovelace the correction lock is created with.
+ *
+ * `correction-lock.ak` requires every correction spend to preserve the lock's
+ * value exactly (`lock_output.value == own_input.output.value`), so the UTxO
+ * can never be topped up after it is minted: it has to be funded once, at
+ * creation, for the largest datum it will ever carry. Lucid's automatic
+ * min-Ada top-up sizes it for the 3-byte `Idle` datum instead (1,146,460
+ * lovelace), which is 70 bytes -- 301,700 lovelace at 4,310 lovelace per byte
+ * -- short of the 73-byte `Locked { target_header_hash: bytes(28),
+ * correction_identity: FraudProof { bytes(32) } }` datum that the non-terminal
+ * removal leg has to write. Under-funding makes every multi-transaction fraud
+ * removal unbuildable: the lock output is silently bumped to its own min-Ada,
+ * and the exact fraud-slash fee -- the operator bond minus the prover reward,
+ * to the lovelace -- has no slack to absorb the difference, so the first
+ * transaction fails balancing by exactly 301,700 lovelace. The round figure
+ * here clears the 1,448,160-lovelace worst case with margin for datum drift.
+ */
+const CORRECTION_LOCK_LOVELACE_V1 = 2_000_000n;
+
+/**
  * Transaction 1: mint the hub oracle, scheduler, state-queue root, operator
  * roots, and fraud-proof catalogue in one authored output order.
  */
@@ -135,12 +177,21 @@ const submitInitialMintTx = async ({
     endTime: header.startTime,
     protocolVersion: GENESIS_PROTOCOL_VERSION,
   };
-  const unsigned = await lucid
+  const builder = lucid
     .newTx()
     .validFrom(Number(header.startTime - 120_000n))
     .validTo(Number(header.startTime + 1n))
     .collectFrom([nonceUtxo])
-    .mintAssets({ [units.hubOracle]: 1n }, Data.void())
+    // `hub_oracle.mint` requires the exact hub-policy set — hub oracle,
+    // correction lock and claim registry — at equal quantities.
+    .mintAssets(
+      {
+        [units.hubOracle]: 1n,
+        [units.correctionLock]: 1n,
+        [units.claimRegistry]: 1n,
+      },
+      Data.void(),
+    )
     .pay.ToAddressWithData(
       credentialToAddress(
         network,
@@ -151,6 +202,14 @@ const submitInitialMintTx = async ({
         value: Data.to(hubOracleDatum, HubOracleDatum),
       },
       { [units.hubOracle]: 1n },
+    )
+    .pay.ToContract(
+      contracts.correctionLock.spendingScriptAddress,
+      { kind: "inline", value: Data.to("Idle", CorrectionLockDatum) },
+      {
+        lovelace: CORRECTION_LOCK_LOVELACE_V1,
+        [units.correctionLock]: 1n,
+      },
     )
     .mintAssets(
       { [units.scheduler]: 1n },
@@ -164,7 +223,7 @@ const submitInitialMintTx = async ({
       },
       { [units.scheduler]: 1n },
     )
-    // Fixed by the authored setup output order: hub oracle, scheduler,
+    // Fixed by the authored setup output order: hub oracle, correction lock, scheduler,
     // state-queue root, active-operators root, retired-operators root, then
     // registered-operators root.
     .mintAssets(
@@ -224,7 +283,17 @@ const submitInitialMintTx = async ({
       },
       { [units.retiredOperatorsRoot]: 1n },
     )
-    .mintAssets({ [units.registeredOperatorsRoot]: 1n }, Data.void())
+    .mintAssets(
+      { [units.registeredOperatorsRoot]: 1n },
+      Data.to(
+        {
+          Init: {
+            output_index: SETUP_OUTPUT_INDEX.registeredOperatorsRoot,
+          },
+        },
+        RegisteredOperatorMintRedeemer,
+      ),
+    )
     .pay.ToContract(
       contracts.registeredOperators.spendingScriptAddress,
       {
@@ -246,23 +315,78 @@ const submitInitialMintTx = async ({
       },
       { [units.fraudProofCatalogue]: 1n },
     )
+    // Appended after the indexed roots so `SETUP_OUTPUT_INDEX` stays valid;
+    // `state_queue.mint` InitV1 locates this output by its hub-policy token,
+    // not by index.
+    .pay.ToContract(
+      contracts.claimRegistry.spendingScriptAddress,
+      {
+        kind: "inline",
+        value: Data.to(
+          {
+            claims_root: EMPTY_MERKLE_TREE_ROOT,
+            computation_thread_policy_id: contracts.computationThread.policyId,
+          },
+          ClaimRegistryDatum,
+        ),
+      },
+      { [units.claimRegistry]: 1n },
+    )
     .attach.MintingPolicy(contracts.hubOracle.mintingScript)
     .attach.MintingPolicy(contracts.fraudProofCatalogue.mintingScript)
     .attach.MintingPolicy(contracts.scheduler.mintingScript)
     .attach.MintingPolicy(contracts.stateQueue.mintingScript)
     .attach.MintingPolicy(contracts.activeOperators.mintingScript)
     .attach.MintingPolicy(contracts.retiredOperators.mintingScript)
-    .attach.MintingPolicy(contracts.registeredOperators.mintingScript)
-    .complete({ localUPLCEval: true });
+    .attach.MintingPolicy(contracts.registeredOperators.mintingScript);
+  const mintPolicyOrder = [
+    ["hub-oracle", contracts.hubOracle.policyId],
+    ["fraud-proof-catalogue", contracts.fraudProofCatalogue.policyId],
+    ["scheduler", contracts.scheduler.policyId],
+    ["state-queue", contracts.stateQueue.policyId],
+    ["active-operators", contracts.activeOperators.policyId],
+    ["retired-operators", contracts.retiredOperators.policyId],
+    ["registered-operators", contracts.registeredOperators.policyId],
+  ]
+    .sort((left, right) => left[1]!.localeCompare(right[1]!))
+    .map(([label]) => label)
+    .join(",");
+  const unsigned = await runEmulatorLifecycleStage(
+    `setup.initial.complete mint-policy-order=[${mintPolicyOrder}]`,
+    () => builder.complete({ localUPLCEval: true }),
+  );
   const signed = await unsigned.sign.withWallet().complete();
   await runEmulatorLifecycleStage("setup.initial", async () =>
     lucid.awaitTx(await signed.submit()),
   );
 };
 
+const nodeWithDatum = async ({
+  utxo,
+  policyId,
+  label,
+}: {
+  readonly utxo: UTxO;
+  readonly policyId: string;
+  readonly label: string;
+}): Promise<NodeWithDatum> => {
+  const units = Object.entries(utxo.assets).filter(
+    ([unit, quantity]) =>
+      unit !== "lovelace" && unit.startsWith(policyId) && quantity === 1n,
+  );
+  if (units.length !== 1) {
+    throw new Error(`${label} must carry exactly one linked-list NFT`);
+  }
+  return {
+    utxo,
+    datum: await Effect.runPromise(getLinkedListNodeViewFromUTxO(utxo)),
+    assetName: units[0]![0].slice(56),
+  };
+};
+
 /**
- * Transaction 2: activate the header's operator — insert its node into the
- * active-operators list and consume its registration.
+ * Transactions 2 and 3: genuinely register the header's operator, then move
+ * that authenticated node into the active-operators set.
  */
 const submitOperatorActivationTx = async ({
   lucid,
@@ -271,116 +395,228 @@ const submitOperatorActivationTx = async ({
   units,
 }: {
   readonly lucid: SetupLucid;
-  readonly contracts: MidgardValidators;
+  readonly contracts: SetupContracts;
   readonly header: HeaderV1;
   readonly units: SetupUnits;
 }): Promise<void> => {
-  const initialActiveOperatorsRoot = await requireUtxoWithUnit(
-    lucid,
-    contracts.activeOperators.spendingScriptAddress,
-    units.activeOperatorsRoot,
-    "active-operators root after the setup mint",
+  const [hubOracleUtxo, activeRootUtxo, retiredRootUtxo, registeredRootUtxo] =
+    await Promise.all([
+      requireUtxoWithUnit(
+        lucid,
+        credentialToAddress(
+          network,
+          scriptHashToCredential(contracts.hubOracle.policyId),
+        ),
+        units.hubOracle,
+        "hub oracle after the setup mint",
+      ),
+      requireUtxoWithUnit(
+        lucid,
+        contracts.activeOperators.spendingScriptAddress,
+        units.activeOperatorsRoot,
+        "active-operators root after the setup mint",
+      ),
+      requireUtxoWithUnit(
+        lucid,
+        contracts.retiredOperators.spendingScriptAddress,
+        units.retiredOperatorsRoot,
+        "retired-operators root after the setup mint",
+      ),
+      requireUtxoWithUnit(
+        lucid,
+        contracts.registeredOperators.spendingScriptAddress,
+        units.registeredOperatorsRoot,
+        "registered-operators root after the setup mint",
+      ),
+    ]);
+  const [activeRoot, retiredRoot, registeredRoot] = await Promise.all([
+    nodeWithDatum({
+      utxo: activeRootUtxo,
+      policyId: contracts.activeOperators.policyId,
+      label: "active-operators root",
+    }),
+    nodeWithDatum({
+      utxo: retiredRootUtxo,
+      policyId: contracts.retiredOperators.policyId,
+      label: "retired-operators root",
+    }),
+    nodeWithDatum({
+      utxo: registeredRootUtxo,
+      policyId: contracts.registeredOperators.policyId,
+      label: "registered-operators root",
+    }),
+  ]);
+  const lifecycleReferences = contracts.operatorLifecycleReferenceScripts;
+  if (lifecycleReferences === undefined) {
+    throw new Error(
+      "operator lifecycle reference scripts must be published before the header clock is sampled",
+    );
+  }
+  const registerValidTo = BigInt(
+    lucid.slotToUnixTime(lucid.currentSlot() + 120),
   );
-  const registeredOperatorActivationUnit = toUnit(
+  const activationTime = registerValidTo - 1n + REGISTRATION_DURATION_MS;
+  const activationTimeHex = activationTime.toString(16);
+  const registrationNodeKey =
+    activationTimeHex.length % 2 === 0
+      ? activationTimeHex
+      : `0${activationTimeHex}`;
+  const registeredNodeUnit = toUnit(
     contracts.registeredOperators.policyId,
-    "00",
+    REGISTERED_OPERATOR_NODE_ASSET_NAME_PREFIX + registrationNodeKey,
   );
-  const activeRootWithOperatorDatum = encodeLinkedListNodeView({
-    key: "Empty",
-    next: { Key: { key: header.operatorVkey } },
-    data: "",
-  });
-  const activeOperatorInitialDatum = encodeLinkedListNodeView({
-    key: { Key: { key: header.operatorVkey } },
-    next: "Empty",
+  const prependedNodeDatum = {
+    key: { Key: { key: registrationNodeKey } },
+    next: registeredRoot.datum.next,
     data: Data.castTo(
-      { bond_unlock_time: null, inactivity_strikes: 0n },
-      ActiveOperatorDatum,
+      { operator: header.operatorVkey },
+      RegisteredOperatorDatum,
     ),
-  });
-  const activeOperatorsActivateRedeemer = ((ctx) => {
-    requireOwnMintPurpose(
-      ctx,
-      contracts.activeOperators.policyId,
-      "test active-operators activation mint",
-    );
-    return Data.to(
-      {
-        ActivateOperator: {
-          new_active_operator_key: header.operatorVkey,
-          active_operator_anchor_element_output_index:
-            ACTIVE_OPERATOR_ACTIVATION_OUTPUT_INDEX.root,
-          active_operator_inserted_node_output_index:
-            ACTIVE_OPERATOR_ACTIVATION_OUTPUT_INDEX.insertedNode,
-          registered_operators_redeemer_index: requireMintRedeemerIndex(
-            ctx,
-            contracts.registeredOperators.policyId,
-            "test registered-operators activation mint",
-          ),
-          active_operators_set_was_empty: true,
-        },
+  } as const;
+  const updatedRegisteredRootDatum = {
+    ...registeredRoot.datum,
+    next: { Key: { key: registrationNodeKey } },
+  } as const;
+  const registrationFunding = [
+    await largestWalletUtxo(lucid, "operator registration funding"),
+  ];
+  let registerLayout: Parameters<typeof buildRegisterOperatorTx>[0]["layout"];
+  const registerTx = (layout = registerLayout) =>
+    buildRegisterOperatorTx({
+      lucid,
+      contracts,
+      operatorKeyHash: header.operatorVkey,
+      registeredOperatorScriptRefs: lifecycleReferences.registered,
+      hubOracleRefInput: hubOracleUtxo,
+      activeNotMemberWitness: activeRoot,
+      retiredNotMemberWitness: retiredRoot,
+      registeredRootNode: registeredRoot,
+      registerFundingInputs: registrationFunding,
+      registerMintAssets: { [registeredNodeUnit]: 1n },
+      prependedNodeDatum,
+      prependedNodeAssets: {
+        lovelace: getProtocolParameters(network).required_bond,
+        [registeredNodeUnit]: 1n,
       },
-      ActiveOperatorMintRedeemer,
-    );
-  }) satisfies BuildTxWithRedeemer;
-  const registeredOperatorsActivateRedeemer = ((ctx) => {
-    requireOwnMintPurpose(
-      ctx,
-      contracts.registeredOperators.policyId,
-      "test registered-operators activation mint",
-    );
-    return Data.to(
-      {
-        ActivateOperator: {
-          activating_operator: header.operatorVkey,
-          anchor_element_input_outref: outputReferenceFromUTxO(
-            initialActiveOperatorsRoot,
-          ),
-          anchor_element_output_index:
-            ACTIVE_OPERATOR_ACTIVATION_OUTPUT_INDEX.root,
-          hub_oracle_ref_input_index: 0n,
-          retired_operators_element_ref_input_index: 0n,
-          active_operators_redeemer_index: requireMintRedeemerIndex(
-            ctx,
-            contracts.activeOperators.policyId,
-            "test active-operators activation mint",
-          ),
-        },
+      updatedRegisteredRootDatum,
+      registerValidTo,
+      ...(layout === undefined ? {} : { layout }),
+      onLayout: (resolved) => {
+        registerLayout = resolved;
       },
-      RegisteredOperatorMintRedeemer,
-    );
-  }) satisfies BuildTxWithRedeemer;
+    });
+  await runEmulatorLifecycleStage(
+    `setup.operator-registration.preflight policy=${contracts.registeredOperators.policyId}`,
+    () =>
+      registerTx().complete({
+        localUPLCEval: true,
+        presetWalletInputs: [...registrationFunding],
+      }),
+  );
+  if (registerLayout === undefined) {
+    throw new Error("operator registration layout was not resolved");
+  }
+  const registrationUnsigned = await runEmulatorLifecycleStage(
+    "setup.operator-registration.complete",
+    () =>
+      registerTx(registerLayout).complete({
+        localUPLCEval: true,
+        presetWalletInputs: [...registrationFunding],
+      }),
+  );
+  const registrationSigned = await registrationUnsigned.sign
+    .withWallet()
+    .complete();
+  await runEmulatorLifecycleStage("setup.operator-registration", async () =>
+    lucid.awaitTx(await registrationSigned.submit()),
+  );
+
+  const [registeredNodeUtxo, continuedRegisteredRootUtxo] = await Promise.all([
+    requireUtxoWithUnit(
+      lucid,
+      contracts.registeredOperators.spendingScriptAddress,
+      registeredNodeUnit,
+      "registered operator node",
+    ),
+    requireUtxoWithUnit(
+      lucid,
+      contracts.registeredOperators.spendingScriptAddress,
+      units.registeredOperatorsRoot,
+      "registered-operators root after registration",
+    ),
+  ]);
+  const [registeredNode, continuedRegisteredRoot] = await Promise.all([
+    nodeWithDatum({
+      utxo: registeredNodeUtxo,
+      policyId: contracts.registeredOperators.policyId,
+      label: "registered operator node",
+    }),
+    nodeWithDatum({
+      utxo: continuedRegisteredRootUtxo,
+      policyId: contracts.registeredOperators.policyId,
+      label: "continued registered-operators root",
+    }),
+  ]);
+  const activationFunding = [
+    await largestWalletUtxo(lucid, "operator activation funding"),
+  ];
+  const transferredOperatorAssets = {
+    ...registeredNode.utxo.assets,
+    [units.activeOperatorNode]: 1n,
+  };
+  delete transferredOperatorAssets[registeredNodeUnit];
+  let activateLayout: Parameters<typeof buildActivateOperatorTx>[0]["layout"];
+  const activateTx = (layout = activateLayout) =>
+    buildActivateOperatorTx({
+      lucid,
+      contracts,
+      operatorKeyHash: header.operatorVkey,
+      registeredOperatorScriptRefs: lifecycleReferences.registered,
+      activeOperatorScriptRefs: lifecycleReferences.active,
+      hubOracleRefInput: hubOracleUtxo,
+      retiredNotMemberWitness: retiredRoot,
+      registeredNode,
+      registeredAnchor: continuedRegisteredRoot,
+      activeAppendAnchor: activeRoot,
+      activationFundingInputs: activationFunding,
+      validFrom: BigInt(lucid.slotToUnixTime(lucid.currentSlot())),
+      registeredNodeUnit,
+      activeNodeUnit: units.activeOperatorNode,
+      transferredOperatorAssets,
+      updatedRegisteredAnchorDatum: {
+        ...continuedRegisteredRoot.datum,
+        next: registeredNode.datum.next,
+      },
+      ...(layout === undefined ? {} : { layout }),
+      onLayout: (resolved) => {
+        activateLayout = resolved;
+      },
+    });
+  const activationMintPolicyOrder = [
+    ["active-operators", contracts.activeOperators.policyId],
+    ["registered-operators", contracts.registeredOperators.policyId],
+  ]
+    .sort((left, right) => left[1]!.localeCompare(right[1]!))
+    .map(([label]) => label)
+    .join(",");
+  await runEmulatorLifecycleStage(
+    `setup.operator-activation.preflight mint-policy-order=[${activationMintPolicyOrder}]`,
+    () =>
+      activateTx().complete({
+        localUPLCEval: true,
+        presetWalletInputs: [...activationFunding],
+      }),
+  );
+  if (activateLayout === undefined) {
+    throw new Error("operator activation layout was not resolved");
+  }
   const activationUnsigned = await runEmulatorLifecycleStage(
     "setup.operator-activation.complete",
     () =>
-      lucid
-        .newTx()
-        .collectFrom(
-          [initialActiveOperatorsRoot],
-          Data.to("ListStateTransition", ActiveOperatorSpendRedeemer),
-        )
-        .mintAssets(
-          { [units.activeOperatorNode]: 1n },
-          activeOperatorsActivateRedeemer,
-        )
-        .mintAssets(
-          { [registeredOperatorActivationUnit]: 1n },
-          registeredOperatorsActivateRedeemer,
-        )
-        .pay.ToContract(
-          contracts.activeOperators.spendingScriptAddress,
-          { kind: "inline", value: activeRootWithOperatorDatum },
-          initialActiveOperatorsRoot.assets,
-        )
-        .pay.ToContract(
-          contracts.activeOperators.spendingScriptAddress,
-          { kind: "inline", value: activeOperatorInitialDatum },
-          { lovelace: 20_000_000n, [units.activeOperatorNode]: 1n },
-        )
-        .attach.MintingPolicy(contracts.activeOperators.mintingScript)
-        .attach.Script(contracts.activeOperators.spendingScript)
-        .attach.MintingPolicy(contracts.registeredOperators.mintingScript)
-        .complete({ localUPLCEval: true }),
+      activateTx(activateLayout).complete({
+        localUPLCEval: true,
+        presetWalletInputs: [...activationFunding],
+      }),
   );
   const activationSigned = await activationUnsigned.sign
     .withWallet()
@@ -504,6 +740,7 @@ const submitHeaderCommitTx = async ({
   headerHash,
   units,
   hubOracleUtxo,
+  correctionLockUtxo,
   stateQueueRootUtxo,
   appointedSchedulerUtxo,
   activeOperatorNode,
@@ -514,6 +751,7 @@ const submitHeaderCommitTx = async ({
   readonly headerHash: string;
   readonly units: SetupUnits;
   readonly hubOracleUtxo: UTxO;
+  readonly correctionLockUtxo: UTxO;
   readonly stateQueueRootUtxo: UTxO;
   readonly appointedSchedulerUtxo: UTxO;
   readonly activeOperatorNode: UTxO;
@@ -587,6 +825,11 @@ const submitHeaderCommitTx = async ({
         validFrom: commitValidFrom,
         validTo: commitValidTo,
         schedulerRefInput: appointedSchedulerUtxo,
+        correctionLockRefInput: {
+          utxo: correctionLockUtxo,
+          datum: "Idle",
+          assetName: CORRECTION_LOCK_ASSET_NAME,
+        },
         additionalRefInputs: [hubOracleUtxo],
         activeOperatorInput: activeOperatorNode,
         activeOperatorSpendRedeemer: activeOperatorCommitRedeemer,
@@ -655,7 +898,7 @@ export const submitSetupTx = async ({
   header,
 }: {
   readonly lucid: SetupLucid;
-  readonly contracts: MidgardValidators;
+  readonly contracts: SetupContracts;
   readonly nonceUtxo: UTxO;
   readonly catalogue: FraudProofCatalogueDeploymentInfo;
   readonly header: HeaderV1;
@@ -701,6 +944,12 @@ export const submitSetupTx = async ({
     contracts.stateQueue.spendingScriptAddress,
     units.stateQueueRoot,
     "state-queue root after setup",
+  );
+  const correctionLockUtxo = await requireUtxoWithUnit(
+    lucid,
+    contracts.correctionLock.spendingScriptAddress,
+    units.correctionLock,
+    "correction lock after setup",
   );
   const schedulerUtxo = await requireUtxoWithUnit(
     lucid,
@@ -750,6 +999,7 @@ export const submitSetupTx = async ({
       headerHash,
       units,
       hubOracleUtxo,
+      correctionLockUtxo,
       stateQueueRootUtxo,
       appointedSchedulerUtxo,
       activeOperatorNode,

@@ -2,8 +2,8 @@ import {
   adjudicateMidgardNativeTxFullV1Validity,
   computeMidgardNativeTxIdV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  deriveMidgardNativeTxFaultEvidenceMaterialV1,
   deriveMidgardNativeTxProofSourceV1,
-  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
 import { unwrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
 import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
@@ -454,22 +454,18 @@ const decodeTransactions = async ({
         `transaction_preimages is missing tx_id ${txId}.`,
       );
     }
-    let full: ReturnType<typeof decodeMidgardNativeTxFullV1FromCanonicalCbor>;
+    let raw: ReturnType<typeof deriveMidgardNativeTxFaultEvidenceMaterialV1>;
     try {
-      full = decodeMidgardNativeTxFullV1FromCanonicalCbor(fullTransactionCbor);
-      const expectedTxId = computeMidgardNativeTxIdV1(full).toString("hex");
-      const source =
-        deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(
-          fullTransactionCbor,
-        );
+      raw = deriveMidgardNativeTxFaultEvidenceMaterialV1(fullTransactionCbor);
+      const expectedTxId = raw.transactionId.toString("hex");
       const expected: SDK.L2TransactionSourceV1 = {
         tx_id: expectedTxId,
         source: {
-          compact_cbor: source.compactCbor.toString("hex"),
+          compact_cbor: raw.proofSource.compactCbor.toString("hex"),
           witness_set_compact_cbor:
-            source.witnessSetCompactCbor.toString("hex"),
+            raw.proofSource.witnessSetCompactCbor.toString("hex"),
           field_preimage_lengths_cbor:
-            source.fieldPreimageLengthsCbor.toString("hex"),
+            raw.proofSource.fieldPreimageLengthsCbor.toString("hex"),
         },
       };
       if (
@@ -485,6 +481,31 @@ const decodeTransactions = async ({
       throw transitionTraceError(
         "malformedPayload",
         `Failed to authenticate transactions[${index.toString()}] against its canonical preimage.`,
+        cause,
+      );
+    }
+    const committedFieldDefect = raw.fieldPreimages
+      .map((preimage, fieldIndex) =>
+        SDK.canonicalDecodabilityEvidenceFromCommittedFieldV1({
+          badTxId: txId,
+          fieldIndex,
+          committedPreimage: preimage,
+        }),
+      )
+      .find(({ isViolation }) => isViolation);
+    if (committedFieldDefect !== undefined) {
+      throw transitionTraceError(
+        "authenticatedCommittedFieldDefect",
+        `L1-authenticated transaction ${txId} commits Q17 field ${committedFieldDefect.fieldIndex.toString()} verdict ${committedFieldDefect.verdict.toString()}.`,
+      );
+    }
+    let full: ReturnType<typeof decodeMidgardNativeTxFullV1FromCanonicalCbor>;
+    try {
+      full = decodeMidgardNativeTxFullV1FromCanonicalCbor(fullTransactionCbor);
+    } catch (cause) {
+      throw transitionTraceError(
+        "malformedPayload",
+        `Failed to decode authenticated transaction ${txId} after its field-envelope check.`,
         cause,
       );
     }
@@ -813,10 +834,7 @@ export const reconstructDaPayloadV1 = async ({
     );
   }
 
-  const transactions = await decodeTransactions({
-    entries: body.transactions,
-    preimages: body.transaction_preimages,
-  });
+  const rawTransactions = rawEntries("transactions", body.transactions);
   const rawUtxos = rawEntries("utxos", body.utxos);
   const descriptorUtxos = rawUtxos.map((entry) => {
     try {
@@ -847,7 +865,7 @@ export const reconstructDaPayloadV1 = async ({
     ),
     transactions: await buildCountedRoot(
       SDK.ROOT_DOMAINS.transactionsV1,
-      rawEntries("transactions", body.transactions),
+      rawTransactions,
     ),
     deposits: await buildCountedRoot(
       SDK.ROOT_DOMAINS.deposits,
@@ -895,6 +913,30 @@ export const reconstructDaPayloadV1 = async ({
       )}.`,
     );
   }
+
+  // Q44 is the one family for which canonical reconstruction is expected to
+  // reject the payload. Detect it only after the raw transactions MPF/count
+  // and embedded header have been authenticated against L1. This typed error
+  // is therefore not a generic decode/fetch fallback: it proves an exact
+  // committed source leaf is itself a total Q44 violation.
+  const authenticatedSourceLeafDefect = rawTransactions.find(
+    ({ key, value }) =>
+      SDK.daHashPreimageEvidenceFromCommittedLeafV1({
+        committedTxId: key.toString("hex"),
+        committedLeafValue: value,
+      }).isViolation,
+  );
+  if (authenticatedSourceLeafDefect !== undefined) {
+    throw transitionTraceError(
+      "authenticatedSourceLeafDefect",
+      `L1-authenticated transactions_root contains a Q44 source-leaf defect at ${authenticatedSourceLeafDefect.key.toString("hex")}.`,
+    );
+  }
+
+  const transactions = await decodeTransactions({
+    entries: body.transactions,
+    preimages: body.transaction_preimages,
+  });
 
   const withdrawals = decodeTypedEntries<
     SDK.OutputReference,

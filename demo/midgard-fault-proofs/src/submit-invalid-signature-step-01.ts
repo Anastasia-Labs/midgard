@@ -27,12 +27,8 @@
  * committed hash is therefore rejected locally, before any submission: a valid
  * block cannot be challenged with invented witnesses.
  *
- * Unlike `zero-input` and `invalid-range`, the family's on-chain `Args` is
- * `NativeTxInclusionArgs` rather than `NativeTxInclusionCarriage`
- * (`lib/midgard/fraud-proofs/invalid-signature/step-01.ak`), so the membership
- * opening has exactly one route to L1 — the redeemer-carried one. The
- * published-chunk carriage of issue #545 is not expressible here and is
- * deliberately absent rather than emulated.
+ * The inclusion uses the shared carriage ABI: ordinary proofs stay in the
+ * redeemer, while maximum-depth proofs use authenticated published chunks.
  */
 import {
   HUB_ORACLE_ASSET_NAME,
@@ -45,7 +41,6 @@ import {
   requireOwnSpendPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
-  requireWithdrawalRedeemerIndex,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -53,22 +48,23 @@ import {
   Data,
   type LucidEvolution,
   type Network,
-  type Script,
   scriptHashToCredential,
   toUnit,
   type UTxO,
 } from "@lucid-evolution/lucid";
 
 import { parseHex, requireRecord } from "./json-file.js";
+import { prepareNativeTxInclusionCarriageV1 } from "./native-inclusion-carriage-v1.js";
+import {
+  type PublishedProofChunkV1,
+  walletInputsExcludingChunks,
+} from "./proof-chunk-carriage.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
-  encodeRawPhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
-  getCompiledScript,
   makeLucidForSubmit,
   outRefLabel,
   parseOutRef,
-  phasMembershipRewardAddress,
   readJsonFile,
   requireSingletonUtxo,
   type ResolvedProverSigner,
@@ -79,7 +75,6 @@ import {
 } from "./runtime.js";
 import {
   parseSubmitStep01TxInclusion,
-  PHAS_MEMBERSHIP_WITHDRAW_TITLE,
   requireComputationThreadToken,
   requireInitialStepDatum,
   requireNativeTxMatchesCompactCbor,
@@ -90,8 +85,12 @@ import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
   type FaultProofWitnessReferenceScriptsV1,
   witnessSpendingValidatorCarriageV1,
-  witnessWithdrawalValidatorCarriageV1,
 } from "./witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "./workflow/transaction-boundary-v1.js";
 
 /**
  * Preimage of the bad transaction's committed `witness_set_hash`, as
@@ -182,8 +181,10 @@ export const submitInvalidSignatureStep01 = async ({
   stateQueueBlockOutRef,
   txInclusion,
   badTxWitnessSetCompact,
+  publishedProofChunks,
   referenceScriptUtxo,
   witnessReferenceScripts,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -196,10 +197,13 @@ export const submitInvalidSignatureStep01 = async ({
   readonly txInclusion: SubmitStep01TxInclusion;
   /** Preimage of the committed `witness_set_hash`, opened by this step. */
   readonly badTxWitnessSetCompact: NativeTxWitnessSetCompact;
+  /** Present selects the authenticated published-chunk inclusion route. */
+  readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
   /** The mandatory published step-01 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitInvalidSignatureStep01Result> => {
   const resolvedDeployment = await resolveInvalidSignatureDeploymentContracts({
@@ -283,31 +287,31 @@ export const submitInvalidSignatureStep01 = async ({
   }
 
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
-  const phasMembershipScript: Script = {
-    type: "PlutusV3",
-    script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
-  };
-  const phasRewardAddress = phasMembershipRewardAddress(
-    network,
-    phasMembershipScript,
+  const chunks = publishedProofChunks ?? [];
+  const feeInput = selectFeeInput(
+    walletInputsExcludingChunks({
+      walletUtxos: await lucid.wallet().getUtxos(),
+      chunks,
+    }),
   );
   const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
     script: contracts.invalidSignature.steps[0].spendingScript,
     referenceUtxo: referenceScriptUtxo,
     label: "invalid-signature step 01 validator",
   });
-  const phasMembershipCarriage = witnessWithdrawalValidatorCarriageV1({
-    script: phasMembershipScript,
-    referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
-    label: "invalid-signature step 01 PHAS membership",
+  const inclusionCarriage = prepareNativeTxInclusionCarriageV1({
+    blueprint,
+    network,
+    txInclusion,
+    publishedProofChunks: chunks,
+    witnessReferenceScripts,
+    label: "invalid-signature step 01",
+    baseReferenceInputs: [
+      hubOracleUtxo,
+      stateQueueBlockUtxo,
+      ...stepScriptCarriage.referenceInputs,
+    ],
   });
-  const referenceInputs = [
-    hubOracleUtxo,
-    stateQueueBlockUtxo,
-    ...stepScriptCarriage.referenceInputs,
-    ...phasMembershipCarriage.referenceInputs,
-  ];
   const step02Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -351,30 +355,20 @@ export const submitInvalidSignatureStep01 = async ({
     resolvedLayout = layout;
     return Data.to(
       {
-        // #575 collapsed these arguments to a bare `NativeTxInclusionArgs`: the
+        // #575 collapsed these arguments to `NativeTxInclusionCarriage`: the
         // witness-set preimage no longer travels through step-01, because
         // step-02 opens field 7 through the §8.8 door and re-derives it from
         // whatever carriage the prover chose. The `--witness-set-compact` this
         // builder still takes is checked below and forwarded as a *hash* in the
         // step-02 state, never as a redeemer argument.
         Continue: [
-          {
+          inclusionCarriage.redeemer(ctx, {
             input_index: layout.inputIndex,
             output_index: layout.outputIndex,
             hub_ref_input_index: layout.hubOracleRefInputIndex,
             state_queue_node_ref_input_index:
               layout.stateQueueNodeRefInputIndex,
-            native_tx_id: txInclusion.nativeTxId,
-            native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
-            transactions_phas_root: txInclusion.transactionsPhasRoot,
-            tx_membership_proof: txInclusion.txMembershipProof,
-            inclusion_proof_script_withdraw_redeemer_index:
-              requireWithdrawalRedeemerIndex(
-                ctx,
-                phasRewardAddress,
-                "invalid-signature step 01 PHAS membership",
-              ),
-          },
+          }),
         ],
       },
       InvalidSignatureStep01SpendRedeemer,
@@ -389,17 +383,7 @@ export const submitInvalidSignatureStep01 = async ({
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
-    .readFrom(referenceInputs)
-    .withdraw(
-      phasRewardAddress,
-      0n,
-      encodeRawPhasMembershipProofRedeemer({
-        root: txInclusion.transactionsPhasRoot,
-        keyBytes: txInclusion.nativeTxId,
-        valueBytes: txInclusion.nativeTxCompactCbor,
-        membershipProofCbor: txInclusion.txMembershipProofCbor,
-      }),
-    )
+    .readFrom(inclusionCarriage.referenceInputs)
     .pay.ToContract(
       contracts.invalidSignature.steps[1].spendingScriptAddress,
       {
@@ -409,7 +393,7 @@ export const submitInvalidSignatureStep01 = async ({
       threadAssets,
     )
     .addSignerKey(signer.paymentKeyHash);
-  const completedTx = phasMembershipCarriage.attach(
+  const completedTx = inclusionCarriage.attachWithdrawal(
     stepScriptCarriage.attach(tx),
   );
 
@@ -420,7 +404,27 @@ export const submitInvalidSignatureStep01 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof invalid-signature step-01",
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.invalidSignature.steps[0].spendingScript,
+        },
+        ...inclusionCarriage.referenceScriptCandidates,
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw new Error(
+      `invalid-signature step-01 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

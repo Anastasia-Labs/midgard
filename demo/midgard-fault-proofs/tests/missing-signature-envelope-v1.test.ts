@@ -57,11 +57,14 @@ import {
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
 
+// Derivation: `compiledCode.length / 2` for each
+// `fraud_proofs/missing_signature/step_NN.main.spend` entry of
+// `onchain/aiken/plutus.json`, built with `aiken build --env testnet`.
 const EXPECTED_UNAPPLIED_BYTES = {
-  step01: 5_775,
-  step02: 6_695,
+  step01: 7_872,
+  step02: 6_777,
   step03: 1_510,
-  step04: 9_327,
+  step04: 9_836,
 } as const;
 const OWNER = Buffer.alloc(28, 0x11);
 const TX_ID = Buffer.alloc(32, 0x22);
@@ -113,6 +116,7 @@ describe("missing-signature compiled envelope", () => {
     const inclusion = fixture.tx1.inclusion as {
       readonly nativeTxId: string;
       readonly nativeTxCompactCbor: string;
+      readonly l2TransactionSourceCbor: string;
       readonly transactionsPhasRoot: string;
       readonly txMembershipProofCbor: string;
     };
@@ -124,7 +128,7 @@ describe("missing-signature compiled envelope", () => {
           hub_ref_input_index: 0n,
           state_queue_node_ref_input_index: 1n,
           native_tx_id: inclusion.nativeTxId,
-          native_tx_compact_cbor: inclusion.nativeTxCompactCbor,
+          l2_transaction_source_cbor: inclusion.l2TransactionSourceCbor,
           transactions_phas_root: inclusion.transactionsPhasRoot,
           tx_membership_proof: Data.from(
             inclusion.txMembershipProofCbor,

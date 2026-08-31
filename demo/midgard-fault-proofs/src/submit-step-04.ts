@@ -35,6 +35,11 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import {
+  type PreparedClaimRegistryMutationV1,
+  prepareDeploymentClaimRegistryMutationV1,
+  requirePreparedClaimRegistryMutationV1,
+} from "./claim-registry-transaction-v1.js";
 import { parseDoubleSpentInputIndex } from "./double-spend-inputs.js";
 import {
   faultProofFieldOpeningV1,
@@ -70,6 +75,11 @@ import {
   witnessMintingPolicyCarriageV1,
   witnessSpendingValidatorCarriageV1,
 } from "./witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptV1,
+} from "./workflow/transaction-boundary-v1.js";
 
 export type SubmitStep04CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;
@@ -300,8 +310,13 @@ export const submitStep04 = async ({
   nativeTxCompactCbor,
   doubleSpentInputIndex,
   publishCarriage = false,
+  publishedCarriageUtxos,
+  certificateUtxo,
+  certificatePolicyId,
   referenceScriptUtxo,
   witnessReferenceScripts,
+  claimRegistryMutation,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -321,10 +336,19 @@ export const submitStep04 = async ({
    * the preimage inline in this step's redeemer (#612).
    */
   readonly publishCarriage?: boolean;
+  /** Pre-observed tier-2/3 publications for journaled workflow use. */
+  readonly publishedCarriageUtxos?: readonly UTxO[];
+  /** Pre-minted §8.6 certificate, required when the plan selects tier 3. */
+  readonly certificateUtxo?: UTxO;
+  readonly certificatePolicyId?: string;
   /** The mandatory published step-04 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  /** Pre-prepared claim-registry `CloseClaim`; self-prepared when omitted. */
+  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
+  /** Production workflow seam for carriage and proof-step submissions. */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitStep04Result> => {
   const { doubleSpendCategory, contracts } =
@@ -393,13 +417,16 @@ export const submitStep04 = async ({
   }
 
   signer.selectWallet(lucid);
-  const carriageUtxos = await publishFaultProofFieldCarriageV1({
-    lucid,
-    signer,
-    planned,
-    publisherAddress: signer.address,
-    label: "Double-spend step 04 tx2 spend-inputs",
-  });
+  const carriageUtxos =
+    publishedCarriageUtxos ??
+    (await publishFaultProofFieldCarriageV1({
+      lucid,
+      signer,
+      planned,
+      publisherAddress: signer.address,
+      label: "Double-spend step 04 tx2 spend-inputs",
+      preSubmitBoundary,
+    }));
   const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
     script: contracts.doubleSpend.steps[3].spendingScript,
     referenceUtxo: referenceScriptUtxo,
@@ -415,22 +442,41 @@ export const submitStep04 = async ({
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: "double-spend step 04 fraud-proof mint",
   });
+  const resolvedClaimRegistryMutation = requirePreparedClaimRegistryMutationV1({
+    mutation:
+      claimRegistryMutation ??
+      (await prepareDeploymentClaimRegistryMutationV1({
+        lucid,
+        claimRegistryReferenceUtxo: witnessReferenceScripts?.claimRegistrySpend,
+        blueprint,
+        deploymentInfo,
+        network,
+        computationThreadPolicyId: contracts.computationThread.policyId,
+        claimId: threadToken.assetName,
+        kind: "close",
+      })),
+    kind: "close",
+    claimId: threadToken.assetName,
+    label: "double-spend step 04",
+  });
   const referenceInputs = [
     ...carriageUtxos,
+    ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     ...stepScriptCarriage.referenceInputs,
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
+    ...resolvedClaimRegistryMutation.referenceInputs,
   ];
   const walletUtxos = await lucid.wallet().getUtxos();
   const feeInput = selectFeeInput(
-    carriageUtxos.reduce<readonly UTxO[]>(
-      (candidates, utxo) => excludeUtxo(candidates, utxo),
-      walletUtxos,
-    ),
+    [...carriageUtxos, ...resolvedClaimRegistryMutation.referenceInputs].reduce<
+      readonly UTxO[]
+    >((candidates, utxo) => excludeUtxo(candidates, utxo), walletUtxos),
   );
   const tx2SpendInputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
     referenceInputs,
+    ...(certificatePolicyId === undefined ? {} : { certificatePolicyId }),
     label: "Double-spend step 04 tx2 spend-inputs",
   });
   const fraudProofUnit = toUnit(
@@ -499,7 +545,9 @@ export const submitStep04 = async ({
       )
       .addSignerKey(signer.paymentKeyHash);
     return fraudProofMintCarriage.attach(
-      computationThreadMintCarriage.attach(stepScriptCarriage.attach(chained)),
+      computationThreadMintCarriage.attach(
+        stepScriptCarriage.attach(resolvedClaimRegistryMutation.apply(chained)),
+      ),
     );
   };
 
@@ -528,7 +576,38 @@ export const submitStep04 = async ({
     computationThreadMintRedeemerIndex,
   };
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: [
+      workflowReferenceScriptV1({
+        role: "V1 fraud-proof double-spend step-04",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.doubleSpend.steps[3].spendingScript,
+      }),
+      workflowReferenceScriptV1({
+        role: "V1 fraud-proof computation-thread minting",
+        utxo: witnessReferenceScripts?.computationThreadMint,
+        expectedScript: contracts.computationThread.mintingScript,
+      }),
+      workflowReferenceScriptV1({
+        role: "V1 fraud-proof token minting",
+        utxo: witnessReferenceScripts?.fraudProofMint,
+        expectedScript: contracts.fraudProof.mintingScript,
+      }),
+      workflowReferenceScriptV1({
+        role: "claim-registry spending",
+        utxo: resolvedClaimRegistryMutation.referenceScriptUtxo,
+        expectedScript: resolvedClaimRegistryMutation.registryScript,
+      }),
+    ],
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw new Error(
+      `Provider returned transaction hash ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

@@ -66,6 +66,11 @@ import {
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import { witnessSpendingValidatorCarriageV1 } from "./witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptV1,
+} from "./workflow/transaction-boundary-v1.js";
 
 export type SubmitStep03CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;
@@ -171,7 +176,11 @@ export const submitStep03 = async ({
   nativeTxCompactCbor,
   doubleSpentInputIndex,
   publishCarriage = false,
+  publishedCarriageUtxos,
+  certificateUtxo,
+  certificatePolicyId,
   referenceScriptUtxo,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -194,8 +203,15 @@ export const submitStep03 = async ({
    * spend-input cardinality at the L1 byte frontier (#612).
    */
   readonly publishCarriage?: boolean;
+  /** Pre-observed tier-2/3 publications for journaled workflow use. */
+  readonly publishedCarriageUtxos?: readonly UTxO[];
+  /** Pre-minted §8.6 certificate, required when the plan selects tier 3. */
+  readonly certificateUtxo?: UTxO;
+  readonly certificatePolicyId?: string;
   /** The mandatory published step-03 reference script. */
   readonly referenceScriptUtxo?: UTxO;
+  /** Production workflow seam for carriage and proof-step submissions. */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitStep03Result> => {
   const { doubleSpendCategory, contracts } =
@@ -260,13 +276,16 @@ export const submitStep03 = async ({
   signer.selectWallet(lucid);
   // §8's ladder decides whether anything has to exist on-chain before this
   // transaction can reference it. Tier 1 publishes nothing and the list is empty.
-  const carriageUtxos = await publishFaultProofFieldCarriageV1({
-    lucid,
-    signer,
-    planned,
-    publisherAddress: signer.address,
-    label: "Double-spend step 03 tx1 spend-inputs",
-  });
+  const carriageUtxos =
+    publishedCarriageUtxos ??
+    (await publishFaultProofFieldCarriageV1({
+      lucid,
+      signer,
+      planned,
+      publisherAddress: signer.address,
+      label: "Double-spend step 03 tx1 spend-inputs",
+      preSubmitBoundary,
+    }));
   const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
     script: contracts.doubleSpend.steps[2].spendingScript,
     referenceUtxo: referenceScriptUtxo,
@@ -274,6 +293,7 @@ export const submitStep03 = async ({
   });
   const referenceInputs = [
     ...carriageUtxos,
+    ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     ...stepScriptCarriage.referenceInputs,
   ];
   const walletUtxos = await lucid.wallet().getUtxos();
@@ -286,6 +306,7 @@ export const submitStep03 = async ({
   const tx1SpendInputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
     referenceInputs,
+    ...(certificatePolicyId === undefined ? {} : { certificatePolicyId }),
     label: "Double-spend step 03 tx1 spend-inputs",
   });
   const step04Datum = Data.to(
@@ -374,7 +395,23 @@ export const submitStep03 = async ({
     throw new Error("BuildTxWithRedeemer did not resolve step 03 layout.");
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: [
+      workflowReferenceScriptV1({
+        role: "V1 fraud-proof double-spend step-03",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.doubleSpend.steps[2].spendingScript,
+      }),
+    ],
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw new Error(
+      `Provider returned transaction hash ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

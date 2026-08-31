@@ -2,10 +2,15 @@ import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   computeHash32,
   computeMidgardNativeTxIdV1,
+  deriveMidgardNativeTxProofSourceV1,
   deriveMidgardNativeTxWitnessSetCompactV1,
   encodeMidgardNativeTxCompactV1,
+  encodeMidgardNativeTxProofFieldLengthsV1,
   encodeMidgardNativeTxWitnessSetCompactV1,
   type MidgardNativeTxCompactV1,
+  type MidgardNativeTxFullV1,
+  midgardNativeTxProofFieldPreimageLengthsV1,
+  type MidgardNativeTxProofSourceV1,
 } from "@al-ft/midgard-core";
 import {
   CanonicalDecodabilityStep01SpendRedeemer,
@@ -46,6 +51,8 @@ import {
   requireCanonicalDecodabilityReferenceScriptV1,
   requireCanonicalDecodabilityThreadUtxoV1,
 } from "../../src/canonical-decodability/index.js";
+import { prepareFamilyClaimRegistryMutationV1 } from "../../src/claim-registry-transaction-v1.js";
+import { encodeL2TransactionSourceValueV1 } from "../../src/prepare-double-spend.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPhasMembershipProofRedeemer,
@@ -56,6 +63,7 @@ import {
   requireSingletonUtxo,
   type ResolvedProverSigner,
 } from "../../src/runtime.js";
+import { excludeUtxo } from "../../src/spend-input-witness.js";
 import {
   nativeTxFromCoreCompact,
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
@@ -112,20 +120,29 @@ const buildCommittedFixtureV1 = async ({
   fieldIndex,
   committedPreimage,
   witnessSet,
+  proofSource,
   allowGrammatical = false,
 }: {
   readonly compact: MidgardNativeTxCompactV1;
   readonly fieldIndex: number;
   readonly committedPreimage: Buffer;
   readonly witnessSet?: NativeTxWitnessSetCompact;
+  readonly proofSource: MidgardNativeTxProofSourceV1;
   readonly allowGrammatical?: boolean;
 }): Promise<CanonicalDecodabilityCommittedFieldFixtureV1> => {
   const badTxId = computeMidgardNativeTxIdV1(compact).toString("hex");
   const compactCbor = encodeMidgardNativeTxCompactV1(compact);
+  const l2TransactionSourceCbor = encodeL2TransactionSourceValueV1({
+    txId: badTxId,
+    proofSource,
+  });
   const store = new Store(undefined);
   await store.ready();
   const trie = new Trie(store);
-  await trie.insert(Buffer.from(badTxId, "hex"), compactCbor);
+  await trie.insert(
+    Buffer.from(badTxId, "hex"),
+    Buffer.from(l2TransactionSourceCbor, "hex"),
+  );
   const proof = await trie.prove(Buffer.from(badTxId, "hex"));
   const proofCbor = proof.toCBOR().toString("hex");
   const nativeTxCompactCbor = compactCbor.toString("hex");
@@ -133,6 +150,7 @@ const buildCommittedFixtureV1 = async ({
     nativeTxId: badTxId,
     nativeTx: nativeTxFromCoreCompact(compact),
     nativeTxCompactCbor,
+    l2TransactionSourceCbor,
     transactionsPhasRoot: trieRootHex(trie),
     txMembershipProof: Data.from(proofCbor, Proof),
     txMembershipProofCbor: proofCbor,
@@ -159,6 +177,29 @@ const buildCommittedFixtureV1 = async ({
     ...(witnessSet === undefined ? {} : { witnessSet }),
     txInclusion,
     prepared,
+  };
+};
+
+const proofSourceForCommittedFieldV1 = ({
+  honest,
+  compact,
+  fieldIndex,
+  committedPreimage,
+  witnessSetCompactCbor,
+}: {
+  readonly honest: MidgardNativeTxFullV1;
+  readonly compact: MidgardNativeTxCompactV1;
+  readonly fieldIndex: number;
+  readonly committedPreimage: Buffer;
+  readonly witnessSetCompactCbor?: Buffer;
+}): MidgardNativeTxProofSourceV1 => {
+  const base = deriveMidgardNativeTxProofSourceV1(honest);
+  const lengths = [...midgardNativeTxProofFieldPreimageLengthsV1(honest)];
+  lengths[fieldIndex] = committedPreimage.length;
+  return {
+    compactCbor: encodeMidgardNativeTxCompactV1(compact),
+    witnessSetCompactCbor: witnessSetCompactCbor ?? base.witnessSetCompactCbor,
+    fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengthsV1(lengths),
   };
 };
 
@@ -191,6 +232,12 @@ export const buildCanonicalDecodabilityBodyFixtureV1 = async ({
     compact,
     fieldIndex: CANONICAL_DECODABILITY_BODY_FIELD_INDEX_V1,
     committedPreimage,
+    proofSource: proofSourceForCommittedFieldV1({
+      honest,
+      compact,
+      fieldIndex: CANONICAL_DECODABILITY_BODY_FIELD_INDEX_V1,
+      committedPreimage,
+    }),
     allowGrammatical: grammatical,
   });
 };
@@ -215,6 +262,13 @@ export const buildCanonicalDecodabilityWitnessFixtureV1 = async () => {
     fieldIndex: CANONICAL_DECODABILITY_WITNESS_FIELD_INDEX_V1,
     committedPreimage,
     witnessSet,
+    proofSource: proofSourceForCommittedFieldV1({
+      honest,
+      compact,
+      fieldIndex: CANONICAL_DECODABILITY_WITNESS_FIELD_INDEX_V1,
+      committedPreimage,
+      witnessSetCompactCbor: encodeMidgardNativeTxWitnessSetCompactV1(mutated),
+    }),
   });
 };
 
@@ -393,7 +447,8 @@ export const submitCanonicalDecodabilityStep01RawV1 = async ({
                     "raw canonical step-01 state queue",
                   ),
                   native_tx_id: txInclusion.nativeTxId,
-                  native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
+                  l2_transaction_source_cbor:
+                    txInclusion.l2TransactionSourceCbor,
                   transactions_phas_root: txInclusion.transactionsPhasRoot,
                   tx_membership_proof: txInclusion.txMembershipProof,
                   inclusion_proof_script_withdraw_redeemer_index:
@@ -428,7 +483,7 @@ export const submitCanonicalDecodabilityStep01RawV1 = async ({
       encodeRawPhasMembershipProofRedeemer({
         root: txInclusion.transactionsPhasRoot,
         keyBytes: txInclusion.nativeTxId,
-        valueBytes: txInclusion.nativeTxCompactCbor,
+        valueBytes: txInclusion.l2TransactionSourceCbor,
         membershipProofCbor: txInclusion.txMembershipProofCbor,
       }),
     )
@@ -484,7 +539,23 @@ export const submitCanonicalDecodabilityStep02RawV1 = async ({
     stepIndex: 1,
   });
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  // `computation_thread.mint` requires the claim-registry input in every arm,
+  // so the raw finalizer closes the claim exactly as the submitter does.
+  const claimRegistryMutation = await prepareFamilyClaimRegistryMutationV1({
+    lucid,
+    claimRegistry: contracts.claimRegistry,
+    claimRegistryReferenceUtxo: witnessReferenceScripts.claimRegistrySpend,
+    hubOraclePolicyId: contracts.hubOraclePolicyId,
+    computationThreadPolicyId: contracts.computationThread.policyId,
+    claimId: threadToken.assetName,
+    kind: "close",
+  });
+  const feeInput = selectFeeInput(
+    claimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
+      (utxos, reference) => excludeUtxo(utxos, reference),
+      await lucid.wallet().getUtxos(),
+    ),
+  );
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -585,7 +656,7 @@ export const submitCanonicalDecodabilityStep02RawV1 = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const unsigned = await fraudProofCarriage
-    .attach(computationThreadCarriage.attach(base))
+    .attach(computationThreadCarriage.attach(claimRegistryMutation.apply(base)))
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();

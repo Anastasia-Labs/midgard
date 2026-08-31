@@ -135,11 +135,14 @@ const deepenInclusion = ({
 }) => {
   const parsed = inclusion as {
     readonly nativeTxId: string;
-    readonly nativeTxCompactCbor: string;
+    readonly l2TransactionSourceCbor: string;
   };
+  // The transactions trie commits `Data(L2TransactionSourceV1)` per tx id, not
+  // the bare compact encoding, so the synthesised proof must prove that value —
+  // it is the value the step's inclusion claim names.
   const deep = syntheticDeepMembershipProofV1({
     key: Buffer.from(parsed.nativeTxId, "hex"),
-    value: Buffer.from(parsed.nativeTxCompactCbor, "hex"),
+    value: Buffer.from(parsed.l2TransactionSourceCbor, "hex"),
     branchLevels,
   });
   return {
@@ -157,11 +160,11 @@ const inclusionRecord = (
   inclusion: unknown,
 ): Record<string, unknown> & {
   readonly nativeTxId: string;
-  readonly nativeTxCompactCbor: string;
+  readonly l2TransactionSourceCbor: string;
 } =>
   inclusion as Record<string, unknown> & {
     readonly nativeTxId: string;
-    readonly nativeTxCompactCbor: string;
+    readonly l2TransactionSourceCbor: string;
   };
 
 /**
@@ -180,16 +183,18 @@ const deepenSharedRoot = ({
 }: {
   readonly members: readonly {
     readonly nativeTxId: string;
-    readonly nativeTxCompactCbor: string;
+    readonly l2TransactionSourceCbor: string;
   }[];
   readonly absentKeys?: readonly string[];
   readonly branchLevels: number;
 }) => {
+  // Same committed value as `deepenInclusion`: the trie's per-tx-id value is
+  // `Data(L2TransactionSourceV1)`.
   const shared = syntheticDeepSharedRootProofsV1({
     claims: [
       ...members.map((member) => ({
         key: Buffer.from(member.nativeTxId, "hex"),
-        value: Buffer.from(member.nativeTxCompactCbor, "hex"),
+        value: Buffer.from(member.l2TransactionSourceCbor, "hex"),
       })),
       ...absentKeys.map((key) => ({ key: Buffer.from(key, "hex") })),
     ],
@@ -524,10 +529,9 @@ describe("fault-proof published-chunk proof carriage", () => {
         emulator.now() + 120_000,
       ) - 1;
     const fixture = await buildInvalidRangeTransactionInclusionFixture({
-      blockValidFrom: BigInt(headerStartTime),
-      blockValidTo: BigInt(headerStartTime + 1_000),
+      blockSlot: 0n,
     });
-    expect(fixture.violationReason).toBe("lower-before-block");
+    expect(fixture.violationReason).toBe("starts-after-block-slot");
     const { deep, inclusion } = deepenInclusion({
       inclusion: fixture.badTx.inclusion,
       branchLevels: CARRIAGE_BRANCH_LEVELS,
@@ -1033,7 +1037,7 @@ describe("fault-proof published-chunk proof carriage", () => {
       members: [
         {
           nativeTxId: fixture.nativeTxId,
-          nativeTxCompactCbor: fixture.inclusion.nativeTxCompactCbor,
+          l2TransactionSourceCbor: fixture.inclusion.l2TransactionSourceCbor,
         },
       ],
       absentKeys: [fixture.missingInputTxId],
@@ -1227,10 +1231,13 @@ describe("fault-proof published-chunk proof carriage", () => {
       initResult.computationThreadAssetName,
     );
     expect(step04Result.proofCarriage).toBe("published-chunks");
-    // Chunks plus the step, pexcludes, computation-thread, and fraud-proof
-    // scripts: this step reads no oracle or state-queue node.
+    // Chunks plus the step, pexcludes, computation-thread, fraud-proof and
+    // claim-registry scripts: this step reads no oracle or state-queue node.
+    // The claim-registry reference script joined the count when the terminal
+    // began closing its live claim atomically with the conviction; measured
+    // 2026-08-31.
     expect(step04Capture.measurement.referenceInputCount).toBe(
-      4 + EXPECTED_CHUNK_COUNT,
+      5 + EXPECTED_CHUNK_COUNT,
     );
 
     const removeNow = BigInt(emulator.now());

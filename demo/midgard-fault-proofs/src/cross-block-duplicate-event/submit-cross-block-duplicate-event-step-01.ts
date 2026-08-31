@@ -37,6 +37,11 @@ import {
 } from "../runtime.js";
 import { requireInitialStepDatum, selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptV1,
+} from "../workflow/transaction-boundary-v1.js";
 import type { CrossBlockDuplicateEventContractsV1 } from "./contracts-v1.js";
 import {
   crossBlockDuplicateEventSubmitError,
@@ -50,22 +55,41 @@ const requireOpeningMatchesHeaderV1 = async ({
   depositCount,
   withdrawalsRoot,
   withdrawalCount,
+  forcedTransactionsRoot,
+  forcedTransactionCount,
 }: {
   readonly committedEvent: CommittedDuplicateEventProofV1;
   readonly depositsRoot: string;
   readonly depositCount: bigint;
   readonly withdrawalsRoot: string;
   readonly withdrawalCount: bigint;
+  readonly forcedTransactionsRoot: string;
+  readonly forcedTransactionCount: bigint;
 }): Promise<void> => {
-  const deposit = "CommittedDuplicateDepositV1" in committedEvent;
-  const membership = deposit
-    ? committedEvent.CommittedDuplicateDepositV1.membership
-    : committedEvent.CommittedDuplicateWithdrawalV1.membership;
-  const expectedDomain = deposit
-    ? ROOT_DOMAINS.deposits
-    : ROOT_DOMAINS.withdrawals;
-  const expectedCount = deposit ? depositCount : withdrawalCount;
-  const expectedRoot = deposit ? depositsRoot : withdrawalsRoot;
+  const opening =
+    "CommittedDuplicateDepositV1" in committedEvent
+      ? {
+          membership: committedEvent.CommittedDuplicateDepositV1.membership,
+          expectedDomain: ROOT_DOMAINS.deposits,
+          expectedCount: depositCount,
+          expectedRoot: depositsRoot,
+        }
+      : "CommittedDuplicateWithdrawalV1" in committedEvent
+        ? {
+            membership:
+              committedEvent.CommittedDuplicateWithdrawalV1.membership,
+            expectedDomain: ROOT_DOMAINS.withdrawals,
+            expectedCount: withdrawalCount,
+            expectedRoot: withdrawalsRoot,
+          }
+        : {
+            membership:
+              committedEvent.CommittedDuplicateForcedTransactionV1.membership,
+            expectedDomain: ROOT_DOMAINS.forcedTransactionsV1,
+            expectedCount: forcedTransactionCount,
+            expectedRoot: forcedTransactionsRoot,
+          };
+  const { membership, expectedDomain, expectedCount, expectedRoot } = opening;
   const derived = await Effect.runPromise(
     commitCountedRootProgram({
       domain: expectedDomain,
@@ -104,6 +128,7 @@ export const submitCrossBlockDuplicateEventStep01 = async ({
   stateQueueBlockOutRef,
   committedEvent,
   referenceScriptUtxo,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -115,6 +140,7 @@ export const submitCrossBlockDuplicateEventStep01 = async ({
   readonly committedEvent: CommittedDuplicateEventProofV1;
   /** Mandatory published step-01 reference script. */
   readonly referenceScriptUtxo: UTxO;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitCrossBlockDuplicateEventStep01Result> => {
   const [{ threadUtxo, threadToken }, hubUtxo, blockUtxo] = await Promise.all([
@@ -160,6 +186,8 @@ export const submitCrossBlockDuplicateEventStep01 = async ({
     depositCount: header.depositCount,
     withdrawalsRoot: header.withdrawalsRoot,
     withdrawalCount: header.withdrawalCount,
+    forcedTransactionsRoot: header.forcedTransactionsRoot,
+    forcedTransactionCount: header.forcedTransactionCount,
   });
   if (hubUtxo.datum == null) {
     throw crossBlockDuplicateEventSubmitError("hub oracle has no inline datum");
@@ -251,7 +279,23 @@ export const submitCrossBlockDuplicateEventStep01 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: [
+      workflowReferenceScriptV1({
+        role: "V1 fraud-proof cross-block-duplicate-event step-01",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[0].spendingScript,
+      }),
+    ],
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw crossBlockDuplicateEventSubmitError(
+      `step-01 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

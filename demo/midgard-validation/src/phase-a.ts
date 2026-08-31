@@ -537,6 +537,7 @@ export const validatePhaseASingle = (
   try {
     return buildPhaseAValidatedTx({
       ledgerTx,
+      expectedNetworkId: config.expectedNetworkId,
       txCbor: submittedTx.txCbor,
       programMaterialSidecarCbor: queuedTx.programMaterialSidecarCbor ?? null,
       arrivalSeq: queuedTx.arrivalSeq,

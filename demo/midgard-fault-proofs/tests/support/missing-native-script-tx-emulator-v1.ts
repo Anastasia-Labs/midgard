@@ -30,6 +30,7 @@ import {
   MissingNativeScriptTxStep05SpendRedeemer,
   type MissingNativeScriptTxStep05State,
   MissingNativeScriptTxStep06Datum,
+  missingNativeScriptTxStep06ReadyStateV1,
   MissingNativeScriptTxStep06SpendRedeemer,
   type NativeTxWitnessSetCompact,
   requireInputIndex,
@@ -49,6 +50,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
+import { prepareFamilyClaimRegistryMutationV1 } from "../../src/claim-registry-transaction-v1.js";
 import type { MissingNativeScriptTxContractsV1 } from "../../src/missing-native-script-tx/contracts-v1.js";
 import {
   requireMissingNativeScriptTxStepStateV1,
@@ -56,6 +58,7 @@ import {
 } from "../../src/missing-native-script-tx/submit-common-v1.js";
 import { submitMissingNativeScriptTxBindingV1 } from "../../src/missing-native-script-tx/submit-native-binding-v1.js";
 import { resolveProverSigner } from "../../src/runtime.js";
+import { excludeUtxo } from "../../src/spend-input-witness.js";
 import type { SubmitStep01TxInclusion } from "../../src/submit-step-01.js";
 import { selectFeeInput } from "../../src/submit-step-01.js";
 import {
@@ -307,7 +310,7 @@ export const publishMissingNativeScriptTxReferenceScriptsV1 = async ({
     typeof publishPlainReferenceScriptUtxo
   >[0]["lucid"];
   readonly contracts: MissingNativeScriptTxContractsV1;
-}): Promise<readonly [UTxO, UTxO, UTxO, UTxO, UTxO, UTxO]> => {
+}): Promise<readonly [UTxO, UTxO, UTxO, UTxO, UTxO, UTxO, UTxO, UTxO]> => {
   const published: UTxO[] = [];
   for (const [index, step] of contracts.steps.entries()) {
     const { utxo } = await publishPlainReferenceScriptUtxo({
@@ -318,7 +321,16 @@ export const publishMissingNativeScriptTxReferenceScriptsV1 = async ({
     });
     published.push(utxo);
   }
-  return published as unknown as readonly [UTxO, UTxO, UTxO, UTxO, UTxO, UTxO];
+  return published as unknown as readonly [
+    UTxO,
+    UTxO,
+    UTxO,
+    UTxO,
+    UTxO,
+    UTxO,
+    UTxO,
+    UTxO,
+  ];
 };
 
 export const fundMissingNativeScriptTxOutsiderV1 = async (
@@ -326,11 +338,18 @@ export const fundMissingNativeScriptTxOutsiderV1 = async (
     ReturnType<typeof makeMissingNativeScriptTxEmulatorHarnessV1>
   >,
 ): Promise<void> => {
+  // Both of the outsider's addresses are funded. `selectWallet.fromSeed`
+  // derives the seed's base address while `resolveProverSigner` derives its
+  // enterprise address, and the raw drivers re-select through the signer, so
+  // funding only the base address strands every transaction the outsider
+  // builds after that call.
   const address = await harness.outsiderLucid.wallet().address();
   const unsigned = await harness.funderLucid
     .newTx()
     .pay.ToAddress(address, { lovelace: 1_000_000_000n })
     .pay.ToAddress(address, { lovelace: 1_000_000_000n })
+    .pay.ToAddress(harness.outsiderSigner.address, { lovelace: 1_000_000_000n })
+    .pay.ToAddress(harness.outsiderSigner.address, { lovelace: 1_000_000_000n })
     .complete();
   const signed = await unsigned.sign.withWallet().complete();
   await harness.funderLucid.awaitTx(await signed.submit());
@@ -570,7 +589,10 @@ export const submitRawMissingNativeScriptTxStep05V1 = async ({
       stepIndex: 4,
     });
   const nextDatum = Data.to(
-    { fraud_prover: harness.proverSigner.paymentKeyHash, data: state },
+    {
+      fraud_prover: harness.proverSigner.paymentKeyHash,
+      data: missingNativeScriptTxStep06ReadyStateV1(state),
+    },
     MissingNativeScriptTxStep06Datum,
   );
   return await submitRawAdvanceV1({
@@ -628,8 +650,21 @@ export const submitRawMissingNativeScriptTxStep06V1 = async ({
     },
   });
   harness.proverSigner.selectWallet(harness.proverLucid);
+  const claimRegistryMutation = await prepareFamilyClaimRegistryMutationV1({
+    lucid: harness.proverLucid,
+    claimRegistry: harness.family.claimRegistry,
+    claimRegistryReferenceUtxo:
+      harness.witnessReferenceScripts.claimRegistrySpend,
+    hubOraclePolicyId: harness.family.hubOraclePolicyId,
+    computationThreadPolicyId: harness.family.computationThread.policyId,
+    claimId: threadToken.assetName,
+    kind: "close",
+  });
   const feeInput = selectFeeInput(
-    await harness.proverLucid.wallet().getUtxos(),
+    claimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
+      (utxos, reference) => excludeUtxo(utxos, reference),
+      await harness.proverLucid.wallet().getUtxos(),
+    ),
   );
   const fraudProofUnit = toUnit(
     harness.family.fraudProof.policyId,
@@ -654,22 +689,24 @@ export const submitRawMissingNativeScriptTxStep06V1 = async ({
       {
         Continue: [
           {
-            input_index: requireInputIndex(
-              ctx,
-              threadUtxo,
-              "raw missing-native-script-tx step 06",
-            ),
-            output_index: requireUniqueOutputIndex(
-              ctx.outputs,
-              outputMatches,
-              "raw missing-native-script-tx fraud proof",
-            ),
-            fraud_proof_mint_redeemer_index: requireMintRedeemerIndex(
-              ctx,
-              harness.family.fraudProof.policyId,
-              "raw missing-native-script-tx fraud-proof mint",
-            ),
-            script_tx_wits_opening: opening,
+            DirectFinalize: {
+              input_index: requireInputIndex(
+                ctx,
+                threadUtxo,
+                "raw missing-native-script-tx step 06",
+              ),
+              output_index: requireUniqueOutputIndex(
+                ctx.outputs,
+                outputMatches,
+                "raw missing-native-script-tx fraud proof",
+              ),
+              fraud_proof_mint_redeemer_index: requireMintRedeemerIndex(
+                ctx,
+                harness.family.fraudProof.policyId,
+                "raw missing-native-script-tx fraud-proof mint",
+              ),
+              script_tx_wits_opening: opening,
+            },
           },
         ],
       },
@@ -736,7 +773,7 @@ export const submitRawMissingNativeScriptTxStep06V1 = async ({
     )
     .addSignerKey(harness.proverSigner.paymentKeyHash);
   const unsigned = await fraudProofCarriage
-    .attach(computationThreadCarriage.attach(base))
+    .attach(computationThreadCarriage.attach(claimRegistryMutation.apply(base)))
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
@@ -771,8 +808,21 @@ export const submitRawMissingNativeScriptTxOutsiderCancelV1 = async ({
       threadOutRef,
     });
   harness.outsiderSigner.selectWallet(harness.outsiderLucid);
+  const claimRegistryMutation = await prepareFamilyClaimRegistryMutationV1({
+    lucid: harness.outsiderLucid,
+    claimRegistry: harness.family.claimRegistry,
+    claimRegistryReferenceUtxo:
+      harness.witnessReferenceScripts.claimRegistrySpend,
+    hubOraclePolicyId: harness.family.hubOraclePolicyId,
+    computationThreadPolicyId: harness.family.computationThread.policyId,
+    claimId: threadToken.assetName,
+    kind: "cancel",
+  });
   const feeInput = selectFeeInput(
-    await harness.outsiderLucid.wallet().getUtxos(),
+    claimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
+      (utxos, reference) => excludeUtxo(utxos, reference),
+      await harness.outsiderLucid.wallet().getUtxos(),
+    ),
   );
   const spendRedeemer = ((ctx) => {
     requireOwnSpendPurpose(ctx, threadUtxo, "raw outsider cancel");
@@ -825,7 +875,7 @@ export const submitRawMissingNativeScriptTxOutsiderCancelV1 = async ({
     .mintAssets({ [threadToken.unit]: -1n }, burnRedeemer)
     .addSignerKey(harness.outsiderSigner.paymentKeyHash);
   const unsigned = await computationThreadCarriage
-    .attach(base)
+    .attach(claimRegistryMutation.apply(base))
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();

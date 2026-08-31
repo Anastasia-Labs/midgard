@@ -512,6 +512,7 @@ export const makePhaseBCandidate = (
   const submittedTx = decodeMidgardSubmittedTxFromCanonicalCbor(fixture.txCbor);
   return buildPhaseAValidatedTx({
     ledgerTx: submittedTx.ledgerTx,
+    expectedNetworkId: 0n,
     txCbor: submittedTx.txCbor,
     programMaterialSidecarCbor: opts.programMaterialSidecarCbor ?? null,
     arrivalSeq: opts.arrivalSeq ?? 0n,

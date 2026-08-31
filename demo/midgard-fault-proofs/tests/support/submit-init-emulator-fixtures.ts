@@ -35,9 +35,11 @@ import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   ActiveOperatorDatum,
+  ActiveOperatorMintRedeemer,
   ActiveOperatorSpendRedeemer,
   buildPhasMembershipRewardRegistrationTxProgram,
   commitCountedRootProgram,
+  CORRECTION_LOCK_ASSET_NAME,
   createReferenceScriptAuthPolicy,
   DA_PAYLOAD_V1_VERSION,
   DoubleSpendStep02Datum,
@@ -54,6 +56,8 @@ import {
   FraudProofComputationThreadStepDatum,
   FraudProofTokenDatum,
   getHeaderV1FromStateQueueDatum,
+  getLinkedListNodeViewFromUTxO,
+  getProtocolParameters,
   hashBlockHeaderV1,
   headerHashFromStateQueueUTxO,
   HeaderV1,
@@ -64,13 +68,21 @@ import {
   nativeTxBodyHasZeroInputViolation,
   normalizeNativeTxValidityRange,
   OutputReference,
+  outputReferenceFromUTxO,
+  REGISTERED_OPERATORS_ROOT_ASSET_NAME,
   requireInputIndex,
   requireMintRedeemerIndex,
+  requireOwnMintPurpose,
   requireReferenceInputIndex,
+  requireSpendRedeemerIndex,
   requireUniqueOutputIndex,
+  RETIRED_OPERATOR_NODE_ASSET_NAME_PREFIX,
+  RetiredOperatorDatum,
+  RetiredOperatorMintRedeemer,
   ROOT_DOMAINS,
   SCHEDULER_ASSET_NAME,
   SchedulerDatum,
+  SchedulerSpendRedeemer,
   sortStateQueueUTxOs,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
   STATE_QUEUE_ROOT_ASSET_NAME,
@@ -88,6 +100,7 @@ import {
   RejectCodes,
 } from "@al-ft/midgard-validation";
 import {
+  assetsToValue,
   type BuildTxWithRedeemer,
   CML,
   Data,
@@ -107,11 +120,13 @@ import {
   buildInvalidForcedTransactionNoOpWitness,
   buildTransitionFaultProof,
   encodeData,
+  type FraudProofPreSubmitBoundaryV1,
   keyValuePhasRootWithCount,
   reconstructDaPayloadV1,
   resolveProverSigner,
   type StateQueueMutationLeaseCoordinator,
   submitRemoveFraudulentBlock,
+  workflowTransactionReferenceInputOutRefsV1,
 } from "../../src/index.js";
 import {
   buildNonMembershipProof,
@@ -141,14 +156,17 @@ import {
   EMULATOR_PROTOCOL_PARAMETERS,
   expectSingleUtxoWithUnit,
   firstWalletUtxo,
+  fundedProverEmulatorAccount,
   funderPaymentKeyHash,
   getCompiledScript,
   h32,
+  l2TransactionSourceCborV1,
   makeHeader,
   makeNativeTx,
   network,
   publishFaultProofWitnessReferenceScriptsV1,
   publishFraudProofChainReferenceScripts,
+  publishOperatorLifecycleReferenceScriptsV1,
   publishRemovalReferenceScripts,
   readBlueprint,
   realBlueprintPath,
@@ -570,6 +588,8 @@ export const buildTransactionInclusionFixture = async ({
   readonly l2TransactionCount: bigint;
   readonly tx1: TransactionInclusionEntry;
   readonly tx2: TransactionInclusionEntry;
+  readonly tx1Full: MidgardNativeTxFullV1;
+  readonly tx2Full: MidgardNativeTxFullV1;
   readonly tx1InputsPreimage: readonly TestOutputReference[];
   readonly tx2InputsPreimage: readonly TestOutputReference[];
   readonly tx1SpendInputCbors: readonly string[];
@@ -612,17 +632,15 @@ export const buildTransactionInclusionFixture = async ({
   });
   const tx1 = compactTxEntry(tx1Native);
   const tx2 = compactTxEntry(tx2Native);
+  const tx1SourceCbor = l2TransactionSourceCborV1(tx1Native);
+  const tx2SourceCbor = l2TransactionSourceCborV1(tx2Native);
   const store = new Store(undefined);
   await store.ready();
   const trie = new Trie(store);
   for (const entry of [tx1, tx2]) {
     await trie.insert(
       Buffer.from(entry.nativeTxId, "hex"),
-      Buffer.from(
-        encodeMidgardNativeTxCompactV1(
-          entry === tx1 ? tx1Native.compact : tx2Native.compact,
-        ),
-      ),
+      Buffer.from(entry === tx1 ? tx1SourceCbor : tx2SourceCbor, "hex"),
     );
   }
   const siblingCount = await insertAdversarialMembershipSiblings({
@@ -645,6 +663,7 @@ export const buildTransactionInclusionFixture = async ({
         nativeTxCompactCbor: encodeMidgardNativeTxCompactV1(
           entry === tx1 ? tx1Native.compact : tx2Native.compact,
         ).toString("hex"),
+        l2TransactionSourceCbor: entry === tx1 ? tx1SourceCbor : tx2SourceCbor,
         transactionsPhasRoot: trieRootHex(trie),
         txMembershipProofCbor: proof.toCBOR().toString("hex"),
       },
@@ -658,6 +677,8 @@ export const buildTransactionInclusionFixture = async ({
     l2TransactionCount: BigInt(2 + siblingCount),
     tx1: await withProof(tx1),
     tx2: await withProof(tx2),
+    tx1Full: tx1Native,
+    tx2Full: tx2Native,
     tx1InputsPreimage: tx1Inputs,
     tx2InputsPreimage: tx2Inputs,
     tx1SpendInputCbors: tx1.spendInputCbors,
@@ -678,12 +699,10 @@ export const buildTransactionInclusionFixture = async ({
 };
 
 export const buildInvalidRangeTransactionInclusionFixture = async ({
-  blockValidFrom,
-  blockValidTo,
+  blockSlot,
   adversarialBranchLevels = 0,
 }: {
-  readonly blockValidFrom: bigint;
-  readonly blockValidTo: bigint;
+  readonly blockSlot: bigint;
   readonly adversarialBranchLevels?: number;
 }): Promise<{
   readonly transactionsRoot: string;
@@ -703,21 +722,21 @@ export const buildInvalidRangeTransactionInclusionFixture = async ({
     referenceByte: "41",
     outputByte: "42",
     witnessByte: "43",
-    validityIntervalStart: blockValidFrom - 1n,
-    validityIntervalEnd: blockValidTo,
+    validityIntervalStart: blockSlot + 1n,
+    validityIntervalEnd: blockSlot + 101n,
   });
   const badTx = compactTxEntry(badNativeTx);
+  const badTxSourceCbor = l2TransactionSourceCborV1(badNativeTx);
   const normalizedValidityRange = normalizeNativeTxValidityRange(
     badTx.nativeTx.body,
   );
   const violationReason = invalidRangeViolationReason({
-    blockValidFrom,
-    blockValidTo,
+    blockSlot,
     normalizedRange: normalizedValidityRange,
   });
   if (violationReason === null) {
     throw new Error(
-      "Invalid-range fixture transaction does not violate block validity.",
+      "Invalid-range fixture transaction does not exclude the block slot.",
     );
   }
 
@@ -726,7 +745,7 @@ export const buildInvalidRangeTransactionInclusionFixture = async ({
   const trie = new Trie(store);
   await trie.insert(
     Buffer.from(badTx.nativeTxId, "hex"),
-    Buffer.from(encodeMidgardNativeTxCompactV1(badNativeTx.compact)),
+    Buffer.from(badTxSourceCbor, "hex"),
   );
   const siblingCount = await insertAdversarialMembershipSiblings({
     trie,
@@ -745,6 +764,7 @@ export const buildInvalidRangeTransactionInclusionFixture = async ({
         nativeTxCompactCbor: encodeMidgardNativeTxCompactV1(
           badNativeTx.compact,
         ).toString("hex"),
+        l2TransactionSourceCbor: badTxSourceCbor,
         transactionsPhasRoot: trieRootHex(trie),
         txMembershipProofCbor: proof.toCBOR().toString("hex"),
       },
@@ -785,6 +805,7 @@ export const buildZeroInputTransactionInclusionFixture = async ({
     witnessByte: "53",
   });
   const badTx = compactTxEntry(badNativeTx);
+  const badTxSourceCbor = l2TransactionSourceCborV1(badNativeTx);
 
   if (
     !nativeTxBodyHasZeroInputViolation({ txBody: badTx.nativeTx.body }) ||
@@ -801,7 +822,7 @@ export const buildZeroInputTransactionInclusionFixture = async ({
   const trie = new Trie(store);
   await trie.insert(
     Buffer.from(badTx.nativeTxId, "hex"),
-    Buffer.from(encodeMidgardNativeTxCompactV1(badNativeTx.compact)),
+    Buffer.from(badTxSourceCbor, "hex"),
   );
   const siblingCount = await insertAdversarialMembershipSiblings({
     trie,
@@ -820,6 +841,7 @@ export const buildZeroInputTransactionInclusionFixture = async ({
         nativeTxCompactCbor: encodeMidgardNativeTxCompactV1(
           badNativeTx.compact,
         ).toString("hex"),
+        l2TransactionSourceCbor: badTxSourceCbor,
         transactionsPhasRoot: trieRootHex(trie),
         txMembershipProofCbor: proof.toCBOR().toString("hex"),
       },
@@ -889,6 +911,7 @@ export const buildNonExistentInputFixture = async ({
   });
   const badTx = compactTxEntry(badTxNative);
   const badTxCompactCbor = encodeMidgardNativeTxCompactV1(badTxNative.compact);
+  const badTxSourceCbor = l2TransactionSourceCborV1(badTxNative);
 
   // A second, well-formed L2 tx so the transactions trie is non-trivial (proofs
   // for a single-element trie are degenerate).
@@ -902,20 +925,18 @@ export const buildNonExistentInputFixture = async ({
     witnessByte: "c5",
   });
   const otherTx = compactTxEntry(otherTxNative);
-  const otherTxCompactCbor = encodeMidgardNativeTxCompactV1(
-    otherTxNative.compact,
-  );
+  const otherTxSourceCbor = l2TransactionSourceCborV1(otherTxNative);
 
   const store = new Store(undefined);
   await store.ready();
   const trie = new Trie(store);
   await trie.insert(
     Buffer.from(badTx.nativeTxId, "hex"),
-    Buffer.from(badTxCompactCbor),
+    Buffer.from(badTxSourceCbor, "hex"),
   );
   await trie.insert(
     Buffer.from(otherTx.nativeTxId, "hex"),
-    Buffer.from(otherTxCompactCbor),
+    Buffer.from(otherTxSourceCbor, "hex"),
   );
   // Both proof-carrying legs of this family are pushed together: the step-01
   // membership proof of the challenged transaction, and the step-04
@@ -946,11 +967,11 @@ export const buildNonExistentInputFixture = async ({
   const txsEntries: TrieEntry[] = [
     {
       key: Buffer.from(badTx.nativeTxId, "hex"),
-      value: Buffer.from(badTxCompactCbor),
+      value: Buffer.from(badTxSourceCbor, "hex"),
     },
     {
       key: Buffer.from(otherTx.nativeTxId, "hex"),
-      value: Buffer.from(otherTxCompactCbor),
+      value: Buffer.from(otherTxSourceCbor, "hex"),
     },
     ...adversarialSiblings.map((key) => ({
       key,
@@ -980,6 +1001,7 @@ export const buildNonExistentInputFixture = async ({
       nativeTxId: badTx.nativeTxId,
       nativeTx: badTx.nativeTx,
       nativeTxCompactCbor: badTxCompactCbor.toString("hex"),
+      l2TransactionSourceCbor: badTxSourceCbor,
       transactionsPhasRoot: transactionsRoot,
       txMembershipProofCbor: membershipProof.toCBOR().toString("hex"),
     }),
@@ -1480,6 +1502,50 @@ export const submitSuccessorBlockTx = async ({
       } satisfies ActiveOperatorSpendRedeemer,
       ActiveOperatorSpendRedeemer,
     )) satisfies BuildTxWithRedeemer;
+  const [confirmedStateRefInput] = await lucid.utxosAtWithUnit(
+    contracts.stateQueue.spendingScriptAddress,
+    toUnit(contracts.stateQueue.policyId, STATE_QUEUE_ROOT_ASSET_NAME),
+  );
+  if (confirmedStateRefInput === undefined) {
+    throw new Error("successor commit found no confirmed-state root witness");
+  }
+  const confirmedState = await Effect.runPromise(
+    utxoToStateQueueUTxO(confirmedStateRefInput, contracts.stateQueue.policyId),
+  );
+  const [correctionLockUtxo] = await lucid.utxosAtWithUnit(
+    contracts.correctionLock.spendingScriptAddress,
+    toUnit(contracts.hubOracle.policyId, CORRECTION_LOCK_ASSET_NAME),
+  );
+  if (correctionLockUtxo === undefined) {
+    throw new Error("successor commit found no correction-lock witness");
+  }
+  if (confirmedState.datum.next === "Empty") {
+    throw new Error("successor commit found an empty state-queue root");
+  }
+  const headHeaderHash = confirmedState.datum.next.Key.key;
+  const anchorHeaderHash = anchorBlock.assetName.slice(
+    STATE_QUEUE_NODE_ASSET_NAME_PREFIX.length,
+  );
+  const headStateQueueNodeRefInput =
+    headHeaderHash === anchorHeaderHash
+      ? undefined
+      : (
+          await lucid.utxosAtWithUnit(
+            contracts.stateQueue.spendingScriptAddress,
+            toUnit(
+              contracts.stateQueue.policyId,
+              STATE_QUEUE_NODE_ASSET_NAME_PREFIX + headHeaderHash,
+            ),
+          )
+        )[0];
+  if (
+    headHeaderHash !== anchorHeaderHash &&
+    headStateQueueNodeRefInput === undefined
+  ) {
+    throw new Error(
+      `successor commit found no authenticated queue-head witness ${headHeaderHash}`,
+    );
+  }
   const commitTx = await Effect.runPromise(
     incompleteEmulatorCommitBlockHeaderTxProgram(
       lucid,
@@ -1494,6 +1560,15 @@ export const submitSuccessorBlockTx = async ({
         validFrom: commitValidFrom,
         validTo: commitValidTo,
         schedulerRefInput: scheduler,
+        correctionLockRefInput: {
+          utxo: correctionLockUtxo,
+          datum: "Idle",
+          assetName: CORRECTION_LOCK_ASSET_NAME,
+        },
+        confirmedStateRefInput,
+        ...(headStateQueueNodeRefInput === undefined
+          ? {}
+          : { headStateQueueNodeRefInput }),
         additionalRefInputs: [hubOracle],
         activeOperatorInput: activeOperatorNode,
         activeOperatorSpendRedeemer: activeOperatorCommitRedeemer,
@@ -1585,6 +1660,9 @@ export type ProvedDoubleSpendFixture = {
   readonly setup: Awaited<ReturnType<typeof submitSetupTx>>;
   readonly successors: readonly SuccessorBlockFixture[];
   readonly deploymentInfo: ReturnType<typeof buildRemovalDeploymentInfo>;
+  readonly removalReferenceScriptPublications: Awaited<
+    ReturnType<typeof publishRemovalReferenceScripts>
+  >;
   readonly fraudulentBlockOutRef: string;
   readonly submitInitResult: Awaited<ReturnType<typeof submitInit>>;
   readonly submitInitMeasurement: CompleteSignedTransactionMeasurement;
@@ -1710,22 +1788,27 @@ export const instrumentLucidForRemoval = ({
 
 export const buildProvedDoubleSpendFixture = async ({
   successorCount = 0,
+  headerMinimumFee = 0n,
 }: {
   readonly successorCount?: number;
+  /** Optional second violation used by cross-family Q53 idempotency tests. */
+  readonly headerMinimumFee?: bigint;
 } = {}): Promise<ProvedDoubleSpendFixture> => {
   const realBlueprint = readBlueprint(realBlueprintPath);
   const alwaysBlueprint = readBlueprint(alwaysSucceedsBlueprintPath);
   const funder = generateEmulatorAccount({ lovelace: 40_000_000_000n });
-  const prover = generateEmulatorAccount({ lovelace: 20_000_000_000n });
+  const prover = fundedProverEmulatorAccount(20_000_000_000n);
   const emulator = new Emulator([funder, prover], EMULATOR_PROTOCOL_PARAMETERS);
   const funderLucid = await Lucid(emulator, "Custom");
   const proverLucid = await Lucid(emulator, "Custom");
   funderLucid.selectWallet.fromSeed(funder.seedPhrase);
-  proverLucid.selectWallet.fromSeed(prover.seedPhrase);
   const proverSigner = resolveProverSigner({
     network,
     walletSeedPhrase: prover.seedPhrase,
   });
+  // Selected through the signer so the prover Lucid instance and every
+  // `signer.selectWallet(lucid)` call site address the same funded wallet.
+  proverSigner.selectWallet(proverLucid);
 
   await registerPhasMembershipRewardAccount(funderLucid, realBlueprint);
   const nonceUtxo = (await funderLucid.wallet().getUtxos())[0];
@@ -1733,7 +1816,7 @@ export const buildProvedDoubleSpendFixture = async ({
     throw new Error("Expected funder wallet to expose a nonce UTxO");
   }
 
-  const contracts = {
+  const baseContracts = {
     ...(await buildMinimalFaultProofContracts(
       realBlueprint,
       alwaysBlueprint,
@@ -1743,6 +1826,18 @@ export const buildProvedDoubleSpendFixture = async ({
       funderLucid,
       emulator.now(),
     ),
+  };
+  // Operator registration and activation source their four directory
+  // validators from published reference scripts. Published from the prover
+  // wallet before the header clock is sampled so the funder's nonce UTxO
+  // survives and the whole fixture timeline shifts uniformly.
+  const contracts = {
+    ...baseContracts,
+    operatorLifecycleReferenceScripts:
+      await publishOperatorLifecycleReferenceScriptsV1({
+        lucid: proverLucid,
+        contracts: baseContracts,
+      }),
   };
   const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
   const transactionInclusion = await buildTransactionInclusionFixture();
@@ -1773,6 +1868,7 @@ export const buildProvedDoubleSpendFixture = async ({
     await publishFaultProofWitnessReferenceScriptsV1({
       lucid: proverLucid,
       realBlueprint,
+      claimRegistrySpendingScript: contracts.claimRegistry.spendingScript,
       computationThreadMintingScript: contracts.computationThread.mintingScript,
       fraudProofMintingScript: contracts.fraudProof.mintingScript,
     });
@@ -1788,15 +1884,19 @@ export const buildProvedDoubleSpendFixture = async ({
   ) {
     throw new Error("Expected funder wallet to expose a payment key hash");
   }
-  const fraudulentHeader = makeHeader(
-    funderPaymentCredential.hash,
-    headerStartTime,
-    await countedTransactionsRoot(
-      transactionInclusion.transactionsRoot,
+  const fraudulentHeader = {
+    ...makeHeader(
+      funderPaymentCredential.hash,
+      headerStartTime,
+      await countedTransactionsRoot(
+        transactionInclusion.transactionsRoot,
+        transactionInclusion.l2TransactionCount,
+      ),
       transactionInclusion.l2TransactionCount,
     ),
-    transactionInclusion.l2TransactionCount,
-  );
+    minFeeA: 0n,
+    minFeeB: headerMinimumFee,
+  };
   const setup = await submitSetupTx({
     lucid: funderLucid,
     contracts,
@@ -1848,6 +1948,7 @@ export const buildProvedDoubleSpendFixture = async ({
 
   const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
     removalReferenceScripts: removalReferenceScriptPublications.published,
+    claimRegistrySpendReference: witnessReferenceScripts.claimRegistrySpend,
   });
   const fraudulentBlockOutRef =
     successors[0]?.continuedAnchorOutRef ?? setup.fraudulentBlockOutRef;
@@ -2118,6 +2219,7 @@ export const buildProvedDoubleSpendFixture = async ({
     setup,
     successors,
     deploymentInfo,
+    removalReferenceScriptPublications,
     fraudulentBlockOutRef,
     submitInitResult,
     submitInitMeasurement,
@@ -2130,11 +2232,706 @@ export const buildProvedDoubleSpendFixture = async ({
   };
 };
 
+const requireCurrentUnitUtxo = async ({
+  lucid,
+  address,
+  unit,
+  label,
+}: {
+  readonly lucid: Awaited<ReturnType<typeof Lucid>>;
+  readonly address: string;
+  readonly unit: string;
+  readonly label: string;
+}): Promise<UTxO> => {
+  const utxos = await lucid.utxosAtWithUnit(address, unit);
+  if (utxos.length !== 1 || utxos[0] === undefined) {
+    throw new Error(
+      `${label} expected exactly one UTxO carrying ${unit}, found ${utxos.length.toString()}.`,
+    );
+  }
+  return utxos[0];
+};
+
+const activeOperatorDatumFromUtxo = async (
+  utxo: UTxO,
+): Promise<ActiveOperatorDatum> => {
+  const node = await Effect.runPromise(getLinkedListNodeViewFromUTxO(utxo));
+  return Data.castFrom(
+    node.data as never,
+    ActiveOperatorDatum as never,
+  ) as ActiveOperatorDatum;
+};
+
+const cleanAdaOnlyWalletFeeInput = async (
+  lucid: Awaited<ReturnType<typeof Lucid>>,
+  label: string,
+): Promise<UTxO> => {
+  const feeInput = (await lucid.wallet().getUtxos()).find(
+    (utxo) =>
+      utxo.datum === undefined &&
+      utxo.datumHash === undefined &&
+      utxo.scriptRef === undefined &&
+      Object.entries(utxo.assets).every(
+        ([unit, amount]) => unit === "lovelace" && amount > 0n,
+      ),
+  );
+  if (feeInput === undefined) {
+    throw new Error(`Expected a clean ADA-only wallet UTxO for ${label}.`);
+  }
+  return feeInput;
+};
+
+const expectReferenceScriptOnlyTransaction = ({
+  signed,
+  measurement,
+  expectedReferenceInputs,
+}: {
+  readonly signed: Parameters<
+    typeof workflowTransactionReferenceInputOutRefsV1
+  >[0];
+  readonly measurement: CompleteSignedTransactionMeasurement;
+  readonly expectedReferenceInputs: readonly UTxO[];
+}): void => {
+  expect(measurement.plutusV1ScriptCount).toBe(0);
+  expect(measurement.plutusV2ScriptCount).toBe(0);
+  expect(measurement.plutusV3ScriptCount).toBe(0);
+  expect(measurement.nativeScriptCount).toBe(0);
+  const referenceInputs = workflowTransactionReferenceInputOutRefsV1(signed);
+  expect(referenceInputs).toHaveLength(expectedReferenceInputs.length);
+  expect(referenceInputs).toEqual(
+    expect.arrayContaining(expectedReferenceInputs.map(outRefLabel)),
+  );
+};
+
+const minimumLovelaceForInlineValue = ({
+  address,
+  datum,
+  assets,
+}: {
+  readonly address: string;
+  readonly datum: string;
+  readonly assets: Readonly<Record<string, bigint>>;
+}): bigint => {
+  let lovelace = assets.lovelace ?? 0n;
+  for (let attempt = 0; attempt < 16; attempt += 1) {
+    const output = CML.TransactionOutput.new(
+      CML.Address.from_bech32(address),
+      assetsToValue({ ...assets, lovelace }),
+      CML.DatumOption.new_datum(CML.PlutusData.from_cbor_hex(datum)),
+      undefined,
+    );
+    const required = CML.min_ada_required(
+      output,
+      EMULATOR_PROTOCOL_PARAMETERS.coinsPerUtxoByte,
+    );
+    if (required <= lovelace) {
+      return lovelace;
+    }
+    lovelace = required;
+  }
+  throw new Error("Failed to stabilize linked-list inline-datum min-ADA.");
+};
+
+/**
+ * Drive the fixture's sole active operator through the canonical five-strike
+ * inactivity path and transfer its exact remaining bond to the retired set.
+ * This is deliberately a real validator lifecycle, not a fabricated retired
+ * datum, so the partial Q53 tranche reaches fraud removal with authenticated
+ * provenance from the active-operator and scheduler contracts.
+ */
+export const retireFixtureOperatorAfterInactivity = async (
+  fixture: ProvedDoubleSpendFixture,
+): Promise<UTxO> => {
+  const { activeOperators, retiredOperators, scheduler, stateQueue } =
+    fixture.contracts;
+  const operator = fixture.fraudulentHeader.operatorVkey;
+  const schedulerUnit = toUnit(scheduler.policyId, SCHEDULER_ASSET_NAME);
+  const retiredOperatorNodeUnit = toUnit(
+    retiredOperators.policyId,
+    RETIRED_OPERATOR_NODE_ASSET_NAME_PREFIX + operator,
+  );
+  const tailStateQueueUnit =
+    fixture.successors.at(-1)?.successorBlockUnit ??
+    fixture.setup.stateQueueBlockUnit;
+  const protocolParameters = getProtocolParameters(network);
+
+  for (
+    let expectedInputStrikes = 0n;
+    expectedInputStrikes < 5n;
+    expectedInputStrikes += 1n
+  ) {
+    const currentScheduler = await requireCurrentUnitUtxo({
+      lucid: fixture.funderLucid,
+      address: scheduler.spendingScriptAddress,
+      unit: schedulerUnit,
+      label: "inactivity strike scheduler",
+    });
+    const currentActiveOperator = await requireCurrentUnitUtxo({
+      lucid: fixture.funderLucid,
+      address: activeOperators.spendingScriptAddress,
+      unit: fixture.setup.activeOperatorNodeUnit,
+      label: "inactivity strike active operator",
+    });
+    const activeOperatorsRoot = await requireCurrentUnitUtxo({
+      lucid: fixture.funderLucid,
+      address: activeOperators.spendingScriptAddress,
+      unit: fixture.setup.activeOperatorsRootUnit,
+      label: "inactivity strike active-operators root",
+    });
+    const registeredOperatorsRoot = await requireCurrentUnitUtxo({
+      lucid: fixture.funderLucid,
+      address: fixture.contracts.registeredOperators.spendingScriptAddress,
+      unit: toUnit(
+        fixture.contracts.registeredOperators.policyId,
+        REGISTERED_OPERATORS_ROOT_ASSET_NAME,
+      ),
+      label: "inactivity strike registered-operators root",
+    });
+    const tailStateQueueNode = await requireCurrentUnitUtxo({
+      lucid: fixture.funderLucid,
+      address: stateQueue.spendingScriptAddress,
+      unit: tailStateQueueUnit,
+      label: "inactivity strike terminal state-queue node",
+    });
+    const schedulerDatum = Data.from(currentScheduler.datum!, SchedulerDatum);
+    if (
+      !(
+        typeof schedulerDatum === "object" && "ActiveOperator" in schedulerDatum
+      )
+    ) {
+      throw new Error("Inactivity strike expected an appointed scheduler.");
+    }
+    expect(schedulerDatum.ActiveOperator.operator).toBe(operator);
+    const currentActiveDatum = await activeOperatorDatumFromUtxo(
+      currentActiveOperator,
+    );
+    expect(currentActiveDatum.inactivity_strikes).toBe(expectedInputStrikes);
+
+    const inactivityThreshold = Math.max(
+      Number(schedulerDatum.ActiveOperator.start_time) + 300_000,
+      Number(
+        fixture.successors.at(-1)?.header.endTime ??
+          fixture.fraudulentHeader.endTime,
+      ) + 60_000,
+    );
+    const firstValidSlot =
+      fixture.funderLucid.unixTimeToSlot(inactivityThreshold) + 2;
+    const slotsToAdvance = firstValidSlot - fixture.funderLucid.currentSlot();
+    if (slotsToAdvance > 0) {
+      await fixture.emulator.awaitSlot(slotsToAdvance);
+    }
+    const validFrom = fixture.funderLucid.slotToUnixTime(
+      fixture.funderLucid.currentSlot(),
+    );
+    const validTo = validFrom + 60_000;
+    const nextShiftStart = BigInt(validTo - 1);
+    const feeInput = await cleanAdaOnlyWalletFeeInput(
+      fixture.proverLucid,
+      "inactivity strike fee input",
+    );
+    const schedulerSpendRedeemer = ((ctx) =>
+      Data.to(
+        {
+          scheduler_input_index: requireInputIndex(
+            ctx,
+            currentScheduler,
+            "inactivity strike scheduler input",
+          ),
+          scheduler_output_index: requireUniqueOutputIndex(
+            ctx.outputs,
+            (output) => (output.assets[schedulerUnit] ?? 0n) === 1n,
+            "inactivity strike scheduler output",
+          ),
+          advancing_approach: {
+            RewindDueToSkippedOperator: {
+              active_operators_root_ref_input_index: requireReferenceInputIndex(
+                ctx,
+                activeOperatorsRoot,
+                "inactivity strike active-operators root",
+              ),
+              skipped_operator_node_input_index: requireInputIndex(
+                ctx,
+                currentActiveOperator,
+                "inactivity strike active-operator input",
+              ),
+              active_operators_spend_redeemer_index: requireSpendRedeemerIndex(
+                ctx,
+                currentActiveOperator,
+                "inactivity strike active-operator redeemer",
+              ),
+              state_queue_ref_input_index: requireReferenceInputIndex(
+                ctx,
+                tailStateQueueNode,
+                "inactivity strike state-queue tail",
+              ),
+              hub_oracle_ref_input_index: requireReferenceInputIndex(
+                ctx,
+                fixture.setup.hubOracle,
+                "inactivity strike hub oracle",
+              ),
+              m_active_operators_last_node_ref_input_index: null,
+              registered_element_ref_input_index: requireReferenceInputIndex(
+                ctx,
+                registeredOperatorsRoot,
+                "inactivity strike registered-operators root",
+              ),
+              neglected_user_event: "NoNeglectedUserEvent",
+            },
+          },
+        } satisfies SchedulerSpendRedeemer,
+        SchedulerSpendRedeemer,
+      )) satisfies BuildTxWithRedeemer;
+    const activeOperatorSpendRedeemer = ((ctx) =>
+      Data.to(
+        {
+          StrikeForInactivity: {
+            active_node_input_index: requireInputIndex(
+              ctx,
+              currentActiveOperator,
+              "inactivity strike active-operator input",
+            ),
+            active_node_output_index: requireUniqueOutputIndex(
+              ctx.outputs,
+              (output) =>
+                (output.assets[fixture.setup.activeOperatorNodeUnit] ?? 0n) ===
+                1n,
+              "inactivity strike active-operator output",
+            ),
+            operator,
+            active_node_link: null,
+            scheduler_input_index: requireInputIndex(
+              ctx,
+              currentScheduler,
+              "inactivity strike scheduler input",
+            ),
+            scheduler_redeemer_index: requireSpendRedeemerIndex(
+              ctx,
+              currentScheduler,
+              "inactivity strike scheduler redeemer",
+            ),
+            hub_oracle_ref_input_index: requireReferenceInputIndex(
+              ctx,
+              fixture.setup.hubOracle,
+              "inactivity strike hub oracle",
+            ),
+          },
+        } satisfies ActiveOperatorSpendRedeemer,
+        ActiveOperatorSpendRedeemer,
+      )) satisfies BuildTxWithRedeemer;
+    const strikeUnsigned = await fixture.proverLucid
+      .newTx()
+      .collectFrom([feeInput])
+      .collectFrom([currentScheduler], schedulerSpendRedeemer)
+      .collectFrom([currentActiveOperator], activeOperatorSpendRedeemer)
+      .readFrom([
+        fixture.setup.hubOracle,
+        activeOperatorsRoot,
+        registeredOperatorsRoot,
+        tailStateQueueNode,
+        fixture.removalReferenceScriptPublications.published
+          .activeOperatorsSpend,
+        fixture.removalReferenceScriptPublications.published.schedulerSpend,
+      ])
+      .pay.ToContract(
+        scheduler.spendingScriptAddress,
+        {
+          kind: "inline",
+          value: Data.to(
+            {
+              ActiveOperator: {
+                operator,
+                start_time: nextShiftStart,
+              },
+            },
+            SchedulerDatum,
+          ),
+        },
+        currentScheduler.assets,
+      )
+      .pay.ToContract(
+        activeOperators.spendingScriptAddress,
+        {
+          kind: "inline",
+          value: encodeLinkedListNodeView({
+            key: { Key: { key: operator } },
+            next: "Empty",
+            data: Data.castTo(
+              {
+                bond_unlock_time: currentActiveDatum.bond_unlock_time,
+                inactivity_strikes: expectedInputStrikes + 1n,
+              },
+              ActiveOperatorDatum,
+            ),
+          }),
+        },
+        currentActiveOperator.assets,
+      )
+      .validFrom(validFrom)
+      .validTo(validTo)
+      .complete({ localUPLCEval: true });
+    const strikeSigned = await strikeUnsigned.sign.withWallet().complete();
+    const expectedStrikeReferenceInputs = [
+      fixture.setup.hubOracle,
+      activeOperatorsRoot,
+      registeredOperatorsRoot,
+      tailStateQueueNode,
+      fixture.removalReferenceScriptPublications.published.activeOperatorsSpend,
+      fixture.removalReferenceScriptPublications.published.schedulerSpend,
+    ];
+    const strikeCapture = await captureEmulatorSubmission(
+      fixture.emulator,
+      async () => {
+        const txHash = await strikeSigned.submit();
+        await fixture.proverLucid.awaitTx(txHash);
+        return txHash;
+      },
+    );
+    expectReferenceScriptOnlyTransaction({
+      signed: strikeSigned,
+      measurement: strikeCapture.measurement,
+      expectedReferenceInputs: expectedStrikeReferenceInputs,
+    });
+  }
+
+  const activeOperatorsRoot = await requireCurrentUnitUtxo({
+    lucid: fixture.funderLucid,
+    address: activeOperators.spendingScriptAddress,
+    unit: fixture.setup.activeOperatorsRootUnit,
+    label: "inactivity retirement active-operators root",
+  });
+  const activeOperator = await requireCurrentUnitUtxo({
+    lucid: fixture.funderLucid,
+    address: activeOperators.spendingScriptAddress,
+    unit: fixture.setup.activeOperatorNodeUnit,
+    label: "inactivity retirement active operator",
+  });
+  const retiredOperatorsRoot = await requireCurrentUnitUtxo({
+    lucid: fixture.funderLucid,
+    address: retiredOperators.spendingScriptAddress,
+    unit: fixture.setup.retiredOperatorsRootUnit,
+    label: "inactivity retirement retired-operators root",
+  });
+  const currentScheduler = await requireCurrentUnitUtxo({
+    lucid: fixture.funderLucid,
+    address: scheduler.spendingScriptAddress,
+    unit: schedulerUnit,
+    label: "inactivity retirement scheduler",
+  });
+  const registeredOperatorsRoot = await requireCurrentUnitUtxo({
+    lucid: fixture.funderLucid,
+    address: fixture.contracts.registeredOperators.spendingScriptAddress,
+    unit: toUnit(
+      fixture.contracts.registeredOperators.policyId,
+      REGISTERED_OPERATORS_ROOT_ASSET_NAME,
+    ),
+    label: "inactivity retirement registered-operators root",
+  });
+  const activeDatum = await activeOperatorDatumFromUtxo(activeOperator);
+  expect(activeDatum.inactivity_strikes).toBe(5n);
+  const retirementValidFrom = fixture.funderLucid.slotToUnixTime(
+    fixture.funderLucid.currentSlot(),
+  );
+  const retirementValidTo = retirementValidFrom + 60_001;
+  const activeOperatorsMintRedeemer = ((ctx) => {
+    requireOwnMintPurpose(
+      ctx,
+      activeOperators.policyId,
+      "inactivity retirement active-operators mint",
+    );
+    return Data.to(
+      {
+        RetireOperator: {
+          active_operator_key: operator,
+          hub_oracle_ref_input_index: requireReferenceInputIndex(
+            ctx,
+            fixture.setup.hubOracle,
+            "inactivity retirement hub oracle",
+          ),
+          active_operator_anchor_element_input_outref:
+            outputReferenceFromUTxO(activeOperatorsRoot),
+          active_operator_anchor_element_output_index: requireUniqueOutputIndex(
+            ctx.outputs,
+            (output) =>
+              (output.assets[fixture.setup.activeOperatorsRootUnit] ?? 0n) ===
+              1n,
+            "inactivity retirement active-operators root output",
+          ),
+          retired_operators_redeemer_index: requireMintRedeemerIndex(
+            ctx,
+            retiredOperators.policyId,
+            "inactivity retirement retired-operators mint",
+          ),
+          penalize_for_inactivity: true,
+          operator_removal_scheduler_sync: {
+            ShowSchedulerIsAdvancing: {
+              scheduler_input_index: requireInputIndex(
+                ctx,
+                currentScheduler,
+                "inactivity retirement scheduler input",
+              ),
+              scheduler_redeemer_index: requireSpendRedeemerIndex(
+                ctx,
+                currentScheduler,
+                "inactivity retirement scheduler redeemer",
+              ),
+              removing_operators_anchor_element_key: null,
+              removing_operator_is_the_last_member: true,
+            },
+          },
+        },
+      } satisfies ActiveOperatorMintRedeemer,
+      ActiveOperatorMintRedeemer,
+    );
+  }) satisfies BuildTxWithRedeemer;
+  const retiredOperatorsMintRedeemer = ((ctx) => {
+    requireOwnMintPurpose(
+      ctx,
+      retiredOperators.policyId,
+      "inactivity retirement retired-operators mint",
+    );
+    return Data.to(
+      {
+        RetireOperator: {
+          new_retired_operator_key: operator,
+          bond_unlock_time: activeDatum.bond_unlock_time,
+          hub_oracle_ref_input_index: requireReferenceInputIndex(
+            ctx,
+            fixture.setup.hubOracle,
+            "inactivity retirement hub oracle",
+          ),
+          retired_operator_anchor_element_output_index:
+            requireUniqueOutputIndex(
+              ctx.outputs,
+              (output) =>
+                (output.assets[fixture.setup.retiredOperatorsRootUnit] ??
+                  0n) === 1n,
+              "inactivity retirement retired-operators root output",
+            ),
+          retired_operator_inserted_node_output_index: requireUniqueOutputIndex(
+            ctx.outputs,
+            (output) => (output.assets[retiredOperatorNodeUnit] ?? 0n) === 1n,
+            "inactivity retirement retired-operator node output",
+          ),
+          active_operators_redeemer_index: requireMintRedeemerIndex(
+            ctx,
+            activeOperators.policyId,
+            "inactivity retirement active-operators mint",
+          ),
+        },
+      } satisfies RetiredOperatorMintRedeemer,
+      RetiredOperatorMintRedeemer,
+    );
+  }) satisfies BuildTxWithRedeemer;
+  const schedulerSpendRedeemer = ((ctx) =>
+    Data.to(
+      {
+        scheduler_input_index: requireInputIndex(
+          ctx,
+          currentScheduler,
+          "inactivity retirement scheduler input",
+        ),
+        scheduler_output_index: requireUniqueOutputIndex(
+          ctx.outputs,
+          (output) => (output.assets[schedulerUnit] ?? 0n) === 1n,
+          "inactivity retirement scheduler output",
+        ),
+        advancing_approach: {
+          RewindDueToOperatorRemoval: {
+            active_operators_mint_redeemer_index: requireMintRedeemerIndex(
+              ctx,
+              activeOperators.policyId,
+              "inactivity retirement active-operators mint",
+            ),
+            m_active_operators_last_node_ref_input_index: null,
+            removal_reason: "OperatorRetirement",
+            registered_element_ref_input_index: requireReferenceInputIndex(
+              ctx,
+              registeredOperatorsRoot,
+              "inactivity retirement registered-operators root",
+            ),
+          },
+        },
+      } satisfies SchedulerSpendRedeemer,
+      SchedulerSpendRedeemer,
+    )) satisfies BuildTxWithRedeemer;
+  const partialBond =
+    protocolParameters.required_bond -
+    protocolParameters.inactivity_slashing_penalty;
+  const activeOperatorsRootDatum = encodeLinkedListNodeView({
+    key: "Empty",
+    next: "Empty",
+    data: "",
+  });
+  const retiredOperatorsRootDatum = encodeLinkedListNodeView({
+    key: "Empty",
+    next: { Key: { key: operator } },
+    data: "",
+  });
+  const retiredOperatorDatum = encodeLinkedListNodeView({
+    key: { Key: { key: operator } },
+    next: "Empty",
+    data: Data.castTo(
+      { bond_unlock_time: activeDatum.bond_unlock_time },
+      RetiredOperatorDatum,
+    ),
+  });
+  const retiredRootInputLovelace = retiredOperatorsRoot.assets.lovelace ?? 0n;
+  const retiredRootOutputLovelace = minimumLovelaceForInlineValue({
+    address: retiredOperators.spendingScriptAddress,
+    datum: retiredOperatorsRootDatum,
+    assets: retiredOperatorsRoot.assets,
+  });
+  const retiredRootRentTopUp =
+    retiredRootOutputLovelace - retiredRootInputLovelace;
+  if (retiredRootRentTopUp < 0n) {
+    throw new Error(
+      "Retired-operators root min-ADA top-up cannot be negative.",
+    );
+  }
+  const retirementRentInput = await cleanAdaOnlyWalletFeeInput(
+    fixture.proverLucid,
+    "inactivity retirement linked-list rent",
+  );
+  const retirementRentInputLovelace = retirementRentInput.assets.lovelace ?? 0n;
+  const retirementRentRefund =
+    retirementRentInputLovelace - retiredRootRentTopUp;
+  if (retirementRentRefund <= 1_000_000n) {
+    throw new Error(
+      "Inactivity retirement rent input cannot fund a canonical change output.",
+    );
+  }
+  const retirementRefundAddress = await fixture.proverLucid.wallet().address();
+  const retirementProtocolInputs =
+    (activeOperatorsRoot.assets.lovelace ?? 0n) +
+    (activeOperator.assets.lovelace ?? 0n) +
+    retiredRootInputLovelace +
+    (currentScheduler.assets.lovelace ?? 0n) +
+    retirementRentInputLovelace;
+  const retirementProtocolOutputsAndFee =
+    (activeOperatorsRoot.assets.lovelace ?? 0n) +
+    retiredRootOutputLovelace +
+    partialBond +
+    (currentScheduler.assets.lovelace ?? 0n) +
+    retirementRentRefund +
+    protocolParameters.inactivity_slashing_penalty;
+  expect(retirementProtocolInputs).toBe(retirementProtocolOutputsAndFee);
+  const retirementUnsigned = await fixture.proverLucid
+    .newTx()
+    .collectFrom([retirementRentInput])
+    .collectFrom(
+      [activeOperatorsRoot, activeOperator],
+      Data.to("ListStateTransition", ActiveOperatorSpendRedeemer),
+    )
+    .collectFrom([retiredOperatorsRoot], Data.void())
+    .collectFrom([currentScheduler], schedulerSpendRedeemer)
+    .readFrom([
+      fixture.setup.hubOracle,
+      registeredOperatorsRoot,
+      fixture.removalReferenceScriptPublications.published.activeOperatorsSpend,
+      fixture.removalReferenceScriptPublications.published.activeOperatorsMint,
+      fixture.removalReferenceScriptPublications.published
+        .retiredOperatorsSpend,
+      fixture.removalReferenceScriptPublications.published.retiredOperatorsMint,
+      fixture.removalReferenceScriptPublications.published.schedulerSpend,
+    ])
+    .mintAssets(
+      { [fixture.setup.activeOperatorNodeUnit]: -1n },
+      activeOperatorsMintRedeemer,
+    )
+    .mintAssets({ [retiredOperatorNodeUnit]: 1n }, retiredOperatorsMintRedeemer)
+    .pay.ToContract(
+      activeOperators.spendingScriptAddress,
+      {
+        kind: "inline",
+        value: activeOperatorsRootDatum,
+      },
+      activeOperatorsRoot.assets,
+    )
+    .pay.ToContract(
+      retiredOperators.spendingScriptAddress,
+      {
+        kind: "inline",
+        value: retiredOperatorsRootDatum,
+      },
+      {
+        ...retiredOperatorsRoot.assets,
+        lovelace: retiredRootOutputLovelace,
+      },
+    )
+    .pay.ToContract(
+      retiredOperators.spendingScriptAddress,
+      {
+        kind: "inline",
+        value: retiredOperatorDatum,
+      },
+      { lovelace: partialBond, [retiredOperatorNodeUnit]: 1n },
+    )
+    .pay.ToContract(
+      scheduler.spendingScriptAddress,
+      {
+        kind: "inline",
+        value: Data.to("NoActiveOperators", SchedulerDatum),
+      },
+      currentScheduler.assets,
+    )
+    .pay.ToAddress(retirementRefundAddress, {
+      lovelace: retirementRentRefund,
+    })
+    .validFrom(retirementValidFrom)
+    .validTo(retirementValidTo)
+    .setMinFee(protocolParameters.inactivity_slashing_penalty)
+    .complete({ coinSelection: false, localUPLCEval: true });
+  const retirementSigned = await retirementUnsigned.sign
+    .withWallet()
+    .complete();
+  const expectedRetirementReferenceInputs = [
+    fixture.setup.hubOracle,
+    registeredOperatorsRoot,
+    fixture.removalReferenceScriptPublications.published.activeOperatorsSpend,
+    fixture.removalReferenceScriptPublications.published.activeOperatorsMint,
+    fixture.removalReferenceScriptPublications.published.retiredOperatorsSpend,
+    fixture.removalReferenceScriptPublications.published.retiredOperatorsMint,
+    fixture.removalReferenceScriptPublications.published.schedulerSpend,
+  ];
+  const retirementCapture = await captureEmulatorSubmission(
+    fixture.emulator,
+    async () => {
+      const txHash = await retirementSigned.submit();
+      await fixture.proverLucid.awaitTx(txHash);
+      return txHash;
+    },
+  );
+  expectReferenceScriptOnlyTransaction({
+    signed: retirementSigned,
+    measurement: retirementCapture.measurement,
+    expectedReferenceInputs: expectedRetirementReferenceInputs,
+  });
+  expect(retirementSigned.toTransaction().body().fee()).toBe(
+    protocolParameters.inactivity_slashing_penalty,
+  );
+
+  await expect(
+    fixture.funderLucid.utxosAtWithUnit(
+      activeOperators.spendingScriptAddress,
+      fixture.setup.activeOperatorNodeUnit,
+    ),
+  ).resolves.toHaveLength(0);
+  const retiredOperator = await requireCurrentUnitUtxo({
+    lucid: fixture.funderLucid,
+    address: retiredOperators.spendingScriptAddress,
+    unit: retiredOperatorNodeUnit,
+    label: "partially inactivity-slashed retired operator",
+  });
+  expect(retiredOperator.assets.lovelace).toBe(partialBond);
+  return retiredOperator;
+};
+
 export const submitRemovalForFixture = async (
   fixture: ProvedDoubleSpendFixture,
   options: {
     readonly lucid?: Awaited<ReturnType<typeof Lucid>>;
     readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
+    readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   } = {},
 ) => {
   const removeNow = BigInt(fixture.emulator.now());
@@ -2155,6 +2952,9 @@ export const submitRemovalForFixture = async (
           stateQueueMutationLeaseCoordinator:
             options.stateQueueMutationLeaseCoordinator,
         }),
+    ...(options.preSubmitBoundary === undefined
+      ? {}
+      : { preSubmitBoundary: options.preSubmitBoundary }),
   });
 };
 
@@ -2243,26 +3043,37 @@ export const setupFraudulentBlockV1 = async ({
   readonly fixture: {
     readonly transactionsRoot: string;
     readonly l2TransactionCount: bigint;
+    readonly prevUtxosRoot?: string;
+    readonly utxosRoot?: string;
   };
 }) => {
   const funderKeyHash = await funderPaymentKeyHash(funderLucid);
   const headerStartTime =
     alignUnixTimeToEmulatorSlotBoundary(funderLucid, emulator.now() + 120_000) -
     1;
-  const fraudulentHeader = makeHeader(
-    funderKeyHash,
-    headerStartTime,
-    await countedTransactionsRoot(
-      fixture.transactionsRoot,
+  const fraudulentHeader = {
+    ...makeHeader(
+      funderKeyHash,
+      headerStartTime,
+      await countedTransactionsRoot(
+        fixture.transactionsRoot,
+        fixture.l2TransactionCount,
+      ),
       fixture.l2TransactionCount,
     ),
-    fixture.l2TransactionCount,
-  );
-  return await submitSetupTx({
+    ...(fixture.prevUtxosRoot === undefined
+      ? {}
+      : { prevUtxosRoot: fixture.prevUtxosRoot }),
+    ...(fixture.utxosRoot === undefined
+      ? {}
+      : { utxosRoot: fixture.utxosRoot }),
+  };
+  const setup = await submitSetupTx({
     lucid: funderLucid,
     contracts,
     nonceUtxo: (await funderLucid.wallet().getUtxos())[0]!,
     catalogue,
     header: fraudulentHeader,
   });
+  return { ...setup, header: fraudulentHeader };
 };

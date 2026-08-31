@@ -1,10 +1,13 @@
 import { formatUnknownError } from "@al-ft/midgard-core";
+import { parseDeploymentManifestV1Economics } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import {
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
   ACTIVE_OPERATORS_ROOT_ASSET_NAME,
   ActiveOperatorMintRedeemer,
   type ActiveOperatorMintRedeemer as ActiveOperatorMintRedeemerData,
+  type EmulatorStateQueueRemoveSlashingParams,
   encodeLinkedListNodeView,
+  fetchCorrectionLockUTxOProgram,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   FraudProofTokenDatum,
@@ -82,14 +85,166 @@ import {
   type SupportedFaultProofCategoryName,
 } from "./runtime.js";
 import { selectFeeInput } from "./submit-step-01.js";
+import {
+  CapturedLocallyEvaluatedTransactionV1,
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "./workflow/transaction-boundary-v1.js";
 
-const DEFAULT_REMOVE_VALIDITY_WINDOW_MS = 300_000n;
-const DEFAULT_REMOVE_VALIDITY_BACKDATE_MS = 120_000n;
+export const STATE_QUEUE_REMOVAL_VALIDITY_WINDOW_MS = 300_000n;
+export const STATE_QUEUE_REMOVAL_VALIDITY_BACKDATE_MS = 120_000n;
 const DEFAULT_NODE_ADMIN_KEY_ENV = "MIDGARD_NODE_ADMIN_KEY";
 const STATE_QUEUE_MUTATION_LEASE_ENDPOINT = "stateQueueMutationLease";
 const FAULT_PROOF_LEASE_HOLDER = "fault_proof_removal";
 
+export type FraudSlashEconomicsPolicyV1 = Readonly<{
+  profile: "public-preprod-launch-v1" | "bounded-acceptance-v1";
+  requiredBondLovelace: bigint;
+  slashingPenaltyLovelace: bigint;
+  inactivitySlashingPenaltyLovelace: bigint;
+  fraudProverRewardLovelace: bigint;
+  proverCollateralFloorLovelace: bigint;
+}>;
+
+export const fraudSlashEconomicsFromDeploymentManifestV1 = (
+  deploymentInfo: unknown,
+): FraudSlashEconomicsPolicyV1 => {
+  if (
+    typeof deploymentInfo !== "object" ||
+    deploymentInfo === null ||
+    Array.isArray(deploymentInfo) ||
+    (Object.getPrototypeOf(deploymentInfo) !== Object.prototype &&
+      Object.getPrototypeOf(deploymentInfo) !== null)
+  ) {
+    throw new Error("Deployment manifest must be an object.");
+  }
+  const manifest = deploymentInfo as { readonly economics?: unknown };
+  const economics = parseDeploymentManifestV1Economics(manifest.economics);
+  return {
+    profile: economics.profile,
+    requiredBondLovelace: BigInt(economics.requiredBondLovelace),
+    slashingPenaltyLovelace: BigInt(economics.slashingPenaltyLovelace),
+    inactivitySlashingPenaltyLovelace: BigInt(
+      economics.inactivitySlashingPenaltyLovelace,
+    ),
+    fraudProverRewardLovelace: BigInt(economics.fraudProverRewardLovelace),
+    proverCollateralFloorLovelace: BigInt(
+      economics.proverCollateralFloorLovelace,
+    ),
+  };
+};
+
+export const resolveFraudSlashEconomicsV1 = (
+  economics: FraudSlashEconomicsPolicyV1,
+  operatorNodeLovelace: bigint,
+): Readonly<{
+  requiredBondLovelace: bigint;
+  fraudProverRewardLovelace: bigint;
+  exactFeeLovelace: bigint;
+  tranche: "full" | "partially-inactivity-slashed";
+}> => {
+  const partialBond =
+    economics.requiredBondLovelace -
+    economics.inactivitySlashingPenaltyLovelace;
+  if (
+    economics.requiredBondLovelace !==
+      economics.slashingPenaltyLovelace + economics.fraudProverRewardLovelace ||
+    economics.inactivitySlashingPenaltyLovelace <= 0n ||
+    economics.inactivitySlashingPenaltyLovelace >=
+      economics.slashingPenaltyLovelace
+  ) {
+    throw new Error("Deployment economics violate F04 slash relations.");
+  }
+  if (operatorNodeLovelace === economics.requiredBondLovelace) {
+    return {
+      requiredBondLovelace: economics.requiredBondLovelace,
+      fraudProverRewardLovelace: economics.fraudProverRewardLovelace,
+      exactFeeLovelace: economics.slashingPenaltyLovelace,
+      tranche: "full",
+    };
+  }
+  if (operatorNodeLovelace === partialBond) {
+    return {
+      requiredBondLovelace: economics.requiredBondLovelace,
+      fraudProverRewardLovelace: economics.fraudProverRewardLovelace,
+      exactFeeLovelace:
+        economics.slashingPenaltyLovelace -
+        economics.inactivitySlashingPenaltyLovelace,
+      tranche: "partially-inactivity-slashed",
+    };
+  }
+  throw new Error(
+    `Operator bond must be exactly ${economics.requiredBondLovelace.toString()} or ${partialBond.toString()} lovelace; found ${operatorNodeLovelace.toString()}.`,
+  );
+};
+
+export const fraudRemovalUsesWalletCoinSelectionV1 = (
+  approach:
+    | "SlashActiveOperator"
+    | "SlashRetiredOperator"
+    | "OperatorAlreadySlashed",
+): boolean => approach === "OperatorAlreadySlashed";
+
+const utxoLovelace = (utxo: UTxO): bigint => utxo.assets.lovelace ?? 0n;
+
+const sumUtxoLovelace = (utxos: readonly UTxO[]): bigint =>
+  utxos.reduce((total, utxo) => total + utxoLovelace(utxo), 0n);
+
+const assertExactFraudSlashLovelaceConservationV1 = ({
+  stateQueueAnchor,
+  removedStateQueueNode,
+  slashing,
+  economics,
+}: {
+  readonly stateQueueAnchor: StateQueueUTxO;
+  readonly removedStateQueueNode: StateQueueUTxO;
+  readonly slashing: Exclude<
+    EmulatorStateQueueRemoveSlashingParams,
+    { readonly kind: "operatorAlreadySlashed" }
+  >;
+  readonly economics: ReturnType<typeof resolveFraudSlashEconomicsV1>;
+}): void => {
+  const stateQueueInputLovelace =
+    utxoLovelace(stateQueueAnchor.utxo) +
+    utxoLovelace(removedStateQueueNode.utxo);
+  const stateQueueOutputLovelace = stateQueueInputLovelace;
+  const rewardLovelace = slashing.fraudProverReward?.lovelace;
+  if (rewardLovelace !== economics.fraudProverRewardLovelace) {
+    throw new Error(
+      `Fraud slash reward must conserve exactly ${economics.fraudProverRewardLovelace.toString()} lovelace; found ${rewardLovelace?.toString() ?? "none"}.`,
+    );
+  }
+
+  const operatorInputLovelace =
+    slashing.kind === "slashActiveOperator"
+      ? sumUtxoLovelace([
+          ...slashing.activeOperatorInputs,
+          ...(slashing.schedulerSpend === undefined
+            ? []
+            : [slashing.schedulerSpend.input]),
+        ])
+      : sumUtxoLovelace(slashing.retiredOperatorInputs);
+  const operatorOutputLovelace =
+    slashing.kind === "slashActiveOperator"
+      ? (slashing.continuedActiveOperatorAnchorOutput?.assets.lovelace ?? 0n) +
+        (slashing.schedulerSpend?.continuedOutput.assets.lovelace ?? 0n)
+      : (slashing.continuedRetiredOperatorAnchorOutput?.assets.lovelace ?? 0n);
+  const totalInputs = stateQueueInputLovelace + operatorInputLovelace;
+  const totalOutputsAndFee =
+    stateQueueOutputLovelace +
+    operatorOutputLovelace +
+    rewardLovelace +
+    economics.exactFeeLovelace;
+  if (totalInputs !== totalOutputsAndFee) {
+    throw new Error(
+      `Fraud slash lovelace is not exactly conserved: inputs=${totalInputs.toString()}, outputs_and_fee=${totalOutputsAndFee.toString()}, residual=${(totalInputs - totalOutputsAndFee).toString()}.`,
+    );
+  }
+};
+
 const REFERENCE_SCRIPT_NAMES = [
+  "correctionLockSpend",
   "stateQueueSpend",
   "stateQueueMint",
   "activeOperatorsSpend",
@@ -104,6 +259,8 @@ type ReferenceScriptName = (typeof REFERENCE_SCRIPT_NAMES)[number];
 type DeploymentScriptName = ReferenceScriptName | "registeredOperatorsSpend";
 
 type RemoveFraudulentBlockContracts = {
+  readonly correctionLockAddress: string;
+  readonly correctionLockSpendingScript: Script;
   readonly stateQueuePolicyId: string;
   readonly stateQueueAddress: string;
   readonly stateQueueSpendingScript: Script;
@@ -318,8 +475,17 @@ export type StateQueueMutationLease = {
   readonly fail: (error: string) => Promise<void>;
 };
 
+export type StateQueueMutationLeaseIdentity = Pick<
+  StateQueueMutationLease,
+  "token" | "source"
+>;
+
 export type StateQueueMutationLeaseCoordinator = {
   readonly acquire: () => Promise<StateQueueMutationLease>;
+  /** Reconstructs the exact journaled fencing lease; never acquires a new one. */
+  readonly resume?: (
+    identity: StateQueueMutationLeaseIdentity,
+  ) => Promise<StateQueueMutationLease>;
 };
 
 export type SubmitRemoveFraudulentBlockResult = {
@@ -421,10 +587,12 @@ export const createHttpStateQueueMutationLeaseCoordinator = ({
   midgardNodeUrl,
   adminKey,
   ttlMs,
+  holder = FAULT_PROOF_LEASE_HOLDER,
 }: {
   readonly midgardNodeUrl: string;
   readonly adminKey: string;
   readonly ttlMs?: number;
+  readonly holder?: string;
 }): StateQueueMutationLeaseCoordinator => {
   const nodeUrl = normalizeNodeUrl(midgardNodeUrl);
   const normalizedTtlMs = parsePositiveSafeInteger(
@@ -451,12 +619,40 @@ export const createHttpStateQueueMutationLeaseCoordinator = ({
     }
     return json;
   };
+  const leaseForToken = (token: string): StateQueueMutationLease => {
+    if (token.trim().length === 0 || token.trim() !== token) {
+      throw new Error("State-queue mutation lease token must be canonical");
+    }
+    const leaseBody = (
+      action: "renew" | "release" | "fail",
+      extra: Record<string, unknown> = {},
+    ) =>
+      post({
+        action,
+        token,
+        ...(normalizedTtlMs === undefined ? {} : { ttlMs: normalizedTtlMs }),
+        ...extra,
+      });
+    return {
+      token,
+      source: nodeUrl,
+      renew: async () => {
+        await leaseBody("renew");
+      },
+      release: async () => {
+        await leaseBody("release");
+      },
+      fail: async (error: string) => {
+        await leaseBody("fail", { error });
+      },
+    };
+  };
 
   return {
     acquire: async () => {
       const json = await post({
         action: "acquire",
-        holder: FAULT_PROOF_LEASE_HOLDER,
+        holder,
         ...(normalizedTtlMs === undefined ? {} : { ttlMs: normalizedTtlMs }),
       });
       if (
@@ -470,26 +666,15 @@ export const createHttpStateQueueMutationLeaseCoordinator = ({
         );
       }
       const token = (json as { readonly token: string }).token;
-      const leaseBody = (action: "renew" | "release" | "fail", extra = {}) =>
-        post({
-          action,
-          token,
-          ...(normalizedTtlMs === undefined ? {} : { ttlMs: normalizedTtlMs }),
-          ...extra,
-        });
-      return {
-        token,
-        source: nodeUrl,
-        renew: async () => {
-          await leaseBody("renew");
-        },
-        release: async () => {
-          await leaseBody("release");
-        },
-        fail: async (error: string) => {
-          await leaseBody("fail", { error });
-        },
-      };
+      return leaseForToken(token);
+    },
+    resume: async ({ token, source }) => {
+      if (source !== nodeUrl) {
+        throw new Error(
+          `Refusing state-queue mutation lease from a different coordinator: expected=${nodeUrl} actual=${source}`,
+        );
+      }
+      return leaseForToken(token);
     },
   };
 };
@@ -701,6 +886,10 @@ const assembleRemovalContracts = ({
     deploymentInfo,
     "stateQueueMint",
   );
+  const correctionLockSpendingScript = requireDeploymentScript(
+    deploymentInfo,
+    "correctionLockSpend",
+  );
   const activeOperatorsSpendingScript = requireDeploymentScript(
     deploymentInfo,
     "activeOperatorsSpend",
@@ -739,6 +928,11 @@ const assembleRemovalContracts = ({
   );
 
   return {
+    correctionLockAddress: validatorToAddress(
+      network,
+      correctionLockSpendingScript as SpendingValidator,
+    ),
+    correctionLockSpendingScript,
     stateQueuePolicyId: requireDeploymentScriptHash(
       deploymentInfo,
       "stateQueueMint",
@@ -835,6 +1029,7 @@ const resolveReferenceScripts = async ({
     return undefined;
   }
   const [
+    correctionLockSpend,
     stateQueueSpend,
     stateQueueMint,
     activeOperatorsSpend,
@@ -848,6 +1043,7 @@ const resolveReferenceScripts = async ({
     ),
   );
   return {
+    correctionLockSpend,
     stateQueueSpend,
     stateQueueMint,
     activeOperatorsSpend,
@@ -2148,6 +2344,7 @@ export const submitRemoveFraudulentBlock = async ({
   validTo,
   stateQueueMutationLeaseCoordinator,
   fraudProverRewardLovelace,
+  preSubmitBoundary,
 }: {
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
@@ -2170,12 +2367,12 @@ export const submitRemoveFraudulentBlock = async ({
   readonly validTo?: bigint;
   readonly stateQueueMutationLeaseCoordinator?: StateQueueMutationLeaseCoordinator;
   /**
-   * Exact `env.fraud_prover_reward` of the deployment being driven. Omit while
-   * the compiled reward is zero; supplying a value that disagrees with the
-   * compiled one makes the slash refuse on-chain rather than silently pay the
-   * wrong amount.
+   * Optional assertion of the deployment-manifest `fraudProverRewardLovelace`;
+   * omission still routes the release profile's mandatory nonzero reward.
    */
   readonly fraudProverRewardLovelace?: bigint;
+  /** Production workflow seam for each descendant/target removal tx. */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
 }): Promise<SubmitRemoveFraudulentBlockResult> => {
   const headerHash = parseHex(
     fraudulentHeaderHash,
@@ -2183,6 +2380,8 @@ export const submitRemoveFraudulentBlock = async ({
     28,
   );
   const parsedDeploymentInfo = parseContractDeploymentInfo(deploymentInfo);
+  const deploymentEconomics =
+    fraudSlashEconomicsFromDeploymentManifestV1(deploymentInfo);
   const contracts =
     typeof fraudCategory === "string"
       ? await buildRemovalContracts({
@@ -2279,37 +2478,22 @@ export const submitRemoveFraudulentBlock = async ({
     );
   }
   const fraudProofDatum = Data.from(fraudProofUtxo.datum, FraudProofTokenDatum);
-  if (fraudProofDatum.fraud_prover !== signer.paymentKeyHash) {
-    throw new Error(
-      `Fraud-proof token prover ${fraudProofDatum.fraud_prover} does not match signer ${signer.paymentKeyHash}.`,
-    );
-  }
 
-  // D3: the reward destination is the enterprise address of the prover carried
-  // by the fraud-proof datum, never the submitter's or a CLI-supplied address.
-  // The amount is caller-supplied because this package is not an economics
-  // authority (F04 §2.5); omitting it is correct only while the compiled
-  // `env.fraud_prover_reward` is zero, which is the state F04 §2.5 records as
-  // Q53's to replace. A supplied zero is rejected rather than silently treated
-  // as "no reward": a zero-lovelace output cannot exist on L1.
   if (
     fraudProverRewardLovelace !== undefined &&
-    fraudProverRewardLovelace <= 0n
+    fraudProverRewardLovelace !== deploymentEconomics.fraudProverRewardLovelace
   ) {
     throw new Error(
-      "Fraud-prover reward must be a positive lovelace amount; omit it entirely when the deployed economics reward is zero.",
+      `Fraud-prover reward must equal deployment profile ${deploymentEconomics.profile} amount ${deploymentEconomics.fraudProverRewardLovelace.toString()} lovelace; found ${fraudProverRewardLovelace.toString()}.`,
     );
   }
-  const fraudProverRewardPlan =
-    fraudProverRewardLovelace === undefined
-      ? undefined
-      : {
-          proverEnterpriseAddress: credentialToAddress(network, {
-            type: "Key" as const,
-            hash: fraudProofDatum.fraud_prover,
-          }),
-          lovelace: fraudProverRewardLovelace,
-        };
+  const fraudProverRewardPlan = {
+    proverEnterpriseAddress: credentialToAddress(network, {
+      type: "Key" as const,
+      hash: fraudProofDatum.fraud_prover,
+    }),
+    lovelace: deploymentEconomics.fraudProverRewardLovelace,
+  };
 
   let topology = await loadStateQueueTopology({
     lucid,
@@ -2320,6 +2504,10 @@ export const submitRemoveFraudulentBlock = async ({
   if (initialTarget === undefined) {
     throw new Error(`State queue does not contain block ${headerHash}.`);
   }
+  const fraudulentHeader = await Effect.runPromise(
+    getHeaderV1FromStateQueueDatum(initialTarget.datum),
+  );
+  const fraudulentOperator = fraudulentHeader.operatorVkey;
   const initialStateQueueRootOutRef = outRefLabel(topology.root.utxo);
   const initialTargetOutRef = outRefLabel(initialTarget.utxo);
   const initialTargetHasSuccessor =
@@ -2359,8 +2547,8 @@ export const submitRemoveFraudulentBlock = async ({
   const txValidityWindow = () => {
     const now = BigInt(Date.now());
     return {
-      txValidFrom: validFrom ?? now - DEFAULT_REMOVE_VALIDITY_BACKDATE_MS,
-      txValidTo: validTo ?? now + DEFAULT_REMOVE_VALIDITY_WINDOW_MS,
+      txValidFrom: validFrom ?? now - STATE_QUEUE_REMOVAL_VALIDITY_BACKDATE_MS,
+      txValidTo: validTo ?? now + STATE_QUEUE_REMOVAL_VALIDITY_WINDOW_MS,
     };
   };
   const loadRegisteredOperatorsRootUtxo = () =>
@@ -2384,11 +2572,13 @@ export const submitRemoveFraudulentBlock = async ({
     readonly removed: StateQueueUTxO;
   }): Promise<RemoveTransactionResult> => {
     await stateQueueMutationLease?.renew();
-    const removedHeaderHash = await requireStateQueueHeaderHash(removed);
-    const removedHeader = await Effect.runPromise(
-      getHeaderV1FromStateQueueDatum(removed.datum),
+    const correctionLockInput = await Effect.runPromise(
+      fetchCorrectionLockUTxOProgram(lucid, {
+        correctionLockAddress: contracts.correctionLockAddress,
+        hubOraclePolicyId: contracts.hubOraclePolicyId,
+      }),
     );
-    const fraudulentOperator = removedHeader.operatorVkey;
+    const removedHeaderHash = await requireStateQueueHeaderHash(removed);
     const currentSchedulerUtxo = await requireSingletonUtxo({
       lucid,
       address: contracts.schedulerAddress,
@@ -2404,6 +2594,13 @@ export const submitRemoveFraudulentBlock = async ({
       activeOperatorsRootUnit,
       retiredOperatorsRootUnit,
     });
+    const slashEconomics =
+      operatorSlashingPlan.approach === "OperatorAlreadySlashed"
+        ? null
+        : resolveFraudSlashEconomicsV1(
+            deploymentEconomics,
+            operatorSlashingPlan.removalPlan.node.utxo.assets.lovelace ?? 0n,
+          );
     const registeredOperatorsRootForSlashing =
       operatorSlashingPlan.approach === "SlashActiveOperator" &&
       operatorSlashingPlan.schedulerPlan.kind === "rewind"
@@ -2422,8 +2619,29 @@ export const submitRemoveFraudulentBlock = async ({
         : { fraudProverReward: fraudProverRewardPlan }),
     });
     const { txValidFrom, txValidTo } = txValidityWindow();
-    const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+    // A legal operator bond tranche is exactly reward + slash fee.  Do not
+    // add a wallet fee input to that branch: its change would be an unrelated
+    // second payment to the prover whenever the submitter uses the prover's
+    // enterprise wallet.  OperatorAlreadySlashed has no bond and still needs
+    // an ordinary fee input for descendant cleanup transactions.
+    const additionalInputs =
+      slashEconomics === null
+        ? [selectFeeInput(await lucid.wallet().getUtxos())]
+        : [];
     const slashing = slashingPlan.buildSlashing(txValidTo);
+    if (slashEconomics !== null) {
+      if (slashing.kind === "operatorAlreadySlashed") {
+        throw new Error(
+          "Bond-backed fraud slash unexpectedly resolved to OperatorAlreadySlashed.",
+        );
+      }
+      assertExactFraudSlashLovelaceConservationV1({
+        stateQueueAnchor: anchor,
+        removedStateQueueNode: removed,
+        slashing,
+        economics: slashEconomics,
+      });
+    }
     const stateQueueMintRedeemer = makeStateQueueRemoveMintRedeemer({
       kind,
       anchor,
@@ -2445,12 +2663,17 @@ export const submitRemoveFraudulentBlock = async ({
             {
               fraudulentBlockUTxO: anchor,
               removedBlockUTxO: removed,
-              additionalInputs: [feeInput],
+              additionalInputs,
               validFrom: txValidFrom,
               validTo: txValidTo,
               fraudulentOperator,
               fraudulentBlocksHeaderHash: headerHash,
               fraudProofRefInput: fraudProofUtxo,
+              fraudProofPolicyId: contracts.fraudProofPolicyId,
+              hubOracleRefInput: hubOracleUtxo,
+              correctionLockInput,
+              correctionLockSpendingScript:
+                contracts.correctionLockSpendingScript,
               additionalRefInputs: slashingPlan.additionalRefInputs,
               slashing,
               stateQueueSpendingScript: contracts.stateQueueSpendingScript,
@@ -2465,12 +2688,17 @@ export const submitRemoveFraudulentBlock = async ({
             {
               anchorUTxO: anchor,
               fraudulentBlockUTxO: removed,
-              additionalInputs: [feeInput],
+              additionalInputs,
               validFrom: txValidFrom,
               validTo: txValidTo,
               fraudulentOperator,
               fraudulentBlocksHeaderHash: headerHash,
               fraudProofRefInput: fraudProofUtxo,
+              fraudProofPolicyId: contracts.fraudProofPolicyId,
+              hubOracleRefInput: hubOracleUtxo,
+              correctionLockInput,
+              correctionLockSpendingScript:
+                contracts.correctionLockSpendingScript,
               additionalRefInputs: slashingPlan.additionalRefInputs,
               slashing,
               stateQueueSpendingScript: contracts.stateQueueSpendingScript,
@@ -2479,7 +2707,18 @@ export const submitRemoveFraudulentBlock = async ({
               stateQueueMintRedeemer,
             },
           );
-    const unsigned = await tx.addSignerKey(signer.paymentKeyHash).complete({
+    const feeBoundTx =
+      slashEconomics === null
+        ? tx
+        : tx.setMinFee(slashEconomics.exactFeeLovelace);
+    const unsigned = await feeBoundTx.complete({
+      // The bond-backed branch is already proven exactly balanced above.
+      // Ordinary coin selection would add an unrelated wallet UTxO and let
+      // CML absorb a sub-minimum change residual into the fee, violating the
+      // exact F04 fee. Collateral selection remains independent and enabled.
+      coinSelection: fraudRemovalUsesWalletCoinSelectionV1(
+        operatorSlashingPlan.approach,
+      ),
       localUPLCEval: true,
     });
     if (txLayout === undefined) {
@@ -2489,7 +2728,61 @@ export const submitRemoveFraudulentBlock = async ({
     }
 
     const signed = await unsigned.sign.withWallet().complete();
+    const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+      signed,
+      referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+        signed,
+        candidates: [
+          {
+            role: "correction-lock-spend",
+            utxo: referenceScripts?.correctionLockSpend,
+            expectedScript: contracts.correctionLockSpendingScript,
+          },
+          {
+            role: "state-queue-spend",
+            utxo: referenceScripts?.stateQueueSpend,
+            expectedScript: contracts.stateQueueSpendingScript,
+          },
+          {
+            role: "state-queue-mint",
+            utxo: referenceScripts?.stateQueueMint,
+            expectedScript: contracts.stateQueueMintingScript,
+          },
+          {
+            role: "active-operators-spend",
+            utxo: referenceScripts?.activeOperatorsSpend,
+            expectedScript: contracts.activeOperatorsSpendingScript,
+          },
+          {
+            role: "active-operators-mint",
+            utxo: referenceScripts?.activeOperatorsMint,
+            expectedScript: contracts.activeOperatorsMintingScript,
+          },
+          {
+            role: "retired-operators-spend",
+            utxo: referenceScripts?.retiredOperatorsSpend,
+            expectedScript: contracts.retiredOperatorsSpendingScript,
+          },
+          {
+            role: "retired-operators-mint",
+            utxo: referenceScripts?.retiredOperatorsMint,
+            expectedScript: contracts.retiredOperatorsMintingScript,
+          },
+          {
+            role: "scheduler-spend",
+            utxo: referenceScripts?.schedulerSpend,
+            expectedScript: contracts.schedulerSpendingScript,
+          },
+        ],
+      }),
+      boundary: preSubmitBoundary,
+    });
     const txHash = await signed.submit();
+    if (txHash !== expectedTxHash) {
+      throw new Error(
+        `Provider returned transaction hash ${txHash}, expected ${expectedTxHash}.`,
+      );
+    }
     if (awaitConfirmation) {
       await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
     }
@@ -2562,8 +2855,8 @@ export const submitRemoveFraudulentBlock = async ({
     return {
       txHash: finalTransaction.txHash,
       walletSource: signer.source,
-      proverAddress: signer.address,
-      fraudProver: signer.paymentKeyHash,
+      proverAddress: fraudProverRewardPlan.proverEnterpriseAddress,
+      fraudProver: fraudProofDatum.fraud_prover,
       fraudCategory: contracts.fraudCategory,
       fraudCategoryId: contracts.fraudCategoryId,
       fraudulentHeaderHash: headerHash,
@@ -2594,6 +2887,13 @@ export const submitRemoveFraudulentBlock = async ({
             },
     };
   } catch (error) {
+    // A production workflow capture deliberately stops after the exact signed
+    // body has passed local evaluation. Its adapter retains and renews the
+    // acquired lease across durable intent and submission, so failing it here
+    // would reopen the append/removal race in that crash boundary.
+    if (error instanceof CapturedLocallyEvaluatedTransactionV1) {
+      throw error;
+    }
     if (
       stateQueueMutationLease !== undefined &&
       !stateQueueMutationLeaseReleased

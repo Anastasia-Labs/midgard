@@ -58,6 +58,11 @@ import { selectFeeInput } from "../submit-step-01.js";
 import type { TransitionTraceReconstruction } from "../transition-trace/reconstruct.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
 import { witnessSpendingValidatorCarriageV1 } from "../witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "../workflow/transaction-boundary-v1.js";
 import type { MintAuthorizationContractsV1 } from "./contracts-v1.js";
 import { buildMintAuthorizationStep02EvidenceV1 } from "./evidence-v1.js";
 import {
@@ -100,6 +105,7 @@ export const submitMintAuthorizationStep02 = async ({
   mintItemCbors,
   certificateUtxo,
   referenceScriptUtxo,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -126,6 +132,7 @@ export const submitMintAuthorizationStep02 = async ({
   readonly certificateUtxo?: UTxO;
   /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMintAuthorizationStep02Result> => {
   const { threadUtxo, threadToken } =
@@ -315,7 +322,26 @@ export const submitMintAuthorizationStep02 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof mint-authorization step-02",
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.steps[1].spendingScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw mintAuthorizationSubmitError(
+      `step-02 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

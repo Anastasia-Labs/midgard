@@ -19,12 +19,15 @@ import {
   type MidgardNativeTxCompactV1 as CoreNativeTxCompact,
   MidgardTxValidityCodes,
   normalizeHex,
+  verifyMidgardNativeTxProofSourceV1,
 } from "@al-ft/midgard-core";
 import {
   DoubleSpendStep01SpendRedeemer,
   DoubleSpendStep02Datum,
   FraudProofComputationThreadStepDatum,
   HUB_ORACLE_ASSET_NAME,
+  type L2TransactionSourceV1,
+  L2TransactionSourceV1Schema,
   NativeTxCompact,
   type NativeTxCompact as NativeTxCompactData,
   type NativeTxInclusionCarriage,
@@ -86,6 +89,11 @@ import {
   witnessSpendingValidatorCarriageV1,
   witnessWithdrawalValidatorCarriageV1,
 } from "./witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptV1,
+} from "./workflow/transaction-boundary-v1.js";
 
 export const PHAS_MEMBERSHIP_WITHDRAW_TITLE = "phas.membership.withdraw";
 export const MIN_FEE_INPUT_LOVELACE = 10_000_000n;
@@ -107,6 +115,8 @@ export type SubmitStep01TxInclusion = {
   readonly nativeTxId: string;
   readonly nativeTx: NativeTxCompactData;
   readonly nativeTxCompactCbor: string;
+  /** Exact canonical `Data(L2TransactionSourceV1)` committed by transactions_root. */
+  readonly l2TransactionSourceCbor: string;
   // Raw transactions MPF root the membership proof opens. Authenticated on-chain
   // against the block header's counted `transactions_root`.
   readonly transactionsPhasRoot: string;
@@ -255,6 +265,64 @@ export const parseSubmitStep01TxInclusion = (
     record.nativeTxCompactCbor,
     "--tx-inclusion.nativeTxCompactCbor",
   );
+  const l2TransactionSourceCbor = parseHex(
+    record.l2TransactionSourceCbor,
+    "--tx-inclusion.l2TransactionSourceCbor",
+  );
+  let l2TransactionSource: L2TransactionSourceV1;
+  try {
+    l2TransactionSource = Data.from(
+      l2TransactionSourceCbor,
+      L2TransactionSourceV1Schema as never,
+    ) as L2TransactionSourceV1;
+  } catch (cause) {
+    throw new Error(
+      `--tx-inclusion.l2TransactionSourceCbor is not Data(L2TransactionSourceV1): ${formatUnknownError(cause)}`,
+    );
+  }
+  if (
+    Data.to(
+      l2TransactionSource as never,
+      L2TransactionSourceV1Schema as never,
+    ) !== l2TransactionSourceCbor
+  ) {
+    throw new Error(
+      "--tx-inclusion.l2TransactionSourceCbor is not canonical Data(L2TransactionSourceV1).",
+    );
+  }
+  if (l2TransactionSource.tx_id !== nativeTxId) {
+    throw new Error(
+      "--tx-inclusion.l2TransactionSourceCbor tx_id does not match nativeTxId.",
+    );
+  }
+  if (l2TransactionSource.source.compact_cbor !== nativeTxCompactCbor) {
+    throw new Error(
+      "--tx-inclusion.l2TransactionSourceCbor compact_cbor does not match nativeTxCompactCbor.",
+    );
+  }
+  try {
+    verifyMidgardNativeTxProofSourceV1({
+      transactionId: Buffer.from(nativeTxId, "hex"),
+      source: {
+        compactCbor: Buffer.from(
+          l2TransactionSource.source.compact_cbor,
+          "hex",
+        ),
+        witnessSetCompactCbor: Buffer.from(
+          l2TransactionSource.source.witness_set_compact_cbor,
+          "hex",
+        ),
+        fieldPreimageLengthsCbor: Buffer.from(
+          l2TransactionSource.source.field_preimage_lengths_cbor,
+          "hex",
+        ),
+      },
+    });
+  } catch (cause) {
+    throw new Error(
+      `--tx-inclusion.l2TransactionSourceCbor does not authenticate an exact native proof source: ${formatUnknownError(cause)}`,
+    );
+  }
   const transactionsPhasRoot = parseHex(
     record.transactionsPhasRoot,
     "--tx-inclusion.transactionsPhasRoot",
@@ -268,6 +336,7 @@ export const parseSubmitStep01TxInclusion = (
     nativeTxId,
     nativeTx,
     nativeTxCompactCbor,
+    l2TransactionSourceCbor,
     transactionsPhasRoot,
     txMembershipProof: Data.from(txMembershipProofCbor, Proof),
     txMembershipProofCbor,
@@ -432,6 +501,7 @@ export const submitStep01 = async ({
   publishedProofChunks,
   referenceScriptUtxo,
   witnessReferenceScripts,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -452,6 +522,8 @@ export const submitStep01 = async ({
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  /** Production workflow seam: invoked after local evaluation, before I/O. */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitStep01Result> => {
   const resolvedDeployment = await resolveDoubleSpendDeploymentContracts({
@@ -610,7 +682,7 @@ export const submitStep01 = async ({
       hub_ref_input_index: layout.hubOracleRefInputIndex,
       state_queue_node_ref_input_index: layout.stateQueueNodeRefInputIndex,
       native_tx_id: txInclusion.nativeTxId,
-      native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
+      l2_transaction_source_cbor: txInclusion.l2TransactionSourceCbor,
       transactions_phas_root: txInclusion.transactionsPhasRoot,
     };
     // The prover chooses the carriage. Published chunks are the route for a
@@ -667,7 +739,7 @@ export const submitStep01 = async ({
           chunkedMembershipClaimRedeemer({
             merkleRoot: txInclusion.transactionsPhasRoot,
             keyBytes: txInclusion.nativeTxId,
-            valueBytes: txInclusion.nativeTxCompactCbor,
+            valueBytes: txInclusion.l2TransactionSourceCbor,
             orderedChunkReferenceInputIndices: resolvedChunkIndices,
           })) satisfies BuildTxWithRedeemer)
       : base.withdraw(
@@ -676,7 +748,7 @@ export const submitStep01 = async ({
           encodeRawPhasMembershipProofRedeemer({
             root: txInclusion.transactionsPhasRoot,
             keyBytes: txInclusion.nativeTxId,
-            valueBytes: txInclusion.nativeTxCompactCbor,
+            valueBytes: txInclusion.l2TransactionSourceCbor,
             membershipProofCbor: txInclusion.txMembershipProofCbor,
           }),
         )
@@ -697,7 +769,34 @@ export const submitStep01 = async ({
     throw new Error("BuildTxWithRedeemer did not resolve step 01 layout.");
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: [
+      workflowReferenceScriptV1({
+        role: "V1 fraud-proof double-spend step-01",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.doubleSpend.steps[0].spendingScript,
+      }),
+      carriedByChunks
+        ? workflowReferenceScriptV1({
+            role: "V1 MPF chunked-verify withdrawal",
+            utxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
+            expectedScript: chunkedVerifyScript,
+          })
+        : workflowReferenceScriptV1({
+            role: "membership proof withdrawal",
+            utxo: witnessReferenceScripts?.phasMembershipWithdraw,
+            expectedScript: phasMembershipScript,
+          }),
+    ],
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw new Error(
+      `Provider returned transaction hash ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

@@ -7,19 +7,15 @@
  *
  * 1. `assertSecurityGradeEvidenceV1` — no diagnostic or operator-private record
  *    can reach a submittable proof; and
- * 2. `assertNativeInclusionRootAuthenticatedV1` — the raw transactions MPF root
- *    the family's `NativeTxInclusionArgs` will carry must re-commit to the
+ * 2. `assertTransactionSourceInclusionRootAuthenticatedV1` — the exact
+ *    `L2TransactionSourceV1` MPF root the inclusion argument carries must re-commit to the
  *    L1-committed `transactions_root` under `TransactionsV1RootDomain`.
  *
- * Gate (2) is not cosmetic. The deployed Aiken step
- * (`verify_native_tx_in_state_queue_node`) opens the membership proof with
- * `value_bytes = native_tx_compact_cbor`, while the node commits the header's
- * `transactions_root` over `Data(L2TransactionSourceV1)` leaves
- * (`encodeTransactionRootValue`). Where those disagree, any inclusion argument
- * built from real block data is unprovable, and this gate refuses to emit it
- * instead of handing a prover a proof that must fail on-chain.
+ * The source leaf binds the compact transaction, witness compact, and field
+ * length material. Compact-only membership is not admitted as an alternate
+ * convention.
  */
-import { assertNativeInclusionRootAuthenticatedV1 } from "@al-ft/midgard-sdk";
+import { assertTransactionSourceInclusionRootAuthenticatedV1 } from "@al-ft/midgard-sdk";
 
 import {
   type PreparedDoubleSpendOutput,
@@ -31,9 +27,17 @@ import {
   prepareInvalidRangeFromTransactions,
 } from "../prepare-invalid-range.js";
 import {
+  type PreparedInvalidSignatureOutput,
+  prepareInvalidSignatureFromTransactions,
+} from "../prepare-invalid-signature.js";
+import {
   type PreparedMinFeeOutput,
   prepareMinFeeFromTransactions,
 } from "../prepare-min-fee.js";
+import {
+  type PreparedNoReferenceInputOutput,
+  prepareNoReferenceInputFromTransactions,
+} from "../prepare-no-reference-input.js";
 import {
   type PreparedNonExistentInputOutput,
   prepareNonExistentInputFromTransactions,
@@ -61,7 +65,7 @@ export const admitCanonicalEvidenceForProofBuildV1 = (
   evidence: CanonicalBlockEvidenceV1,
 ) => {
   const transactions = blockTransactionsFromCanonicalEvidenceV1(evidence);
-  assertNativeInclusionRootAuthenticatedV1(
+  assertTransactionSourceInclusionRootAuthenticatedV1(
     evidence.inclusionRootAuthentication,
   );
   return {
@@ -116,13 +120,29 @@ export const prepareInvalidRangeFromCanonicalEvidenceV1 = async ({
   readonly txId?: string;
 }): Promise<PreparedInvalidRangeOutput> => {
   const admitted = admitCanonicalEvidenceForProofBuildV1(evidence);
-  // The block validity window is header-bound evidence, never an operator
+  // Phase B's evaluation slot is header-bound evidence, never an operator
   // parameter: it comes from the same authenticated header the roots do.
   return await prepareInvalidRangeFromTransactions({
     headerHash: admitted.headerHash,
     transactions: admitted.transactions,
-    blockValidFrom: evidence.header.startTime,
-    blockValidTo: evidence.header.endTime,
+    blockSlot: evidence.header.blockSlot,
+    expectedTransactionsRoot: admitted.expectedTransactionsRoot,
+    ...(txId === undefined ? {} : { txId }),
+    ...(outputDir === undefined ? {} : { outputDir }),
+  });
+};
+
+export const prepareInvalidSignatureFromCanonicalEvidenceV1 = async ({
+  evidence,
+  txId,
+  outputDir,
+}: CanonicalEvidenceBuilderInputV1 & {
+  readonly txId?: string;
+}): Promise<PreparedInvalidSignatureOutput> => {
+  const admitted = admitCanonicalEvidenceForProofBuildV1(evidence);
+  return await prepareInvalidSignatureFromTransactions({
+    headerHash: admitted.headerHash,
+    transactions: admitted.transactions,
     expectedTransactionsRoot: admitted.expectedTransactionsRoot,
     ...(txId === undefined ? {} : { txId }),
     ...(outputDir === undefined ? {} : { outputDir }),
@@ -203,6 +223,54 @@ export const prepareNonExistentInputFromCanonicalEvidenceV1 = async ({
   });
 };
 
+/**
+ * Builds a no-reference-input proof from the same exact authenticated current
+ * and predecessor evidence boundary as non-existent-input.
+ */
+export const prepareNoReferenceInputFromCanonicalEvidenceV1 = async ({
+  evidence,
+  previousBlockEvidence,
+  badTxId,
+  badReferenceInputIndex,
+  outputDir,
+}: CanonicalEvidenceBuilderInputV1 & {
+  readonly previousBlockEvidence?: CanonicalBlockEvidenceV1;
+  readonly badTxId?: string;
+  readonly badReferenceInputIndex?: string | number;
+}): Promise<PreparedNoReferenceInputOutput> => {
+  const admitted = admitCanonicalEvidenceForProofBuildV1(evidence);
+  let previousBlockPayloadEnvelopeCbor: Uint8Array | undefined;
+  if (previousBlockEvidence !== undefined) {
+    blockTransactionsFromCanonicalEvidenceV1(previousBlockEvidence);
+    if (evidence.header.prevHeaderHash !== previousBlockEvidence.headerHash) {
+      throw new Error(
+        "Previous canonical block evidence is not the predecessor committed by this header.",
+      );
+    }
+    if (
+      evidence.header.prevUtxosRoot !== previousBlockEvidence.header.utxosRoot
+    ) {
+      throw new Error(
+        "Previous canonical block evidence does not authenticate this block's prev_utxos_root.",
+      );
+    }
+    previousBlockPayloadEnvelopeCbor =
+      previousBlockEvidence.reconstruction.payloadEnvelopeCbor;
+  }
+  return await prepareNoReferenceInputFromTransactions({
+    headerHash: admitted.headerHash,
+    transactions: admitted.transactions,
+    prevUtxosRoot: evidence.header.prevUtxosRoot,
+    expectedTransactionsRoot: admitted.expectedTransactionsRoot,
+    ...(previousBlockPayloadEnvelopeCbor === undefined
+      ? {}
+      : { prevBlockPayloadEnvelopeCbor: previousBlockPayloadEnvelopeCbor }),
+    ...(badTxId === undefined ? {} : { badTxId }),
+    ...(badReferenceInputIndex === undefined ? {} : { badReferenceInputIndex }),
+    ...(outputDir === undefined ? {} : { outputDir }),
+  });
+};
+
 export { prepareInputNoIdxFromCanonicalEvidenceV1 };
 
 export type CanonicalPrepareCommandV1 =
@@ -221,6 +289,11 @@ export type CanonicalPrepareCommandV1 =
       readonly command: "prepare-min-fee";
       readonly txId?: string;
       readonly categoryId?: string;
+      readonly outputDir?: string;
+    }
+  | {
+      readonly command: "prepare-invalid-signature";
+      readonly txId?: string;
       readonly outputDir?: string;
     }
   | {
@@ -276,6 +349,14 @@ export const executeCanonicalPrepareCommandV1 = async ({
         ...(request.categoryId === undefined
           ? {}
           : { categoryId: request.categoryId }),
+        ...(request.outputDir === undefined
+          ? {}
+          : { outputDir: request.outputDir }),
+      });
+    case "prepare-invalid-signature":
+      return await prepareInvalidSignatureFromCanonicalEvidenceV1({
+        evidence,
+        ...(request.txId === undefined ? {} : { txId: request.txId }),
         ...(request.outputDir === undefined
           ? {}
           : { outputDir: request.outputDir }),

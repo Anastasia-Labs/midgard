@@ -26,17 +26,28 @@ import {
 import { Effect } from "effect";
 
 import {
+  type PreparedClaimRegistryMutationV1,
+  prepareFamilyClaimRegistryMutationV1,
+  requirePreparedClaimRegistryMutationV1,
+} from "../claim-registry-transaction-v1.js";
+import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   parseOutRef,
   type ResolvedProverSigner,
 } from "../runtime.js";
+import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScriptsV1,
   witnessMintingPolicyCarriageV1,
 } from "../witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "../workflow/transaction-boundary-v1.js";
 import type { CrossBlockDuplicateEventContractsV1 } from "./contracts-v1.js";
 import {
   crossBlockDuplicateEventSubmitError,
@@ -66,6 +77,8 @@ export const submitCrossBlockDuplicateEventStep02 = async ({
   settledEvent,
   referenceScriptUtxo,
   witnessReferenceScripts,
+  claimRegistryMutation,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -78,6 +91,8 @@ export const submitCrossBlockDuplicateEventStep02 = async ({
   /** Mandatory published step-02 reference script. */
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitCrossBlockDuplicateEventStep02Result> => {
   if (!/^[0-9a-f]{56}$/u.test(settledHeaderHash)) {
@@ -119,14 +134,26 @@ export const submitCrossBlockDuplicateEventStep02 = async ({
     );
   }
   const settlementDatum = Data.from(settlementUtxo.datum, SettlementDatum);
-  const deposit = "CommittedDuplicateDepositV1" in settledEvent;
-  const membership = deposit
-    ? settledEvent.CommittedDuplicateDepositV1.membership
-    : settledEvent.CommittedDuplicateWithdrawalV1.membership;
-  const domain = deposit ? ROOT_DOMAINS.deposits : ROOT_DOMAINS.withdrawals;
-  const settlementRoot = deposit
-    ? settlementDatum.deposits_root
-    : settlementDatum.withdrawals_root;
+  const opening =
+    "CommittedDuplicateDepositV1" in settledEvent
+      ? {
+          membership: settledEvent.CommittedDuplicateDepositV1.membership,
+          domain: ROOT_DOMAINS.deposits,
+          settlementRoot: settlementDatum.deposits_root,
+        }
+      : "CommittedDuplicateWithdrawalV1" in settledEvent
+        ? {
+            membership: settledEvent.CommittedDuplicateWithdrawalV1.membership,
+            domain: ROOT_DOMAINS.withdrawals,
+            settlementRoot: settlementDatum.withdrawals_root,
+          }
+        : {
+            membership:
+              settledEvent.CommittedDuplicateForcedTransactionV1.membership,
+            domain: ROOT_DOMAINS.forcedTransactionsV1,
+            settlementRoot: settlementDatum.forced_transactions_root,
+          };
+  const { membership, domain, settlementRoot } = opening;
   const derived = await Effect.runPromise(
     commitCountedRootProgram({
       domain,
@@ -145,7 +172,28 @@ export const submitCrossBlockDuplicateEventStep02 = async ({
   }
 
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const resolvedClaimRegistryMutation = requirePreparedClaimRegistryMutationV1({
+    mutation:
+      claimRegistryMutation ??
+      (await prepareFamilyClaimRegistryMutationV1({
+        lucid,
+        claimRegistry: contracts.claimRegistry,
+        claimRegistryReferenceUtxo: witnessReferenceScripts.claimRegistrySpend,
+        hubOraclePolicyId: contracts.hubOraclePolicyId,
+        computationThreadPolicyId: contracts.computationThread.policyId,
+        claimId: threadToken.assetName,
+        kind: "close",
+      })),
+    kind: "close",
+    claimId: threadToken.assetName,
+    label: "cross-block-duplicate-event step 02",
+  });
+  const feeInput = selectFeeInput(
+    resolvedClaimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
+      (utxos, reference) => excludeUtxo(utxos, reference),
+      await lucid.wallet().getUtxos(),
+    ),
+  );
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -276,7 +324,9 @@ export const submitCrossBlockDuplicateEventStep02 = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const tx = fraudProofMintCarriage.attach(
-    computationThreadMintCarriage.attach(base),
+    computationThreadMintCarriage.attach(
+      resolvedClaimRegistryMutation.apply(base),
+    ),
   );
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (layout === undefined || threadMintRedeemerIndex === undefined) {
@@ -285,7 +335,41 @@ export const submitCrossBlockDuplicateEventStep02 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof cross-block-duplicate-event step-02",
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.steps[1].spendingScript,
+        },
+        {
+          role: "V1 fraud-proof computation-thread minting",
+          utxo: witnessReferenceScripts?.computationThreadMint,
+          expectedScript: contracts.computationThread.mintingScript,
+        },
+        {
+          role: "V1 fraud-proof token minting",
+          utxo: witnessReferenceScripts?.fraudProofMint,
+          expectedScript: contracts.fraudProof.mintingScript,
+        },
+        {
+          role: "claim-registry spending",
+          utxo: resolvedClaimRegistryMutation.referenceScriptUtxo,
+          expectedScript: resolvedClaimRegistryMutation.registryScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw crossBlockDuplicateEventSubmitError(
+      `step-02 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

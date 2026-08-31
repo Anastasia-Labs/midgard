@@ -2,12 +2,15 @@ import {
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
+  encodeMidgardNativeTxCanonicalV1,
   materializeMidgardNativeTxFromCanonicalV1,
   MIDGARD_NATIVE_TX_V1_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxFullV1,
 } from "@al-ft/midgard-core";
+import { encodeMidgardSpendInputItemV1 } from "@al-ft/midgard-core/codec";
 
+import { deriveL2TransactionSourceCborV1 } from "../../../src/prepare-double-spend.js";
 import { h32 } from "./header-fixtures.js";
 
 export const makeNativeTx = ({
@@ -44,10 +47,19 @@ export const makeNativeTx = ({
     validity: "TxIsValid",
     body: {
       spendInputsPreimageCbor: encodeCbor(spendInputCbors),
+      // §5.3 fields 0 and 1 share one item form: `82 ‖ 58 20 tx_id(32) ‖ 19
+      // index_be16`, a fixed 38 bytes. A bare 32-byte filler is not a
+      // reference-input item at all, so fixtures built from one committed to a
+      // field the decoders cannot read back.
       referenceInputsPreimageCbor:
         referenceByte === undefined
           ? EMPTY_CBOR_LIST
-          : encodeCbor([Buffer.from(h32(referenceByte), "hex")]),
+          : encodeCbor([
+              encodeMidgardSpendInputItemV1({
+                txId: Buffer.from(h32(referenceByte), "hex"),
+                outputIndex: 0,
+              }),
+            ]),
       outputsPreimageCbor:
         outputCbors !== undefined
           ? encodeCbor([...outputCbors])
@@ -85,3 +97,11 @@ export const makeNativeTx = ({
       redeemerTxWitsPreimageCbor,
     },
   });
+
+/** Exact transactions-root leaf value for a canonical full native transaction. */
+export const l2TransactionSourceCborV1 = (
+  transaction: MidgardNativeTxFullV1,
+): string =>
+  deriveL2TransactionSourceCborV1(
+    encodeMidgardNativeTxCanonicalV1(transaction),
+  );

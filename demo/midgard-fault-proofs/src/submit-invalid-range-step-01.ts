@@ -68,6 +68,11 @@ import {
   witnessSpendingValidatorCarriageV1,
   witnessWithdrawalValidatorCarriageV1,
 } from "./witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "./workflow/transaction-boundary-v1.js";
 
 export type SubmitInvalidRangeStep01CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;
@@ -97,8 +102,7 @@ export type SubmitInvalidRangeStep01Result = {
   readonly firstStepAddress: string;
   readonly secondStepAddress: string;
   readonly nativeTxId: string;
-  readonly blockValidFrom: bigint;
-  readonly blockValidTo: bigint;
+  readonly blockSlot: bigint;
   readonly normalizedValidityRange: NormalizedTimeRange;
   readonly violationReason: NonNullable<
     ReturnType<typeof invalidRangeViolationReason>
@@ -132,6 +136,7 @@ export const submitInvalidRangeStep01 = async ({
   publishedProofChunks,
   referenceScriptUtxo,
   witnessReferenceScripts,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -152,6 +157,7 @@ export const submitInvalidRangeStep01 = async ({
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitInvalidRangeStep01Result> => {
   const resolvedDeployment = await resolveInvalidRangeDeploymentContracts({
@@ -225,13 +231,12 @@ export const submitInvalidRangeStep01 = async ({
     txInclusion.nativeTx.body,
   );
   const violationReason = invalidRangeViolationReason({
-    blockValidFrom: header.startTime,
-    blockValidTo: header.endTime,
+    blockSlot: header.blockSlot,
     normalizedRange: normalizedValidityRange,
   });
   if (violationReason === null) {
     throw new Error(
-      "--tx-inclusion.nativeTx validity range does not violate the fraudulent block validity range.",
+      "--tx-inclusion.nativeTx validity range includes the fraudulent header block slot.",
     );
   }
 
@@ -291,8 +296,7 @@ export const submitInvalidRangeStep01 = async ({
     {
       fraud_prover: signer.paymentKeyHash,
       data: {
-        block_valid_from: header.startTime,
-        block_valid_to: header.endTime,
+        block_slot: header.blockSlot,
         bad_tx_normalized_validity_range: normalizedValidityRange,
       },
     },
@@ -331,7 +335,7 @@ export const submitInvalidRangeStep01 = async ({
       hub_ref_input_index: layout.hubOracleRefInputIndex,
       state_queue_node_ref_input_index: layout.stateQueueNodeRefInputIndex,
       native_tx_id: txInclusion.nativeTxId,
-      native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
+      l2_transaction_source_cbor: txInclusion.l2TransactionSourceCbor,
       transactions_phas_root: txInclusion.transactionsPhasRoot,
     };
     // The prover chooses the carriage. Published chunks are the route for a
@@ -388,7 +392,7 @@ export const submitInvalidRangeStep01 = async ({
           chunkedMembershipClaimRedeemer({
             merkleRoot: txInclusion.transactionsPhasRoot,
             keyBytes: txInclusion.nativeTxId,
-            valueBytes: txInclusion.nativeTxCompactCbor,
+            valueBytes: txInclusion.l2TransactionSourceCbor,
             orderedChunkReferenceInputIndices: resolvedChunkIndices,
           })) satisfies BuildTxWithRedeemer)
       : base.withdraw(
@@ -397,7 +401,7 @@ export const submitInvalidRangeStep01 = async ({
           encodeRawPhasMembershipProofRedeemer({
             root: txInclusion.transactionsPhasRoot,
             keyBytes: txInclusion.nativeTxId,
-            valueBytes: txInclusion.nativeTxCompactCbor,
+            valueBytes: txInclusion.l2TransactionSourceCbor,
             membershipProofCbor: txInclusion.txMembershipProofCbor,
           }),
         )
@@ -420,7 +424,36 @@ export const submitInvalidRangeStep01 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof invalid-range step-01",
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.invalidRange.steps[0].spendingScript,
+        },
+        {
+          role: "membership proof withdrawal",
+          utxo: witnessReferenceScripts?.phasMembershipWithdraw,
+          expectedScript: phasMembershipScript,
+        },
+        {
+          role: "V1 MPF chunked-verify withdrawal",
+          utxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
+          expectedScript: chunkedVerifyScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw new Error(
+      `invalid-range step 01 provider returned ${txHash}, expected ${expectedTxHash}`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }
@@ -440,8 +473,7 @@ export const submitInvalidRangeStep01 = async ({
     firstStepAddress: contracts.invalidRange.steps[0].spendingScriptAddress,
     secondStepAddress: contracts.invalidRange.steps[1].spendingScriptAddress,
     nativeTxId: txInclusion.nativeTxId,
-    blockValidFrom: header.startTime,
-    blockValidTo: header.endTime,
+    blockSlot: header.blockSlot,
     normalizedValidityRange,
     violationReason,
     inputIndex: Number(resolvedLayout.inputIndex),

@@ -16,6 +16,7 @@ import {
   type SubmitStep01TxInclusion,
 } from "../submit-step-01.js";
 import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
 import type { MissingNativeScriptTxContractsV1 } from "./contracts-v1.js";
 import { requireMissingNativeScriptTxThreadUtxoV1 } from "./submit-common-v1.js";
 import { submitMissingNativeScriptTxBindingV1 } from "./submit-native-binding-v1.js";
@@ -42,6 +43,7 @@ export const submitMissingNativeScriptTxStep01 = async ({
   txInclusion,
   referenceScriptUtxo,
   witnessReferenceScripts,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -56,6 +58,7 @@ export const submitMissingNativeScriptTxStep01 = async ({
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMissingNativeScriptTxStep01Result> => {
   const { threadUtxo, threadToken } =
@@ -93,6 +96,7 @@ export const submitMissingNativeScriptTxStep01 = async ({
     spendRedeemerSchema: MissingNativeScriptTxStep01SpendRedeemer,
     referenceScriptUtxo,
     witnessReferenceScripts,
+    preSubmitBoundary,
     awaitConfirmation,
   });
   return {

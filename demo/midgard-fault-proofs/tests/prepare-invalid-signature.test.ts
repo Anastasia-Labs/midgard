@@ -27,9 +27,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildTrieView,
   decodeTransactionMaterial,
-  nativeTrieItem,
   type NodeTransactionPayload,
   prepareInvalidSignatureFromTransactions,
+  transactionSourceTrieItemV1,
 } from "../src/index.js";
 
 const h28 = (byte: string): string => byte.repeat(28);
@@ -152,7 +152,7 @@ const transactionRoots = async (
   const decoded = await Promise.all(
     transactions.map(decodeTransactionMaterial),
   );
-  const trie = await buildTrieView(decoded.map(nativeTrieItem));
+  const trie = await buildTrieView(decoded.map(transactionSourceTrieItemV1));
   const committedTransactionsRoot = await Effect.runPromise(
     commitCountedRootProgram({
       domain: ROOT_DOMAINS.transactionsV1,

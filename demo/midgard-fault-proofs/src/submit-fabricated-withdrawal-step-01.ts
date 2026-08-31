@@ -62,6 +62,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import type { FaultProofClaimRegistryContractV1 } from "./claim-registry-transaction-v1.js";
 import { requireFabricatedReferenceScriptV1 } from "./fabricated-reference-script-v1.js";
 import { parseHex, readJsonFile, requireRecord } from "./json-file.js";
 import {
@@ -82,6 +83,11 @@ import {
   selectFeeInput,
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptV1,
+} from "./workflow/transaction-boundary-v1.js";
 
 /** Human-readable family label used in every local failure message. */
 export const FABRICATED_WITHDRAWAL_CATEGORY_LABEL = "fabricated-withdrawal";
@@ -118,6 +124,12 @@ export type FabricatedWithdrawalContractsV1 = {
     readonly spendingScriptAddress: string;
   };
   readonly hubOraclePolicyId: string;
+  /**
+   * The applied `claim_registry.spend` validator. Every arm of
+   * `computation_thread.mint` requires the claim-registry input in the same
+   * transaction, so each submitter resolves its mutation from here.
+   */
+  readonly claimRegistry: FaultProofClaimRegistryContractV1;
   readonly stateQueuePolicyId: string;
   /** Catalogue category id of `fabricatedWithdrawal`, as deployed. */
   readonly categoryId: string;
@@ -302,6 +314,7 @@ export const submitFabricatedWithdrawalStep01 = async ({
   stateQueueBlockOutRef,
   withdrawalInclusion,
   referenceScriptUtxo,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -312,6 +325,7 @@ export const submitFabricatedWithdrawalStep01 = async ({
   readonly stateQueueBlockOutRef: string;
   readonly withdrawalInclusion: SubmitFabricatedWithdrawalInclusion;
   readonly referenceScriptUtxo: UTxO;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitFabricatedWithdrawalStep01Result> => {
   const parsedThreadOutRef = parseOutRef(threadOutRef, "--thread-out-ref");
@@ -461,7 +475,23 @@ export const submitFabricatedWithdrawalStep01 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: [
+      workflowReferenceScriptV1({
+        role: "V1 fraud-proof fabricated-withdrawal step-01",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[0].spendingScript,
+      }),
+    ],
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw new Error(
+      `fabricated-withdrawal step-01 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

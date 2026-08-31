@@ -177,11 +177,17 @@ describe("withdrawn-reference-input cancel, restart, resume and outsider negativ
       network,
       walletSeedPhrase: outsiderAccount.seedPhrase,
     });
+    // Both of the outsider's addresses are funded. `selectWallet.fromSeed`
+    // derives the seed's base address while `resolveProverSigner` derives its
+    // enterprise address, and the drivers below re-select through the signer,
+    // so funding only the base address strands their transactions.
     const outsiderAddress = await outsiderLucid.wallet().address();
     const funding = await harness.funderLucid
       .newTx()
       .pay.ToAddress(outsiderAddress, { lovelace: 1_000_000_000n })
       .pay.ToAddress(outsiderAddress, { lovelace: 1_000_000_000n })
+      .pay.ToAddress(outsider.address, { lovelace: 1_000_000_000n })
+      .pay.ToAddress(outsider.address, { lovelace: 1_000_000_000n })
       .complete();
     const signedFunding = await funding.sign.withWallet().complete();
     await harness.funderLucid.awaitTx(await signedFunding.submit());

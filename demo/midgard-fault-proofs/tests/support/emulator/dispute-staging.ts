@@ -23,6 +23,7 @@ import {
   validationDisputeValidityRange,
 } from "../../../src/index.js";
 import { network } from "./blueprints.js";
+import { seedDualAddressPartyAccountsV1 } from "./emulator-context.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./protocol-parameters.js";
 import {
   publishAuthenticatedValidationDisputeControl,
@@ -36,6 +37,9 @@ import {
  * challenger, each holding one main balance plus twelve 100-Ada fee UTxOs,
  * with a Lucid, a prover signer, and the dispute validity-range helper wired
  * to the same emulator clock for each party.
+ *
+ * Both parties are seeded at both addresses their seed phrase resolves to; see
+ * `seedDualAddressPartyAccountsV1`.
  */
 export const createValidationDisputeParties = async () => {
   const operator = generateEmulatorAccount({ lovelace: 40_000_000_000n });
@@ -44,28 +48,16 @@ export const createValidationDisputeParties = async () => {
   const feeUtxoLovelace = 100_000_000n;
   const emulator = new Emulator(
     [
-      {
-        ...operator,
-        assets: {
-          lovelace:
-            operator.assets.lovelace - BigInt(feeUtxoCount) * feeUtxoLovelace,
-        },
-      },
-      ...Array.from({ length: feeUtxoCount }, () => ({
-        ...operator,
-        assets: { lovelace: feeUtxoLovelace },
-      })),
-      {
-        ...challenger,
-        assets: {
-          lovelace:
-            challenger.assets.lovelace - BigInt(feeUtxoCount) * feeUtxoLovelace,
-        },
-      },
-      ...Array.from({ length: feeUtxoCount }, () => ({
-        ...challenger,
-        assets: { lovelace: feeUtxoLovelace },
-      })),
+      ...seedDualAddressPartyAccountsV1({
+        account: operator,
+        feeUtxoCount,
+        feeUtxoLovelace,
+      }),
+      ...seedDualAddressPartyAccountsV1({
+        account: challenger,
+        feeUtxoCount,
+        feeUtxoLovelace,
+      }),
     ],
     EMULATOR_PROTOCOL_PARAMETERS,
   );

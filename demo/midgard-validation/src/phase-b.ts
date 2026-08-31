@@ -498,6 +498,16 @@ const discoverLocalScriptExecutions = (
   for (let index = 0; index < outputs.length; index += 1) {
     const output = outputs[index];
     const outputAddress = decodeMidgardAddressBytes(output.address);
+    if (
+      BigInt(outputAddress.networkId) !== candidate.derived.expectedNetworkId
+    ) {
+      return {
+        kind: "rejected",
+        code: RejectCodes.NetworkIdMismatch,
+        detail: `output ${index.toString()} network ${outputAddress.networkId.toString()} != ${candidate.derived.expectedNetworkId.toString()}`,
+        consensusPhase: "scriptSources",
+      };
+    }
     if (!outputAddress.protected) {
       continue;
     }
@@ -1203,6 +1213,19 @@ const validatePlainCandidateAgainstState = (
       return fail(
         RejectCodes.InvalidOutput,
         `failed to decode input output: ${String(error)}`,
+      );
+    }
+  }
+
+  for (const [outputIndex, output] of ledgerTx.outputs.entries()) {
+    const observedNetworkId = BigInt(
+      decodeMidgardAddressBytes(output.address).networkId,
+    );
+    if (observedNetworkId !== candidate.derived.expectedNetworkId) {
+      return fail(
+        RejectCodes.NetworkIdMismatch,
+        `output ${outputIndex.toString()} network ${observedNetworkId.toString()} != ${candidate.derived.expectedNetworkId.toString()}`,
+        "scriptSources",
       );
     }
   }

@@ -35,6 +35,10 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
+import {
+  admitCanonicalEvidenceForProofBuildV1,
+  type CanonicalBlockEvidenceV1,
+} from "./evidence/index.js";
 import { parseHex, stringifyJson } from "./json-file.js";
 import {
   buildMembershipProof,
@@ -42,6 +46,7 @@ import {
   type TrieEntry,
 } from "./ne-proofs.js";
 import {
+  deriveL2TransactionSourceCborV1,
   type FetchLike,
   fetchNodeBlockTransactions,
   type NodeTransactionPayload,
@@ -66,6 +71,7 @@ export type PreparedReferenceInputNoIdxTxInclusionJson = {
   readonly nativeTxId: string;
   readonly nativeTx: NativeTxCompactData;
   readonly nativeTxCompactCbor: string;
+  readonly l2TransactionSourceCbor: string;
   // Raw transactions MPF root the membership proof opens; authenticated on-chain
   // against the header's counted `transactions_root`.
   readonly transactionsPhasRoot: string;
@@ -136,10 +142,20 @@ type DecodedTx = {
   readonly nodeTxId: string;
   readonly nativeTxCompact: NativeTxCompactData;
   readonly nativeCompactCbor: string;
+  readonly l2TransactionSourceCbor: string;
   readonly referenceInputs: readonly MidgardTxInput[];
   /** Producing transaction's outputs preimage, one raw CBOR hex string per output. */
   readonly outputsPreimageCbor: readonly string[];
 };
+
+export type ReferenceInputNoIdxDetectedViolationV1 = Readonly<{
+  badTxIndex: number;
+  badTxId: string;
+  badReferenceInputIndex: number;
+  producingTxId: string;
+  badReferenceInputOutputIndex: bigint;
+  producingTxOutputCount: number;
+}>;
 
 const decodeTx = (payload: NodeTransactionPayload): DecodedTx => {
   const nodeTxId = parseHex(payload.nodeTxId, "nodeTxId", 32);
@@ -174,6 +190,9 @@ const decodeTx = (payload: NodeTransactionPayload): DecodedTx => {
     nativeCompactCbor: encodeMidgardNativeTxCompactV1(
       nativeTx.compact,
     ).toString("hex"),
+    l2TransactionSourceCbor: deriveL2TransactionSourceCborV1(
+      Buffer.from(txCbor, "hex"),
+    ),
     referenceInputs: spendInputsWitnessFromCbors(
       referenceInputCbors,
       "reference_inputs",
@@ -195,6 +214,41 @@ const parseBadReferenceInputIndex = (
     );
   }
   return parsed;
+};
+
+/**
+ * Complete same-block scan used by the sealed production replay bundle. A
+ * reference input whose producer is absent belongs to `noReferenceInput`; only
+ * an out-of-range index into a producer committed by this same block is
+ * emitted here.
+ */
+export const detectReferenceInputNoIdxViolationsFromTransactionsV1 = (
+  transactions: readonly NodeTransactionPayload[],
+): readonly ReferenceInputNoIdxDetectedViolationV1[] => {
+  const decoded = transactions.map(decodeTx);
+  const byId = new Map(decoded.map((tx) => [tx.nodeTxId, tx] as const));
+  const detections: ReferenceInputNoIdxDetectedViolationV1[] = [];
+  for (const [badTxIndex, badTx] of decoded.entries()) {
+    for (const [
+      badReferenceInputIndex,
+      input,
+    ] of badTx.referenceInputs.entries()) {
+      const producingTx = byId.get(input.tx_id);
+      if (producingTx === undefined) continue;
+      if (input.output_index < producingTx.outputsPreimageCbor.length) continue;
+      detections.push(
+        Object.freeze({
+          badTxIndex,
+          badTxId: badTx.nodeTxId,
+          badReferenceInputIndex,
+          producingTxId: producingTx.nodeTxId,
+          badReferenceInputOutputIndex: input.output_index,
+          producingTxOutputCount: producingTx.outputsPreimageCbor.length,
+        }),
+      );
+    }
+  }
+  return Object.freeze(detections);
 };
 
 /**
@@ -308,9 +362,8 @@ const selectOffendingReferenceInput = ({
 /**
  * Builds the four reference-input-no-idx submit-step artifacts from a block the
  * node actually committed. The transactions trie is reconstructed with the
- * node's native encoding (`encodeMidgardNativeTxCompactV1` keyed by the raw
- * 32-byte tx id), so its root matches the committed `transactions_root` by
- * construction.
+ * exact canonical `Data(L2TransactionSourceV1)` values keyed by raw tx id, so
+ * its root matches the committed `transactions_root` by construction.
  */
 export const prepareReferenceInputNoIdxFromTransactions = async ({
   headerHash,
@@ -355,7 +408,7 @@ export const prepareReferenceInputNoIdxFromTransactions = async ({
   // --- Transactions trie (native encoding, matches the node) ----------------
   const txsEntries: TrieEntry[] = decoded.map((tx) => ({
     key: Buffer.from(tx.nodeTxId, "hex"),
-    value: Buffer.from(tx.nativeCompactCbor, "hex"),
+    value: Buffer.from(tx.l2TransactionSourceCbor, "hex"),
   }));
   const transactionsRoot = await computeTrieRoot(txsEntries);
   const badTxMembershipProofCbor = await buildMembershipProof(
@@ -415,6 +468,7 @@ export const prepareReferenceInputNoIdxFromTransactions = async ({
       nativeTxId: badTx.nodeTxId,
       nativeTx: badTx.nativeTxCompact,
       nativeTxCompactCbor: badTx.nativeCompactCbor,
+      l2TransactionSourceCbor: badTx.l2TransactionSourceCbor,
       transactionsPhasRoot: transactionsRoot,
       txMembershipProofCbor: badTxMembershipProofCbor,
     },
@@ -423,6 +477,7 @@ export const prepareReferenceInputNoIdxFromTransactions = async ({
       nativeTxId: producingTx.nodeTxId,
       nativeTx: producingTx.nativeTxCompact,
       nativeTxCompactCbor: producingTx.nativeCompactCbor,
+      l2TransactionSourceCbor: producingTx.l2TransactionSourceCbor,
       transactionsPhasRoot: transactionsRoot,
       txMembershipProofCbor: producingTxMembershipProofCbor,
     },
@@ -481,6 +536,29 @@ export const prepareReferenceInputNoIdxFromTransactions = async ({
     ),
   ]);
   return { ...base, files };
+};
+
+/** Security-grade builder over one authenticated header/public-DA block. */
+export const prepareReferenceInputNoIdxFromCanonicalEvidenceV1 = async ({
+  evidence,
+  badTxId,
+  badReferenceInputIndex,
+  outputDir,
+}: {
+  readonly evidence: CanonicalBlockEvidenceV1;
+  readonly badTxId?: string;
+  readonly badReferenceInputIndex?: string | number;
+  readonly outputDir?: string;
+}): Promise<PreparedReferenceInputNoIdxOutput> => {
+  const admitted = admitCanonicalEvidenceForProofBuildV1(evidence);
+  return await prepareReferenceInputNoIdxFromTransactions({
+    headerHash: admitted.headerHash,
+    transactions: admitted.transactions,
+    expectedTransactionsRoot: admitted.expectedTransactionsRoot,
+    ...(badTxId === undefined ? {} : { badTxId }),
+    ...(badReferenceInputIndex === undefined ? {} : { badReferenceInputIndex }),
+    ...(outputDir === undefined ? {} : { outputDir }),
+  });
 };
 
 /**

@@ -73,6 +73,11 @@ import {
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import { witnessSpendingValidatorCarriageV1 } from "./witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "./workflow/transaction-boundary-v1.js";
 
 /** Prepared reference-inputs preimage produced by `prepare-reference-input-no-idx`. */
 export type SubmitReferenceInputNoIdxReferenceInputsPreimage = {
@@ -222,7 +227,11 @@ export const submitReferenceInputNoIdxStep02 = async ({
   threadOutRef,
   referenceInputsPreimage,
   nativeTxCompactCbor,
+  publishedCarriageUtxos,
+  certificateUtxo,
   referenceScriptUtxo,
+  publicationPreSubmitBoundary,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -234,8 +243,12 @@ export const submitReferenceInputNoIdxStep02 = async ({
   readonly referenceInputsPreimage: SubmitReferenceInputNoIdxReferenceInputsPreimage;
   /** The disputed transaction's §2.5 compact structure, as committed. */
   readonly nativeTxCompactCbor: string;
+  readonly publishedCarriageUtxos?: readonly UTxO[];
+  readonly certificateUtxo?: UTxO;
   /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
+  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitReferenceInputNoIdxStep02Result> => {
   const { referenceInputNoIdxCategory, contracts } =
@@ -283,13 +296,16 @@ export const submitReferenceInputNoIdxStep02 = async ({
   signer.selectWallet(lucid);
   // Publish tier-2 field carriage before selecting the final fee input and
   // resolving indices into the complete reference-input set.
-  const published = await publishFaultProofFieldCarriageV1({
-    lucid,
-    signer,
-    planned,
-    publisherAddress: signer.address,
-    label: "Reference-input-no-idx step 02 reference-inputs field",
-  });
+  const published =
+    publishedCarriageUtxos ??
+    (await publishFaultProofFieldCarriageV1({
+      lucid,
+      signer,
+      planned,
+      publisherAddress: signer.address,
+      label: "Reference-input-no-idx step 02 reference-inputs field",
+      preSubmitBoundary: publicationPreSubmitBoundary,
+    }));
   const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
     script: chain.steps[1].spendingScript,
     referenceUtxo: referenceScriptUtxo,
@@ -297,10 +313,15 @@ export const submitReferenceInputNoIdxStep02 = async ({
   });
   // The complete reference-input set the built transaction will declare, in
   // build order — the opening derivation must see all of it (bug fc635c8f).
-  const referenceInputs = [...published, ...stepScriptCarriage.referenceInputs];
+  const referenceInputs = [
+    ...published,
+    ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+    ...stepScriptCarriage.referenceInputs,
+  ];
   const referenceInputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
     referenceInputs,
+    certificatePolicyId: contracts.fieldPreimageCertificate.policyId,
     label: "Reference-input-no-idx step 02 reference-inputs",
   });
   const badReferenceInput =
@@ -397,7 +418,26 @@ export const submitReferenceInputNoIdxStep02 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof reference-input-no-idx step-02",
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.referenceInputNoIdx.steps[1].spendingScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw new Error(
+      `reference-input-no-idx step-02 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

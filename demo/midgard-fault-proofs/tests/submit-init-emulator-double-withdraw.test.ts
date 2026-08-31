@@ -19,6 +19,7 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { prepareFamilyClaimRegistryMutationV1 } from "../src/claim-registry-transaction-v1.js";
 import type { DoubleWithdrawContractsV1 } from "../src/double-withdraw/contracts-v1.js";
 import {
   submitDoubleWithdrawCancel,
@@ -34,6 +35,7 @@ import {
 import { prepareDoubleWithdrawFromCommittedLeavesV1 } from "../src/prepare-double-withdraw.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { fetchUtxoByOutRef, parseOutRef } from "../src/runtime.js";
+import { excludeUtxo } from "../src/spend-input-witness.js";
 import {
   requireComputationThreadToken,
   selectFeeInput,
@@ -258,7 +260,22 @@ const submitRawTerminal = async ({
     inclusion,
   });
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const claimRegistryMutation = await prepareFamilyClaimRegistryMutationV1({
+    lucid,
+    claimRegistry: contracts.claimRegistry,
+    claimRegistryReferenceUtxo:
+      harness.witnessReferenceScripts.claimRegistrySpend,
+    hubOraclePolicyId: contracts.hubOraclePolicyId,
+    computationThreadPolicyId: contracts.computationThread.policyId,
+    claimId: threadToken.assetName,
+    kind: "close",
+  });
+  const feeInput = selectFeeInput(
+    claimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
+      (utxos, reference) => excludeUtxo(utxos, reference),
+      await lucid.wallet().getUtxos(),
+    ),
+  );
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -341,7 +358,7 @@ const submitRawTerminal = async ({
       SDK.FraudProofTokenMintRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const unsigned = await lucid
+  const terminalBase = lucid
     .newTx()
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], spendRedeemer)
@@ -362,7 +379,9 @@ const submitRawTerminal = async ({
         [fraudProofUnit]: 1n,
       },
     )
-    .addSignerKey(signer.paymentKeyHash)
+    .addSignerKey(signer.paymentKeyHash);
+  const unsigned = await claimRegistryMutation
+    .apply(terminalBase)
     .complete({ localUPLCEval: true });
   if (outputIndex === undefined) throw new Error("raw terminal layout missing");
   const signed = await unsigned.sign.withWallet().complete();
@@ -379,6 +398,7 @@ const submitRawCancel = async ({
   categoryId,
   referenceScript,
   computationThreadReference,
+  claimRegistryReference,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: DoubleWithdrawContractsV1;
@@ -387,6 +407,7 @@ const submitRawCancel = async ({
   readonly categoryId: string;
   readonly referenceScript: UTxO;
   readonly computationThreadReference: UTxO;
+  readonly claimRegistryReference: UTxO;
 }): Promise<string> => {
   const rawCancelSchema = SDK.faultProofStepRedeemerSchema(Data.Any());
   type RawCancelRedeemer = Data.Static<typeof rawCancelSchema>;
@@ -398,7 +419,21 @@ const submitRawCancel = async ({
     categoryLabel: "double-withdraw",
   });
   signer.selectWallet(lucid);
-  const fee = selectFeeInput(await lucid.wallet().getUtxos());
+  const claimRegistryMutation = await prepareFamilyClaimRegistryMutationV1({
+    lucid,
+    claimRegistry: contracts.claimRegistry,
+    claimRegistryReferenceUtxo: claimRegistryReference,
+    hubOraclePolicyId: contracts.hubOraclePolicyId,
+    computationThreadPolicyId: contracts.computationThread.policyId,
+    claimId: token.assetName,
+    kind: "cancel",
+  });
+  const fee = selectFeeInput(
+    claimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
+      (utxos, reference) => excludeUtxo(utxos, reference),
+      await lucid.wallet().getUtxos(),
+    ),
+  );
   const spend = ((ctx) =>
     Data.to(
       {
@@ -424,13 +459,15 @@ const submitRawCancel = async ({
       SDK.FraudProofComputationThreadRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const unsigned = await lucid
+  const cancelBase = lucid
     .newTx()
     .collectFrom([fee])
     .collectFrom([threadUtxo], spend)
     .readFrom([referenceScript, computationThreadReference])
     .mintAssets({ [token.unit]: -1n }, burn)
-    .addSignerKey(signer.paymentKeyHash)
+    .addSignerKey(signer.paymentKeyHash);
+  const unsigned = await claimRegistryMutation
+    .apply(cancelBase)
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
@@ -693,11 +730,17 @@ describe("double-withdraw emulator lifecycle", () => {
       network,
       walletSeedPhrase: outsider.seedPhrase,
     });
+    // Both of the outsider's addresses are funded. `selectWallet.fromSeed`
+    // derives the seed's base address while `resolveProverSigner` derives its
+    // enterprise address, and the cancel submitter re-selects through the
+    // signer, so funding only the base address strands the transaction.
     const funding = await harness.funderLucid
       .newTx()
       .pay.ToAddress(await outsiderLucid.wallet().address(), {
         lovelace: 1_000_000_000n,
       })
+      .pay.ToAddress(outsiderSigner.address, { lovelace: 1_000_000_000n })
+      .pay.ToAddress(outsiderSigner.address, { lovelace: 1_000_000_000n })
       .complete();
     await harness.funderLucid.awaitTx(
       await (await funding.sign.withWallet().complete()).submit(),
@@ -743,6 +786,8 @@ describe("double-withdraw emulator lifecycle", () => {
           referenceScript: refs[1],
           computationThreadReference:
             harness.witnessReferenceScripts.computationThreadMint!,
+          claimRegistryReference:
+            harness.witnessReferenceScripts.claimRegistrySpend!,
         }),
       ),
     ).not.toBe("");

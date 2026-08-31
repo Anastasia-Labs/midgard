@@ -259,6 +259,45 @@ describe("phase B validation", () => {
     expectSinglePhaseBRejection(result, RejectCodes.InvalidOutput);
   });
 
+  it.each([
+    { label: "testnet output on mainnet", expected: 1n, rawNibble: 0 },
+    { label: "mainnet output on testnet", expected: 0n, rawNibble: 1 },
+    {
+      label: "foreign unprotected network nibble 2",
+      expected: 0n,
+      rawNibble: 2,
+    },
+    {
+      label: "foreign protected network nibble 15",
+      expected: 0n,
+      rawNibble: 15,
+    },
+  ])(
+    "rejects $label at the script-sources output scan",
+    async ({ expected, rawNibble }) => {
+      const spent = outRefFromByte(0x7d);
+      const address = Buffer.from(TEST_ADDRESS_BYTES);
+      address[0] = (address[0]! & 0xf0) | rawNibble;
+      const candidate = makePhaseBCandidate({
+        spent: [spent],
+        outputs: [makeOutput(FUNDED_OUTPUT_LOVELACE_V1, address)],
+      });
+      const rebound = {
+        ...candidate,
+        derived: { ...candidate.derived, expectedNetworkId: expected },
+      };
+      const result = await runPhaseB(
+        [rebound],
+        preState([[spent, makeOutput(FUNDED_OUTPUT_LOVELACE_V1)]]),
+      );
+      const rejection = expectSinglePhaseBRejection(
+        result,
+        RejectCodes.NetworkIdMismatch,
+      );
+      expect(rejection.consensusPhase).toBe("scriptSources");
+    },
+  );
+
   it("rejects transactions that do not preserve value", async () => {
     const spent = outRefFromByte(0x25);
     const candidate = makePhaseBCandidate({

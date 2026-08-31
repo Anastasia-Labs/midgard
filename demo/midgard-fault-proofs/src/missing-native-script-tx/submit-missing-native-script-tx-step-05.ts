@@ -3,6 +3,7 @@ import {
   MissingNativeScriptTxStep05SpendRedeemer,
   type MissingNativeScriptTxStep05State,
   MissingNativeScriptTxStep06Datum,
+  missingNativeScriptTxStep06ReadyStateV1,
   missingNativeScriptTxVersionedScriptHashV1,
   requireInputIndex,
   requireOwnSpendPurpose,
@@ -21,6 +22,11 @@ import {
 } from "../runtime.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "../workflow/transaction-boundary-v1.js";
 import type { MissingNativeScriptTxContractsV1 } from "./contracts-v1.js";
 import {
   missingNativeScriptTxStepLabelV1,
@@ -49,6 +55,7 @@ export const submitMissingNativeScriptTxStep05 = async ({
   threadOutRef,
   missingNativeScriptBytes,
   referenceScriptUtxo,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -58,6 +65,7 @@ export const submitMissingNativeScriptTxStep05 = async ({
   readonly threadOutRef: string;
   readonly missingNativeScriptBytes: Uint8Array;
   readonly referenceScriptUtxo: UTxO;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMissingNativeScriptTxStep05Result> => {
   const { threadUtxo, threadToken } =
@@ -84,7 +92,10 @@ export const submitMissingNativeScriptTxStep05 = async ({
     );
   }
   const nextDatum = Data.to(
-    { fraud_prover: signer.paymentKeyHash, data: state },
+    {
+      fraud_prover: signer.paymentKeyHash,
+      data: missingNativeScriptTxStep06ReadyStateV1(state),
+    },
     MissingNativeScriptTxStep06Datum,
   );
   const outputMatches = computationThreadOutputPredicate({
@@ -148,7 +159,26 @@ export const submitMissingNativeScriptTxStep05 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof missing-native-script-tx step-05",
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.steps[4].spendingScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw missingNativeScriptTxSubmitError(
+      `step-05 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

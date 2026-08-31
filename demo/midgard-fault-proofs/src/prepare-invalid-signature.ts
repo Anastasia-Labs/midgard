@@ -59,11 +59,11 @@ import {
   decodeTransactionMaterial,
   type FetchLike,
   fetchNodeBlockTransactions,
-  nativeTrieItem,
   type NodeTransactionPayload,
   type PreparedTxInclusionJson,
   readNodeTransactionPayloadsFile,
   requireProof,
+  transactionSourceTrieItemV1,
 } from "./prepare-double-spend.js";
 
 export type PrepareInvalidSignatureCliConfig = {
@@ -299,10 +299,12 @@ export const prepareInvalidSignatureFromTransactions = async ({
     );
   }
 
-  const nativeTrie = await buildTrieView(decoded.map(nativeTrieItem));
+  const nativeTrie = await buildTrieView(
+    decoded.map(transactionSourceTrieItemV1),
+  );
   const proofCbor = requireProof(
     nativeTrie,
-    nativeTrieItem(selected.material).key,
+    transactionSourceTrieItemV1(selected.material).key,
     "invalid-signature tx",
   );
   const committedTransactionsRoot = await Effect.runPromise(
@@ -335,6 +337,7 @@ export const prepareInvalidSignatureFromTransactions = async ({
         nativeTxId: selected.material.nodeTxId,
         nativeTx: selected.material.nativeTxCompact,
         nativeTxCompactCbor: selected.material.nativeCompactCbor,
+        l2TransactionSourceCbor: selected.material.l2TransactionSourceCbor,
         transactionsPhasRoot: nativeTrie.root,
         txMembershipProofCbor: proofCbor,
       },

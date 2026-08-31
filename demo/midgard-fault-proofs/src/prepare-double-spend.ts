@@ -20,6 +20,7 @@ import {
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   decodeMidgardSpendInputItemV1,
+  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
@@ -31,15 +32,20 @@ import {
   MIDGARD_NATIVE_TX_V1_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxFullV1,
+  type MidgardNativeTxProofSourceV1,
   type MidgardTxInputV1,
+  verifyMidgardNativeTxProofSourceV1,
 } from "@al-ft/midgard-core";
 import {
   commitCountedRootProgram,
   EMPTY_MERKLE_TREE_ROOT,
+  type L2TransactionSourceV1,
+  L2TransactionSourceV1Schema,
   type NativeTxCompact as NativeTxCompactData,
   type OutputReference as OutputReferenceData,
   ROOT_DOMAINS,
 } from "@al-ft/midgard-sdk";
+import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
 import {
@@ -67,12 +73,52 @@ export type PrepareDoubleSpendCliConfig = {
 export type NodeTransactionPayload = {
   readonly nodeTxId: string;
   readonly txCbor: string;
+  /** Exact source leaf when supplied by retained DA; derivation must agree. */
+  readonly l2TransactionSourceCbor?: string;
+};
+
+export const deriveL2TransactionSourceCborV1 = (
+  canonicalTxCbor: Uint8Array,
+): string => {
+  const proofSource =
+    deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(canonicalTxCbor);
+  const txId = computeMidgardNativeTxIdV1(
+    decodeMidgardNativeTxFullV1FromCanonicalCbor(canonicalTxCbor),
+  ).toString("hex");
+  return encodeL2TransactionSourceValueV1({ txId, proofSource });
+};
+
+export const encodeL2TransactionSourceValueV1 = ({
+  txId,
+  proofSource,
+}: {
+  readonly txId: string;
+  readonly proofSource: MidgardNativeTxProofSourceV1;
+}): string => {
+  const normalizedTxId = parseHex(txId, "transaction source tx id", 32);
+  verifyMidgardNativeTxProofSourceV1({
+    transactionId: Buffer.from(normalizedTxId, "hex"),
+    source: proofSource,
+  });
+  const sourceValue: L2TransactionSourceV1 = {
+    tx_id: normalizedTxId,
+    source: {
+      compact_cbor: proofSource.compactCbor.toString("hex"),
+      witness_set_compact_cbor:
+        proofSource.witnessSetCompactCbor.toString("hex"),
+      field_preimage_lengths_cbor:
+        proofSource.fieldPreimageLengthsCbor.toString("hex"),
+    },
+  };
+  return Data.to(sourceValue as never, L2TransactionSourceV1Schema as never);
 };
 
 export type PreparedTxInclusionJson = {
   readonly nativeTxId: string;
   readonly nativeTx: NativeTxCompactData;
   readonly nativeTxCompactCbor: string;
+  /** Canonical Data(L2TransactionSourceV1) bytes opened by membership. */
+  readonly l2TransactionSourceCbor: string;
   // Raw transactions MPF root the membership proof opens; authenticated on-chain
   // against the header's counted `transactions_root`.
   readonly transactionsPhasRoot: string;
@@ -134,8 +180,10 @@ export type DecodedTransactionMaterial = {
   readonly nativeTx: MidgardNativeTxFullV1;
   readonly nativeTxCompact: NativeTxCompactData;
   readonly inputs: readonly OutputReferenceData[];
+  readonly referenceInputs: readonly OutputReferenceData[];
   readonly spendInputCbors: readonly string[];
   readonly nativeCompactCbor: string;
+  readonly l2TransactionSourceCbor: string;
 };
 
 export type TrieView = {
@@ -411,20 +459,40 @@ export const decodeTransactionMaterial = async (
     nativeTx.body.spendInputsPreimageCbor,
     `tx ${nodeTxId} spend_inputs`,
   );
+  const referenceInputs = decodeNativeInputPreimage(
+    nativeTx.body.referenceInputsPreimageCbor,
+    `tx ${nodeTxId} reference_inputs`,
+  );
   const spendInputCbors = decodeNativeInputCbors(
     nativeTx.body.spendInputsPreimageCbor,
     `tx ${nodeTxId} spend_inputs`,
   );
+  const l2TransactionSourceCbor = deriveL2TransactionSourceCborV1(
+    Buffer.from(txCbor, "hex"),
+  );
+  if (
+    payload.l2TransactionSourceCbor !== undefined &&
+    parseHex(
+      payload.l2TransactionSourceCbor,
+      `tx ${nodeTxId} transaction source CBOR`,
+    ) !== l2TransactionSourceCbor
+  ) {
+    throw new Error(
+      `Transaction source mismatch for ${nodeTxId}: retained DA value does not match the exact native proof-source derivation.`,
+    );
+  }
   return {
     nodeTxId,
     txCbor,
     nativeTx,
     nativeTxCompact: nativeTxFromCoreCompact(nativeTx.compact),
     inputs,
+    referenceInputs,
     spendInputCbors,
     nativeCompactCbor: encodeMidgardNativeTxCompactV1(
       nativeTx.compact,
     ).toString("hex"),
+    l2TransactionSourceCbor,
   };
 };
 
@@ -544,9 +612,11 @@ export const buildTrieView = async (
   };
 };
 
-export const nativeTrieItem = (tx: DecodedTransactionMaterial) => ({
+export const transactionSourceTrieItemV1 = (
+  tx: DecodedTransactionMaterial,
+) => ({
   key: Buffer.from(tx.nodeTxId, "hex"),
-  value: Buffer.from(tx.nativeCompactCbor, "hex"),
+  value: Buffer.from(tx.l2TransactionSourceCbor, "hex"),
 });
 
 export const requireProof = (
@@ -579,6 +649,7 @@ const prepareTx = ({
     nativeTxId: tx.nodeTxId,
     nativeTx: tx.nativeTxCompact,
     nativeTxCompactCbor: tx.nativeCompactCbor,
+    l2TransactionSourceCbor: tx.l2TransactionSourceCbor,
     transactionsPhasRoot,
     txMembershipProofCbor: proofCbor,
   },
@@ -588,11 +659,11 @@ const prepareTx = ({
 });
 
 export const requireTransactionsRootMatchV1 = async ({
-  nativeRoot,
+  sourceRoot,
   expectedTransactionsRoot,
   count,
 }: {
-  readonly nativeRoot: string;
+  readonly sourceRoot: string;
   readonly expectedTransactionsRoot?: string;
   readonly count: bigint;
 }): Promise<void> => {
@@ -602,13 +673,13 @@ export const requireTransactionsRootMatchV1 = async ({
   const committedRoot = await Effect.runPromise(
     commitCountedRootProgram({
       domain: ROOT_DOMAINS.transactionsV1,
-      phasRoot: nativeRoot,
+      phasRoot: sourceRoot,
       count,
     }),
   );
   if (expectedTransactionsRoot !== committedRoot) {
     throw new Error(
-      `Expected V1 transactions root ${expectedTransactionsRoot} does not match the counted native node transaction root ${committedRoot} derived from raw PHAS root ${nativeRoot} at count ${count.toString()}.`,
+      `Expected V1 transactions root ${expectedTransactionsRoot} does not match the counted L2TransactionSourceV1 root ${committedRoot} derived from raw PHAS root ${sourceRoot} at count ${count.toString()}.`,
     );
   }
 };
@@ -686,19 +757,21 @@ export const prepareDoubleSpendFromTransactions = async ({
     transactions.map(decodeTransactionMaterial),
   );
   const pair = resolveDoubleSpendPair({ transactions: decoded, tx1Id, tx2Id });
-  const nativeTrie = await buildTrieView(decoded.map(nativeTrieItem));
+  const sourceTrie = await buildTrieView(
+    decoded.map(transactionSourceTrieItemV1),
+  );
   const tx1Proof = requireProof(
-    nativeTrie,
-    nativeTrieItem(pair.tx1).key,
+    sourceTrie,
+    transactionSourceTrieItemV1(pair.tx1).key,
     "tx1",
   );
   const tx2Proof = requireProof(
-    nativeTrie,
-    nativeTrieItem(pair.tx2).key,
+    sourceTrie,
+    transactionSourceTrieItemV1(pair.tx2).key,
     "tx2",
   );
   await requireTransactionsRootMatchV1({
-    nativeRoot: nativeTrie.root,
+    sourceRoot: sourceTrie.root,
     expectedTransactionsRoot: normalizedExpectedRoot,
     count: BigInt(decoded.length),
   });
@@ -708,7 +781,7 @@ export const prepareDoubleSpendFromTransactions = async ({
     doubleSpentInput: pair.doubleSpentInput,
     commitmentEncodings: {
       nativeNode: {
-        transactionsRoot: nativeTrie.root,
+        transactionsRoot: sourceTrie.root,
       },
       ...(normalizedExpectedRoot === undefined
         ? {}
@@ -722,13 +795,13 @@ export const prepareDoubleSpendFromTransactions = async ({
       tx: pair.tx1,
       doubleSpentInputIndex: pair.tx1DoubleSpentInputIndex,
       proofCbor: tx1Proof,
-      transactionsPhasRoot: nativeTrie.root,
+      transactionsPhasRoot: sourceTrie.root,
     }),
     tx2: prepareTx({
       tx: pair.tx2,
       doubleSpentInputIndex: pair.tx2DoubleSpentInputIndex,
       proofCbor: tx2Proof,
-      transactionsPhasRoot: nativeTrie.root,
+      transactionsPhasRoot: sourceTrie.root,
     }),
   };
   if (outputDir === undefined) {

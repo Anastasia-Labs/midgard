@@ -128,6 +128,8 @@ export type PhaseAValidatedTx = {
 
   /** Non-authoritative projections derived from `ledgerTx` for validation. */
   readonly derived: {
+    /** Deployment network admitted with this Phase-A candidate. */
+    readonly expectedNetworkId: bigint;
     readonly outputSum: MidgardValue;
     readonly mintDelta: MidgardValueDelta;
     readonly witnessKeyHashHexes: readonly string[];

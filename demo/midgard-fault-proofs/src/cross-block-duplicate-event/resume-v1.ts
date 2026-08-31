@@ -7,6 +7,7 @@ import {
   type ResolvedProverSigner,
 } from "../runtime.js";
 import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
 import type { CrossBlockDuplicateEventContractsV1 } from "./contracts-v1.js";
 import { crossBlockDuplicateEventSubmitError } from "./submit-common-v1.js";
 import {
@@ -42,6 +43,7 @@ export const resumeCrossBlockDuplicateEventV1 = async ({
   settledEvent,
   referenceScriptUtxos,
   witnessReferenceScripts,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -56,6 +58,7 @@ export const resumeCrossBlockDuplicateEventV1 = async ({
   readonly settledEvent: CommittedDuplicateEventProofV1;
   readonly referenceScriptUtxos: readonly [UTxO, UTxO];
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<ResumeCrossBlockDuplicateEventResultV1> => {
   const thread = await fetchUtxoByOutRef({
@@ -75,6 +78,7 @@ export const resumeCrossBlockDuplicateEventV1 = async ({
         stateQueueBlockOutRef,
         committedEvent: challengedEvent,
         referenceScriptUtxo: referenceScriptUtxos[0],
+        preSubmitBoundary,
         awaitConfirmation,
       }),
     };
@@ -92,6 +96,7 @@ export const resumeCrossBlockDuplicateEventV1 = async ({
         settledEvent,
         referenceScriptUtxo: referenceScriptUtxos[1],
         witnessReferenceScripts,
+        preSubmitBoundary,
         awaitConfirmation,
       }),
     };

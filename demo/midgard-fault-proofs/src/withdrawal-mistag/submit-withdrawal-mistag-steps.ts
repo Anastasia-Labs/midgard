@@ -29,6 +29,11 @@ import {
 } from "../runtime.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "../workflow/transaction-boundary-v1.js";
 import type { WithdrawalMistagContractsV1 } from "./contracts-v1.js";
 import {
   requireWithdrawalMistagReferenceScriptV1,
@@ -52,6 +57,13 @@ const redeemerSchemas = [
   WithdrawalMistagStep02SpendRedeemer,
   WithdrawalMistagStep03SpendRedeemer,
   WithdrawalMistagStep04SpendRedeemer,
+] as const;
+
+const referenceScriptRoles = [
+  "V1 fraud-proof withdrawal-mistag step-01",
+  "V1 fraud-proof withdrawal-mistag step-02",
+  "V1 fraud-proof withdrawal-mistag step-03",
+  "V1 fraud-proof withdrawal-mistag step-04",
 ] as const;
 
 export const withdrawalMistagStatesV1 = (
@@ -219,6 +231,7 @@ export const submitWithdrawalMistagIntermediateStep = async ({
   hubOracleUtxo,
   stateQueueBlockUtxo,
   referenceScriptUtxo,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -231,6 +244,7 @@ export const submitWithdrawalMistagIntermediateStep = async ({
   readonly stateQueueBlockUtxo?: UTxO;
   /** Required for every step because applied step 03 is larger than the L1 envelope. */
   readonly referenceScriptUtxo: UTxO;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitWithdrawalMistagStepResult> => {
   const { threadUtxo, threadToken } = await requireWithdrawalMistagThreadUtxoV1(
@@ -325,7 +339,26 @@ export const submitWithdrawalMistagIntermediateStep = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: referenceScriptRoles[stepIndex],
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.steps[stepIndex].spendingScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw withdrawalMistagError(
+      `${withdrawalMistagStepLabelV1(stepIndex)} provider returned ${txHash}, expected ${expectedTxHash}`,
+    );
+  }
   if (awaitConfirmation)
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   return {

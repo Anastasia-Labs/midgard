@@ -15,12 +15,18 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  type PreparedClaimRegistryMutationV1,
+  prepareFamilyClaimRegistryMutationV1,
+  requirePreparedClaimRegistryMutationV1,
+} from "../claim-registry-transaction-v1.js";
+import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   outRefLabel,
   parseOutRef,
   type ResolvedProverSigner,
 } from "../runtime.js";
+import { excludeUtxo } from "../spend-input-witness.js";
 import {
   requireComputationThreadToken,
   selectFeeInput,
@@ -59,6 +65,7 @@ export const submitWithdrawnInputCancel = async ({
   threadOutRef,
   referenceScriptUtxo,
   witnessReferenceScripts,
+  claimRegistryMutation,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -68,6 +75,7 @@ export const submitWithdrawnInputCancel = async ({
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
+  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitWithdrawnInputCancelResult> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -108,7 +116,28 @@ export const submitWithdrawnInputCancel = async ({
     );
   }
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const resolvedClaimRegistryMutation = requirePreparedClaimRegistryMutationV1({
+    mutation:
+      claimRegistryMutation ??
+      (await prepareFamilyClaimRegistryMutationV1({
+        lucid,
+        claimRegistry: contracts.claimRegistry,
+        claimRegistryReferenceUtxo: witnessReferenceScripts.claimRegistrySpend,
+        hubOraclePolicyId: contracts.hubOraclePolicyId,
+        computationThreadPolicyId: contracts.computationThread.policyId,
+        claimId: threadToken.assetName,
+        kind: "cancel",
+      })),
+    kind: "cancel",
+    claimId: threadToken.assetName,
+    label: `${WITHDRAWN_INPUT_CATEGORY_LABEL} cancel`,
+  });
+  const feeInput = selectFeeInput(
+    resolvedClaimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
+      (utxos, reference) => excludeUtxo(utxos, reference),
+      await lucid.wallet().getUtxos(),
+    ),
+  );
   let inputIndex: bigint | undefined;
   let mintIndex: bigint | undefined;
   const spendRedeemer = ((ctx) => {
@@ -168,7 +197,9 @@ export const submitWithdrawnInputCancel = async ({
     .readFrom(referenceInputs)
     .mintAssets({ [threadToken.unit]: -1n }, burnRedeemer)
     .addSignerKey(signer.paymentKeyHash);
-  const tx = computationThreadMintCarriage.attach(base);
+  const tx = computationThreadMintCarriage.attach(
+    resolvedClaimRegistryMutation.apply(base),
+  );
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (inputIndex === undefined || mintIndex === undefined) {
     throw withdrawnInputSubmitError("cancel layout was not resolved.");

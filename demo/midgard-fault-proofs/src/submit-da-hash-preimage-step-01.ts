@@ -73,6 +73,11 @@ import {
   witnessSpendingValidatorCarriageV1,
   witnessWithdrawalValidatorCarriageV1,
 } from "./witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "./workflow/transaction-boundary-v1.js";
 
 /** Prepared committed-leaf inclusion produced by `prepare-da-hash-preimage`. */
 export type SubmitDaHashPreimageTxInclusion = {
@@ -142,7 +147,11 @@ export type SubmitDaHashPreimageStep01Result = {
   readonly firstStepAddress: string;
   readonly secondStepAddress: string;
   readonly committedTxId: string;
-  readonly derivedTxId: string;
+  readonly verdict: ReturnType<
+    typeof daHashPreimageEvidenceFromCommittedLeafV1
+  >["verdict"];
+  readonly embeddedTxId: string | null;
+  readonly derivedTxId: string | null;
   readonly committedLeafByteCount: number;
   readonly inputIndex: number;
   readonly outputIndex: number;
@@ -169,6 +178,7 @@ export const submitDaHashPreimageStep01 = async ({
   txInclusion,
   referenceScriptUtxo,
   witnessReferenceScripts,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -183,6 +193,7 @@ export const submitDaHashPreimageStep01 = async ({
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitDaHashPreimageStep01Result> => {
   const resolvedDeployment = await resolveDaHashPreimageDeploymentContracts({
@@ -309,9 +320,7 @@ export const submitDaHashPreimageStep01 = async ({
     {
       fraud_prover: signer.paymentKeyHash,
       data: {
-        committed_tx_id: evidence.committedTxId,
-        derived_tx_id: evidence.derivedTxId,
-        committed_leaf_byte_count: BigInt(evidence.committedLeafByteCount),
+        verdict: evidence.verdict,
       },
     },
     DaHashPreimageStep02Datum,
@@ -357,7 +366,7 @@ export const submitDaHashPreimageStep01 = async ({
             state_queue_node_ref_input_index:
               layout.stateQueueNodeRefInputIndex,
             native_tx_id: txInclusion.committedTxId,
-            native_tx_compact_cbor: txInclusion.committedLeafValueCbor,
+            l2_transaction_source_cbor: txInclusion.committedLeafValueCbor,
             transactions_phas_root: txInclusion.transactionsPhasRoot,
             tx_membership_proof: txInclusion.txMembershipProof,
             inclusion_proof_script_withdraw_redeemer_index:
@@ -412,7 +421,31 @@ export const submitDaHashPreimageStep01 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof da-hash-preimage step-01",
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.daHashPreimage.steps[0].spendingScript,
+        },
+        {
+          role: "membership proof withdrawal",
+          utxo: witnessReferenceScripts?.phasMembershipWithdraw,
+          expectedScript: phasMembershipScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw new Error(
+      `da-hash-preimage step 01 provider returned ${txHash}, expected ${expectedTxHash}`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }
@@ -432,8 +465,10 @@ export const submitDaHashPreimageStep01 = async ({
     firstStepAddress: contracts.daHashPreimage.steps[0].spendingScriptAddress,
     secondStepAddress: contracts.daHashPreimage.steps[1].spendingScriptAddress,
     committedTxId: evidence.committedTxId,
+    verdict: evidence.verdict,
+    embeddedTxId: evidence.embeddedTxId,
     derivedTxId: evidence.derivedTxId,
-    committedLeafByteCount: evidence.committedLeafByteCount,
+    committedLeafByteCount: txInclusion.committedLeafValueCbor.length / 2,
     inputIndex: Number(resolvedLayout.inputIndex),
     outputIndex: Number(resolvedLayout.outputIndex),
     hubOracleRefInputIndex: Number(resolvedLayout.hubOracleRefInputIndex),

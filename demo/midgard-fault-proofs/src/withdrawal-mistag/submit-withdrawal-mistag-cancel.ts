@@ -17,12 +17,18 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  type PreparedClaimRegistryMutationV1,
+  prepareFamilyClaimRegistryMutationV1,
+  requirePreparedClaimRegistryMutationV1,
+} from "../claim-registry-transaction-v1.js";
+import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   outRefLabel,
   parseOutRef,
   type ResolvedProverSigner,
 } from "../runtime.js";
+import { excludeUtxo } from "../spend-input-witness.js";
 import {
   requireComputationThreadToken,
   selectFeeInput,
@@ -64,6 +70,7 @@ export const submitWithdrawalMistagCancel = async ({
   threadOutRef,
   referenceScriptUtxo,
   witnessReferenceScripts,
+  claimRegistryMutation,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -73,6 +80,7 @@ export const submitWithdrawalMistagCancel = async ({
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
   readonly awaitConfirmation?: boolean;
 }) => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -137,7 +145,28 @@ export const submitWithdrawalMistagCancel = async ({
     );
   }) satisfies BuildTxWithRedeemer;
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const resolvedClaimRegistryMutation = requirePreparedClaimRegistryMutationV1({
+    mutation:
+      claimRegistryMutation ??
+      (await prepareFamilyClaimRegistryMutationV1({
+        lucid,
+        claimRegistry: contracts.claimRegistry,
+        claimRegistryReferenceUtxo: witnessReferenceScripts?.claimRegistrySpend,
+        hubOraclePolicyId: contracts.hubOraclePolicyId,
+        computationThreadPolicyId: contracts.computationThread.policyId,
+        claimId: threadToken.assetName,
+        kind: "cancel",
+      })),
+    kind: "cancel",
+    claimId: threadToken.assetName,
+    label: `${WITHDRAWAL_MISTAG_CATEGORY_LABEL} cancel`,
+  });
+  const feeInput = selectFeeInput(
+    resolvedClaimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
+      (utxos, reference) => excludeUtxo(utxos, reference),
+      await lucid.wallet().getUtxos(),
+    ),
+  );
   const computationThreadMintCarriage = witnessMintingPolicyCarriageV1({
     script: contracts.computationThread.mintingScript,
     referenceUtxo: witnessReferenceScripts?.computationThreadMint,
@@ -158,7 +187,7 @@ export const submitWithdrawalMistagCancel = async ({
     .mintAssets({ [threadToken.unit]: -1n }, burnRedeemer)
     .addSignerKey(signer.paymentKeyHash);
   const tx = computationThreadMintCarriage.attach(
-    base.readFrom(referenceInputs),
+    resolvedClaimRegistryMutation.apply(base.readFrom(referenceInputs)),
   );
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (inputIndex === undefined || mintIndex === undefined) {

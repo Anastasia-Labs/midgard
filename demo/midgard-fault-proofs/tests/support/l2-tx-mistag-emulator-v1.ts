@@ -66,6 +66,7 @@ import {
 } from "../../src/witness-reference-scripts-v1.js";
 import { trieRootHex } from "./emulator/catalogue.js";
 import type { FaultProofEmulatorHarnessV1 } from "./emulator/harness.js";
+import { l2TransactionSourceCborV1 } from "./emulator/native-tx.js";
 import { publishPlainReferenceScriptUtxo } from "./emulator/reference-scripts.js";
 
 export type L2TxMistagBlockFixtureV1 = {
@@ -110,10 +111,14 @@ export const buildL2TxMistagBlockFixtureV1 = async (
   });
   const nativeTxId = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
   const compactCbor = encodeMidgardNativeTxCompactV1(nativeTx.compact);
+  const l2TransactionSourceCbor = l2TransactionSourceCborV1(nativeTx);
   const store = new Store(undefined);
   await store.ready();
   const trie = new Trie(store);
-  await trie.insert(Buffer.from(nativeTxId, "hex"), compactCbor);
+  await trie.insert(
+    Buffer.from(nativeTxId, "hex"),
+    Buffer.from(l2TransactionSourceCbor, "hex"),
+  );
   const proof = await trie.prove(Buffer.from(nativeTxId, "hex"));
   const proofCbor = proof.toCBOR().toString("hex");
   return {
@@ -125,6 +130,7 @@ export const buildL2TxMistagBlockFixtureV1 = async (
       nativeTxId,
       nativeTx: nativeTxFromCoreCompact(nativeTx.compact),
       nativeTxCompactCbor: compactCbor.toString("hex"),
+      l2TransactionSourceCbor,
       transactionsPhasRoot: trieRootHex(trie),
       txMembershipProof: Data.from(proofCbor, Proof),
       txMembershipProofCbor: proofCbor,
@@ -279,7 +285,7 @@ export const forceL2TxMistagStep01ForAdversarialTestV1 = async ({
         "forced step-01 state queue",
       ),
       native_tx_id: txInclusion.nativeTxId,
-      native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
+      l2_transaction_source_cbor: txInclusion.l2TransactionSourceCbor,
       transactions_phas_root: txInclusion.transactionsPhasRoot,
       tx_membership_proof: txInclusion.txMembershipProof,
       inclusion_proof_script_withdraw_redeemer_index:
@@ -310,7 +316,7 @@ export const forceL2TxMistagStep01ForAdversarialTestV1 = async ({
       encodeRawPhasMembershipProofRedeemer({
         root: txInclusion.transactionsPhasRoot,
         keyBytes: txInclusion.nativeTxId,
-        valueBytes: txInclusion.nativeTxCompactCbor,
+        valueBytes: txInclusion.l2TransactionSourceCbor,
         membershipProofCbor: txInclusion.txMembershipProofCbor,
       }),
     )

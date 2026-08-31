@@ -85,6 +85,11 @@ import {
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
 import { witnessSpendingValidatorCarriageV1 } from "./witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "./workflow/transaction-boundary-v1.js";
 
 /** Prepared spend-inputs preimage produced by `prepare-input-no-idx`. */
 export type SubmitInputNoIdxInputsPreimage = {
@@ -243,7 +248,11 @@ export const submitInputNoIdxStep02 = async ({
   inputsPreimage,
   nativeTxCompactCbor,
   publishCarriage = false,
+  publishedCarriageUtxos,
+  certificateUtxo,
   referenceScriptUtxo,
+  publicationPreSubmitBoundary,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -257,8 +266,12 @@ export const submitInputNoIdxStep02 = async ({
   readonly nativeTxCompactCbor: string;
   /** Force §8 tier 2; see {@link SubmitInputNoIdxStep02CliConfig.publishCarriage}. */
   readonly publishCarriage?: boolean;
+  readonly publishedCarriageUtxos?: readonly UTxO[];
+  readonly certificateUtxo?: UTxO;
   /** The mandatory published step-02 reference script. */
   readonly referenceScriptUtxo?: UTxO;
+  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitInputNoIdxStep02Result> => {
   const { nonExistentInputNoIndexCategory, contracts } =
@@ -314,13 +327,16 @@ export const submitInputNoIdxStep02 = async ({
   // publishes nothing; tiers 2–3 publish raw carriage located by content (§8.7),
   // and a chunk that already exists at this address is reused rather than
   // republished.
-  const carriageUtxos = await publishFaultProofFieldCarriageV1({
-    lucid,
-    signer,
-    planned,
-    publisherAddress: signer.address,
-    label: "Input-no-idx step 02 spend-inputs",
-  });
+  const carriageUtxos =
+    publishedCarriageUtxos ??
+    (await publishFaultProofFieldCarriageV1({
+      lucid,
+      signer,
+      planned,
+      publisherAddress: signer.address,
+      label: "Input-no-idx step 02 spend-inputs",
+      preSubmitBoundary: publicationPreSubmitBoundary,
+    }));
   const walletUtxos = await lucid.wallet().getUtxos();
   const feeInput = selectFeeInput(
     carriageUtxos.reduce<readonly UTxO[]>(
@@ -335,11 +351,13 @@ export const submitInputNoIdxStep02 = async ({
   });
   const referenceInputs = [
     ...carriageUtxos,
+    ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     ...stepScriptCarriage.referenceInputs,
   ];
   const spendInputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
     referenceInputs,
+    certificatePolicyId: contracts.fieldPreimageCertificate.policyId,
     label: "Input-no-idx step 02 spend-inputs",
   });
 
@@ -423,7 +441,27 @@ export const submitInputNoIdxStep02 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof non-existent-input-no-index step-02",
+          utxo: referenceScriptUtxo,
+          expectedScript:
+            contracts.nonExistentInputNoIndex.steps[1].spendingScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw new Error(
+      `input-no-idx step-02 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

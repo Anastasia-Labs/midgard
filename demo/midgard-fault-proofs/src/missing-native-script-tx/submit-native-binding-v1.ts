@@ -40,6 +40,11 @@ import {
   type FaultProofWitnessReferenceScriptsV1,
   witnessWithdrawalValidatorCarriageV1,
 } from "../witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptV1,
+} from "../workflow/transaction-boundary-v1.js";
 import type { MissingNativeScriptTxContractsV1 } from "./contracts-v1.js";
 import {
   type MissingNativeScriptTxStepIndexV1,
@@ -73,6 +78,7 @@ export const submitMissingNativeScriptTxBindingV1 = async ({
   spendRedeemerSchema,
   referenceScriptUtxo,
   witnessReferenceScripts,
+  preSubmitBoundary,
   awaitConfirmation,
 }: {
   readonly lucid: LucidEvolution;
@@ -93,6 +99,8 @@ export const submitMissingNativeScriptTxBindingV1 = async ({
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  /** Runs after local evaluation/signing and before provider submission. */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation: boolean;
 }): Promise<MissingNativeScriptTxBindingResultV1> => {
   const label = missingNativeScriptTxStepLabelV1(
@@ -177,7 +185,7 @@ export const submitMissingNativeScriptTxBindingV1 = async ({
             state_queue_node_ref_input_index:
               resolved.stateQueueNodeRefInputIndex,
             native_tx_id: txInclusion.nativeTxId,
-            native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
+            l2_transaction_source_cbor: txInclusion.l2TransactionSourceCbor,
             transactions_phas_root: txInclusion.transactionsPhasRoot,
             tx_membership_proof: txInclusion.txMembershipProof,
             inclusion_proof_script_withdraw_redeemer_index:
@@ -197,14 +205,15 @@ export const submitMissingNativeScriptTxBindingV1 = async ({
     referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
     label: `${label} PHAS membership`,
   });
+  const stepReference = requireMissingNativeScriptTxReferenceScriptV1({
+    utxo: referenceScriptUtxo,
+    expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
+    stepIndex,
+  });
   const referenceInputs = [
     hubOracleUtxo,
     stateQueueBlockUtxo,
-    requireMissingNativeScriptTxReferenceScriptV1({
-      utxo: referenceScriptUtxo,
-      expectedScriptHash: contracts.steps[stepIndex].spendingScriptHash,
-      stepIndex,
-    }),
+    stepReference,
     ...phasMembershipCarriage.referenceInputs,
   ];
   const base = lucid
@@ -218,7 +227,7 @@ export const submitMissingNativeScriptTxBindingV1 = async ({
       encodeRawPhasMembershipProofRedeemer({
         root: txInclusion.transactionsPhasRoot,
         keyBytes: txInclusion.nativeTxId,
-        valueBytes: txInclusion.nativeTxCompactCbor,
+        valueBytes: txInclusion.l2TransactionSourceCbor,
         membershipProofCbor: txInclusion.txMembershipProofCbor,
       }),
     )
@@ -239,7 +248,28 @@ export const submitMissingNativeScriptTxBindingV1 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: [
+      workflowReferenceScriptV1({
+        role: `${label}-spend`,
+        utxo: stepReference,
+        expectedScript: contracts.steps[stepIndex].spendingScript,
+      }),
+      workflowReferenceScriptV1({
+        role: `${label}-phas-membership`,
+        utxo: witnessReferenceScripts?.phasMembershipWithdraw,
+        expectedScript: phasScript,
+      }),
+    ],
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw missingNativeScriptTxSubmitError(
+      `provider returned transaction hash ${txHash}, expected ${expectedTxHash}`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

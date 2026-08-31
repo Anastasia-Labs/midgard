@@ -49,6 +49,10 @@ import {
   resolveProtocolParameters,
 } from "./spend-input-witness.js";
 import { selectFeeInput } from "./submit-step-01.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+} from "./workflow/transaction-boundary-v1.js";
 
 export * from "./proof-chunk-carriage.js";
 export { MAXIMUM_CHUNK_PROOF_STEP_COUNT, MAXIMUM_PROOF_CHUNK_COUNT };
@@ -58,6 +62,47 @@ export type PublishedProofV1 = {
   readonly chunks: readonly PublishedProofChunkV1[];
   readonly proofStepCount: number;
   readonly spentFeeInput: UTxO;
+};
+
+export const resolvePublishedProofChunksV1 = async ({
+  lucid,
+  address,
+  proofCbor,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly address: string;
+  readonly proofCbor: string;
+}): Promise<readonly PublishedProofChunkV1[] | undefined> => {
+  const datums = splitProofIntoChunkDatums(proofCbor);
+  if (datums.length === 0) return [];
+  const candidates = await lucid.utxosAt(address);
+  const claimed = new Set<string>();
+  const chunks: PublishedProofChunkV1[] = [];
+  for (const datum of datums) {
+    const match = candidates.find((utxo) => {
+      const label = `${utxo.txHash}#${utxo.outputIndex.toString()}`;
+      return (
+        !claimed.has(label) &&
+        typeof utxo.datum === "string" &&
+        utxo.datumHash == null &&
+        utxo.scriptRef == null &&
+        canonicalPlutusDataCbor(utxo.datum) === datum
+      );
+    });
+    if (match === undefined) return undefined;
+    const label = `${match.txHash}#${match.outputIndex.toString()}`;
+    claimed.add(label);
+    const decoded = Data.from(datum, ProofChunkDatum) as unknown as {
+      readonly proof_steps: readonly unknown[];
+    };
+    chunks.push({
+      utxo: match,
+      outRef: label,
+      datumCbor: datum,
+      stepCount: decoded.proof_steps.length,
+    });
+  }
+  return chunks;
 };
 
 /**
@@ -72,12 +117,15 @@ export const publishProofChunksV1 = async ({
   network,
   signer,
   proofCbor,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
   readonly network: Network;
   readonly signer: ResolvedProverSigner;
   readonly proofCbor: string;
+  /** Production workflow seam for the chunk publication transaction. */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<PublishedProofV1> => {
   const datums = splitProofIntoChunkDatums(proofCbor);
@@ -113,7 +161,17 @@ export const publishProofChunksV1 = async ({
     .complete({ localUPLCEval: true });
 
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: [],
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw new Error(
+      `Provider returned transaction hash ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

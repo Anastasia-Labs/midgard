@@ -1612,7 +1612,10 @@ describe("§8.6 certification — the certificate is minted, and a step reads it
         plan,
         certificatePolicyId: policyId,
         certificateAddress: address,
-        certificateScript: policy,
+        certificateWitness: {
+          kind: "inline_emulator_only",
+          certificateScript: policy,
+        },
         // Deliberately out of ledger order: the indices the redeemer carries
         // must be indices into the *sorted* reference-input list, and a builder
         // that used the order it was handed would be right until the first

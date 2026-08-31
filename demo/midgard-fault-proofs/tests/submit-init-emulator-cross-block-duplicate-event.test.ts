@@ -35,17 +35,41 @@ const WITHDRAWAL_KEY_CBOR = `d8799f5820${"8b".repeat(32)}02ff`;
 const WITHDRAWAL_VALUE_CBOR =
   "d8799fd8799fd8799f58207e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e7e01ff581c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9ca1581c4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4ba14d6d6964676172642d746f6b656e182ad8799fd8799f581c5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5dffd87a80ffd87980ff9f5820adadadadadadadadadadadadadadadadadadadadadadadadadadadadadadadad5840bebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebeffd87980ff";
 
-type Variant = "deposit" | "withdrawal";
+const FORCED_KEY_CBOR = `d8799f5820${"9d".repeat(32)}03ff`;
+const FORCED_VALUE_CBOR = Data.to(
+  {
+    tx_id: "ae".repeat(32),
+    source: {
+      compact_cbor: "80",
+      witness_set_compact_cbor: "80",
+      field_preimage_lengths_cbor: "80",
+    },
+    verdict: "ForcedTxValid",
+  },
+  SDK.ForcedInclusionTxV1,
+);
+
+type Variant = "deposit" | "withdrawal" | "forced-transaction";
 
 const makeProof = async (variant: Variant) => {
   const keyCbor =
-    variant === "deposit" ? DEPOSIT_KEY_CBOR : WITHDRAWAL_KEY_CBOR;
+    variant === "deposit"
+      ? DEPOSIT_KEY_CBOR
+      : variant === "withdrawal"
+        ? WITHDRAWAL_KEY_CBOR
+        : FORCED_KEY_CBOR;
   const valueCbor =
-    variant === "deposit" ? DEPOSIT_VALUE_CBOR : WITHDRAWAL_VALUE_CBOR;
+    variant === "deposit"
+      ? DEPOSIT_VALUE_CBOR
+      : variant === "withdrawal"
+        ? WITHDRAWAL_VALUE_CBOR
+        : FORCED_VALUE_CBOR;
   const domain =
     variant === "deposit"
       ? SDK.ROOT_DOMAINS.deposits
-      : SDK.ROOT_DOMAINS.withdrawals;
+      : variant === "withdrawal"
+        ? SDK.ROOT_DOMAINS.withdrawals
+        : SDK.ROOT_DOMAINS.forcedTransactionsV1;
   const counted = await buildCountedRoot(domain, [
     {
       key: Buffer.from(keyCbor, "hex"),
@@ -73,19 +97,33 @@ const makeProof = async (variant: Variant) => {
             },
           },
         }
-      : {
-          CommittedDuplicateWithdrawalV1: {
-            membership: {
-              domain,
-              root: counted.root,
-              phas_root: counted.phasRoot,
-              count: counted.count,
-              key,
-              value: Data.from(valueCbor, SDK.WithdrawalInfo),
-              proof,
+      : variant === "withdrawal"
+        ? {
+            CommittedDuplicateWithdrawalV1: {
+              membership: {
+                domain,
+                root: counted.root,
+                phas_root: counted.phasRoot,
+                count: counted.count,
+                key,
+                value: Data.from(valueCbor, SDK.WithdrawalInfo),
+                proof,
+              },
             },
-          },
-        };
+          }
+        : {
+            CommittedDuplicateForcedTransactionV1: {
+              membership: {
+                domain,
+                root: counted.root,
+                phas_root: counted.phasRoot,
+                count: counted.count,
+                key,
+                value: Data.from(valueCbor, SDK.ForcedInclusionTxV1),
+                proof,
+              },
+            },
+          };
   return { counted, committedEvent };
 };
 
@@ -115,7 +153,18 @@ const setupLifecycle = async (variant: Variant) => {
     ...base,
     ...(variant === "deposit"
       ? { depositsRoot: counted.root, depositCount: counted.count }
-      : { withdrawalsRoot: counted.root, withdrawalCount: counted.count }),
+      : variant === "withdrawal"
+        ? { withdrawalsRoot: counted.root, withdrawalCount: counted.count }
+        : {
+            forcedTransactionsRoot: counted.root,
+            forcedTransactionCount: counted.count,
+            // `header_transition_commitments_v1_are_valid` requires
+            // `validation_trace_count == forced_transaction_count +
+            // l2_transaction_count`, and the traces root to match that count.
+            // Only the forced-transaction variant moves that sum off zero.
+            validationTracesRoot: counted.root,
+            validationTraceCount: counted.count,
+          }),
     totalEventCount: counted.count,
     transitionStepCount: counted.count,
     transitionTraceRoot: counted.root,
@@ -129,7 +178,9 @@ const setupLifecycle = async (variant: Variant) => {
     header,
   });
 
-  const settledHeaderHash = (variant === "deposit" ? "41" : "42").repeat(28);
+  const settledHeaderHash = (
+    variant === "deposit" ? "41" : variant === "withdrawal" ? "42" : "43"
+  ).repeat(28);
   const settlementUnit = toUnit(
     harness.contracts.settlement.policyId,
     settledHeaderHash,
@@ -139,7 +190,10 @@ const setupLifecycle = async (variant: Variant) => {
       variant === "deposit" ? counted.root : SDK.EMPTY_MERKLE_TREE_ROOT,
     withdrawals_root:
       variant === "withdrawal" ? counted.root : SDK.EMPTY_MERKLE_TREE_ROOT,
-    forced_transactions_root: SDK.EMPTY_MERKLE_TREE_ROOT,
+    forced_transactions_root:
+      variant === "forced-transaction"
+        ? counted.root
+        : SDK.EMPTY_MERKLE_TREE_ROOT,
     transactions_root: SDK.EMPTY_MERKLE_TREE_ROOT,
     resolution_claim: null,
   };
@@ -199,7 +253,7 @@ const init = async (scenario: Awaited<ReturnType<typeof setupLifecycle>>) =>
     witnessReferenceScripts: scenario.witnessReferenceScripts,
   });
 
-describe.each(["deposit", "withdrawal"] as const)(
+describe.each(["deposit", "withdrawal", "forced-transaction"] as const)(
   "cross-block duplicate %s lifecycle",
   (variant) => {
     it("mints permanent evidence and removes the fraudulent block", async () => {

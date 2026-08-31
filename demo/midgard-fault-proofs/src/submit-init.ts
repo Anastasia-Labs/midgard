@@ -1,9 +1,11 @@
 import {
+  buildClaimRegistrySpendingValidator,
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
   type FraudProofCatalogueCategoryDeploymentInfo,
   FraudProofComputationThreadRedeemer,
   FraudProofComputationThreadStepDatum,
   HUB_ORACLE_ASSET_NAME,
+  parseFaultProofBlueprint,
   Proof,
   requireOwnMintPurpose,
   requireReferenceInputIndex,
@@ -21,7 +23,13 @@ import {
   toUnit,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 
+import {
+  type ClaimRegistryMutationEvidenceV1,
+  prepareClaimRegistryMutationV1,
+  type PreparedClaimRegistryMutationV1,
+} from "./claim-registry-transaction-v1.js";
 import {
   type ContractDeploymentInfo,
   parseContractDeploymentInfo,
@@ -54,6 +62,11 @@ import {
   witnessMintingPolicyCarriageV1,
   witnessWithdrawalValidatorCarriageV1,
 } from "./witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptV1,
+} from "./workflow/transaction-boundary-v1.js";
 
 const PHAS_MEMBERSHIP_WITHDRAW_TITLE = "phas.membership.withdraw";
 
@@ -214,7 +227,10 @@ export const submitInit = async ({
   fraudCategory = "doubleSpend",
   fraudulentBlockOutRef,
   fraudulentHeaderHash,
+  claimRegistryEvidence,
+  preparedClaimRegistryMutation,
   witnessReferenceScripts,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -225,8 +241,18 @@ export const submitInit = async ({
   readonly fraudCategory?: SubmitInitFraudCategory;
   readonly fraudulentBlockOutRef: string;
   readonly fraudulentHeaderHash?: string;
+  /** Exact public MPF evidence for opening this deployment/category/header claim. */
+  readonly claimRegistryEvidence?: ClaimRegistryMutationEvidenceV1;
+  /**
+   * Already authenticated live-state Open mutation. Production workflows use
+   * this opaque boundary so the proof/root observed immediately before Init
+   * is the one composed into the signed transaction.
+   */
+  readonly preparedClaimRegistryMutation?: PreparedClaimRegistryMutationV1;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  /** Production workflow seam: invoked after local evaluation, before I/O. */
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitInitResult> => {
   const parsedDeploymentInfo = parseContractDeploymentInfo(deploymentInfo);
@@ -326,6 +352,58 @@ export const submitInit = async ({
     computationThreadPolicyId,
     computationThreadAssetName,
   );
+  const claimRegistry = await Effect.runPromise(
+    buildClaimRegistrySpendingValidator({
+      blueprint: parseFaultProofBlueprint(blueprint),
+      network,
+      hubOraclePolicyId,
+    }),
+  );
+  const deployedClaimRegistryHash = requireDeploymentScriptHash(
+    parsedDeploymentInfo,
+    "claimRegistrySpend",
+  );
+  if (claimRegistry.spendingScriptHash !== deployedClaimRegistryHash) {
+    throw new Error(
+      `Claim-registry script hash mismatch: deployment=${deployedClaimRegistryHash}, derived=${claimRegistry.spendingScriptHash}.`,
+    );
+  }
+  if (
+    preparedClaimRegistryMutation !== undefined &&
+    claimRegistryEvidence !== undefined
+  ) {
+    throw new Error(
+      "Init accepts either one authenticated prepared claim-registry mutation or raw claim evidence, not both.",
+    );
+  }
+  const claimRegistryMutation =
+    preparedClaimRegistryMutation ??
+    (await prepareClaimRegistryMutationV1({
+      lucid,
+      claimRegistryAddress: claimRegistry.spendingScriptAddress,
+      claimRegistryScript: claimRegistry.spendingScript,
+      claimRegistryReferenceUtxo: witnessReferenceScripts?.claimRegistrySpend,
+      hubOraclePolicyId,
+      computationThreadPolicyId,
+      categoryId: category.categoryId,
+      headerHash: resolvedHeaderHash,
+      kind: "open",
+      evidence: claimRegistryEvidence,
+    }));
+  if (
+    claimRegistryMutation.kind !== "open" ||
+    claimRegistryMutation.claimId !== computationThreadAssetName ||
+    claimRegistryMutation.predecessorDatum.computation_thread_policy_id !==
+      computationThreadPolicyId ||
+    claimRegistryMutation.registryScript.type !==
+      claimRegistry.spendingScript.type ||
+    claimRegistryMutation.registryScript.script !==
+      claimRegistry.spendingScript.script
+  ) {
+    throw new Error(
+      "Prepared claim-registry Open mutation does not match this deployment/category/header Init.",
+    );
+  }
   const phasMembershipScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PHAS_MEMBERSHIP_WITHDRAW_TITLE),
@@ -436,8 +514,10 @@ export const submitInit = async ({
       { [computationThreadUnit]: 1n },
     )
     .addSignerKey(signer.paymentKeyHash);
-  const tx = phasMembershipCarriage.attach(
-    computationThreadMintCarriage.attach(chainedTx),
+  const tx = claimRegistryMutation.apply(
+    phasMembershipCarriage.attach(
+      computationThreadMintCarriage.attach(chainedTx),
+    ),
   );
 
   const unsigned = await tx.complete({ localUPLCEval: true });
@@ -445,7 +525,33 @@ export const submitInit = async ({
     throw new Error("BuildTxWithRedeemer did not resolve init output index.");
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: [
+      workflowReferenceScriptV1({
+        role: "V1 fraud-proof computation-thread minting",
+        utxo: witnessReferenceScripts?.computationThreadMint,
+        expectedScript: computationThreadMintingScript,
+      }),
+      workflowReferenceScriptV1({
+        role: "membership proof withdrawal",
+        utxo: witnessReferenceScripts?.phasMembershipWithdraw,
+        expectedScript: phasMembershipScript,
+      }),
+      workflowReferenceScriptV1({
+        role: "claim-registry spending",
+        utxo: claimRegistryMutation.referenceScriptUtxo,
+        expectedScript: claimRegistry.spendingScript,
+      }),
+    ],
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw new Error(
+      `Provider returned transaction hash ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

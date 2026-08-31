@@ -26,15 +26,22 @@
  * `tests/helpers/canonical-block-evidence-fixture-v1.ts` hard-wires an empty
  * deposit source set.
  */
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data, toUnit, type UTxO } from "@lucid-evolution/lucid";
+import {
+  Data,
+  type LucidEvolution,
+  toUnit,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import type { CanonicalBlockEvidenceV1 } from "../src/evidence/canonical-block-evidence-v1.js";
 import {
   classifyFabricatedDepositFaultV1,
   fabricatedDepositBlockEvidenceFromVerifiedPayloadV1,
@@ -50,6 +57,12 @@ import { authenticateFabricatedDepositEventUtxoV1 } from "../src/submit-fabricat
 import { deriveFabricatedDepositStep03HandoffV1 } from "../src/submit-fabricated-deposit-step-03.js";
 import { assertFabricatedDepositStep04FinalizableV1 } from "../src/submit-fabricated-deposit-step-04.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
+import {
+  createProductionFabricatedDepositEvidenceAuthorityV1,
+  PRODUCTION_FABRICATED_DEPOSIT_ARTIFACT_V1,
+  type ProductionFabricatedDepositArtifactV1,
+  requireProductionFabricatedDepositArtifactV1,
+} from "../src/workflow/production-fabricated-deposit-evidence-v1.js";
 import {
   authenticatedHeaderObservationV1,
   buildCanonicalBlockFixtureV1,
@@ -740,6 +753,171 @@ describe("Q39 fabricated-deposit L1 witness authentication", () => {
         name: "FabricatedDepositRejectionV1",
         code: "event_not_due_for_block",
       });
+    }
+  });
+});
+
+describe("Q39 fabricated-deposit production evidence authority", () => {
+  const artifactDigestForTest = (
+    value: Omit<ProductionFabricatedDepositArtifactV1, "artifactDigest">,
+  ): string =>
+    createHash("sha256")
+      .update(PRODUCTION_FABRICATED_DEPOSIT_ARTIFACT_V1)
+      .update("\0")
+      .update(value.headerHash)
+      .update("\0")
+      .update(value.owner)
+      .update("\0")
+      .update(value.depositIndex.toString())
+      .update("\0")
+      .update(JSON.stringify(value.depositInclusion))
+      .update("\0")
+      .update(JSON.stringify(value.authenticContent))
+      .update("\0")
+      .update(JSON.stringify(value.l1Evidence))
+      .digest("hex");
+
+  const canonicalEvidence = async (
+    fixture: DepositsBlockFixtureV1,
+  ): Promise<CanonicalBlockEvidenceV1> => {
+    const evidence = await fabricatedDepositBlockEvidenceFromVerifiedPayloadV1({
+      observation: fixture.observation,
+      payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
+      daProvenance: DA_PROVENANCE,
+      minimumConfirmationDepth: 1,
+    });
+    const deposits = evidence.entries.map(([keyCbor, valueCbor]) => ({
+      key: Data.from(keyCbor, SDK.OutputReference),
+      value: Data.from(valueCbor, SDK.DepositInfo),
+      keyBytes: Buffer.from(keyCbor, "hex"),
+      valueBytes: Buffer.from(valueCbor, "hex"),
+    }));
+    return {
+      ...evidence,
+      observation: fixture.observation,
+      header: fixture.header,
+      reconstruction: { deposits },
+    } as unknown as CanonicalBlockEvidenceV1;
+  };
+
+  it("derives an absence fault from concrete L1 state and rejects artifact tampering", async () => {
+    const fixture = await buildDepositsBlockFixtureV1({ leaves: [FI_LEAF] });
+    const authority = createProductionFabricatedDepositEvidenceAuthorityV1({
+      lucid: {
+        utxosByOutRef: async () => [
+          syntheticUtxo({
+            txIdByte: 0x5c,
+            outputIndex: 0,
+            datum: "d87980",
+            assets: {},
+          }),
+        ],
+      } as unknown as LucidEvolution,
+      network: "Preview",
+      hubOraclePolicyId: h28(0x16),
+      minimumConfirmationDepth: 1,
+    });
+    const evidence = await canonicalEvidence(fixture);
+    const detections = await authority.detect(evidence, h28(0x44));
+    expect(detections).toHaveLength(1);
+    expect(detections[0]!.detection.violationId).toBe("fabricated-deposit");
+    expect(detections[0]!.artifact.l1Evidence).toEqual({
+      kind: "absent_identity",
+      unspentOutRef: `${FABRICATED_DEPOSIT_ID.transactionId}#0`,
+    });
+    await expect(
+      authority.readmit({
+        ...detections[0]!.artifact,
+        depositIndex: 1,
+      }),
+    ).rejects.toThrow(/digest mismatch/u);
+    const { artifactDigest: _digest, ...body } = detections[0]!.artifact;
+    const substitutedBody = {
+      ...body,
+      l1Evidence: {
+        kind: "absent_identity" as const,
+        unspentOutRef: `${h32(0x77)}#0`,
+      },
+    };
+    await expect(
+      authority.readmit({
+        ...substitutedBody,
+        artifactDigest: artifactDigestForTest(substitutedBody),
+      }),
+    ).rejects.toThrow(/current L1/u);
+    await expect(
+      authority.readmit({ ...detections[0]!.artifact, extra: true }),
+    ).rejects.toThrow(/unknown, missing, or non-string/u);
+    await expect(
+      authority.readmit(
+        Object.assign(Object.create(null), detections[0]!.artifact),
+      ),
+    ).rejects.toThrow(/unknown, missing, or non-string/u);
+    expect(() =>
+      requireProductionFabricatedDepositArtifactV1(
+        { ...detections[0]!.artifact },
+        h28(0x44),
+        fixture.headerHash,
+      ),
+    ).toThrow(/not re-authenticated/u);
+  });
+
+  it("returns no detection for an authentic due event whose content matches the block", async () => {
+    const fixture = await buildDepositsBlockFixtureV1({
+      leaves: [
+        { key: KEY_AUTHENTIC_DEPOSIT_ID, value: VALUE_AUTHENTIC_DEPOSIT_INFO },
+      ],
+    });
+    const hubUnit = toUnit(h28(0x16), SDK.HUB_ORACLE_ASSET_NAME);
+    const hub = {
+      ...hubOracleUtxoFixture(),
+      assets: { lovelace: 5_000_000n, [hubUnit]: 1n },
+    };
+    const event = depositEventUtxoFixture();
+    const authority = createProductionFabricatedDepositEvidenceAuthorityV1({
+      lucid: {
+        utxosByOutRef: async () => [],
+        utxosAtWithUnit: async (_address: string, unit: string) =>
+          unit === hubUnit ? [hub] : [event],
+      } as unknown as LucidEvolution,
+      network: "Preview",
+      hubOraclePolicyId: h28(0x16),
+      minimumConfirmationDepth: 1,
+    });
+    expect(
+      await authority.detect(await canonicalEvidence(fixture), h28(0x44)),
+    ).toEqual([]);
+  });
+
+  it("fails closed when a spent identity has no live event marker, whether arbitrary or historically consumed", async () => {
+    const hubUnit = toUnit(h28(0x16), SDK.HUB_ORACLE_ASSET_NAME);
+    const hub = {
+      ...hubOracleUtxoFixture(),
+      assets: { lovelace: 5_000_000n, [hubUnit]: 1n },
+    };
+    const authority = createProductionFabricatedDepositEvidenceAuthorityV1({
+      lucid: {
+        utxosByOutRef: async () => [],
+        utxosAtWithUnit: async (_address: string, unit: string) =>
+          unit === hubUnit ? [hub] : [],
+      } as unknown as LucidEvolution,
+      network: "Preview",
+      hubOraclePolicyId: h28(0x16),
+      minimumConfirmationDepth: 1,
+    });
+    for (const leaves of [
+      [FI_LEAF],
+      [
+        {
+          key: KEY_AUTHENTIC_DEPOSIT_ID,
+          value: VALUE_AUTHENTIC_DEPOSIT_INFO,
+        },
+      ],
+    ]) {
+      const fixture = await buildDepositsBlockFixtureV1({ leaves });
+      await expect(
+        authority.detect(await canonicalEvidence(fixture), h28(0x44)),
+      ).rejects.toThrow(/requires exactly one current L1 output/u);
     }
   });
 });

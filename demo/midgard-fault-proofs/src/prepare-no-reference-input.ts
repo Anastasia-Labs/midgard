@@ -42,6 +42,7 @@ import {
 } from "./ne-proofs.js";
 import { ledgerKeyBytesHex } from "./ne-submit-step-03.js";
 import {
+  deriveL2TransactionSourceCborV1,
   type FetchLike,
   fetchNodeBlockTransactions,
   type NodeTransactionPayload,
@@ -93,6 +94,7 @@ export type PreparedNriTxInclusionJson = {
   readonly nativeTxId: string;
   readonly nativeTx: NativeTxCompactData;
   readonly nativeTxCompactCbor: string;
+  readonly l2TransactionSourceCbor: string;
   // Raw transactions MPF root the membership proof opens; authenticated on-chain
   // against the header's counted `transactions_root`.
   readonly transactionsPhasRoot: string;
@@ -131,6 +133,7 @@ type DecodedTx = {
   readonly nodeTxId: string;
   readonly nativeTxCompact: NativeTxCompactData;
   readonly nativeCompactCbor: string;
+  readonly l2TransactionSourceCbor: string;
   readonly referenceInputs: readonly MidgardTxInput[];
 };
 
@@ -163,6 +166,9 @@ const decodeTx = (payload: NodeTransactionPayload): DecodedTx => {
     nativeCompactCbor: encodeMidgardNativeTxCompactV1(
       nativeTx.compact,
     ).toString("hex"),
+    l2TransactionSourceCbor: deriveL2TransactionSourceCborV1(
+      Buffer.from(txCbor, "hex"),
+    ),
     referenceInputs: spendInputsWitnessFromCbors(
       referenceInputCbors,
       "reference_inputs",
@@ -244,8 +250,8 @@ const resolveLedgerNonMembershipProof = async ({
 /**
  * Builds the four no-reference-input submit-step artifacts from a block the node
  * actually committed. The transactions trie is reconstructed with the node's
- * native encoding (`encodeMidgardNativeTxCompactV1` keyed by the raw 32-byte tx
- * id), so its root matches the committed `transactions_root` by construction.
+ * exact canonical `Data(L2TransactionSourceV1)` values keyed by raw tx id, so
+ * its root matches the committed `transactions_root` by construction.
  */
 export const prepareNoReferenceInputFromTransactions = async ({
   headerHash,
@@ -308,10 +314,10 @@ export const prepareNoReferenceInputFromTransactions = async ({
   const missingReferenceInput =
     bad.referenceInputs[resolvedBadReferenceInputIndex]!;
 
-  // --- Transactions trie (native encoding, matches the node) ----------------
+  // --- Transactions trie (exact source values, matches the node) ------------
   const txsEntries: TrieEntry[] = decoded.map((tx) => ({
     key: Buffer.from(tx.nodeTxId, "hex"),
-    value: Buffer.from(tx.nativeCompactCbor, "hex"),
+    value: Buffer.from(tx.l2TransactionSourceCbor, "hex"),
   }));
   const transactionsRoot = await computeTrieRoot(txsEntries);
   const txMembershipProofCbor = await buildMembershipProof(
@@ -381,6 +387,7 @@ export const prepareNoReferenceInputFromTransactions = async ({
       nativeTxId: bad.nodeTxId,
       nativeTx: bad.nativeTxCompact,
       nativeTxCompactCbor: bad.nativeCompactCbor,
+      l2TransactionSourceCbor: bad.l2TransactionSourceCbor,
       transactionsPhasRoot: transactionsRoot,
       txMembershipProofCbor,
     },

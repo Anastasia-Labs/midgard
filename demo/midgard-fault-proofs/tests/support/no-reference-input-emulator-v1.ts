@@ -47,6 +47,7 @@ import {
   parseSubmitStep01TxInclusion,
   type SubmitStep01TxInclusion,
 } from "../../src/submit-step-01.js";
+import { l2TransactionSourceCborV1 } from "./emulator/native-tx.js";
 import { decodingSubjectTransactionV1 } from "./native-script-decoding-emulator-v1.js";
 import { publishPlainReferenceScriptUtxo } from "./submit-init-emulator-shared.js";
 
@@ -172,17 +173,19 @@ export const buildNoReferenceInputFixtureV1 = async ({
   });
   const subjectTxId = noReferenceInputTxIdV1(subjectTx);
   const subjectCompactCbor = encodeMidgardNativeTxCompactV1(subjectTx.compact);
-  const companionCompactCbor = encodeMidgardNativeTxCompactV1(
-    companionTx.compact,
-  );
+  // The header's normative transactions MPF commits `Data(L2TransactionSourceV1)`
+  // per transaction id, not the bare compact CBOR, so the trie this fixture
+  // proves against must carry the same values step-01 authenticates.
+  const subjectSourceCbor = l2TransactionSourceCborV1(subjectTx);
+  const companionSourceCbor = l2TransactionSourceCborV1(companionTx);
   const txsEntries: readonly TrieEntry[] = [
     {
       key: Buffer.from(subjectTxId, "hex"),
-      value: Buffer.from(subjectCompactCbor),
+      value: Buffer.from(subjectSourceCbor, "hex"),
     },
     {
       key: Buffer.from(companionTxId, "hex"),
-      value: Buffer.from(companionCompactCbor),
+      value: Buffer.from(companionSourceCbor, "hex"),
     },
   ];
   const transactionsRoot = await computeTrieRoot(txsEntries);
@@ -214,6 +217,7 @@ export const buildNoReferenceInputFixtureV1 = async ({
       nativeTxId: subjectTxId,
       nativeTx: nativeTxFromCoreCompact(subjectTx.compact),
       nativeTxCompactCbor: subjectCompactCbor.toString("hex"),
+      l2TransactionSourceCbor: subjectSourceCbor,
       transactionsPhasRoot: transactionsRoot,
       txMembershipProofCbor,
     }),

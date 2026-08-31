@@ -71,6 +71,11 @@ import {
   selectFeeInput,
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptV1,
+} from "./workflow/transaction-boundary-v1.js";
 
 /** Which L1 witness the prover intends to submit. */
 export type FabricatedDepositEvidenceArmV1 =
@@ -202,6 +207,7 @@ export const submitFabricatedDepositStep02 = async ({
   threadOutRef,
   evidence,
   referenceScriptUtxo,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -211,6 +217,7 @@ export const submitFabricatedDepositStep02 = async ({
   readonly threadOutRef: string;
   readonly evidence: FabricatedDepositEvidenceArmV1;
   readonly referenceScriptUtxo: UTxO;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitFabricatedDepositStep02Result> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -376,7 +383,23 @@ export const submitFabricatedDepositStep02 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: [
+      workflowReferenceScriptV1({
+        role: "V1 fraud-proof fabricated-deposit step-02",
+        utxo: referenceScriptUtxo,
+        expectedScript: contracts.steps[1].spendingScript,
+      }),
+    ],
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw new Error(
+      `fabricated-deposit step-02 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

@@ -47,11 +47,19 @@ const placeholderZeroInput = "03".repeat(28);
 // (c3682abd… -> f030476f…), which is the applied trailing parameter of every
 // field-opening step — so all four applied hashes move even where a step's
 // compiled code did not. Same derivation route as #579's re-pin.
+// Re-pinned 2026-08-31: the flat-reversion wave's blueprint (rebuilt with
+// `aiken build --env testnet`, aiken v1.1.23+5adf783) recompiled the chain this
+// family applies over. Derived by running this suite's own producer with
+// `MIDGARD_PRINT_PROOF_FIT=1` (the `q13AppliedIdentities.stepHashes` line),
+// not read off an assertion diff. `Q13_CATALOGUE_ROOT` below moves with these
+// four, and was re-derived independently from the same producer line rather
+// than assumed — a stale pin hiding behind another failing pin is how #579
+// lost one.
 const Q13_APPLIED_STEP_HASHES = [
-  "8c426bee7326453d1c856a72a0629096fb0f28e632c3f50f8b63c5dc",
-  "b046488cf9b36b644d4d2daeed37b9b230e767598e3809657918afa1",
-  "72a31e5c880d0448a5c55a62acd82f7f87da55eaeb7d3b60b6d5f668",
-  "bede253420b1586d114c683b53aa97e303534e763dc75f1864afbe4f",
+  "bf69e5586f8e48812cba8a3149b9645e40c1e35cd284a54592d7ebcb",
+  "3871229d7b951d75261fb5a9ad3b74d4cef7691da42e0798e59075c2",
+  "cf16984c587118b05e6ae7e3bcac8118435f18dbdb5395a65475331c",
+  "1e0a104867231dddb650385d3e1c14644e4f8d74441e52fe87c503fe",
 ] as const;
 // Re-pinned 2026-08-05 (#544): the original-epoch root d88f9829…bcca394
 // (blueprint f5ae651e…, 380 validators) moved with the #521 renames — the
@@ -114,8 +122,14 @@ const Q13_APPLIED_STEP_HASHES = [
 // agrees independently between the SDK catalogue builder, the deployment
 // fixture, and inspect-contracts' derived fold. Re-pinned after merging the
 // six-stage lifecycle with mandatory published reference-script witnesses.
+// Re-pinned 2026-08-31 alongside `Q13_APPLIED_STEP_HASHES`: the root folds
+// every category's applied step-01 hash, so the wave's testnet-env blueprint
+// rebuild moves the fold. No category was added, removed or renumbered.
+// Derived by this suite's own producer with `MIDGARD_PRINT_PROOF_FIT=1`
+// (`q13AppliedIdentities.catalogueRoot`), and it agrees with the live
+// catalogue derivation asserted on the preceding line.
 const Q13_CATALOGUE_ROOT =
-  "0355d6f59476627a28a45d43dfe404d8ed66e3c6751435a9015bd2114f5f1305";
+  "914d498f053a2c9477cde569e7d5ac1b6fb2789f1c3a66feebebb026a63cb1bc";
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,

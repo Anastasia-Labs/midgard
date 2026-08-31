@@ -609,11 +609,19 @@ describe("invalid-signature emulator lifecycle", () => {
 
     // Plane two: a patched prover that bypasses the local guard reaches
     // step-02's `verify_ed25519_signature(...) == False` and dies there. The
-    // honest operator keeps its block. `Spend[0]` is the computation thread
-    // itself, so the crash is the step-02 spend validator's — not a mint
-    // policy's and not the builder's. The companion journey below runs this
-    // very driver against a genuinely invalid witness and it succeeds, which is
-    // what isolates the refusal to the signature check.
+    // honest operator keeps its block. The crash is a SPEND validator's, not a
+    // mint policy's and not the off-chain builder's.
+    //
+    // The absolute redeemer index is deliberately not asserted. The
+    // claim-registry close this step now carries spends the registry singleton
+    // alongside the computation thread, and the two script inputs sort against
+    // each other by out-ref — which the emulator re-derives on every run, so
+    // the thread lands on `Spend[0]` or `Spend[1]` depending on the run
+    // (measured 2026-08-31: two of three consecutive runs reported `Spend[0]`,
+    // the third `Spend[1]`). Pinning either number makes this row a coin flip.
+    // The companion journey below runs this very driver against a genuinely
+    // invalid witness and it succeeds, which is what isolates the refusal to
+    // the signature check.
     const refusal = await expectOnchainRefusalV1(() =>
       submitRawInvalidSignatureStep02V1({
         harness,
@@ -624,7 +632,8 @@ describe("invalid-signature emulator lifecycle", () => {
       }),
     );
     expect(refusal).toMatch(/failed script execution/u);
-    expect(refusal).toMatch(/Spend\[0\]/u);
+    expect(refusal).toMatch(/Spend\[\d+\]/u);
+    expect(refusal).not.toMatch(/Mint\[/u);
 
     // Nothing was minted and nothing was burned: the thread is still parked at
     // step-02 and no fraud-proof token exists.

@@ -22,14 +22,13 @@
  * `encode_midgard_tx_input` twin (`ledgerKeyBytesHex`) rather than taken from a
  * file. The prepared file supplies only the MPF proof itself.
  *
- * Proof carriage: this family's on-chain step-03 args carry the proof flat
- * (`non_membership_proof_in_ledger` plus its withdraw-redeemer index — see
- * `onchain/aiken/lib/midgard/fraud-proofs/no-reference-input/step-03.ak` and
- * `NoReferenceInputStep03ArgsSchema`). There is no `NonMembershipCarriage`
- * wrapper and therefore no published-chunk route to mirror.
+ * Proof carriage mirrors Q11 exactly: fitting proofs use the direct pexcludes
+ * withdrawal and larger proofs use authenticated published chunks through the
+ * shared `NonMembershipCarriage` ABI.
  */
 import {
   type MidgardTxInput,
+  type NonMembershipCarriage,
   NoReferenceInputStep03Datum,
   NoReferenceInputStep03SpendRedeemer,
   NoReferenceInputStep04Datum,
@@ -52,6 +51,14 @@ import {
   ledgerKeyBytesHex,
   PEXCLUDES_EXCLUSION_WITHDRAW_TITLE,
 } from "./ne-submit-step-03.js";
+import {
+  chunkedNonMembershipClaimRedeemer,
+  chunkedVerifyWithdrawalScript,
+  derivedChunkReferenceIndices,
+  type PublishedProofChunkV1,
+  requireBuiltChunkReferenceIndices,
+  walletInputsExcludingChunks,
+} from "./proof-chunk-carriage.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodeRawPexcludesProofRedeemer,
@@ -77,6 +84,11 @@ import {
   witnessSpendingValidatorCarriageV1,
   witnessWithdrawalValidatorCarriageV1,
 } from "./witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "./workflow/transaction-boundary-v1.js";
 
 export type SubmitNoReferenceInputStep03CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;
@@ -106,6 +118,8 @@ export type SubmitNoReferenceInputStep03Result = {
   readonly inputIndex: number;
   readonly outputIndex: number;
   readonly nonMembershipProofScriptRedeemerIndex: number;
+  readonly proofCarriage: "redeemer" | "published-chunks";
+  readonly publishedChunkOutRefs: readonly string[];
   readonly awaitedConfirmation: boolean;
 };
 
@@ -145,8 +159,10 @@ export const submitNoReferenceInputStep03 = async ({
   signer,
   threadOutRef,
   ledgerNonMembershipProofCbor,
+  publishedProofChunks,
   referenceScriptUtxo,
   witnessReferenceScripts,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -156,10 +172,13 @@ export const submitNoReferenceInputStep03 = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly ledgerNonMembershipProofCbor: string;
+  /** Authenticated proof chunks, in proof order, selected only after fit refusal. */
+  readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
   /** The mandatory published step-03 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNoReferenceInputStep03Result> => {
   const { noReferenceInputCategory, contracts } =
@@ -192,7 +211,14 @@ export const submitNoReferenceInputStep03 = async ({
   const proof = Data.from(ledgerNonMembershipProofCbor, Proof);
 
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const chunks = publishedProofChunks ?? [];
+  const carriedByChunks = chunks.length > 0;
+  const feeInput = selectFeeInput(
+    walletInputsExcludingChunks({
+      walletUtxos: await lucid.wallet().getUtxos(),
+      chunks,
+    }),
+  );
   const pexcludesScript: Script = {
     type: "PlutusV3",
     script: getCompiledScript(blueprint, PEXCLUDES_EXCLUSION_WITHDRAW_TITLE),
@@ -201,20 +227,37 @@ export const submitNoReferenceInputStep03 = async ({
     network,
     pexcludesScript,
   );
+  const chunkedVerifyScript = chunkedVerifyWithdrawalScript(blueprint);
+  const chunkedVerifyRewardAddress = phasMembershipRewardAddress(
+    network,
+    chunkedVerifyScript,
+  );
   const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
     script: steps[2].spendingScript,
     referenceUtxo: referenceScriptUtxo,
     label: "no-reference-input step 03 validator",
   });
-  const pexcludesCarriage = witnessWithdrawalValidatorCarriageV1({
-    script: pexcludesScript,
-    referenceUtxo: witnessReferenceScripts?.pexcludesWithdraw,
-    label: "no-reference-input step 03 pexcludes exclusion",
-  });
+  const nonMembershipCarriage = carriedByChunks
+    ? witnessWithdrawalValidatorCarriageV1({
+        script: chunkedVerifyScript,
+        referenceUtxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
+        label: "no-reference-input step 03 chunked verify",
+      })
+    : witnessWithdrawalValidatorCarriageV1({
+        script: pexcludesScript,
+        referenceUtxo: witnessReferenceScripts?.pexcludesWithdraw,
+        label: "no-reference-input step 03 pexcludes exclusion",
+      });
   const referenceInputs = [
+    ...chunks.map((chunk) => chunk.utxo),
     ...stepScriptCarriage.referenceInputs,
-    ...pexcludesCarriage.referenceInputs,
+    ...nonMembershipCarriage.referenceInputs,
   ];
+  const resolvedChunkIndices = derivedChunkReferenceIndices({
+    referenceInputs,
+    chunks,
+    label: "no-reference-input step 03",
+  });
   const step04Datum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
@@ -252,20 +295,39 @@ export const submitNoReferenceInputStep03 = async ({
       ),
       nonMembershipProofScriptRedeemerIndex: requireWithdrawalRedeemerIndex(
         ctx,
-        pexcludesRewardAddress,
+        carriedByChunks ? chunkedVerifyRewardAddress : pexcludesRewardAddress,
         "no-reference-input step 03 ledger non-membership",
       ),
     };
     resolvedLayout = layout;
+    requireBuiltChunkReferenceIndices({
+      ctx,
+      chunks,
+      derived: resolvedChunkIndices,
+      label: "no-reference-input step 03",
+    });
+    const carriage: NonMembershipCarriage = carriedByChunks
+      ? {
+          PublishedChunkNonMembership: [
+            {
+              ordered_chunk_reference_input_indices: resolvedChunkIndices,
+            },
+          ],
+        }
+      : {
+          RedeemerCarriedNonMembership: {
+            non_membership_proof: proof,
+            non_membership_proof_script_redeemer_index:
+              layout.nonMembershipProofScriptRedeemerIndex,
+          },
+        };
     return Data.to(
       {
         Continue: [
           {
             input_index: layout.inputIndex,
             output_index: layout.outputIndex,
-            non_membership_proof_in_ledger: proof,
-            non_membership_proof_script_redeemer_index:
-              layout.nonMembershipProofScriptRedeemerIndex,
+            non_membership_in_ledger: carriage,
           },
         ],
       },
@@ -284,27 +346,36 @@ export const submitNoReferenceInputStep03 = async ({
   // Without published witnesses this step reads nothing, and `readFrom([])`
   // is an error rather than a no-op, so the branch is on whether the
   // carriages produced reference inputs at all.
-  const tx = (
+  const base =
     referenceInputs.length === 0
       ? collected
-      : collected.readFrom([...referenceInputs])
-  )
-    .withdraw(
-      pexcludesRewardAddress,
-      0n,
-      encodeRawPexcludesProofRedeemer({
-        root: inputDatum.data.blocks_prev_utxos_root,
-        keyBytes,
-        nonMembershipProofCbor: ledgerNonMembershipProofCbor,
-      }),
-    )
-    .pay.ToContract(
+      : collected.readFrom([...referenceInputs]);
+  const withCarriage = carriedByChunks
+    ? base.withdraw(chunkedVerifyRewardAddress, 0n, ((_ctx) =>
+        chunkedNonMembershipClaimRedeemer({
+          merkleRoot: inputDatum.data.blocks_prev_utxos_root,
+          keyBytes,
+          orderedChunkReferenceInputIndices: resolvedChunkIndices,
+        })) satisfies BuildTxWithRedeemer)
+    : base.withdraw(
+        pexcludesRewardAddress,
+        0n,
+        encodeRawPexcludesProofRedeemer({
+          root: inputDatum.data.blocks_prev_utxos_root,
+          keyBytes,
+          nonMembershipProofCbor: ledgerNonMembershipProofCbor,
+        }),
+      );
+  const tx = withCarriage.pay
+    .ToContract(
       steps[3].spendingScriptAddress,
       { kind: "inline", value: step04Datum },
       threadAssets,
     )
     .addSignerKey(signer.paymentKeyHash);
-  const completedTx = pexcludesCarriage.attach(stepScriptCarriage.attach(tx));
+  const completedTx = nonMembershipCarriage.attach(
+    stepScriptCarriage.attach(tx),
+  );
   const unsigned = await completedTx.complete({ localUPLCEval: true });
   if (resolvedLayout === undefined) {
     throw new Error(
@@ -312,7 +383,37 @@ export const submitNoReferenceInputStep03 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof no-reference-input step-03",
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.noReferenceInput.steps[2].spendingScript,
+        },
+        {
+          role: carriedByChunks
+            ? "V1 MPF chunked-verify withdrawal"
+            : "V1 MPF pexcludes withdrawal",
+          utxo: carriedByChunks
+            ? witnessReferenceScripts?.chunkedVerifyWithdraw
+            : witnessReferenceScripts?.pexcludesWithdraw,
+          expectedScript: carriedByChunks
+            ? chunkedVerifyScript
+            : pexcludesScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw new Error(
+      `no-reference-input step-03 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }
@@ -335,6 +436,8 @@ export const submitNoReferenceInputStep03 = async ({
     nonMembershipProofScriptRedeemerIndex: Number(
       resolvedLayout.nonMembershipProofScriptRedeemerIndex,
     ),
+    proofCarriage: carriedByChunks ? "published-chunks" : "redeemer",
+    publishedChunkOutRefs: chunks.map((chunk) => outRefLabel(chunk.utxo)),
     awaitedConfirmation: awaitConfirmation,
   };
 };

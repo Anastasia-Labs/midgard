@@ -1,4 +1,5 @@
 /** Bind a committed field, adjudicate its envelope, and forward the verdict. */
+import { planMidgardFieldCarriageV1 } from "@al-ft/midgard-core";
 import {
   CanonicalDecodabilityStep01SpendRedeemer,
   CanonicalDecodabilityStep02Datum,
@@ -28,6 +29,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { faultProofRawFieldCarriageV1 } from "../field-opening-v1.js";
 import {
   chunkedMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
@@ -59,6 +61,11 @@ import {
   type FaultProofWitnessReferenceScriptsV1,
   witnessWithdrawalValidatorCarriageV1,
 } from "../witness-reference-scripts-v1.js";
+import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import {
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "../workflow/transaction-boundary-v1.js";
 import type { CanonicalDecodabilityContractsV1 } from "./contracts-v1.js";
 import { prepareCanonicalDecodabilityV1 } from "./prepare-canonical-decodability-v1.js";
 import {
@@ -103,8 +110,12 @@ export const submitCanonicalDecodabilityStep01 = async ({
   committedPreimage,
   witnessSet,
   publishedProofChunks,
+  publishedFieldCarriageUtxos,
+  fieldCertificateUtxo,
+  fieldCertificatePolicyId,
   referenceScriptUtxo,
   witnessReferenceScripts,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -120,10 +131,16 @@ export const submitCanonicalDecodabilityStep01 = async ({
   readonly committedPreimage: Uint8Array;
   readonly witnessSet?: NativeTxWitnessSetCompact;
   readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
+  /** Authenticated §8.7 raw field publications, in deterministic plan order. */
+  readonly publishedFieldCarriageUtxos?: readonly UTxO[];
+  /** Authenticated §8.6 certificate for a tier-3 malformed field. */
+  readonly fieldCertificateUtxo?: UTxO;
+  readonly fieldCertificatePolicyId?: string;
   /** Published step-01 reference script. Inline attachment is forbidden. */
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitCanonicalDecodabilityStep01Result> => {
   const { threadUtxo, threadToken } =
@@ -136,13 +153,6 @@ export const submitCanonicalDecodabilityStep01 = async ({
     });
   requireInitialStepDatum({ threadUtxo, signer });
   requireNativeTxMatchesCompactCbor(txInclusion);
-  const prepared = prepareCanonicalDecodabilityV1({
-    badTxId: txInclusion.nativeTxId,
-    nativeTxCompactCbor: txInclusion.nativeTxCompactCbor,
-    fieldIndex,
-    committedPreimage,
-    ...(witnessSet === undefined ? {} : { witnessSet }),
-  });
   const stepReference = requireCanonicalDecodabilityReferenceScriptV1({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[0].spendingScriptHash,
@@ -225,12 +235,39 @@ export const submitCanonicalDecodabilityStep01 = async ({
         referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
         label: `${STEP_LABEL} PHAS membership`,
       });
+  const fieldPlan = planMidgardFieldCarriageV1({
+    owner: Buffer.from(signer.paymentKeyHash, "hex"),
+    txId: Buffer.from(txInclusion.nativeTxId, "hex"),
+    fieldIndex,
+    preimage: Buffer.from(committedPreimage),
+  });
+  const fieldPublications = publishedFieldCarriageUtxos ?? [];
+  const expectedFieldPublications = fieldPlan.publications.length;
+  if (fieldPublications.length !== expectedFieldPublications) {
+    throw canonicalDecodabilitySubmitError(
+      `${STEP_LABEL} ${fieldPlan.tier} carriage requires exactly ${expectedFieldPublications.toString()} authenticated publication UTxOs, received ${fieldPublications.length.toString()}.`,
+    );
+  }
+  if (
+    (fieldPlan.tier === "Certified") !== (fieldCertificateUtxo !== undefined) ||
+    (fieldPlan.tier === "Certified") !==
+      (fieldCertificatePolicyId !== undefined)
+  ) {
+    throw canonicalDecodabilitySubmitError(
+      `${STEP_LABEL} only a Certified carriage may carry the exact certificate UTxO and policy id.`,
+    );
+  }
+  const fieldCarriageReferences = [
+    ...fieldPublications,
+    ...(fieldCertificateUtxo === undefined ? [] : [fieldCertificateUtxo]),
+  ];
   // The complete reference-input set must stand before chunk indices derive
   // from it; a partial set makes ref_input_index a per-run coin flip.
   const referenceInputs = [
     hubOracleUtxo,
     stateQueueBlockUtxo,
     ...chunks.map((chunk) => chunk.utxo),
+    ...fieldCarriageReferences,
     stepReference,
     ...inclusionCarriage.referenceInputs,
   ];
@@ -238,6 +275,21 @@ export const submitCanonicalDecodabilityStep01 = async ({
     referenceInputs,
     chunks,
     label: STEP_LABEL,
+  });
+  const prepared = prepareCanonicalDecodabilityV1({
+    badTxId: txInclusion.nativeTxId,
+    nativeTxCompactCbor: txInclusion.nativeTxCompactCbor,
+    fieldIndex,
+    committedPreimage,
+    ...(witnessSet === undefined ? {} : { witnessSet }),
+    carriage: faultProofRawFieldCarriageV1({
+      plan: fieldPlan,
+      referenceInputs,
+      ...(fieldCertificatePolicyId === undefined
+        ? {}
+        : { certificatePolicyId: fieldCertificatePolicyId }),
+      label: `${STEP_LABEL} committed field`,
+    }),
   });
   const step02Datum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: prepared.step02State },
@@ -276,7 +328,7 @@ export const submitCanonicalDecodabilityStep01 = async ({
         `${STEP_LABEL} state-queue node`,
       ),
       native_tx_id: txInclusion.nativeTxId,
-      native_tx_compact_cbor: txInclusion.nativeTxCompactCbor,
+      l2_transaction_source_cbor: txInclusion.l2TransactionSourceCbor,
       transactions_phas_root: txInclusion.transactionsPhasRoot,
     };
     requireBuiltChunkReferenceIndices({
@@ -324,7 +376,7 @@ export const submitCanonicalDecodabilityStep01 = async ({
         chunkedMembershipClaimRedeemer({
           merkleRoot: txInclusion.transactionsPhasRoot,
           keyBytes: txInclusion.nativeTxId,
-          valueBytes: txInclusion.nativeTxCompactCbor,
+          valueBytes: txInclusion.l2TransactionSourceCbor,
           orderedChunkReferenceInputIndices: resolvedChunkIndices,
         })) satisfies BuildTxWithRedeemer)
     : base.withdraw(
@@ -333,7 +385,7 @@ export const submitCanonicalDecodabilityStep01 = async ({
         encodeRawPhasMembershipProofRedeemer({
           root: txInclusion.transactionsPhasRoot,
           keyBytes: txInclusion.nativeTxId,
-          valueBytes: txInclusion.nativeTxCompactCbor,
+          valueBytes: txInclusion.l2TransactionSourceCbor,
           membershipProofCbor: txInclusion.txMembershipProofCbor,
         }),
       );
@@ -356,7 +408,36 @@ export const submitCanonicalDecodabilityStep01 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof canonical-decodability step-01",
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.steps[0].spendingScript,
+        },
+        {
+          role: "membership proof withdrawal",
+          utxo: witnessReferenceScripts?.phasMembershipWithdraw,
+          expectedScript: phasMembershipScript,
+        },
+        {
+          role: "V1 MPF chunked-verify withdrawal",
+          utxo: witnessReferenceScripts?.chunkedVerifyWithdraw,
+          expectedScript: chunkedVerifyScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw canonicalDecodabilitySubmitError(
+      `step-01 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

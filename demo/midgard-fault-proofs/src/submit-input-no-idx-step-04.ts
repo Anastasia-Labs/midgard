@@ -47,6 +47,11 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  type PreparedClaimRegistryMutationV1,
+  prepareDeploymentClaimRegistryMutationV1,
+  requirePreparedClaimRegistryMutationV1,
+} from "./claim-registry-transaction-v1.js";
+import {
   faultProofFieldOpeningV1,
   parseNativeTxCompactCborV1,
   planFaultProofFieldOpeningV1,
@@ -77,6 +82,11 @@ import {
   witnessMintingPolicyCarriageV1,
   witnessSpendingValidatorCarriageV1,
 } from "./witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "./workflow/transaction-boundary-v1.js";
 
 /** Prepared outputs preimage produced by `prepare-input-no-idx`. */
 export type SubmitInputNoIdxOutputsPreimage = {
@@ -331,8 +341,13 @@ export const submitInputNoIdxStep04 = async ({
   threadOutRef,
   outputsPreimage,
   nativeTxCompactCbor,
+  publishedCarriageUtxos,
+  certificateUtxo,
   referenceScriptUtxo,
   witnessReferenceScripts,
+  claimRegistryMutation,
+  publicationPreSubmitBoundary,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -344,10 +359,16 @@ export const submitInputNoIdxStep04 = async ({
   readonly outputsPreimage: SubmitInputNoIdxOutputsPreimage;
   /** The **producing** transaction's §2.5 compact structure, as committed. */
   readonly nativeTxCompactCbor: string;
+  readonly publishedCarriageUtxos?: readonly UTxO[];
+  readonly certificateUtxo?: UTxO;
   /** The mandatory published step-04 reference script. */
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  /** Pre-prepared claim-registry `CloseClaim`; self-prepared when omitted. */
+  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
+  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitInputNoIdxStep04Result> => {
   const { nonExistentInputNoIndexCategory, contracts } =
@@ -395,12 +416,32 @@ export const submitInputNoIdxStep04 = async ({
   // publishes nothing; tiers 2–3 publish raw carriage located by content
   // (§8.7), and a publication that already exists at this address is reused
   // rather than republished.
-  const carriageUtxos = await publishFaultProofFieldCarriageV1({
-    lucid,
-    signer,
-    planned,
-    publisherAddress: signer.address,
-    label: "Input-no-idx step 04 outputs",
+  const carriageUtxos =
+    publishedCarriageUtxos ??
+    (await publishFaultProofFieldCarriageV1({
+      lucid,
+      signer,
+      planned,
+      publisherAddress: signer.address,
+      label: "Input-no-idx step 04 outputs",
+      preSubmitBoundary: publicationPreSubmitBoundary,
+    }));
+  const resolvedClaimRegistryMutation = requirePreparedClaimRegistryMutationV1({
+    mutation:
+      claimRegistryMutation ??
+      (await prepareDeploymentClaimRegistryMutationV1({
+        lucid,
+        claimRegistryReferenceUtxo: witnessReferenceScripts?.claimRegistrySpend,
+        blueprint,
+        deploymentInfo,
+        network,
+        computationThreadPolicyId: contracts.computationThread.policyId,
+        claimId: threadToken.assetName,
+        kind: "close",
+      })),
+    kind: "close",
+    claimId: threadToken.assetName,
+    label: "input-no-idx step 04",
   });
   const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
     script: chain.steps[3].spendingScript,
@@ -419,13 +460,16 @@ export const submitInputNoIdxStep04 = async ({
   });
   const referenceInputs = [
     ...carriageUtxos,
+    ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     ...stepScriptCarriage.referenceInputs,
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
+    ...resolvedClaimRegistryMutation.referenceInputs,
   ];
   const outputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
     referenceInputs,
+    certificatePolicyId: contracts.fieldPreimageCertificate.policyId,
     label: "Input-no-idx step 04 outputs",
   });
   // §5.2: the count the verdict rests on is the door's authenticated one.
@@ -444,7 +488,9 @@ export const submitInputNoIdxStep04 = async ({
   // A fresh tier-2 publication carries enough min-ADA to top the fee sort;
   // never spend anything this transaction must read.
   const feeInput = selectFeeInput(
-    carriageUtxos.reduce<readonly UTxO[]>(
+    [...carriageUtxos, ...resolvedClaimRegistryMutation.referenceInputs].reduce<
+      readonly UTxO[]
+    >(
       (candidates, utxo) => excludeUtxo(candidates, utxo),
       await lucid.wallet().getUtxos(),
     ),
@@ -509,7 +555,9 @@ export const submitInputNoIdxStep04 = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const completedTx = fraudProofMintCarriage.attach(
-    computationThreadMintCarriage.attach(stepScriptCarriage.attach(tx)),
+    computationThreadMintCarriage.attach(
+      stepScriptCarriage.attach(resolvedClaimRegistryMutation.apply(tx)),
+    ),
   );
 
   const unsigned = await completedTx.complete({ localUPLCEval: true });
@@ -526,7 +574,42 @@ export const submitInputNoIdxStep04 = async ({
     computationThreadMintRedeemerIndex,
   };
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof non-existent-input-no-index step-04",
+          utxo: referenceScriptUtxo,
+          expectedScript:
+            contracts.nonExistentInputNoIndex.steps[3].spendingScript,
+        },
+        {
+          role: "V1 fraud-proof computation-thread minting",
+          utxo: witnessReferenceScripts?.computationThreadMint,
+          expectedScript: contracts.computationThread.mintingScript,
+        },
+        {
+          role: "V1 fraud-proof token minting",
+          utxo: witnessReferenceScripts?.fraudProofMint,
+          expectedScript: contracts.fraudProof.mintingScript,
+        },
+        {
+          role: "claim-registry spending",
+          utxo: resolvedClaimRegistryMutation.referenceScriptUtxo,
+          expectedScript: resolvedClaimRegistryMutation.registryScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw new Error(
+      `input-no-idx step-04 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

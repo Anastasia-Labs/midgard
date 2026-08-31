@@ -82,6 +82,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { prepareFamilyClaimRegistryMutationV1 } from "../../src/claim-registry-transaction-v1.js";
 import type { NativeScriptDecodingContractsV1 } from "../../src/native-script-decoding/contracts-v1.js";
 import type { NativeScriptDecodingLedgerTrieHandleV1 } from "../../src/native-script-decoding/evidence-v1.js";
 import { nativeScriptDecodingOutpointKeyV1 } from "../../src/native-script-decoding/evidence-v1.js";
@@ -402,9 +403,8 @@ export const buildDecodingBlockFixtureV1 = async ({
     subject.kind === "normal" ? "L2Transaction" : "ForcedTransaction";
 
   if (subject.kind === "normal") {
-    // The DA payload files the §2.4 proof-source triple, while the header's
-    // `transactions_root` commits the compact bytes step-01's inclusion proof
-    // opens (`buildCanonicalBlockFixtureV1`'s `nativeCompact` mode).
+    // The DA payload and header commit the same exact canonical
+    // `Data(L2TransactionSourceV1)` leaf value.
     const source =
       deriveMidgardNativeTxProofSourceV1FromCanonicalCbor(canonicalCbor);
     const sourceValue: SDK.L2TransactionSourceV1 = {
@@ -459,13 +459,6 @@ export const buildDecodingBlockFixtureV1 = async ({
     eventKey = { ForcedTransactionEventKey: { tx_order_id: subject.orderKey } };
   }
 
-  // The header commits the compact bytes for L2 transactions, because that is
-  // what step-01's `transactions_root` inclusion proof opens; the payload's
-  // own entries stay the §2.4 proof-source triples the reconstruction reads.
-  const nativeCompactTransactions: SDK.DaPayloadEntry[] =
-    subject.kind === "normal"
-      ? [[nativeTxId, compactCbor.toString("hex")]]
-      : [];
   const normalTransactionsForInclusion: MidgardNativeTxFullV1[] =
     subject.kind === "normal" ? [subject.nativeTx] : [];
 
@@ -524,10 +517,6 @@ export const buildDecodingBlockFixtureV1 = async ({
       ...transactionPreimages,
       [decoyId, decoyCanonical.toString("hex")],
     ];
-    nativeCompactTransactions.push([
-      decoyId,
-      encodeMidgardNativeTxCompactV1(decoy.compact).toString("hex"),
-    ]);
     normalTransactionsForInclusion.push(decoy);
     events.push({
       eventKey: { L2TransactionEventKey: { tx_id: decoyId } },
@@ -586,10 +575,6 @@ export const buildDecodingBlockFixtureV1 = async ({
     );
   }
 
-  const nativeCompactRoot = await buildCountedRoot(
-    SDK.ROOT_DOMAINS.transactionsV1,
-    bufferEntries(nativeCompactTransactions),
-  );
   const utxoRoot = await keyValuePhasRootWithCount([]);
   const roots = {
     withdrawals: await buildCountedRoot(SDK.ROOT_DOMAINS.withdrawals, []),
@@ -629,7 +614,7 @@ export const buildDecodingBlockFixtureV1 = async ({
     utxosRoot: utxoRoot.root,
     withdrawalsRoot: roots.withdrawals.root,
     forcedTransactionsRoot: roots.forcedTransactions.root,
-    transactionsRoot: nativeCompactRoot.root,
+    transactionsRoot: roots.transactions.root,
     depositsRoot: roots.deposits.root,
     transitionTraceRoot: roots.transitionTrace.root,
     eventToStepRoot: roots.eventToStep.root,
@@ -646,28 +631,11 @@ export const buildDecodingBlockFixtureV1 = async ({
     protocolVersion: BigInt(MIDGARD_PROTOCOL_V1_VERSION),
   };
   const headerHash = await Effect.runPromise(SDK.hashBlockHeaderV1(header));
-  // The two `transactions_root` conventions this repo already carries pull in
-  // opposite directions, and a decoding thread needs both: step-01's on-chain
-  // inclusion proof opens `(tx_id -> compact_cbor)` (the
-  // `nativeCompact` convention `buildCanonicalBlockFixtureV1` documents),
-  // while `reconstructDaPayloadV1` re-derives the root over the payload's
-  // §2.4 proof-source leaves and refuses a header that disagrees. Step-02
-  // opens only the transition-trace and event-to-step roots, which are
-  // identical under both, so the fixture reconstructs against the
-  // payload-source twin and then re-points the reconstruction at the header
-  // the block actually commits. Every root the family opens is unchanged.
-  const sourceHeader: SDK.HeaderV1 = {
-    ...header,
-    transactionsRoot: roots.transactions.root,
-  };
-  const sourceHeaderHash = await Effect.runPromise(
-    SDK.hashBlockHeaderV1(sourceHeader),
-  );
   const payload: SDK.DaPayloadV1 = {
     version: SDK.DA_PAYLOAD_V1_VERSION,
     block_body: {
-      header_hash: sourceHeaderHash,
-      header: sourceHeader,
+      header_hash: headerHash,
+      header,
       utxos: [],
       withdrawals: [],
       forced_transactions: sorted(forcedTransactions),
@@ -686,40 +654,33 @@ export const buildDecodingBlockFixtureV1 = async ({
     SDK.encodeDaPayloadV1(payload),
     { mode: "identity" },
   );
-  const sourceReconstruction = await reconstructDaPayloadV1({
+  const reconstruction = await reconstructDaPayloadV1({
     payloadEnvelopeCbor,
-    expectedHeaderHash: sourceHeaderHash,
-    committedHeader: sourceHeader,
+    expectedHeaderHash: headerHash,
+    committedHeader: header,
   });
-  const reconstruction: TransitionTraceReconstruction = {
-    ...sourceReconstruction,
-    header,
-    headerHash,
-    roots: {
-      ...sourceReconstruction.roots,
-      transactionsRoot: header.transactionsRoot,
-    },
-    rootData: {
-      ...sourceReconstruction.rootData,
-      transactions: nativeCompactRoot,
-    },
-  };
 
   const txInclusions = new Map<string, SubmitStep01TxInclusion>();
   for (const nativeTx of normalTransactionsForInclusion) {
     const includedId = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
     const includedCompact = encodeMidgardNativeTxCompactV1(nativeTx.compact);
+    const transactionEntry = transactions.find(([key]) => key === includedId);
+    if (transactionEntry === undefined) {
+      throw new Error(`Missing retained transaction source for ${includedId}`);
+    }
+    const includedSourceCbor = Buffer.from(transactionEntry[1], "hex");
     const membership = await keyValuePhasProof(
-      { ...nativeCompactRoot, root: nativeCompactRoot.phasRoot },
+      { ...roots.transactions, root: roots.transactions.phasRoot },
       Buffer.from(includedId, "hex"),
-      includedCompact,
+      includedSourceCbor,
     );
     const proofCbor = Data.to(membership, SDK.Proof);
     txInclusions.set(includedId, {
       nativeTxId: includedId,
       nativeTx: nativeTxFromCoreCompact(nativeTx.compact),
       nativeTxCompactCbor: includedCompact.toString("hex"),
-      transactionsPhasRoot: nativeCompactRoot.phasRoot,
+      l2TransactionSourceCbor: includedSourceCbor.toString("hex"),
+      transactionsPhasRoot: roots.transactions.phasRoot,
       txMembershipProof: membership,
       txMembershipProofCbor: proofCbor,
     });
@@ -737,7 +698,7 @@ export const buildDecodingBlockFixtureV1 = async ({
     txInclusion,
     txInclusions,
     forcedOrderKey: subject.kind === "forced" ? subject.orderKey : null,
-    transactionsPhasRoot: nativeCompactRoot.phasRoot,
+    transactionsPhasRoot: roots.transactions.phasRoot,
   };
 };
 
@@ -1158,6 +1119,7 @@ export const submitRawDecodingCancelV1 = async ({
   threadAssetName,
   referenceScriptUtxo,
   computationThreadReferenceUtxo,
+  claimRegistryReference,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: NativeScriptDecodingContractsV1;
@@ -1168,9 +1130,25 @@ export const submitRawDecodingCancelV1 = async ({
   readonly threadAssetName: string;
   readonly referenceScriptUtxo: UTxO;
   readonly computationThreadReferenceUtxo: UTxO;
+  /** Published `claim_registry.spend` reference script from the harness roster. */
+  readonly claimRegistryReference: UTxO;
 }): Promise<string> => {
   signer.selectWallet(lucid);
-  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
+  const claimRegistryMutation = await prepareFamilyClaimRegistryMutationV1({
+    lucid,
+    claimRegistry: contracts.claimRegistry,
+    claimRegistryReferenceUtxo: claimRegistryReference,
+    hubOraclePolicyId: contracts.hubOraclePolicyId,
+    computationThreadPolicyId: contracts.computationThread.policyId,
+    claimId: threadAssetName,
+    kind: "cancel",
+  });
+  const feeInput = selectFeeInput(
+    claimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
+      (utxos, reference) => excludeUtxo(utxos, reference),
+      await lucid.wallet().getUtxos(),
+    ),
+  );
   const spendRedeemer = ((ctx) => {
     requireOwnSpendPurpose(ctx, threadUtxo, "raw decoding cancel");
     return Data.to(
@@ -1226,7 +1204,9 @@ export const submitRawDecodingCancelV1 = async ({
     .mintAssets({ [threadUnit]: -1n }, burnRedeemer)
     .addSignerKey(signer.paymentKeyHash)
     .readFrom([stepReference, ...computationThreadCarriage.referenceInputs]);
-  const tx = computationThreadCarriage.attach(base);
+  const tx = computationThreadCarriage.attach(
+    claimRegistryMutation.apply(base),
+  );
   const unsigned = await tx.complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
@@ -1245,11 +1225,18 @@ export const submitRawDecodingCancelV1 = async ({
 export const fundDecodingOutsiderV1 = async (
   harness: Awaited<ReturnType<typeof makeDecodingEmulatorHarnessV1>>,
 ): Promise<void> => {
+  // Both of the outsider's addresses are funded. `selectWallet.fromSeed`
+  // derives the seed's base address while `resolveProverSigner` derives its
+  // enterprise address, and the raw drivers re-select through the signer, so
+  // funding only the base address strands every transaction the outsider
+  // builds after that call.
   const outsiderAddress = await harness.outsiderLucid.wallet().address();
   const funding = await harness.funderLucid
     .newTx()
     .pay.ToAddress(outsiderAddress, { lovelace: 1_000_000_000n })
     .pay.ToAddress(outsiderAddress, { lovelace: 1_000_000_000n })
+    .pay.ToAddress(harness.outsiderSigner.address, { lovelace: 1_000_000_000n })
+    .pay.ToAddress(harness.outsiderSigner.address, { lovelace: 1_000_000_000n })
     .complete();
   const signed = await funding.sign.withWallet().complete();
   await harness.funderLucid.awaitTx(await signed.submit());

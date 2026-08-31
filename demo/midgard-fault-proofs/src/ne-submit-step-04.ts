@@ -32,8 +32,14 @@ import {
   type Script,
   toUnit,
   type UTxO,
+  validatorToScriptHash,
 } from "@lucid-evolution/lucid";
 
+import {
+  type PreparedClaimRegistryMutationV1,
+  prepareDeploymentClaimRegistryMutationV1,
+} from "./claim-registry-transaction-v1.js";
+import { parseContractDeploymentInfo } from "./inspect-contracts.js";
 import { rejectRetiredUnauthenticatedSubmissionRouteV1 } from "./legacy-submission-boundary-v1.js";
 import { PEXCLUDES_EXCLUSION_WITHDRAW_TITLE } from "./ne-submit-step-03.js";
 import {
@@ -54,11 +60,13 @@ import {
   parseOutRef,
   phasMembershipRewardAddress,
   readJsonFile,
+  requireDeploymentScriptHash,
   type ResolvedProverSigner,
   resolveNonExistentInputDeploymentContracts,
   resolveProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
+import { excludeUtxo } from "./spend-input-witness.js";
 import {
   requireComputationThreadToken,
   selectFeeInput,
@@ -70,6 +78,11 @@ import {
   witnessSpendingValidatorCarriageV1,
   witnessWithdrawalValidatorCarriageV1,
 } from "./witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "./workflow/transaction-boundary-v1.js";
 
 export type NeSubmitStep04CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;
@@ -150,6 +163,8 @@ export const neSubmitStep04 = async ({
   publishedProofChunks,
   referenceScriptUtxo,
   witnessReferenceScripts,
+  claimRegistryMutation,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -169,6 +184,9 @@ export const neSubmitStep04 = async ({
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  /** Exact live claim-registry Close resolved at this terminal action. */
+  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<NeSubmitStep04Result> => {
   const { nonExistentInputCategory, contracts } =
@@ -196,17 +214,53 @@ export const neSubmitStep04 = async ({
     categoryId: nonExistentInputCategory.categoryId,
     categoryLabel: "non-existent-input",
   });
+  const resolvedClaimRegistryMutation =
+    claimRegistryMutation ??
+    (await prepareDeploymentClaimRegistryMutationV1({
+      lucid,
+      claimRegistryReferenceUtxo: witnessReferenceScripts?.claimRegistrySpend,
+      blueprint,
+      deploymentInfo,
+      network,
+      computationThreadPolicyId: contracts.computationThread.policyId,
+      claimId: threadToken.assetName,
+      kind: "close",
+    }));
+  const deployedClaimRegistryHash = requireDeploymentScriptHash(
+    parseContractDeploymentInfo(deploymentInfo),
+    "claimRegistrySpend",
+  );
+  if (
+    resolvedClaimRegistryMutation.kind !== "close" ||
+    resolvedClaimRegistryMutation.claimId !== threadToken.assetName ||
+    resolvedClaimRegistryMutation.predecessorDatum
+      .computation_thread_policy_id !== contracts.computationThread.policyId ||
+    validatorToScriptHash(resolvedClaimRegistryMutation.registryScript) !==
+      deployedClaimRegistryHash ||
+    resolvedClaimRegistryMutation.referenceScriptUtxo.scriptRef == null ||
+    validatorToScriptHash(
+      resolvedClaimRegistryMutation.referenceScriptUtxo.scriptRef,
+    ) !== deployedClaimRegistryHash
+  ) {
+    throw new Error(
+      "Non-existent-input terminal requires the exact deployment-bound claim-registry Close mutation.",
+    );
+  }
   const inputDatum = requireStep04Datum({ threadUtxo, signer });
   const proof = Data.from(txsNonMembershipProofCbor, Proof);
 
   signer.selectWallet(lucid);
   const chunks = publishedProofChunks ?? [];
   const carriedByChunks = chunks.length > 0;
+  const usableWalletUtxos = [
+    resolvedClaimRegistryMutation.registryUtxo,
+    ...resolvedClaimRegistryMutation.referenceInputs,
+  ].reduce<readonly UTxO[]>(
+    (candidates, utxo) => excludeUtxo(candidates, utxo),
+    await lucid.wallet().getUtxos(),
+  );
   const feeInput = selectFeeInput(
-    walletInputsExcludingChunks({
-      walletUtxos: await lucid.wallet().getUtxos(),
-      chunks,
-    }),
+    walletInputsExcludingChunks({ walletUtxos: usableWalletUtxos, chunks }),
   );
   const pexcludesScript: Script = {
     type: "PlutusV3",
@@ -255,6 +309,7 @@ export const neSubmitStep04 = async ({
     ...nonMembershipCarriage.referenceInputs,
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
+    ...resolvedClaimRegistryMutation.referenceInputs,
   ];
   const resolvedChunkIndices = derivedChunkReferenceIndices({
     referenceInputs,
@@ -423,10 +478,15 @@ export const neSubmitStep04 = async ({
     .addSignerKey(signer.paymentKeyHash);
   const completedTx = fraudProofMintCarriage.attach(
     computationThreadMintCarriage.attach(
-      nonMembershipCarriage.attach(stepScriptCarriage.attach(chained)),
+      nonMembershipCarriage.attach(
+        stepScriptCarriage.attach(resolvedClaimRegistryMutation.apply(chained)),
+      ),
     ),
   );
-  const unsigned = await completedTx.complete({ localUPLCEval: true });
+  const unsigned = await completedTx.complete({
+    localUPLCEval: true,
+    presetWalletInputs: usableWalletUtxos as UTxO[],
+  });
   if (
     spendLayout === undefined ||
     computationThreadMintRedeemerIndex === undefined
@@ -436,7 +496,52 @@ export const neSubmitStep04 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof non-existent-input step-04",
+          utxo: referenceScriptUtxo,
+          expectedScript: steps[3].spendingScript,
+        },
+        {
+          role: carriedByChunks
+            ? "V1 MPF chunked-verify withdrawal"
+            : "V1 MPF pexcludes withdrawal",
+          utxo: carriedByChunks
+            ? witnessReferenceScripts?.chunkedVerifyWithdraw
+            : witnessReferenceScripts?.pexcludesWithdraw,
+          expectedScript: carriedByChunks
+            ? chunkedVerifyScript
+            : pexcludesScript,
+        },
+        {
+          role: "V1 fraud-proof computation-thread minting",
+          utxo: witnessReferenceScripts?.computationThreadMint,
+          expectedScript: contracts.computationThread.mintingScript,
+        },
+        {
+          role: "V1 fraud-proof token minting",
+          utxo: witnessReferenceScripts?.fraudProofMint,
+          expectedScript: contracts.fraudProof.mintingScript,
+        },
+        {
+          role: "V1 claim-registry spending",
+          utxo: resolvedClaimRegistryMutation.referenceScriptUtxo,
+          expectedScript: resolvedClaimRegistryMutation.registryScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw new Error(
+      `non-existent-input step-04 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

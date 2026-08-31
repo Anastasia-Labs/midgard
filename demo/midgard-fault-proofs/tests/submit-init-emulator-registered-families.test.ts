@@ -49,6 +49,7 @@ import {
 import {
   buildRemovalDeploymentInfo,
   expectSingleUtxoWithUnit,
+  l2TransactionSourceCborV1,
   makeFaultProofEmulatorHarnessV1,
   makeNativeTx,
   network,
@@ -85,10 +86,14 @@ const buildSingleTxBlockFixture = async (
 ): Promise<SingleTxBlockFixture> => {
   const nativeTxId = computeMidgardNativeTxIdV1(nativeTx).toString("hex");
   const compactCbor = encodeMidgardNativeTxCompactV1(nativeTx.compact);
+  const l2TransactionSourceCbor = l2TransactionSourceCborV1(nativeTx);
   const store = new Store(undefined);
   await store.ready();
   const trie = new Trie(store);
-  await trie.insert(Buffer.from(nativeTxId, "hex"), compactCbor);
+  await trie.insert(
+    Buffer.from(nativeTxId, "hex"),
+    Buffer.from(l2TransactionSourceCbor, "hex"),
+  );
   const proof = await trie.prove(Buffer.from(nativeTxId, "hex"));
   const proofCbor = proof.toCBOR().toString("hex");
   const transactionsRoot = trieRootHex(trie);
@@ -100,6 +105,7 @@ const buildSingleTxBlockFixture = async (
       nativeTxId,
       nativeTx: nativeTxFromCoreCompact(nativeTx.compact),
       nativeTxCompactCbor: compactCbor.toString("hex"),
+      l2TransactionSourceCbor,
       transactionsPhasRoot: transactionsRoot,
       txMembershipProof: Data.from(proofCbor, Proof),
       txMembershipProofCbor: proofCbor,

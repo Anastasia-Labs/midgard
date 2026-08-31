@@ -4,6 +4,7 @@ import {
   FraudProofTokenDatum,
   FraudProofTokenMintRedeemer,
   MIDGARD_FIELD_INDEX_V1,
+  MISSING_NATIVE_SCRIPT_TX_DIRECT_WITNESS_LIMIT_V1,
   missingNativeScriptIsAbsentV1,
   MissingNativeScriptTxStep06Datum,
   MissingNativeScriptTxStep06SpendRedeemer,
@@ -24,6 +25,11 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
+  type PreparedClaimRegistryMutationV1,
+  prepareFamilyClaimRegistryMutationV1,
+  requirePreparedClaimRegistryMutationV1,
+} from "../claim-registry-transaction-v1.js";
+import {
   faultProofFieldOpeningV1,
   planFaultProofFieldOpeningV1,
   publishFaultProofFieldCarriageV1,
@@ -39,6 +45,11 @@ import {
   type FaultProofWitnessReferenceScriptsV1,
   witnessMintingPolicyCarriageV1,
 } from "../witness-reference-scripts-v1.js";
+import {
+  type FraudProofPreSubmitBoundaryV1,
+  reachFraudProofPreSubmitBoundaryV1,
+  workflowReferenceScriptsUsedByTransactionV1,
+} from "../workflow/transaction-boundary-v1.js";
 import type { MissingNativeScriptTxContractsV1 } from "./contracts-v1.js";
 import {
   missingNativeScriptTxStepLabelV1,
@@ -74,8 +85,13 @@ export const submitMissingNativeScriptTxStep06 = async ({
   witnessSet,
   scriptTxWitsItems,
   publishCarriage = false,
+  publishedCarriageUtxos,
+  certificateUtxo,
   referenceScriptUtxo,
   witnessReferenceScripts,
+  claimRegistryMutation,
+  publicationPreSubmitBoundary,
+  preSubmitBoundary,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -88,9 +104,18 @@ export const submitMissingNativeScriptTxStep06 = async ({
   /** Complete canonical per-item encodings from field 6. */
   readonly scriptTxWitsItems: readonly Uint8Array[];
   readonly publishCarriage?: boolean;
+  /** Pre-observed publications supplied by a journaled production action. */
+  readonly publishedCarriageUtxos?: readonly UTxO[];
+  /** Pre-observed tier-3 certificate supplied by its journaled mint action. */
+  readonly certificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
+  /** Production finalization atomically closes the live claim. */
+  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
+  /** Durable subaction seam for each prerequisite field-carriage publication. */
+  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMissingNativeScriptTxStep06Result> => {
   const { threadUtxo, threadToken } =
@@ -108,6 +133,18 @@ export const submitMissingNativeScriptTxStep06 = async ({
       schema: MissingNativeScriptTxStep06Datum,
       stepIndex: 5,
     });
+  if (state.phase !== "Ready") {
+    throw missingNativeScriptTxSubmitError(
+      "step-06 direct finalization requires the Ready phase.",
+    );
+  }
+  if (
+    scriptTxWitsItems.length > MISSING_NATIVE_SCRIPT_TX_DIRECT_WITNESS_LIMIT_V1
+  ) {
+    throw missingNativeScriptTxSubmitError(
+      `field-6 carries ${scriptTxWitsItems.length.toString()} witnesses; direct finalization is bounded at ${MISSING_NATIVE_SCRIPT_TX_DIRECT_WITNESS_LIMIT_V1.toString()} and the staged 06→07→08 driver is required.`,
+    );
+  }
   if (
     !missingNativeScriptIsAbsentV1({
       scriptTxWitsItems,
@@ -135,13 +172,16 @@ export const submitMissingNativeScriptTxStep06 = async ({
     );
   }
   signer.selectWallet(lucid);
-  const carriageUtxos = await publishFaultProofFieldCarriageV1({
-    lucid,
-    signer,
-    planned,
-    publisherAddress: signer.address,
-    label: `${STEP_LABEL} script witnesses`,
-  });
+  const carriageUtxos =
+    publishedCarriageUtxos ??
+    (await publishFaultProofFieldCarriageV1({
+      lucid,
+      signer,
+      planned,
+      publisherAddress: signer.address,
+      label: `${STEP_LABEL} script witnesses`,
+      preSubmitBoundary: publicationPreSubmitBoundary,
+    }));
   const stepReference = requireMissingNativeScriptTxReferenceScriptV1({
     utxo: referenceScriptUtxo,
     expectedScriptHash: contracts.steps[5].spendingScriptHash,
@@ -157,13 +197,34 @@ export const submitMissingNativeScriptTxStep06 = async ({
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: `${STEP_LABEL} fraud-proof mint`,
   });
+  // This step always burns the computation thread, so the claim-registry
+  // close is unconditional: `computation_thread.mint`'s Success arm requires
+  // the registry input whether or not the caller resolved one for us.
+  const closeMutation = requirePreparedClaimRegistryMutationV1({
+    mutation:
+      claimRegistryMutation ??
+      (await prepareFamilyClaimRegistryMutationV1({
+        lucid,
+        claimRegistry: contracts.claimRegistry,
+        claimRegistryReferenceUtxo: witnessReferenceScripts?.claimRegistrySpend,
+        hubOraclePolicyId: contracts.hubOraclePolicyId,
+        computationThreadPolicyId: contracts.computationThread.policyId,
+        claimId: threadToken.assetName,
+        kind: "close",
+      })),
+    kind: "close",
+    claimId: threadToken.assetName,
+    label: `${STEP_LABEL} direct finalization`,
+  });
   // The complete final reference-input set MUST stand before the field
   // opening derives its §8.7 indices (bug fc635c8f).
   const referenceInputs = [
     ...carriageUtxos,
+    ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     stepReference,
     ...computationThreadBurnCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
+    ...closeMutation.referenceInputs,
   ];
   const opening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
@@ -172,7 +233,10 @@ export const submitMissingNativeScriptTxStep06 = async ({
     label: `${STEP_LABEL} script witnesses`,
   });
   const walletUtxos = await lucid.wallet().getUtxos();
-  const usableWalletUtxos = carriageUtxos.reduce<readonly UTxO[]>(
+  const usableWalletUtxos = [
+    ...carriageUtxos,
+    ...closeMutation.referenceInputs,
+  ].reduce<readonly UTxO[]>(
     (utxos, carriage) => excludeUtxo(utxos, carriage),
     walletUtxos,
   );
@@ -218,11 +282,13 @@ export const submitMissingNativeScriptTxStep06 = async ({
       {
         Continue: [
           {
-            input_index: resolved.inputIndex,
-            output_index: resolved.outputIndex,
-            fraud_proof_mint_redeemer_index:
-              resolved.fraudProofMintRedeemerIndex,
-            script_tx_wits_opening: opening,
+            DirectFinalize: {
+              input_index: resolved.inputIndex,
+              output_index: resolved.outputIndex,
+              fraud_proof_mint_redeemer_index:
+                resolved.fraudProofMintRedeemerIndex,
+              script_tx_wits_opening: opening,
+            },
           },
         ],
       },
@@ -277,8 +343,9 @@ export const submitMissingNativeScriptTxStep06 = async ({
       },
     )
     .addSignerKey(signer.paymentKeyHash);
+  const claimBound = closeMutation.apply(paid);
   const completed = fraudProofMintCarriage.attach(
-    computationThreadBurnCarriage.attach(paid),
+    computationThreadBurnCarriage.attach(claimBound),
   );
   const unsigned = await completed.complete({
     localUPLCEval: true,
@@ -295,7 +362,41 @@ export const submitMissingNativeScriptTxStep06 = async ({
     );
   }
   const signed = await unsigned.sign.withWallet().complete();
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: "V1 fraud-proof missing-native-script-tx step-06",
+          utxo: referenceScriptUtxo,
+          expectedScript: contracts.steps[5].spendingScript,
+        },
+        {
+          role: "V1 fraud-proof computation-thread minting",
+          utxo: witnessReferenceScripts?.computationThreadMint,
+          expectedScript: contracts.computationThread.mintingScript,
+        },
+        {
+          role: "V1 fraud-proof token minting",
+          utxo: witnessReferenceScripts?.fraudProofMint,
+          expectedScript: contracts.fraudProof.mintingScript,
+        },
+        {
+          role: "claim-registry spending",
+          utxo: closeMutation.referenceScriptUtxo,
+          expectedScript: closeMutation.registryScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
+  });
   const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) {
+    throw missingNativeScriptTxSubmitError(
+      `step-06 provider returned ${txHash}, expected ${expectedTxHash}.`,
+    );
+  }
   if (awaitConfirmation) {
     await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
   }

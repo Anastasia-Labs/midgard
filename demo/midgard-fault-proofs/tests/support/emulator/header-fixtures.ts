@@ -1,4 +1,5 @@
 import { MIDGARD_PROTOCOL_V1_VERSION } from "@al-ft/midgard-core";
+import { DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import {
   EMPTY_HEADER_TRANSITION_COMMITMENTS_V1,
   EMPTY_MERKLE_TREE_ROOT,
@@ -11,14 +12,10 @@ import { Data } from "@lucid-evolution/lucid";
 import { encodeData } from "../../../src/index.js";
 
 export const SETUP_OUTPUT_INDEX = {
-  stateQueueRoot: 2n,
-  activeOperatorsRoot: 3n,
-  retiredOperatorsRoot: 4n,
-} as const;
-
-export const ACTIVE_OPERATOR_ACTIVATION_OUTPUT_INDEX = {
-  root: 0n,
-  insertedNode: 1n,
+  stateQueueRoot: 3n,
+  activeOperatorsRoot: 4n,
+  retiredOperatorsRoot: 5n,
+  registeredOperatorsRoot: 6n,
 } as const;
 
 export const SCHEDULER_APPOINTMENT_OUTPUT_INDEX = {
@@ -32,6 +29,8 @@ export const deploymentManifest = (
   referenceScriptAuthPolicy: Record<string, unknown> = {},
 ) => ({
   referenceScriptAuthPolicy,
+  economics:
+    DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
   contracts,
 });
 
