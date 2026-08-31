@@ -47,10 +47,15 @@ import {
   addressDataFromBech32,
   type AuthenticatedValidator,
   castConfirmedStateToData,
+  CLAIM_REGISTRY_ASSET_NAME,
+  ClaimRegistryDatum,
   ConfirmedState,
+  CORRECTION_LOCK_ASSET_NAME,
+  CorrectionLockDatum,
   EMPTY_HEADER_TRANSITION_COMMITMENTS_V1,
   EMPTY_MERKLE_TREE_ROOT,
   encodeLinkedListNodeView,
+  fetchSortedStateQueueUTxOsProgram,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   FraudProofTokenDatum,
   GENESIS_HEADER_HASH,
@@ -60,6 +65,7 @@ import {
   headerHashFromStateQueueUTxO,
   type HeaderV1 as HeaderType,
   HUB_ORACLE_ASSET_NAME,
+  HubOracleDatum,
   incompleteEmulatorCommitBlockHeaderTxProgram,
   incompleteRemoveFraudulentBlocksLinkTxProgram,
   incompleteRemoveLastFraudulentBlockHeaderTxProgram,
@@ -70,6 +76,7 @@ import {
   requireOperatorWalletInputs,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
+  resolveFraudProverRewardOutputIndex,
   RETIRED_OPERATORS_ROOT_ASSET_NAME,
   SCHEDULER_ASSET_NAME,
   SchedulerDatum,
@@ -97,6 +104,67 @@ const outputReference = {
   transactionId: "44".repeat(32),
   outputIndex: 0n,
 };
+
+describe("fraud-prover reward builder exactness", () => {
+  const proverAddress = "addr_test1vq53_prover";
+  const reward = {
+    proverEnterpriseAddress: proverAddress,
+    lovelace: 400_000_000n,
+  } as const;
+  const output = (overrides: Record<string, unknown> = {}) => ({
+    address: proverAddress,
+    assets: { lovelace: reward.lovelace },
+    datum: undefined,
+    datumHash: undefined,
+    scriptRef: undefined,
+    ...overrides,
+  });
+  const context = (outputs: readonly unknown[]) =>
+    ({ outputs }) as unknown as Parameters<BuildTxWithRedeemer>[0];
+
+  it("accepts exactly one ADA-only NoDatum/no-reference-script prover output", () => {
+    expect(
+      resolveFraudProverRewardOutputIndex(
+        context([output({ address: "addr_test1vother" }), output()]),
+        reward,
+        "Q53 reward",
+      ),
+    ).toBe(1n);
+  });
+
+  it.each([
+    ["underpayment", output({ assets: { lovelace: reward.lovelace - 1n } })],
+    ["overpayment", output({ assets: { lovelace: reward.lovelace + 1n } })],
+    [
+      "token",
+      output({ assets: { lovelace: reward.lovelace, ["ab".repeat(28)]: 1n } }),
+    ],
+    ["inline datum", output({ datum: "d87980" })],
+    ["datum hash", output({ datumHash: "ab".repeat(32) })],
+    [
+      "reference script",
+      output({ scriptRef: { type: "PlutusV3", script: "00" } }),
+    ],
+  ])("rejects %s mutation", (_label, mutated) => {
+    expect(() =>
+      resolveFraudProverRewardOutputIndex(
+        context([mutated]),
+        reward,
+        "Q53 reward",
+      ),
+    ).toThrow();
+  });
+
+  it("rejects any second output to the prover credential", () => {
+    expect(() =>
+      resolveFraudProverRewardOutputIndex(
+        context([output(), output({ assets: { lovelace: 2_000_000n } })]),
+        reward,
+        "Q53 reward",
+      ),
+    ).toThrow(/exactly one output/);
+  });
+});
 const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
   maxTxSize: 65_536,
@@ -206,6 +274,9 @@ type Blueprint = {
 
 type StateQueueTestContracts = {
   readonly hubOracle: AuthenticatedValidator;
+  readonly correctionLock: SdkSpendingValidator;
+  readonly claimRegistry: AuthenticatedValidator;
+  readonly computationThread: AuthenticatedValidator;
   readonly daAttestation: AuthenticatedValidator;
   readonly stateQueue: AuthenticatedValidator;
   readonly scheduler: AuthenticatedValidator;
@@ -327,11 +398,27 @@ const buildTestContracts = async (
       Effect.map((addressData) => Data.from(Data.to(addressData, AddressData))),
     ),
   );
+  const claimRegistry = alwaysAuthenticated(alwaysBlueprint, "deposit");
+  const computationThread = alwaysAuthenticated(alwaysBlueprint, "payout");
+  const availabilityChallenge = alwaysAuthenticated(
+    alwaysBlueprint,
+    "escape_hatch",
+  );
+  const correctionLock = makeSpendingValidator(
+    applyAllBlueprintParamsToScript(
+      realBlueprint,
+      "correction_lock.spend.spend",
+      [base.hubOracle.policyId, availabilityChallenge.policyId],
+    ),
+  );
   const stateQueueMintingScriptCBOR = applyAllBlueprintParamsToScript(
     realBlueprint,
     "state_queue.mint.mint",
     [
       base.hubOracle.policyId,
+      correctionLock.spendingScriptHash,
+      claimRegistry.spendingScriptHash,
+      computationThread.policyId,
       base.activeOperators.policyId,
       activeOperatorsAddressData,
       base.retiredOperators.policyId,
@@ -339,17 +426,25 @@ const buildTestContracts = async (
       base.fraudProof.policyId,
       base.settlement.policyId,
       base.daAttestation.policyId,
+      availabilityChallenge.policyId,
     ],
   );
   const stateQueueMinting = makeMintingValidator(stateQueueMintingScriptCBOR);
   const stateQueueSpendingScriptCBOR = applyAllBlueprintParamsToScript(
     realBlueprint,
     "state_queue.spend.spend",
-    [stateQueueMinting.policyId, base.daAttestation.policyId],
+    [
+      stateQueueMinting.policyId,
+      base.daAttestation.policyId,
+      availabilityChallenge.policyId,
+    ],
   );
 
   return {
     ...base,
+    correctionLock,
+    claimRegistry,
+    computationThread,
     stateQueue: {
       ...stateQueueMinting,
       ...makeSpendingValidator(stateQueueSpendingScriptCBOR),
@@ -550,9 +645,16 @@ const submitSetupTx = async ({
   readonly retiredOperatorsRoot: UTxO;
   readonly activeOperatorInput: UTxO;
   readonly fraudProof: UTxO;
+  readonly correctionLock: UTxO;
 }> => {
   const hubOracleAssets = {
     [toUnit(contracts.hubOracle.policyId, HUB_ORACLE_ASSET_NAME)]: 1n,
+  };
+  const correctionLockAssets = {
+    [toUnit(contracts.hubOracle.policyId, CORRECTION_LOCK_ASSET_NAME)]: 1n,
+  };
+  const claimRegistryAssets = {
+    [toUnit(contracts.hubOracle.policyId, CLAIM_REGISTRY_ASSET_NAME)]: 1n,
   };
   const schedulerAssets = {
     [toUnit(contracts.scheduler.policyId, SCHEDULER_ASSET_NAME)]: 1n,
@@ -591,20 +693,72 @@ const submitSetupTx = async ({
       next: "Empty",
       data: data as never,
     });
+  const sharedAddressData = await Effect.runPromise(
+    addressDataFromBech32(contracts.activeOperators.spendingScriptAddress),
+  );
+  const stateQueueAddressData = await Effect.runPromise(
+    addressDataFromBech32(contracts.stateQueue.spendingScriptAddress),
+  );
+  const fraudProofAddressData = await Effect.runPromise(
+    addressDataFromBech32(contracts.fraudProof.spendingScriptAddress),
+  );
+  const hubOracleDatum = Data.to(
+    {
+      registered_operators: contracts.activeOperators.policyId,
+      active_operators: contracts.activeOperators.policyId,
+      retired_operators: contracts.retiredOperators.policyId,
+      scheduler: contracts.scheduler.policyId,
+      state_queue: contracts.stateQueue.policyId,
+      fraud_proof_catalogue: contracts.fraudProof.policyId,
+      fraud_proof: contracts.fraudProof.policyId,
+      deposit: contracts.fraudProof.policyId,
+      withdrawal: contracts.fraudProof.policyId,
+      tx_order: contracts.fraudProof.policyId,
+      settlement: contracts.settlement.policyId,
+      payout: contracts.fraudProof.policyId,
+      registered_operators_addr: sharedAddressData,
+      active_operators_addr: sharedAddressData,
+      retired_operators_addr: sharedAddressData,
+      scheduler_addr: sharedAddressData,
+      state_queue_addr: stateQueueAddressData,
+      fraud_proof_catalogue_addr: fraudProofAddressData,
+      fraud_proof_addr: fraudProofAddressData,
+      deposit_addr: fraudProofAddressData,
+      withdrawal_addr: fraudProofAddressData,
+      tx_order_addr: fraudProofAddressData,
+      settlement_addr: sharedAddressData,
+      reserve_addr: sharedAddressData,
+      payout_addr: fraudProofAddressData,
+      reserve_observer: contracts.activeOperators.policyId,
+    },
+    HubOracleDatum,
+  );
 
   const unsigned = await lucid
     .newTx()
     .validFrom(Number(initValidFrom))
     .validTo(Number(initValidTo))
     .collectFrom([nonceUtxo])
-    .mintAssets(hubOracleAssets, Data.void())
+    .mintAssets(
+      { ...hubOracleAssets, ...correctionLockAssets, ...claimRegistryAssets },
+      Data.void(),
+    )
     .pay.ToAddressWithData(
       credentialToAddress(
         network,
         scriptHashToCredential(contracts.hubOracle.policyId),
       ),
-      { kind: "inline", value: Data.void() },
+      { kind: "inline", value: hubOracleDatum },
       hubOracleAssets,
+    )
+    .pay.ToContract(
+      contracts.correctionLock.spendingScriptAddress,
+      { kind: "inline", value: Data.to("Idle", CorrectionLockDatum) },
+      // The correction-lock validator conserves the singleton's value exactly
+      // across Idle -> Locked, whose larger inline datum raises the min-ada
+      // floor. Fund the lock above that floor so Lucid never bumps the
+      // continuation output's lovelace.
+      { ...correctionLockAssets, lovelace: 5_000_000n },
     )
     .mintAssets(schedulerAssets, Data.void())
     .pay.ToContract(
@@ -625,7 +779,7 @@ const submitSetupTx = async ({
     )
     .mintAssets(
       stateQueueAssets,
-      Data.to({ InitV1: { output_index: 2n } }, StateQueueRedeemer),
+      Data.to({ InitV1: { output_index: 3n } }, StateQueueRedeemer),
     )
     .pay.ToContract(
       contracts.stateQueue.spendingScriptAddress,
@@ -661,6 +815,20 @@ const submitSetupTx = async ({
       },
       fraudProofAssets,
     )
+    .pay.ToContract(
+      contracts.claimRegistry.spendingScriptAddress,
+      {
+        kind: "inline",
+        value: Data.to(
+          {
+            claims_root: EMPTY_MERKLE_TREE_ROOT,
+            computation_thread_policy_id: contracts.computationThread.policyId,
+          },
+          ClaimRegistryDatum,
+        ),
+      },
+      claimRegistryAssets,
+    )
     .attach.MintingPolicy(contracts.hubOracle.mintingScript)
     .attach.MintingPolicy(contracts.scheduler.mintingScript)
     .attach.MintingPolicy(contracts.stateQueue.mintingScript)
@@ -687,6 +855,10 @@ const submitSetupTx = async ({
     contracts.scheduler.spendingScriptAddress,
     Object.keys(schedulerAssets)[0]!,
   );
+  const [correctionLock] = await lucid.utxosAtWithUnit(
+    contracts.correctionLock.spendingScriptAddress,
+    Object.keys(correctionLockAssets)[0]!,
+  );
   const [activeOperatorsRoot] = await lucid.utxosAtWithUnit(
     contracts.activeOperators.spendingScriptAddress,
     Object.keys(activeOperatorsAssets)[0]!,
@@ -710,7 +882,8 @@ const submitSetupTx = async ({
     activeOperatorsRoot === undefined ||
     retiredOperatorsRoot === undefined ||
     activeOperatorInput === undefined ||
-    fraudProof === undefined
+    fraudProof === undefined ||
+    correctionLock === undefined
   ) {
     throw new Error("Setup transaction did not produce all expected UTxOs");
   }
@@ -723,6 +896,7 @@ const submitSetupTx = async ({
     retiredOperatorsRoot,
     activeOperatorInput,
     fraudProof,
+    correctionLock,
   };
 };
 
@@ -781,6 +955,7 @@ const submitCommitHeaderTx = async ({
   operator,
   scheduler,
   hubOracle,
+  correctionLock,
   activeOperatorInput,
 }: {
   readonly emulator: Emulator;
@@ -791,11 +966,30 @@ const submitCommitHeaderTx = async ({
   readonly operator: string;
   readonly scheduler: UTxO;
   readonly hubOracle: UTxO;
+  readonly correctionLock: UTxO;
   readonly activeOperatorInput: UTxO;
 }): Promise<{
   readonly block: StateQueueUTxO;
   readonly activeOperatorInput: UTxO;
 }> => {
+  const orderedStateQueue = await Effect.runPromise(
+    fetchSortedStateQueueUTxOsProgram(lucid, {
+      stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
+      stateQueuePolicyId: contracts.stateQueue.policyId,
+    }),
+  );
+  const canonicalTail = orderedStateQueue.at(-1);
+  if (
+    canonicalTail === undefined ||
+    canonicalTail.utxo.txHash !== anchor.utxo.txHash ||
+    canonicalTail.utxo.outputIndex !== anchor.utxo.outputIndex
+  ) {
+    throw new Error("Commit helper received a stale state-queue tail");
+  }
+  const confirmedStateRefInput =
+    orderedStateQueue.length === 1 ? undefined : orderedStateQueue[0]!.utxo;
+  const headStateQueueNodeRefInput =
+    orderedStateQueue.length <= 2 ? undefined : orderedStateQueue[1]!.utxo;
   const continuedActiveOperatorDatum = Data.void();
   const validityStartSlot = lucid.currentSlot() + 1;
   const commitTx = await Effect.runPromise(
@@ -809,6 +1003,13 @@ const submitCommitHeaderTx = async ({
         anchorUTxO: anchor,
         newHeader: header,
         schedulerRefInput: scheduler,
+        correctionLockRefInput: {
+          utxo: correctionLock,
+          datum: "Idle",
+          assetName: CORRECTION_LOCK_ASSET_NAME,
+        },
+        confirmedStateRefInput,
+        headStateQueueNodeRefInput,
         additionalRefInputs: [hubOracle],
         activeOperatorInput,
         validFrom: BigInt(lucid.slotToUnixTime(validityStartSlot)),
@@ -890,11 +1091,11 @@ describe("state-queue ABI", () => {
     } as const;
     const mergeCbor = Data.to(proofMerge, StateQueueRedeemer);
     expect(mergeCbor).toBe(
-      "d87d9f581c11111111111111111111111111111111111111111111111111111111d8799f5820444444444444444444444444444444444444444444444444444444444444444400ff00d8799f01ff58202121212121212121212121212121212121212121212121212121212121212121582022222222222222222222222222222222222222222222222222222222222222225820232323232323232323232323232323232323232323232323232323232323232358202424242424242424242424242424242424242424242424242424242424242424582025252525252525252525252525252525252525252525252525252525252525255820262626262626262626262626262626262626262626262626262626262626262658202727272727272727272727272727272727272727272727272727272727272727010203040a0a05ff",
+      "d87f9f581c11111111111111111111111111111111111111111111111111111111d8799f5820444444444444444444444444444444444444444444444444444444444444444400ff00d8799f01ff58202121212121212121212121212121212121212121212121212121212121212121582022222222222222222222222222222222222222222222222222222222222222225820232323232323232323232323232323232323232323232323232323232323232358202424242424242424242424242424242424242424242424242424242424242424582025252525252525252525252525252525252525252525252525252525252525255820262626262626262626262626262626262626262626262626262626262626262658202727272727272727272727272727272727272727272727272727272727272727010203040a0a05ff",
     );
     expect(roundTrip(proofMerge, StateQueueRedeemer)).toEqual(proofMerge);
     expect(initCbor.startsWith("d8799f")).toBe(true);
-    expect(mergeCbor.startsWith("d87d9f")).toBe(true);
+    expect(mergeCbor.startsWith("d87f9f")).toBe(true);
     expect(() =>
       Data.to({ InitV2: { output_index: 2n } } as never, StateQueueRedeemer),
     ).toThrow();
@@ -906,7 +1107,7 @@ describe("state-queue ABI", () => {
         StateQueueRedeemer,
       ),
     ).toThrow();
-    expect(() => Data.from("d87e80", StateQueueRedeemer)).toThrow();
+    expect(() => Data.from("d87f80", StateQueueRedeemer)).toThrow();
   });
 
   it("round-trips CommitBlockHeader and RemoveFraudulentBlockHeader", () => {
@@ -920,6 +1121,8 @@ describe("state-queue ABI", () => {
             scheduler_ref_input_index: 3n,
             active_operators_input_index: 4n,
             active_operators_redeemer_index: 5n,
+            m_confirmed_state_ref_input_index: null,
+            m_head_state_queue_node_ref_input_index: null,
           },
         },
         StateQueueRedeemer,
@@ -1080,6 +1283,7 @@ describe("state-queue emulator builders", () => {
       operator,
       scheduler: setup.scheduler,
       hubOracle: setup.hubOracle,
+      correctionLock: setup.correctionLock,
       activeOperatorInput: setup.activeOperatorInput,
     });
 
@@ -1125,6 +1329,14 @@ describe("state-queue emulator builders", () => {
         fraudulentOperator: operator,
         fraudulentBlocksHeaderHash: headerHash,
         fraudProofRefInput: setup.fraudProof,
+        fraudProofPolicyId: contracts.fraudProof.policyId,
+        hubOracleRefInput: setup.hubOracle,
+        correctionLockInput: {
+          utxo: setup.correctionLock,
+          datum: "Idle",
+          assetName: CORRECTION_LOCK_ASSET_NAME,
+        },
+        correctionLockSpendingScript: contracts.correctionLock.spendingScript,
         slashing: {
           kind: "operatorAlreadySlashed",
           activeOperatorsElementRefInput: setup.activeOperatorsRoot,
@@ -1229,6 +1441,7 @@ describe("state-queue emulator builders", () => {
       operator,
       scheduler: setup.scheduler,
       hubOracle: setup.hubOracle,
+      correctionLock: setup.correctionLock,
       activeOperatorInput: setup.activeOperatorInput,
     });
     const secondHeader: HeaderType = {
@@ -1250,6 +1463,7 @@ describe("state-queue emulator builders", () => {
       operator,
       scheduler: setup.scheduler,
       hubOracle: setup.hubOracle,
+      correctionLock: setup.correctionLock,
       activeOperatorInput: firstCommit.activeOperatorInput,
     });
 
@@ -1290,6 +1504,14 @@ describe("state-queue emulator builders", () => {
         fraudulentOperator: operator,
         fraudulentBlocksHeaderHash: firstHeaderHash,
         fraudProofRefInput: setup.fraudProof,
+        fraudProofPolicyId: contracts.fraudProof.policyId,
+        hubOracleRefInput: setup.hubOracle,
+        correctionLockInput: {
+          utxo: setup.correctionLock,
+          datum: "Idle",
+          assetName: CORRECTION_LOCK_ASSET_NAME,
+        },
+        correctionLockSpendingScript: contracts.correctionLock.spendingScript,
         slashing: {
           kind: "operatorAlreadySlashed",
           activeOperatorsElementRefInput: setup.activeOperatorsRoot,

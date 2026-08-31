@@ -11,14 +11,12 @@ import {
   Script,
   toUnit,
   TxBuilder,
-  TxSignBuilder,
   UTxO,
 } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
 
 import { ActiveOperatorSpendRedeemer } from "@/active-operators.js";
 import {
-  AuthenticatedValidator,
   DataCoercionError,
   GenericErrorFields,
   HashingError,
@@ -32,6 +30,12 @@ import {
   utxosAtByNFTPolicyId,
 } from "@/common.js";
 import { LucidError, makeReturn } from "@/common.js";
+import {
+  type CorrectionIdentity,
+  CorrectionLockDatum,
+  CorrectionLockRedeemer,
+  type CorrectionLockUTxO,
+} from "@/correction-lock.js";
 import { getStateToken } from "@/internals.js";
 import {
   castStateQueueNodeV1ToData,
@@ -43,20 +47,17 @@ import {
   HeaderTransitionCommitmentsError,
   HeaderTransitionCommitmentsV1,
   HeaderV1,
-  makeGenesisConfirmedStateV1,
   NO_DA_ATTESTATION,
   validateHeaderTransitionCommitmentsV1Program,
 } from "@/ledger-state.js";
 import {
   encodeLinkedListNodeView,
   getLinkedListNodeViewFromUTxO,
-  incompleteInitLinkedListTxProgram,
   LinkedListError,
   LinkedListNodeView,
   NodeKey,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
 } from "@/linked-list.js";
-import { completeTxWithLocalUPLCEvalProgram } from "@/tx-completion.js";
 import {
   requireInputIndex,
   requireMintRedeemerIndex,
@@ -136,6 +137,27 @@ export type BlockRemovalApproach = Data.Static<
 export const BlockRemovalApproach =
   BlockRemovalApproachSchema as unknown as BlockRemovalApproach;
 
+export const AttestationTimeoutRemovalApproachSchema = Data.Enum([
+  Data.Object({
+    PruneTimedOutBlockDescendant: Data.Object({
+      confirmed_state_ref_input_index: Data.Integer(),
+      timed_out_node_input_outref: OutputReferenceSchema,
+      timed_out_node_output_index: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    RemoveTimedOutHead: Data.Object({
+      confirmed_state_input_outref: OutputReferenceSchema,
+      confirmed_state_output_index: Data.Integer(),
+    }),
+  }),
+]);
+export type AttestationTimeoutRemovalApproach = Data.Static<
+  typeof AttestationTimeoutRemovalApproachSchema
+>;
+export const AttestationTimeoutRemovalApproach =
+  AttestationTimeoutRemovalApproachSchema as unknown as AttestationTimeoutRemovalApproach;
+
 export const StateQueueRedeemerSchema = Data.Enum([
   Data.Object({
     InitV1: Data.Object({
@@ -151,6 +173,8 @@ export const StateQueueRedeemerSchema = Data.Enum([
       scheduler_ref_input_index: Data.Integer(),
       active_operators_input_index: Data.Integer(),
       active_operators_redeemer_index: Data.Integer(),
+      m_confirmed_state_ref_input_index: Data.Nullable(Data.Integer()),
+      m_head_state_queue_node_ref_input_index: Data.Nullable(Data.Integer()),
     }),
   }),
   Data.Object({
@@ -160,6 +184,19 @@ export const StateQueueRedeemerSchema = Data.Enum([
       slashing_approach: SlashingApproachSchema,
       fraud_proof_ref_input_index: Data.Integer(),
       block_removal_approach: BlockRemovalApproachSchema,
+    }),
+  }),
+  Data.Object({
+    RemoveUnattestedBlockAfterTimeout: Data.Object({
+      timed_out_header_hash: HeaderHashSchema,
+      removal_approach: AttestationTimeoutRemovalApproachSchema,
+    }),
+  }),
+  Data.Object({
+    RemoveUnavailableBlockAfterTimeout: Data.Object({
+      unavailable_header_hash: HeaderHashSchema,
+      challenge_asset_name: Data.Bytes({ minLength: 32, maxLength: 32 }),
+      removal_approach: AttestationTimeoutRemovalApproachSchema,
     }),
   }),
   Data.Object({
@@ -195,6 +232,13 @@ export const StateQueueSpendRedeemerSchema = Data.Enum([
     AttachDaAttestation: Data.Object({
       state_queue_input_index: Data.Integer(),
       da_attestation_mint_redeemer_index: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    AvailabilityStatusUpdate: Data.Object({
+      state_queue_input_index: Data.Integer(),
+      state_queue_output_index: Data.Integer(),
+      availability_mint_redeemer_index: Data.Integer(),
     }),
   }),
 ]);
@@ -241,12 +285,6 @@ export type StateQueueFetchConfig = {
   stateQueuePolicyId: PolicyId;
 };
 
-export type StateQueueInitParams = {
-  validator: AuthenticatedValidator;
-  genesisTime: POSIXTime; // Just pass the time, not the full state
-  lovelace?: bigint;
-};
-
 /**
  * Emulator/test helper for exercising the real state_queue CommitBlockHeader
  * mint redeemer. Final input, output, reference-input, and paired spend redeemer
@@ -262,6 +300,11 @@ export type EmulatorStateQueueCommitBlockHeaderParams = {
   validFrom?: bigint;
   validTo?: bigint;
   schedulerRefInput: UTxO;
+  correctionLockRefInput: CorrectionLockUTxO;
+  /** Required when `anchorUTxO` is a block node; omitted for an empty queue. */
+  confirmedStateRefInput?: UTxO;
+  /** Required when the current head differs from the consumed tail anchor. */
+  headStateQueueNodeRefInput?: UTxO;
   additionalRefInputs?: readonly UTxO[];
   activeOperatorInput: UTxO;
   activeOperatorSpendRedeemer: ActiveOperatorSpendTxRedeemer;
@@ -367,6 +410,10 @@ type EmulatorStateQueueRemoveLastFraudulentBlockHeaderCommonParams = {
   fraudulentOperator: string;
   fraudulentBlocksHeaderHash?: string;
   fraudProofRefInput: UTxO;
+  fraudProofPolicyId: PolicyId;
+  hubOracleRefInput: UTxO;
+  correctionLockInput: CorrectionLockUTxO;
+  correctionLockSpendingScript: Script;
   additionalRefInputs?: readonly UTxO[];
   stateQueueSpendingScript: Script;
   stateQueueMintingScript: Script;
@@ -387,6 +434,10 @@ type EmulatorStateQueueRemoveFraudulentBlocksLinkParams = {
   fraudulentOperator: string;
   fraudulentBlocksHeaderHash: string;
   fraudProofRefInput: UTxO;
+  fraudProofPolicyId: PolicyId;
+  hubOracleRefInput: UTxO;
+  correctionLockInput: CorrectionLockUTxO;
+  correctionLockSpendingScript: Script;
   additionalRefInputs?: readonly UTxO[];
   stateQueueSpendingScript: Script;
   stateQueueMintingScript: Script;
@@ -399,6 +450,7 @@ export type EmulatorStateQueueRemoveFraudulentBlocksLinkHeaderParams =
   EmulatorStateQueueRemoveFraudulentBlocksLinkParams;
 
 export type StateQueueRemoveReferenceScriptUTxOs = {
+  readonly correctionLockSpend?: UTxO;
   readonly stateQueueSpend?: UTxO;
   readonly stateQueueMint?: UTxO;
   readonly activeOperatorsSpend?: UTxO;
@@ -646,18 +698,28 @@ export const resolveFraudProverRewardOutputIndex = (
   ctx: Parameters<BuildTxWithRedeemer>[0],
   reward: FraudProverRewardPlan | undefined,
   label: string,
-): bigint | null =>
-  reward === undefined
-    ? null
-    : requireUniqueOutputIndex(
-        ctx.outputs,
-        (output) =>
-          output.address === reward.proverEnterpriseAddress &&
-          output.assets.lovelace === reward.lovelace &&
-          Object.keys(output.assets).length === 1 &&
-          (output.scriptRef ?? null) === null,
-        label,
-      );
+): bigint | null => {
+  if (reward === undefined) return null;
+  const proverOutputs = ctx.outputs.filter(
+    (output) => output.address === reward.proverEnterpriseAddress,
+  );
+  if (proverOutputs.length !== 1) {
+    throw new Error(
+      `${label} must create exactly one output at the fraud prover enterprise address; found ${proverOutputs.length.toString()}`,
+    );
+  }
+  return requireUniqueOutputIndex(
+    ctx.outputs,
+    (output) =>
+      output.address === reward.proverEnterpriseAddress &&
+      output.assets.lovelace === reward.lovelace &&
+      Object.keys(output.assets).length === 1 &&
+      output.datum == null &&
+      output.datumHash == null &&
+      (output.scriptRef ?? null) === null,
+    label,
+  );
+};
 
 const removeSlashingFraudProverReward = (
   slashing: EmulatorStateQueueRemoveSlashingParams,
@@ -780,6 +842,10 @@ type StateQueueRemovalTxAssemblyParams = {
   readonly validFrom?: bigint;
   readonly validTo?: bigint;
   readonly fraudProofRefInput: UTxO;
+  readonly hubOracleRefInput: UTxO;
+  readonly correctionLockInput: CorrectionLockUTxO;
+  readonly correctionLockOutputDatum: CorrectionLockDatum;
+  readonly correctionLockSpendingScript: Script;
   readonly additionalRefInputs?: readonly UTxO[];
   readonly stateQueueSpendingScript: Script;
   readonly stateQueueMintingScript: Script;
@@ -798,6 +864,7 @@ const buildStateQueueRemovalTx = (
   ).filter((utxo): utxo is UTxO => utxo !== undefined);
   const referenceInputs = dedupeAndSortUtxos([
     params.fraudProofRefInput,
+    params.hubOracleRefInput,
     ...(params.additionalRefInputs ?? []),
     ...removeSlashingReferenceInputs(params.slashing),
     ...referenceScriptInputs,
@@ -817,11 +884,32 @@ const buildStateQueueRemovalTx = (
       [...params.collectedStateQueueInputs],
       STATE_QUEUE_LINKED_LIST_MUTATION_REDEEMER,
     )
+    .collectFrom([params.correctionLockInput.utxo], ((ctx) =>
+      Data.to(
+        {
+          Correct: {
+            hub_oracle_ref_input_index: requireReferenceInputIndex(
+              ctx,
+              params.hubOracleRefInput,
+              "state-queue correction lock hub oracle",
+            ),
+          },
+        } satisfies CorrectionLockRedeemer,
+        CorrectionLockRedeemer,
+      )) satisfies BuildTxWithRedeemer)
     .readFrom(referenceInputs)
     .pay.ToContract(
       stateQueueAddress,
       { kind: "inline", value: params.continuedOutput.datum },
       params.continuedOutput.assets,
+    )
+    .pay.ToContract(
+      params.correctionLockInput.utxo.address,
+      {
+        kind: "inline",
+        value: Data.to(params.correctionLockOutputDatum, CorrectionLockDatum),
+      },
+      params.correctionLockInput.utxo.assets,
     )
     .mintAssets(params.assetsToBurn, params.stateQueueMintRedeemer);
 
@@ -855,6 +943,9 @@ const buildStateQueueRemovalTx = (
   if (params.referenceScripts?.stateQueueMint === undefined) {
     tx = tx.attach.Script(params.stateQueueMintingScript);
   }
+  if (params.referenceScripts?.correctionLockSpend === undefined) {
+    tx = tx.attach.Script(params.correctionLockSpendingScript);
+  }
 
   return collectRemoveSlashingInputs(
     tx,
@@ -863,12 +954,83 @@ const buildStateQueueRemovalTx = (
   );
 };
 
+const requireFraudProofCorrectionIdentity = (
+  fraudProofRefInput: UTxO,
+  fraudProofPolicyId: PolicyId,
+): CorrectionIdentity => {
+  const candidates = Object.entries(fraudProofRefInput.assets).flatMap(
+    ([unit, quantity]) => {
+      if (unit === "lovelace" || unit === "" || quantity !== 1n) {
+        return [];
+      }
+      const asset = fromUnit(unit);
+      return asset.policyId === fraudProofPolicyId && asset.assetName !== null
+        ? [asset.assetName]
+        : [];
+    },
+  );
+  if (candidates.length !== 1) {
+    throw new Error(
+      `Expected exactly one permanent fraud-proof token under policy ${fraudProofPolicyId}; found ${candidates.length.toString()}`,
+    );
+  }
+  return {
+    FraudProof: { fraud_proof_asset_name: candidates[0] },
+  };
+};
+
+const requireCorrectionLockForTarget = (
+  correctionLockInput: CorrectionLockUTxO,
+  targetHeaderHash: string,
+  correctionIdentity: CorrectionIdentity,
+): void => {
+  const expectedLocked: CorrectionLockDatum = {
+    Locked: {
+      target_header_hash: targetHeaderHash,
+      correction_identity: correctionIdentity,
+    },
+  };
+  if (
+    correctionLockInput.datum !== "Idle" &&
+    Data.to(correctionLockInput.datum, CorrectionLockDatum) !==
+      Data.to(expectedLocked, CorrectionLockDatum)
+  ) {
+    throw new Error(
+      "Correction lock is held by a different target or correction identity",
+    );
+  }
+};
+
 export const incompleteEmulatorCommitBlockHeaderTxProgram = (
   lucid: LucidEvolution,
   config: StateQueueFetchConfig,
   params: EmulatorStateQueueCommitBlockHeaderParams,
-): Effect.Effect<TxBuilder, HashingError> =>
+): Effect.Effect<TxBuilder, HashingError | StateQueueError> =>
   Effect.gen(function* () {
+    if (params.correctionLockRefInput.datum !== "Idle") {
+      return yield* Effect.fail(
+        new StateQueueError({
+          message: "Refusing to append while state correction is locked",
+          cause: Data.to(
+            params.correctionLockRefInput.datum,
+            CorrectionLockDatum,
+          ),
+        }),
+      );
+    }
+    const queueIsEmpty = params.anchorUTxO.datum.key === "Empty";
+    if (
+      queueIsEmpty !== (params.confirmedStateRefInput === undefined) ||
+      (queueIsEmpty && params.headStateQueueNodeRefInput !== undefined)
+    ) {
+      return yield* Effect.fail(
+        new StateQueueError({
+          message:
+            "Refusing to build an emulator commit without the canonical root/head append-fence witnesses",
+          cause: `queue_empty=${String(queueIsEmpty)},confirmed_state_ref=${String(params.confirmedStateRefInput !== undefined)},head_ref=${String(params.headStateQueueNodeRefInput !== undefined)}`,
+        }),
+      );
+    }
     const newHeaderHash = yield* hashBlockHeaderV1(params.newHeader);
     const newBlockAssetName =
       STATE_QUEUE_NODE_ASSET_NAME_PREFIX + newHeaderHash;
@@ -932,6 +1094,22 @@ export const incompleteEmulatorCommitBlockHeaderTxProgram = (
               params.activeOperatorInput,
               "emulator state-queue commit active operator",
             ),
+            m_confirmed_state_ref_input_index:
+              params.confirmedStateRefInput === undefined
+                ? null
+                : requireReferenceInputIndex(
+                    ctx,
+                    params.confirmedStateRefInput,
+                    "emulator state-queue commit confirmed-state root",
+                  ),
+            m_head_state_queue_node_ref_input_index:
+              params.headStateQueueNodeRefInput === undefined
+                ? null
+                : requireReferenceInputIndex(
+                    ctx,
+                    params.headStateQueueNodeRefInput,
+                    "emulator state-queue commit current head",
+                  ),
           },
         } satisfies StateQueueRedeemer,
         StateQueueRedeemer,
@@ -953,6 +1131,13 @@ export const incompleteEmulatorCommitBlockHeaderTxProgram = (
       .readFrom([
         ...(params.additionalRefInputs ?? []),
         params.schedulerRefInput,
+        params.correctionLockRefInput.utxo,
+        ...(params.confirmedStateRefInput === undefined
+          ? []
+          : [params.confirmedStateRefInput]),
+        ...(params.headStateQueueNodeRefInput === undefined
+          ? []
+          : [params.headStateQueueNodeRefInput]),
       ])
       .pay.ToContract(
         config.stateQueueAddress,
@@ -1008,6 +1193,15 @@ export const incompleteRemoveLastFraudulentBlockHeaderTxProgram = (
     params.fraudulentBlockUTxO.assetName.slice(
       STATE_QUEUE_NODE_ASSET_NAME_PREFIX.length,
     );
+  const correctionIdentity = requireFraudProofCorrectionIdentity(
+    params.fraudProofRefInput,
+    params.fraudProofPolicyId,
+  );
+  requireCorrectionLockForTarget(
+    params.correctionLockInput,
+    fraudulentBlocksHeaderHash,
+    correctionIdentity,
+  );
   const assetsToBurn: Assets = {
     [toUnit(config.stateQueuePolicyId, params.fraudulentBlockUTxO.assetName)]:
       -1n,
@@ -1070,7 +1264,17 @@ export const incompleteRemoveLastFraudulentBlockHeaderTxProgram = (
     ],
     continuedOutput: {
       datum: continuedAnchorDatumCbor,
-      assets: params.anchorUTxO.utxo.assets,
+      // Keep the removed node's state-queue rent inside the authenticated
+      // queue instead of leaving it for wallet change.  A reward-bearing
+      // slash must have exactly one output at the prover enterprise address;
+      // allowing Lucid to return this residual ADA to the submitting wallet
+      // would create a second prover output whenever that wallet is the prover.
+      assets: {
+        ...params.anchorUTxO.utxo.assets,
+        lovelace:
+          (params.anchorUTxO.utxo.assets.lovelace ?? 0n) +
+          (params.fraudulentBlockUTxO.utxo.assets.lovelace ?? 0n),
+      },
     },
     assetsToBurn,
     stateQueueMintRedeemer:
@@ -1079,6 +1283,10 @@ export const incompleteRemoveLastFraudulentBlockHeaderTxProgram = (
     validFrom: params.validFrom,
     validTo: params.validTo,
     fraudProofRefInput: params.fraudProofRefInput,
+    hubOracleRefInput: params.hubOracleRefInput,
+    correctionLockInput: params.correctionLockInput,
+    correctionLockOutputDatum: "Idle",
+    correctionLockSpendingScript: params.correctionLockSpendingScript,
     additionalRefInputs: params.additionalRefInputs,
     stateQueueSpendingScript: params.stateQueueSpendingScript,
     stateQueueMintingScript: params.stateQueueMintingScript,
@@ -1100,6 +1308,15 @@ export const incompleteRemoveFraudulentBlocksLinkTxProgram = (
 ): TxBuilder => {
   const removedBlockHash = params.removedBlockUTxO.assetName.slice(
     STATE_QUEUE_NODE_ASSET_NAME_PREFIX.length,
+  );
+  const correctionIdentity = requireFraudProofCorrectionIdentity(
+    params.fraudProofRefInput,
+    params.fraudProofPolicyId,
+  );
+  requireCorrectionLockForTarget(
+    params.correctionLockInput,
+    params.fraudulentBlocksHeaderHash,
+    correctionIdentity,
   );
   if (
     params.fraudulentBlockUTxO.datum.next === "Empty" ||
@@ -1175,7 +1392,15 @@ export const incompleteRemoveFraudulentBlocksLinkTxProgram = (
     ],
     continuedOutput: {
       datum: continuedFraudulentNodeDatumCbor,
-      assets: params.fraudulentBlockUTxO.utxo.assets,
+      // Preserve the pruned node's state-queue rent in its authenticated
+      // anchor.  This makes the removal value-conserving without an implicit
+      // wallet change output that could duplicate the exact prover reward.
+      assets: {
+        ...params.fraudulentBlockUTxO.utxo.assets,
+        lovelace:
+          (params.fraudulentBlockUTxO.utxo.assets.lovelace ?? 0n) +
+          (params.removedBlockUTxO.utxo.assets.lovelace ?? 0n),
+      },
     },
     assetsToBurn,
     stateQueueMintRedeemer:
@@ -1184,11 +1409,334 @@ export const incompleteRemoveFraudulentBlocksLinkTxProgram = (
     validFrom: params.validFrom,
     validTo: params.validTo,
     fraudProofRefInput: params.fraudProofRefInput,
+    hubOracleRefInput: params.hubOracleRefInput,
+    correctionLockInput: params.correctionLockInput,
+    correctionLockOutputDatum: {
+      Locked: {
+        target_header_hash: params.fraudulentBlocksHeaderHash,
+        correction_identity: correctionIdentity,
+      },
+    },
+    correctionLockSpendingScript: params.correctionLockSpendingScript,
     additionalRefInputs: params.additionalRefInputs,
     stateQueueSpendingScript: params.stateQueueSpendingScript,
     stateQueueMintingScript: params.stateQueueMintingScript,
     referenceScripts: params.referenceScripts,
     slashing: params.slashing,
+  });
+};
+
+export const DA_ATTESTATION_TIMEOUT_MS = 3_600_000n;
+
+export type StateQueueTimeoutRemovalReferenceScriptUTxOs = Pick<
+  StateQueueRemoveReferenceScriptUTxOs,
+  "correctionLockSpend" | "stateQueueSpend" | "stateQueueMint"
+>;
+
+type StateQueueTimeoutRemovalCommonParams = {
+  readonly timedOutHeadUTxO: StateQueueUTxO;
+  readonly additionalInputs?: readonly UTxO[];
+  readonly additionalRefInputs?: readonly UTxO[];
+  readonly hubOracleRefInput: UTxO;
+  readonly correctionLockInput: CorrectionLockUTxO;
+  readonly correctionLockSpendingScript: Script;
+  readonly validFrom: bigint;
+  readonly validTo: bigint;
+  readonly stateQueueSpendingScript: Script;
+  readonly stateQueueMintingScript: Script;
+  readonly referenceScripts?: StateQueueTimeoutRemovalReferenceScriptUTxOs;
+};
+
+export type StateQueuePruneTimedOutDescendantParams =
+  StateQueueTimeoutRemovalCommonParams & {
+    readonly confirmedStateRefInput: StateQueueUTxO;
+    readonly removedDescendantUTxO: StateQueueUTxO;
+  };
+
+export type StateQueueRemoveTimedOutHeadParams =
+  StateQueueTimeoutRemovalCommonParams & {
+    readonly confirmedStateUTxO: StateQueueUTxO;
+  };
+
+const requireBlockHeaderHash = (
+  node: StateQueueUTxO,
+  label: string,
+): string => {
+  if (
+    node.datum.key === "Empty" ||
+    !node.assetName.startsWith(STATE_QUEUE_NODE_ASSET_NAME_PREFIX)
+  ) {
+    throw new Error(`${label} must be a state-queue block node`);
+  }
+  const headerHash = node.assetName.slice(
+    STATE_QUEUE_NODE_ASSET_NAME_PREFIX.length,
+  );
+  if (node.datum.key.Key.key !== headerHash) {
+    throw new Error(`${label} key does not match its state-queue asset name`);
+  }
+  return headerHash;
+};
+
+const timeoutRemovalBaseTx = ({
+  lucid,
+  config,
+  params,
+  collectedStateQueueInputs,
+  continuedOutput,
+  assetsToBurn,
+  mintRedeemer,
+  requiredReferenceInputs,
+  correctionLockOutputDatum,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly config: StateQueueFetchConfig;
+  readonly params: StateQueueTimeoutRemovalCommonParams;
+  readonly collectedStateQueueInputs: readonly UTxO[];
+  readonly continuedOutput: { readonly datum: string; readonly assets: Assets };
+  readonly assetsToBurn: Assets;
+  readonly mintRedeemer: BuildTxWithRedeemer;
+  readonly requiredReferenceInputs: readonly UTxO[];
+  readonly correctionLockOutputDatum: CorrectionLockDatum;
+}): TxBuilder => {
+  const referenceInputs = dedupeAndSortUtxos([
+    params.hubOracleRefInput,
+    ...requiredReferenceInputs,
+    ...(params.additionalRefInputs ?? []),
+    ...(params.referenceScripts?.stateQueueSpend === undefined
+      ? []
+      : [params.referenceScripts.stateQueueSpend]),
+    ...(params.referenceScripts?.stateQueueMint === undefined
+      ? []
+      : [params.referenceScripts.stateQueueMint]),
+  ]);
+  let tx = lucid
+    .newTx()
+    .validFrom(Number(params.validFrom))
+    .validTo(Number(params.validTo));
+  if ((params.additionalInputs ?? []).length > 0) {
+    tx = tx.collectFrom([...(params.additionalInputs ?? [])]);
+  }
+  tx = tx
+    .collectFrom(
+      [...collectedStateQueueInputs],
+      STATE_QUEUE_LINKED_LIST_MUTATION_REDEEMER,
+    )
+    .collectFrom([params.correctionLockInput.utxo], ((ctx) =>
+      Data.to(
+        {
+          Correct: {
+            hub_oracle_ref_input_index: requireReferenceInputIndex(
+              ctx,
+              params.hubOracleRefInput,
+              "timeout correction lock hub oracle",
+            ),
+          },
+        } satisfies CorrectionLockRedeemer,
+        CorrectionLockRedeemer,
+      )) satisfies BuildTxWithRedeemer)
+    .readFrom(referenceInputs)
+    .pay.ToContract(
+      config.stateQueueAddress,
+      { kind: "inline", value: continuedOutput.datum },
+      continuedOutput.assets,
+    )
+    .pay.ToContract(
+      params.correctionLockInput.utxo.address,
+      {
+        kind: "inline",
+        value: Data.to(correctionLockOutputDatum, CorrectionLockDatum),
+      },
+      params.correctionLockInput.utxo.assets,
+    )
+    .mintAssets(assetsToBurn, mintRedeemer);
+  if (params.referenceScripts?.stateQueueSpend === undefined) {
+    tx = tx.attach.Script(params.stateQueueSpendingScript);
+  }
+  if (params.referenceScripts?.correctionLockSpend === undefined) {
+    tx = tx.attach.Script(params.correctionLockSpendingScript);
+  }
+  return params.referenceScripts?.stateQueueMint === undefined
+    ? tx.attach.Script(params.stateQueueMintingScript)
+    : tx;
+};
+
+/**
+ * Permissionlessly prunes the immediate descendant of the authenticated,
+ * unattested timed-out head. The root is retained as a reference input, while
+ * the head is spent and continued with the descendant's successor link.
+ */
+export const incompletePruneTimedOutBlockDescendantTxProgram = (
+  lucid: LucidEvolution,
+  config: StateQueueFetchConfig,
+  params: StateQueuePruneTimedOutDescendantParams,
+): TxBuilder => {
+  const timedOutHeaderHash = requireBlockHeaderHash(
+    params.timedOutHeadUTxO,
+    "timed-out head",
+  );
+  const correctionIdentity: CorrectionIdentity = "AttestationTimeout";
+  requireCorrectionLockForTarget(
+    params.correctionLockInput,
+    timedOutHeaderHash,
+    correctionIdentity,
+  );
+  const removedHeaderHash = requireBlockHeaderHash(
+    params.removedDescendantUTxO,
+    "timed-out descendant",
+  );
+  if (
+    params.confirmedStateRefInput.datum.key !== "Empty" ||
+    params.confirmedStateRefInput.datum.next === "Empty" ||
+    params.confirmedStateRefInput.datum.next.Key.key !== timedOutHeaderHash ||
+    params.timedOutHeadUTxO.datum.next === "Empty" ||
+    params.timedOutHeadUTxO.datum.next.Key.key !== removedHeaderHash
+  ) {
+    throw new Error(
+      "Timed-out descendant pruning requires root -> timed-out head -> immediate descendant topology",
+    );
+  }
+  const continuedHeadDatum = encodeLinkedListNodeView({
+    ...params.timedOutHeadUTxO.datum,
+    next: params.removedDescendantUTxO.datum.next,
+  });
+  const continuedHeadUnit = toUnit(
+    config.stateQueuePolicyId,
+    params.timedOutHeadUTxO.assetName,
+  );
+  const assetsToBurn: Assets = {
+    [toUnit(config.stateQueuePolicyId, params.removedDescendantUTxO.assetName)]:
+      -1n,
+  };
+  const mintRedeemer = ((ctx) =>
+    Data.to(
+      {
+        RemoveUnattestedBlockAfterTimeout: {
+          timed_out_header_hash: timedOutHeaderHash,
+          removal_approach: {
+            PruneTimedOutBlockDescendant: {
+              confirmed_state_ref_input_index: requireReferenceInputIndex(
+                ctx,
+                params.confirmedStateRefInput.utxo,
+                "timed-out removal confirmed-state root",
+              ),
+              timed_out_node_input_outref: outputReferenceFromUTxO(
+                params.timedOutHeadUTxO.utxo,
+              ),
+              timed_out_node_output_index: requireUniqueOutputIndex(
+                ctx.outputs,
+                (output) =>
+                  output.address === config.stateQueueAddress &&
+                  outputDatumCborMatches(output, continuedHeadDatum) &&
+                  (output.assets[continuedHeadUnit] ?? 0n) === 1n,
+                "timed-out removal continued head",
+              ),
+            },
+          },
+        },
+      } satisfies StateQueueRedeemer,
+      StateQueueRedeemer,
+    )) satisfies BuildTxWithRedeemer;
+  return timeoutRemovalBaseTx({
+    lucid,
+    config,
+    params,
+    collectedStateQueueInputs: [
+      params.timedOutHeadUTxO.utxo,
+      params.removedDescendantUTxO.utxo,
+    ],
+    continuedOutput: {
+      datum: continuedHeadDatum,
+      assets: params.timedOutHeadUTxO.utxo.assets,
+    },
+    assetsToBurn,
+    mintRedeemer,
+    requiredReferenceInputs: [params.confirmedStateRefInput.utxo],
+    correctionLockOutputDatum: {
+      Locked: {
+        target_header_hash: timedOutHeaderHash,
+        correction_identity: correctionIdentity,
+      },
+    },
+  });
+};
+
+/** Remove the terminal unattested head and continue the singleton root. */
+export const incompleteRemoveUnattestedHeadAfterTimeoutTxProgram = (
+  lucid: LucidEvolution,
+  config: StateQueueFetchConfig,
+  params: StateQueueRemoveTimedOutHeadParams,
+): TxBuilder => {
+  const timedOutHeaderHash = requireBlockHeaderHash(
+    params.timedOutHeadUTxO,
+    "timed-out head",
+  );
+  const correctionIdentity: CorrectionIdentity = "AttestationTimeout";
+  requireCorrectionLockForTarget(
+    params.correctionLockInput,
+    timedOutHeaderHash,
+    correctionIdentity,
+  );
+  if (
+    params.confirmedStateUTxO.datum.key !== "Empty" ||
+    params.confirmedStateUTxO.datum.next === "Empty" ||
+    params.confirmedStateUTxO.datum.next.Key.key !== timedOutHeaderHash ||
+    params.timedOutHeadUTxO.datum.next !== "Empty"
+  ) {
+    throw new Error(
+      "Timed-out head removal requires a terminal block linked directly from the confirmed-state root",
+    );
+  }
+  const continuedRootDatum = encodeLinkedListNodeView({
+    ...params.confirmedStateUTxO.datum,
+    next: "Empty",
+  });
+  const continuedRootUnit = toUnit(
+    config.stateQueuePolicyId,
+    params.confirmedStateUTxO.assetName,
+  );
+  const assetsToBurn: Assets = {
+    [toUnit(config.stateQueuePolicyId, params.timedOutHeadUTxO.assetName)]: -1n,
+  };
+  const mintRedeemer = ((ctx) =>
+    Data.to(
+      {
+        RemoveUnattestedBlockAfterTimeout: {
+          timed_out_header_hash: timedOutHeaderHash,
+          removal_approach: {
+            RemoveTimedOutHead: {
+              confirmed_state_input_outref: outputReferenceFromUTxO(
+                params.confirmedStateUTxO.utxo,
+              ),
+              confirmed_state_output_index: requireUniqueOutputIndex(
+                ctx.outputs,
+                (output) =>
+                  output.address === config.stateQueueAddress &&
+                  outputDatumCborMatches(output, continuedRootDatum) &&
+                  (output.assets[continuedRootUnit] ?? 0n) === 1n,
+                "timed-out removal continued confirmed-state root",
+              ),
+            },
+          },
+        },
+      } satisfies StateQueueRedeemer,
+      StateQueueRedeemer,
+    )) satisfies BuildTxWithRedeemer;
+  return timeoutRemovalBaseTx({
+    lucid,
+    config,
+    params,
+    collectedStateQueueInputs: [
+      params.confirmedStateUTxO.utxo,
+      params.timedOutHeadUTxO.utxo,
+    ],
+    continuedOutput: {
+      datum: continuedRootDatum,
+      assets: params.confirmedStateUTxO.utxo.assets,
+    },
+    assetsToBurn,
+    mintRedeemer,
+    requiredReferenceInputs: [],
+    correctionLockOutputDatum: "Idle",
   });
 };
 
@@ -1472,64 +2020,6 @@ export const fetchLatestCommittedBlock = (
   lucid: LucidEvolution,
   config: StateQueueFetchConfig,
 ) => makeReturn(fetchLatestCommittedBlockProgram(lucid, config)).unsafeRun();
-
-/**
- * Init
- *
- * @param lucid - The LucidEvolution
- * @param params - The parameters
- * @returns {TxBuilder} A TxBuilder instance that can be used to build the transaction.
- */
-export const incompleteInitStateQueueTxProgram = (
-  lucid: LucidEvolution,
-  params: StateQueueInitParams,
-): Effect.Effect<TxBuilder, never> =>
-  Effect.gen(function* () {
-    const stateQueueData = makeGenesisConfirmedStateV1(params.genesisTime);
-
-    return yield* incompleteInitLinkedListTxProgram(lucid, {
-      validator: params.validator,
-      rootAssetName: STATE_QUEUE_ROOT_ASSET_NAME,
-      data: Data.castTo(stateQueueData, ConfirmedState),
-      redeemer: (outputIndex) =>
-        Data.to({ InitV1: { output_index: outputIndex } }, StateQueueRedeemer),
-      lovelace: params.lovelace,
-    });
-  });
-
-export const unsignedInitStateQueueTxProgram = (
-  lucid: LucidEvolution,
-  initParams: StateQueueInitParams,
-): Effect.Effect<TxSignBuilder, LucidError> =>
-  Effect.gen(function* () {
-    const commitTx = yield* incompleteInitStateQueueTxProgram(
-      lucid,
-      initParams,
-    );
-    const completedTx: TxSignBuilder =
-      yield* completeTxWithLocalUPLCEvalProgram(
-        commitTx,
-        (e) =>
-          new LucidError({
-            message: `Failed to build the init state queue transaction: ${e}`,
-            cause: e,
-          }),
-      );
-    return completedTx;
-  });
-
-/**
- * Builds completed tx for initializing the state queue.
- *
- * @param lucid - The `LucidEvolution` API object.
- * @param initParams - Parameters for minting the initialization NFT.
- * @returns A promise that resolves to a `TxSignBuilder` instance.
- */
-export const unsignedInitStateQueueTx = (
-  lucid: LucidEvolution,
-  initParams: StateQueueInitParams,
-): Promise<TxSignBuilder> =>
-  makeReturn(unsignedInitStateQueueTxProgram(lucid, initParams)).unsafeRun();
 
 export class StateQueueError extends EffectData.TaggedError(
   "StateQueueError",

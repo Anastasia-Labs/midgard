@@ -58,8 +58,8 @@ import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   type MidgardTxInput as MidgardTxInputData,
-  NativeTxInclusionArgs,
-  NativeTxInclusionArgsSchema,
+  NativeTxInclusionCarriage,
+  NativeTxInclusionCarriageSchema,
 } from "./native.js";
 
 /** Catalogue violation identifier adjudicated by this family. */
@@ -120,10 +120,10 @@ export const referenceInputNoIdxOutputsCommitmentV1 = (
 // ## Shared step aliases
 
 export const ReferenceInputNoIdxTxInclusionArgsSchema =
-  NativeTxInclusionArgsSchema;
-export type ReferenceInputNoIdxTxInclusionArgs = NativeTxInclusionArgs;
+  NativeTxInclusionCarriageSchema;
+export type ReferenceInputNoIdxTxInclusionArgs = NativeTxInclusionCarriage;
 export const ReferenceInputNoIdxTxInclusionArgs =
-  NativeTxInclusionArgs as unknown as ReferenceInputNoIdxTxInclusionArgs;
+  NativeTxInclusionCarriage as unknown as ReferenceInputNoIdxTxInclusionArgs;
 
 export const ReferenceInputNoIdxStepCancelSchema = FaultProofStepCancelSchema;
 export type ReferenceInputNoIdxStepCancel = FaultProofStepCancel;
@@ -158,11 +158,9 @@ export const ReferenceInputNoIdxStep01SpendRedeemer =
 /**
  * Mirrors `midgard/fraud_proofs/reference_input_no_idx/step_02.State`.
  *
- * **This family was rebound by #576, one day after
- * `docs/fault-proofs/offchain-builder-staleness-575.md` was written**, so its §5
- * exclusion ("not among the nine families #575 rebound; no validator under
- * `reference-input-no-idx/` changed") was true when written and false by the
- * time the banners were read. It is re-derived here with the other nine.
+ * The thread carries the authenticated transaction id required to open the
+ * reference-input field through the shared field-opening door. See
+ * `docs/fault-proofs/offchain-builder-staleness-575.md` §2.
  */
 export const ReferenceInputNoIdxStep02StateSchema = Data.Object({
   verified_tx_id: H32Schema,

@@ -10,10 +10,23 @@ import {
 } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
 
-import type {
-  AuthenticatedValidator,
-  GenericErrorFields,
-  MidgardValidators,
+import {
+  assertCanonicalDaAvailabilityCommitmentV1,
+  daAvailabilityBondAssetNameV1,
+  type DaAvailabilityCommitmentV1,
+  DaAvailabilityCommitmentV1Schema,
+  type DaAvailabilityMintRedeemerV1,
+  DaAvailabilityMintRedeemerV1Schema,
+  encodeDaAvailabilityBondDatumV1,
+} from "@/availability-challenge-v1.js";
+import {
+  type AddressData,
+  addressDataFromBech32,
+  AddressSchema,
+  type AuthenticatedValidator,
+  type GenericErrorFields,
+  type MidgardValidators,
+  outputReferenceFromUTxO,
 } from "@/common.js";
 import {
   castStateQueueNodeV1ToData,
@@ -39,7 +52,6 @@ export const DA_PARAMS_ASSET_NAME = fromText("MIDGARD_DA_PARAMS");
 export const DA_ATTESTATION_ASSET_NAME_PREFIX = fromText("DAAT");
 export const EMPTY_ATTESTED_SIGNER_BITMAP =
   "0000000000000000000000000000000000000000000000000000000000000000";
-export const DA_ATTESTATION_MESSAGE_PREFIX = "MidgardDAAttestationV1";
 const ATTESTED_SIGNER_BITMAP_BYTES = 32;
 const ATTESTED_SIGNER_BITMAP_HEX_LENGTH = ATTESTED_SIGNER_BITMAP_BYTES * 2;
 const SIGNATURE_HEX_LENGTH = 64 * 2;
@@ -179,8 +191,10 @@ export const daParamsFloorViolations = (params: {
 
 export const DaAttestationDatumSchema = Data.Object({
   header_hash: HeaderHashSchema,
+  availability_commitment: DaAvailabilityCommitmentV1Schema,
   da_threshold: Data.Integer(),
   committee_signers_hash: Data.Bytes({ minLength: 32, maxLength: 32 }),
+  rescue_beneficiary: AddressSchema,
   attested_signers: Data.Bytes({ minLength: 32, maxLength: 32 }),
   attestation_count: Data.Integer(),
 });
@@ -204,6 +218,7 @@ export const DaAttestationMintRedeemerSchema = Data.Enum([
       state_queue_input_index: Data.Integer(),
       state_queue_output_index: Data.Integer(),
       state_queue_mint_ref_script_input_index: Data.Integer(),
+      availability_mint_redeemer_index: Data.Integer(),
     }),
   }),
   Data.Object({
@@ -298,12 +313,6 @@ export const daAttestationUnit = (
   headerHash: string,
 ): string => toUnit(daAttestation.policyId, daAttestationAssetName(headerHash));
 
-export const daAttestationMessage = (headerHash: string): Buffer =>
-  Buffer.concat([
-    Buffer.from(DA_ATTESTATION_MESSAGE_PREFIX, "utf8"),
-    Buffer.from(headerHash, "hex"),
-  ]);
-
 export const prefixAttestedSignerBitmap = (signatureCount: number): string => {
   const bitmap = Buffer.alloc(32);
   for (let signerIndex = 0; signerIndex < signatureCount; signerIndex += 1) {
@@ -321,6 +330,7 @@ export class DaAttestationBuildError extends EffectData.TaggedError(
 export type DaAttestationReferenceScripts = {
   readonly daAttestationMinting: UTxO;
   readonly daAttestationSpending: UTxO;
+  readonly availabilityChallengeMinting: UTxO;
   readonly stateQueueMinting: UTxO;
   readonly stateQueueSpending: UTxO;
 };
@@ -532,17 +542,30 @@ export const incompleteInitDaAttestationTxProgram = (
       "daAttestationMinting" | "stateQueueMinting"
     >;
     readonly attestationOutputLovelace: bigint;
+    readonly rescueBeneficiary: AddressData;
+    readonly availabilityCommitment: DaAvailabilityCommitmentV1;
   },
 ): Effect.Effect<TxBuilder, DaAttestationBuildError> =>
   Effect.gen(function* () {
+    assertCanonicalDaAvailabilityCommitmentV1(config.availabilityCommitment);
+    if (
+      config.availabilityCommitment.header_hash !== config.target.headerHash
+    ) {
+      return yield* failBuild(
+        "DA availability commitment header does not match state-queue target",
+        `commitment=${config.availabilityCommitment.header_hash},target=${config.target.headerHash}`,
+      );
+    }
     const attestationUnit = daAttestationUnit(
       contracts.daAttestation,
       config.target.headerHash,
     );
     const attestationDatum: DaAttestationDatum = {
       header_hash: config.target.headerHash,
+      availability_commitment: config.availabilityCommitment,
       da_threshold: config.daParamsDatum.da_threshold,
       committee_signers_hash: config.daParamsDatum.committee_signers_hash,
+      rescue_beneficiary: config.rescueBeneficiary,
       attested_signers: EMPTY_ATTESTED_SIGNER_BITMAP,
       attestation_count: 0n,
     };
@@ -698,8 +721,12 @@ export const incompleteAddDaAttestationSignaturesTxProgram = (
 
 export const incompleteApplyDaAttestationToStateQueueTxProgram = (
   lucid: LucidEvolution,
-  contracts: Pick<MidgardValidators, "daAttestation" | "stateQueue">,
+  contracts: Pick<
+    MidgardValidators,
+    "availabilityChallenge" | "daAttestation" | "stateQueue"
+  >,
   config: {
+    readonly hubOracleRefInput: UTxO;
     readonly daParamsUtxo: UTxO;
     readonly daParamsDatum: DaParamsDatum;
     readonly target: DaAttestationStateQueueTarget;
@@ -754,11 +781,28 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
       contracts.daAttestation,
       config.target.headerHash,
     );
+    const bondAssetName = daAvailabilityBondAssetNameV1(
+      outputReferenceFromUTxO(config.attestation.utxo),
+    );
+    const bondUnit = toUnit(
+      contracts.availabilityChallenge.policyId,
+      bondAssetName,
+    );
+    const encodedBondDatum = encodeDaAvailabilityBondDatumV1({
+      Available: {
+        commitment: config.attestation.datum.availability_commitment,
+        da_bond_asset_name: bondAssetName,
+        committee_signers_hash: config.attestation.datum.committee_signers_hash,
+        attested_signers: config.attestation.datum.attested_signers,
+      },
+    });
     const updatedStateQueueDatum = encodeLinkedListNodeView({
       ...config.target.stateQueueUtxo.datum,
       data: castStateQueueNodeV1ToData({
         header: config.target.stateQueueNode.header,
-        da_attestation: contracts.daAttestation.policyId,
+        da_attestation: {
+          Attested: { da_bond_asset_name: bondAssetName },
+        },
       }) as LinkedListNodeView["data"],
     });
     const daMintRedeemer = ((ctx) => {
@@ -801,6 +845,11 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
               config.referenceScripts.stateQueueMinting,
               "DA attestation apply state_queue mint reference script",
             ),
+            availability_mint_redeemer_index: requireMintRedeemerIndex(
+              ctx,
+              contracts.availabilityChallenge.policyId,
+              "DA attestation apply availability bond mint",
+            ),
           },
         } satisfies DaAttestationMintRedeemer as never,
         DaAttestationMintRedeemer as never,
@@ -819,6 +868,62 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
         } satisfies DaAttestationSpendRedeemer as never,
         DaAttestationSpendRedeemer as never,
       )) satisfies BuildTxWithRedeemer;
+    const availabilityMintRedeemer = ((ctx) => {
+      requireOwnMintPurpose(
+        ctx,
+        contracts.availabilityChallenge.policyId,
+        "DA attestation apply availability bond mint",
+      );
+      return Data.to(
+        {
+          MintBondFromAttestation: {
+            hub_oracle_ref_input_index: requireReferenceInputIndex(
+              ctx,
+              config.hubOracleRefInput,
+              "DA attestation apply hub oracle",
+            ),
+            da_attestation_input_index: requireInputIndex(
+              ctx,
+              config.attestation.utxo,
+              "DA attestation apply DA attestation",
+            ),
+            da_attestation_mint_redeemer_index: requireMintRedeemerIndex(
+              ctx,
+              contracts.daAttestation.policyId,
+              "DA attestation apply DA attestation mint",
+            ),
+            bond_output_index: requireUniqueOutputIndex(
+              ctx.outputs,
+              (output) =>
+                output.address ===
+                  contracts.availabilityChallenge.spendingScriptAddress &&
+                outputDatumCborMatches(output, encodedBondDatum) &&
+                (output.assets.lovelace ?? 0n) ===
+                  (config.attestation.utxo.assets.lovelace ?? 0n) &&
+                (output.assets[bondUnit] ?? 0n) === 1n,
+              "DA attestation apply availability bond",
+            ),
+            state_queue_input_index: requireInputIndex(
+              ctx,
+              config.target.stateQueueUtxo.utxo,
+              "DA attestation apply state queue",
+            ),
+            state_queue_output_index: requireUniqueOutputIndex(
+              ctx.outputs,
+              (output) =>
+                output.address === contracts.stateQueue.spendingScriptAddress &&
+                outputDatumCborMatches(output, updatedStateQueueDatum) &&
+                assetsEqual(
+                  output.assets,
+                  config.target.stateQueueUtxo.utxo.assets,
+                ),
+              "DA attestation apply state queue",
+            ),
+          },
+        } satisfies DaAvailabilityMintRedeemerV1 as never,
+        DaAvailabilityMintRedeemerV1Schema as never,
+      );
+    }) satisfies BuildTxWithRedeemer;
     const stateQueueSpendRedeemer = ((ctx) =>
       Data.to(
         {
@@ -841,7 +946,9 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
     return lucid
       .newTx()
       .readFrom([
+        config.hubOracleRefInput,
         config.daParamsUtxo,
+        config.referenceScripts.availabilityChallengeMinting,
         config.referenceScripts.daAttestationMinting,
         config.referenceScripts.daAttestationSpending,
         config.referenceScripts.stateQueueMinting,
@@ -854,7 +961,16 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
         { kind: "inline", value: updatedStateQueueDatum },
         config.target.stateQueueUtxo.utxo.assets,
       )
-      .mintAssets({ [attestationUnit]: -1n }, daMintRedeemer);
+      .pay.ToContract(
+        contracts.availabilityChallenge.spendingScriptAddress,
+        { kind: "inline", value: encodedBondDatum },
+        {
+          lovelace: config.attestation.utxo.assets.lovelace ?? 0n,
+          [bondUnit]: 1n,
+        },
+      )
+      .mintAssets({ [attestationUnit]: -1n }, daMintRedeemer)
+      .mintAssets({ [bondUnit]: 1n }, availabilityMintRedeemer);
   });
 
 /**
@@ -896,6 +1012,31 @@ export const incompleteRescueStrandedDaAttestationTxProgram = (
     ) {
       return yield* failBuild(
         "DA attestation rescue refund may not return to the attestation script; the burnt DAAT would leave it unspendable",
+        config.refundAddress,
+      );
+    }
+    const refundAddressData = yield* addressDataFromBech32(
+      config.refundAddress,
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new DaAttestationBuildError({
+            message: "Failed to decode DA attestation rescue refund address",
+            cause,
+          }),
+      ),
+    );
+    const encodedRefundAddress = Data.to(
+      refundAddressData as never,
+      AddressSchema as never,
+    );
+    const encodedBeneficiary = Data.to(
+      config.attestation.datum.rescue_beneficiary as never,
+      AddressSchema as never,
+    );
+    if (encodedRefundAddress !== encodedBeneficiary) {
+      return yield* failBuild(
+        "DA attestation rescue refund address does not match the frozen beneficiary",
         config.refundAddress,
       );
     }

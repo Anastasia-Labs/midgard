@@ -20,23 +20,35 @@ export type ProtocolParameters = {
   event_wait_duration: number;
   maturity_duration: PosixTimeDuration;
   slashing_penalty: bigint;
+  fraud_prover_reward: bigint;
+  required_bond: bigint;
+  inactivity_slashing_penalty: bigint;
 };
 
 /**
- * Given the network, this functions returns appropriate protocol parameters.
+ * Development/emulator construction defaults only. A Cardano network label
+ * cannot identify release economics: public Preprod and bounded acceptance
+ * both run on `Preprod`. Production operator, settlement, and fraud-removal
+ * builders must consume the parsed deployment-manifest economics block.
  */
 export const getProtocolParameters = (network: Network): ProtocolParameters => {
   if (network === "Mainnet") {
     return {
       event_wait_duration: 60_000,
       maturity_duration: MATURITY_DURATION_MS,
-      slashing_penalty: 2000000n,
+      slashing_penalty: 25_000_000_000n,
+      fraud_prover_reward: 75_000_000_000n,
+      required_bond: 100_000_000_000n,
+      inactivity_slashing_penalty: 10_000_000_000n,
     };
   } else {
     return {
       event_wait_duration: EVENT_WAIT_DURATION_MS,
       maturity_duration: MATURITY_DURATION_MS,
-      slashing_penalty: 1000000n,
+      slashing_penalty: 500_000_000n,
+      fraud_prover_reward: 400_000_000n,
+      required_bond: 900_000_000n,
+      inactivity_slashing_penalty: 100_000_000n,
     };
   }
 };

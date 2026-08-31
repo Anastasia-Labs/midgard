@@ -178,7 +178,11 @@ export const MIDGARD_FIELD_CARRIAGE_CONSTRUCTORS_V1 = [
 ] as const;
 
 /** §8.8. Frozen alongside the carriage tags. */
-export const MIDGARD_FIELD_VIEW_CONSTRUCTORS_V1 = ["Whole", "Chunked"] as const;
+export const MIDGARD_FIELD_VIEW_CONSTRUCTORS_V1 = [
+  "Whole",
+  "Chunked",
+  "ProvisionalWhole",
+] as const;
 
 // ---------------------------------------------------------------------------
 // Errors

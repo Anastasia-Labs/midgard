@@ -169,7 +169,11 @@ describe("daRetentionPruneDecisionV1", () => {
   ) =>
     daRetentionPruneDecisionV1(
       { headerHash: "ab".repeat(28), blockEndTimeMs },
-      { nowMs, headerStatus },
+      {
+        nowMs,
+        headerStatus,
+        availabilityChallengeState: "inactive",
+      },
     );
 
   it("prunes a 16-day-old terminal record", () => {
@@ -211,7 +215,11 @@ describe("daRetentionPruneDecisionV1", () => {
       expect(
         daRetentionPruneDecisionV1(
           { blockEndTimeMs: bad },
-          { nowMs: now, headerStatus: "merged" },
+          {
+            nowMs: now,
+            headerStatus: "merged",
+            availabilityChallengeState: "inactive",
+          },
         ),
       ).toEqual({ decision: "retain", reasonCode: "missing_block_end_time" });
     }
@@ -257,12 +265,57 @@ describe("daRetentionPruneDecisionV1", () => {
     expect(
       daRetentionPruneDecisionV1(
         { blockEndTimeMs: 0 },
-        { nowMs: now, headerStatus: "attested" },
+        {
+          nowMs: now,
+          headerStatus: "attested",
+          availabilityChallengeState: "inactive",
+        },
       ),
     ).toMatchObject({
       decision: "retain",
       reasonCode: "header_status_not_terminal",
     });
+  });
+
+  it("treats an active availability challenge as an absolute retention hold", () => {
+    expect(
+      daRetentionPruneDecisionV1(
+        { headerHash: "ab".repeat(28), blockEndTimeMs: 0 },
+        {
+          nowMs: BLOCK_END + 100 * RETENTION_MS_PER_DAY_V1,
+          headerStatus: "removed",
+          availabilityChallengeState: "active",
+        },
+      ),
+    ).toEqual({
+      decision: "retain",
+      reasonCode: "active_availability_challenge",
+    });
+  });
+
+  it("fails closed on missing, malformed, or unknown challenge state", () => {
+    for (const availabilityChallengeState of [
+      undefined,
+      null,
+      "unknown",
+      "not_deployed",
+      false,
+      { active: false },
+    ]) {
+      expect(
+        daRetentionPruneDecisionV1(
+          { headerHash: "ab".repeat(28), blockEndTimeMs: 0 },
+          {
+            nowMs: BLOCK_END + 100 * RETENTION_MS_PER_DAY_V1,
+            headerStatus: "removed",
+            availabilityChallengeState,
+          },
+        ),
+      ).toEqual({
+        decision: "retain",
+        reasonCode: "availability_challenge_state_unknown",
+      });
+    }
   });
 });
 

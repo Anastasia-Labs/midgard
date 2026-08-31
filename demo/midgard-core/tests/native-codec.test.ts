@@ -14,6 +14,7 @@ import {
   decodeMidgardNativeScript,
   decodeMidgardNativeTxBodyCanonicalV1,
   decodeMidgardNativeTxBodyCompactV1,
+  decodeMidgardNativeTxCanonicalEnvelopeForFaultEvidenceV1,
   decodeMidgardNativeTxCanonicalV1,
   decodeMidgardNativeTxCompactV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
@@ -21,6 +22,7 @@ import {
   decodeMidgardNativeTxWitnessPreimagesV1,
   decodeMidgardNativeTxWitnessSetCompactV1,
   decodeSingleCbor,
+  deriveMidgardNativeTxFaultEvidenceMaterialV1,
   deriveMidgardNativeTxProofSourceV1,
   deriveMidgardNativeTxWitnessSetCompactV1,
   EMPTY_CBOR_LIST,
@@ -125,6 +127,55 @@ describe("Midgard native v1 codec", () => {
 
     expect(decoded).toEqual(canonical);
     expect("compact" in decoded).toBe(false);
+  });
+
+  it("derives fault evidence from an outer-canonical transaction with an opaque malformed field", () => {
+    const valid = encodeMidgardNativeTxCanonicalV1(makeCanonical());
+    const decoded = decodeSingleCbor(valid);
+    expect(Array.isArray(decoded)).toBe(true);
+    const outer = decoded as unknown[];
+    const body = outer[1];
+    expect(Array.isArray(body)).toBe(true);
+    const malformed = encodeCbor([
+      outer[0],
+      [
+        ...(body as unknown[]).slice(0, 2),
+        Buffer.from([0]),
+        ...(body as unknown[]).slice(3),
+      ],
+      outer[2],
+      outer[3],
+    ]);
+
+    expect(() => decodeMidgardNativeTxCanonicalV1(malformed)).toThrow(
+      /outputs is not a canonical §5\.1 field preimage/u,
+    );
+    const envelope =
+      decodeMidgardNativeTxCanonicalEnvelopeForFaultEvidenceV1(malformed);
+    expect(envelope.body.outputsPreimageCbor).toEqual(Buffer.from([0]));
+
+    const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(malformed);
+    expect(material.compact.transactionBody.outputsHash).toEqual(
+      midgardFieldCommitmentV1(Buffer.from([0])),
+    );
+    expect(material.fieldPreimages[2]).toEqual(Buffer.from([0]));
+    expect(
+      verifyMidgardNativeTxProofSourceV1({
+        transactionId: material.transactionId,
+        source: material.proofSource,
+      }),
+    ).toEqual(material.compact);
+
+    expect(() =>
+      decodeMidgardNativeTxCanonicalEnvelopeForFaultEvidenceV1(
+        malformed.subarray(0, malformed.length - 1),
+      ),
+    ).toThrow();
+    expect(() =>
+      decodeMidgardNativeTxCanonicalEnvelopeForFaultEvidenceV1(
+        encodeCbor([...outer, 0n]),
+      ),
+    ).toThrow(/exactly 4 elements/u);
   });
 
   it("uses the canonical V1 compact-body domain for the transaction id", () => {
@@ -266,6 +317,11 @@ describe("Midgard native v1 codec", () => {
       expect(Array.isArray(decoded)).toBe(true);
       return encodeCbor((decoded as unknown[]).slice(0, -1));
     };
+    const withSmuggledField = (hex: string): Buffer => {
+      const decoded = decodeSingleCbor(Buffer.from(hex, "hex"));
+      expect(Array.isArray(decoded)).toBe(true);
+      return encodeCbor([...(decoded as unknown[]), 0n]);
+    };
     expect(() =>
       decodeMidgardNativeTxBodyCanonicalV1(withoutLast(exact.bodyCanonical)),
     ).toThrow(/exactly 12 elements/u);
@@ -287,6 +343,34 @@ describe("Midgard native v1 codec", () => {
     ).toThrow(/exactly 4 elements/u);
     expect(() =>
       decodeMidgardNativeTxCanonicalV1(withoutLast(exact.canonical)),
+    ).toThrow(/exactly 4 elements/u);
+
+    // W-T2 soundness: exact arity is a closed schema, not merely a minimum.
+    // These are canonical CBOR values, so rejection proves that an otherwise
+    // well-formed trailing field cannot be smuggled into any native-V1 record.
+    expect(() =>
+      decodeMidgardNativeTxBodyCanonicalV1(
+        withSmuggledField(exact.bodyCanonical),
+      ),
+    ).toThrow(/exactly 12 elements/u);
+    expect(() =>
+      decodeMidgardNativeTxBodyCompactV1(withSmuggledField(exact.bodyCompact)),
+    ).toThrow(/exactly 12 elements/u);
+    expect(() =>
+      decodeMidgardNativeTxWitnessPreimagesV1(
+        withSmuggledField(exact.witnessPreimages),
+      ),
+    ).toThrow(/exactly 3 elements/u);
+    expect(() =>
+      decodeMidgardNativeTxWitnessSetCompactV1(
+        withSmuggledField(exact.witnessCompact),
+      ),
+    ).toThrow(/exactly 3 elements/u);
+    expect(() =>
+      decodeMidgardNativeTxCompactV1(withSmuggledField(exact.compact)),
+    ).toThrow(/exactly 4 elements/u);
+    expect(() =>
+      decodeMidgardNativeTxCanonicalV1(withSmuggledField(exact.canonical)),
     ).toThrow(/exactly 4 elements/u);
 
     // `81 00` is a §5.1 array header followed by an integer where an item's
@@ -404,6 +488,35 @@ describe("Midgard native v1 codec", () => {
     expect(() => decodeMidgardNativeTxCanonicalV1(unsupported)).toThrow(
       /transaction\[0\] must equal 1/u,
     );
+  });
+
+  it("rejects the same non-minimal transaction encodings as the Aiken decoder", () => {
+    const encoded = encodeMidgardNativeTxCanonicalV1(
+      materializeMidgardNativeTxFromCanonicalV1(makeCanonical()),
+    );
+    expect(encoded[0]).toBe(0x84);
+    expect(encoded[1]).toBe(0x01);
+
+    // These are the TypeScript twins of
+    // `v1_n01_noncanonical_array_head_rejects` and
+    // `v1_n01_noncanonical_version_encoding_rejects` in
+    // `fraud-proofs/native-tx-v1.test.ak`.
+    const nonMinimalArrayHead = Buffer.concat([
+      Buffer.from([0x98, 0x04]),
+      encoded.subarray(1),
+    ]);
+    const nonMinimalVersion = Buffer.concat([
+      encoded.subarray(0, 1),
+      Buffer.from([0x18, 0x01]),
+      encoded.subarray(2),
+    ]);
+
+    expect(() =>
+      decodeMidgardNativeTxFullV1FromCanonicalCbor(nonMinimalArrayHead),
+    ).toThrow(/Non-minimal CBOR integer or length encoding/u);
+    expect(() =>
+      decodeMidgardNativeTxFullV1FromCanonicalCbor(nonMinimalVersion),
+    ).toThrow(/Non-minimal CBOR integer or length encoding/u);
   });
 
   it("rejects derived compact body drift", () => {

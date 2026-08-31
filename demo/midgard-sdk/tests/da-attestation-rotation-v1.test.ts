@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 
 import {
   type Assets,
+  credentialToAddress,
   Data,
   type LucidEvolution,
   type UTxO,
@@ -10,6 +11,8 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
+  availabilityResponseGeometryV1,
+  buildDaAvailabilityCommitmentV1,
   type DaAttestationBuildError,
   DaAttestationDatum,
   daAttestationIsStranded,
@@ -73,6 +76,18 @@ const constructorTagPrefix = (index: number): string =>
 
 const h28 = (byte: string): string => byte.repeat(28);
 const h32 = (byte: string): string => byte.repeat(32);
+const availabilityCommitment = (headerHash: string) =>
+  buildDaAvailabilityCommitmentV1({
+    deploymentIdentity: h28("71"),
+    headerHash,
+    payload: Uint8Array.of(1),
+    bondOwner: h28("72"),
+    responseGeometry: availabilityResponseGeometryV1({
+      chunkByteLength: 4096,
+      trancheByteLength: 4 * 1024 * 1024,
+      maxTrancheCount: 16,
+    }),
+  });
 
 type RecordedPayment = {
   readonly address: string;
@@ -171,10 +186,15 @@ const makeFixture = () => {
   );
   // The stranded attestation: it froze a committee governance has since rotated
   // away from, and it holds one of the two signatures it needed.
-  const attestationDatum = {
+  const attestationDatum: DaAttestationDatum = {
     header_hash: headerHash,
+    availability_commitment: availabilityCommitment(headerHash),
     da_threshold: 2n,
     committee_signers_hash: ROTATED_COMMITTEE_HASH,
+    rescue_beneficiary: {
+      paymentCredential: { PublicKeyCredential: [h28("66")] },
+      stakeCredential: null,
+    },
     attested_signers: `80${"00".repeat(31)}`,
     attestation_count: 1n,
   };
@@ -202,7 +222,10 @@ const makeFixture = () => {
     attestation,
     attestationUnit,
     referenceScripts,
-    refundAddress: "addr_operator_refund",
+    refundAddress: credentialToAddress("Preprod", {
+      type: "Key",
+      hash: h28("66"),
+    }),
   };
 };
 
@@ -252,6 +275,7 @@ describe("Q62 DA redeemer constructor ABI", () => {
             state_queue_input_index: 2n,
             state_queue_output_index: 3n,
             state_queue_mint_ref_script_input_index: 4n,
+            availability_mint_redeemer_index: 5n,
           },
         } satisfies DaAttestationMintRedeemer as never,
         DaAttestationMintRedeemer as never,
@@ -337,6 +361,7 @@ describe("Q62 DA redeemer constructor ABI", () => {
           state_queue_input_index: 0n,
           state_queue_output_index: 0n,
           state_queue_mint_ref_script_input_index: 0n,
+          availability_mint_redeemer_index: 0n,
         },
       } satisfies DaAttestationMintRedeemer as never,
       DaAttestationMintRedeemer as never,
@@ -481,10 +506,25 @@ describe("Q63c rescue builder", () => {
     );
   });
 
-  it("rescue 4 — the rescue datum shape is unchanged, so existing readers still decode", () => {
-    // The rescue adds redeemer constructors only. `DaAttestationDatum` is read
-    // by the watcher, the node and the DA committee node, none of which are in
-    // this task's lease, so its shape is deliberately untouched.
+  it("rescue 4 — refuses a redirect away from the frozen beneficiary", async () => {
+    const fixture = makeFixture();
+    const { lucid } = makeRecordingLucid();
+
+    await expectBuildFailure(
+      incompleteRescueStrandedDaAttestationTxProgram(lucid, fixture.contracts, {
+        daParamsUtxo: fixture.daParamsUtxo,
+        daParamsDatum: fixture.daParamsDatum,
+        attestation: fixture.attestation,
+        refundAddress: credentialToAddress("Preprod", {
+          type: "Key",
+          hash: h28("67"),
+        }),
+        referenceScripts: fixture.referenceScripts,
+      }),
+    );
+  });
+
+  it("rescue 5 — the full frozen beneficiary survives datum round trips", () => {
     const encoded = Data.to(
       fixtureDatum() as never,
       DaAttestationDatum as never,
@@ -500,8 +540,13 @@ describe("Q63c rescue builder", () => {
 
 const fixtureDatum = () => ({
   header_hash: h28("10"),
+  availability_commitment: availabilityCommitment(h28("10")),
   da_threshold: 2n,
   committee_signers_hash: ROTATED_COMMITTEE_HASH,
+  rescue_beneficiary: {
+    paymentCredential: { PublicKeyCredential: [h28("66")] },
+    stakeCredential: null,
+  },
   attested_signers: EMPTY_ATTESTED_SIGNER_BITMAP,
   attestation_count: 1n,
 });

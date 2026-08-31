@@ -15,6 +15,8 @@ import {
 import {
   type DepositSourceMembershipProof,
   DepositSourceMembershipProofSchema,
+  type ForcedTransactionSourceMembershipProof,
+  ForcedTransactionSourceMembershipProofSchema,
   type WithdrawalSourceMembershipProof,
   WithdrawalSourceMembershipProofSchema,
 } from "@/transition-trace.js";
@@ -53,6 +55,7 @@ export const crossBlockDuplicateEventThreadTokenAssetNameV1 = (
 export const CrossBlockDuplicateEventKindV1Schema = Data.Enum([
   Data.Literal("DuplicateDepositV1"),
   Data.Literal("DuplicateWithdrawalV1"),
+  Data.Literal("DuplicateForcedTransactionV1"),
 ]);
 export type CrossBlockDuplicateEventKindV1 = Data.Static<
   typeof CrossBlockDuplicateEventKindV1Schema
@@ -71,6 +74,11 @@ export const CommittedDuplicateEventProofV1Schema = Data.Enum([
       membership: WithdrawalSourceMembershipProofSchema,
     }),
   }),
+  Data.Object({
+    CommittedDuplicateForcedTransactionV1: Data.Object({
+      membership: ForcedTransactionSourceMembershipProofSchema,
+    }),
+  }),
 ]);
 export type CommittedDuplicateEventProofV1 =
   | {
@@ -81,6 +89,11 @@ export type CommittedDuplicateEventProofV1 =
   | {
       readonly CommittedDuplicateWithdrawalV1: {
         readonly membership: WithdrawalSourceMembershipProof;
+      };
+    }
+  | {
+      readonly CommittedDuplicateForcedTransactionV1: {
+        readonly membership: ForcedTransactionSourceMembershipProof;
       };
     };
 export const CommittedDuplicateEventProofV1 =
@@ -186,9 +199,15 @@ export const duplicateEventKindAndKeyV1 = (
       eventKey: proof.CommittedDuplicateDepositV1.membership.key,
     };
   }
+  if ("CommittedDuplicateWithdrawalV1" in proof) {
+    return {
+      eventKind: "DuplicateWithdrawalV1",
+      eventKey: proof.CommittedDuplicateWithdrawalV1.membership.key,
+    };
+  }
   return {
-    eventKind: "DuplicateWithdrawalV1",
-    eventKey: proof.CommittedDuplicateWithdrawalV1.membership.key,
+    eventKind: "DuplicateForcedTransactionV1",
+    eventKey: proof.CommittedDuplicateForcedTransactionV1.membership.key,
   };
 };
 

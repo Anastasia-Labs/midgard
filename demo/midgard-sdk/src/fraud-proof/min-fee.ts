@@ -24,8 +24,8 @@ import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   NativeTxCompactSchema,
-  NativeTxInclusionArgs,
-  NativeTxInclusionArgsSchema,
+  NativeTxInclusionCarriage,
+  NativeTxInclusionCarriageSchema,
   NativeTxWitnessSetCompactSchema,
 } from "./native.js";
 
@@ -56,7 +56,7 @@ export const MinFeeStep01Datum =
   MinFeeStep01DatumSchema as unknown as MinFeeStep01Datum;
 
 export const MinFeeStep01SpendRedeemerSchema = faultProofStepRedeemerSchema(
-  NativeTxInclusionArgsSchema,
+  NativeTxInclusionCarriageSchema,
 );
 export type MinFeeStep01SpendRedeemer = Data.Static<
   typeof MinFeeStep01SpendRedeemerSchema
@@ -119,8 +119,8 @@ export const MinFeeStep02SpendRedeemer =
 export {
   FaultProofStepCancel as MinFeeStepCancel,
   FaultProofStepCancelSchema as MinFeeStepCancelSchema,
-  NativeTxInclusionArgs as MinFeeTxInclusionArgs,
-  NativeTxInclusionArgsSchema as MinFeeTxInclusionArgsSchema,
+  NativeTxInclusionCarriage as MinFeeTxInclusionArgs,
+  NativeTxInclusionCarriageSchema as MinFeeTxInclusionArgsSchema,
 };
 
 const requireNonNegative = (value: bigint, label: string): bigint => {

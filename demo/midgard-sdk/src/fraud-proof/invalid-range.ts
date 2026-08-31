@@ -47,8 +47,7 @@ export const NormalizedTimeRange =
   NormalizedTimeRangeSchema as unknown as NormalizedTimeRange;
 
 export const InvalidRangeStep02StateSchema = Data.Object({
-  block_valid_from: Data.Integer(),
-  block_valid_to: Data.Integer(),
+  block_slot: Data.Integer(),
   bad_tx_normalized_validity_range: NormalizedTimeRangeSchema,
 });
 export type InvalidRangeStep02State = Data.Static<
@@ -122,51 +121,46 @@ export const normalizeNativeTxValidityRange = (
 };
 
 export const invalidRangeViolationReason = ({
-  blockValidFrom,
-  blockValidTo,
+  blockSlot,
   normalizedRange,
 }: {
-  readonly blockValidFrom: bigint;
-  readonly blockValidTo: bigint;
+  readonly blockSlot: bigint;
   readonly normalizedRange: NormalizedTimeRange;
 }):
-  | "lower-before-block"
-  | "upper-at-or-after-block"
+  | "starts-after-block-slot"
+  | "ends-before-block-slot"
   | "invalid-range"
   | null => {
   if (typeof normalizedRange === "string") {
     return normalizedRange === "InvalidRange" ? "invalid-range" : null;
   }
   if ("ClosedRange" in normalizedRange) {
-    if (normalizedRange.ClosedRange.lower < blockValidFrom) {
-      return "lower-before-block";
+    if (normalizedRange.ClosedRange.lower > blockSlot) {
+      return "starts-after-block-slot";
     }
-    if (normalizedRange.ClosedRange.upper >= blockValidTo) {
-      return "upper-at-or-after-block";
+    if (normalizedRange.ClosedRange.upper < blockSlot) {
+      return "ends-before-block-slot";
     }
     return null;
   }
   if ("FromNegInf" in normalizedRange) {
-    return normalizedRange.FromNegInf.upper >= blockValidTo
-      ? "upper-at-or-after-block"
+    return normalizedRange.FromNegInf.upper < blockSlot
+      ? "ends-before-block-slot"
       : null;
   }
-  return normalizedRange.ToPosInf.lower < blockValidFrom
-    ? "lower-before-block"
+  return normalizedRange.ToPosInf.lower > blockSlot
+    ? "starts-after-block-slot"
     : null;
 };
 
 export const nativeTxBodyHasInvalidRangeViolation = ({
-  blockValidFrom,
-  blockValidTo,
+  blockSlot,
   txBody,
 }: {
-  readonly blockValidFrom: bigint;
-  readonly blockValidTo: bigint;
+  readonly blockSlot: bigint;
   readonly txBody: NativeTxBodyCompactData;
 }): boolean =>
   invalidRangeViolationReason({
-    blockValidFrom,
-    blockValidTo,
+    blockSlot,
     normalizedRange: normalizeNativeTxValidityRange(txBody),
   }) !== null;

@@ -8,12 +8,14 @@ type PlutusDataSchema = Parameters<typeof Data.Nullable>[0];
 
 const ByteArrayListSchema = Data.Array(Data.Bytes());
 
-const FrontierPeakSchema = Data.Object({
+export const FrontierPeakV1Schema = Data.Object({
   height: Data.Integer(),
   hash: Data.Bytes(),
 });
+export type FrontierPeakV1 = Data.Static<typeof FrontierPeakV1Schema>;
+export const FrontierPeakV1 = FrontierPeakV1Schema as unknown as FrontierPeakV1;
 
-const FrontierSchema = Data.Array(FrontierPeakSchema);
+const FrontierSchema = Data.Array(FrontierPeakV1Schema);
 
 const DataSummaryV1Schema = Data.Object({
   root: Data.Bytes(),
@@ -765,7 +767,24 @@ export type NativeScriptFrameV1 = Data.Static<typeof NativeScriptFrameV1Schema>;
 export const NativeScriptFrameV1 =
   NativeScriptFrameV1Schema as unknown as NativeScriptFrameV1;
 
-const SignerSetProofV1Schema = Data.Enum([
+/**
+ * Twin of `midgard/native_tx_script_pushdown_v1.NativeScriptFrameV1`.
+ * This semantic-evaluation frame is intentionally distinct from the
+ * six-field structure-scan frame above.
+ */
+export const NativeScriptPushdownFrameV1Schema = Data.Object({
+  kind: Data.Integer(),
+  remaining: Data.Integer(),
+  satisfied: Data.Integer(),
+  required: Data.Integer(),
+});
+export type NativeScriptPushdownFrameV1 = Data.Static<
+  typeof NativeScriptPushdownFrameV1Schema
+>;
+export const NativeScriptPushdownFrameV1 =
+  NativeScriptPushdownFrameV1Schema as unknown as NativeScriptPushdownFrameV1;
+
+export const SignerSetProofV1Schema = Data.Enum([
   Data.Literal("NoSignerSetProof"),
   Data.Object({
     SignerMembershipProof: Data.Object({
@@ -804,6 +823,9 @@ const SignerSetProofV1Schema = Data.Enum([
     }),
   }),
 ]);
+export type SignerSetProofV1 = Data.Static<typeof SignerSetProofV1Schema>;
+export const SignerSetProofV1 =
+  SignerSetProofV1Schema as unknown as SignerSetProofV1;
 
 const LedgerOutputProofWitnessV1Schema = Data.Enum([
   Data.Literal("LedgerOutputProofNoWitness"),

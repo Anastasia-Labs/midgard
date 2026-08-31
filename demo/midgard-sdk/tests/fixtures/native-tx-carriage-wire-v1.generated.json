@@ -11,7 +11,8 @@
     },
     "FieldViewV1": {
       "Whole": 0,
-      "Chunked": 1
+      "Chunked": 1,
+      "ProvisionalWhole": 2
     },
     "FieldPreimageCertificateMintRedeemerV1": {
       "Certify": 0,
@@ -226,8 +227,8 @@
     {
       "label": "view_constructor_index_out_of_range",
       "aikenType": "FieldViewV1",
-      "cborHex": "d87b9f4180001828ff",
-      "reason": "constructor index 2; FieldViewV1 declares exactly Whole/Chunked at 0/1",
+      "cborHex": "d87c9f4180001828ff",
+      "reason": "constructor index 3; FieldViewV1 declares exactly Whole/Chunked/ProvisionalWhole at 0/1/2",
       "rejectedBy": {
         "aiken": "data-cast",
         "typescript": "throws"

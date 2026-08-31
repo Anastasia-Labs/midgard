@@ -24,8 +24,8 @@ import {
   faultProofStepRedeemerSchema,
   type MidgardTxInput,
   MidgardTxInputSchema,
-  NativeTxInclusionArgs,
-  NativeTxInclusionArgsSchema,
+  NativeTxInclusionCarriage,
+  NativeTxInclusionCarriageSchema,
 } from "./native.js";
 
 export const WITHDRAWN_INPUT_VIOLATION_ID_V1 = "withdrawn-input" as const;
@@ -45,10 +45,10 @@ export type WithdrawnInputStep01Datum = Data.Static<
 export const WithdrawnInputStep01Datum =
   WithdrawnInputStep01DatumSchema as unknown as WithdrawnInputStep01Datum;
 
-export const WithdrawnInputStep01ArgsSchema = NativeTxInclusionArgsSchema;
-export type WithdrawnInputStep01Args = NativeTxInclusionArgs;
+export const WithdrawnInputStep01ArgsSchema = NativeTxInclusionCarriageSchema;
+export type WithdrawnInputStep01Args = NativeTxInclusionCarriage;
 export const WithdrawnInputStep01Args =
-  NativeTxInclusionArgs as unknown as WithdrawnInputStep01Args;
+  NativeTxInclusionCarriage as unknown as WithdrawnInputStep01Args;
 
 export const WithdrawnInputStep01SpendRedeemerSchema =
   faultProofStepRedeemerSchema(WithdrawnInputStep01ArgsSchema);

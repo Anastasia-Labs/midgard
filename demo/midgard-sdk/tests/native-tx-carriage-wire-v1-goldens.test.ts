@@ -135,7 +135,7 @@ describe("§8.6/§8.8 carriage wire goldens — provenance", () => {
    */
   const FROZEN_CONSTRUCTOR_INDEXES = {
     FieldCarriageV1: { Inline: 0, RawUtxo: 1, Certified: 2 },
-    FieldViewV1: { Whole: 0, Chunked: 1 },
+    FieldViewV1: { Whole: 0, Chunked: 1, ProvisionalWhole: 2 },
     FieldPreimageCertificateMintRedeemerV1: { Certify: 0, Retire: 1 },
   } as const;
 

@@ -100,7 +100,6 @@ const nativeTxBody = {
 };
 
 const proof: Proof = [];
-const nativeTxCompactCbor = "840182005820" + "55".repeat(32) + "00";
 const spendInputs = [
   { tx_id: "aa".repeat(32), output_index: 0n },
   { tx_id: "bb".repeat(32), output_index: 1n },
@@ -112,7 +111,7 @@ const txInclusionArgs = {
   hub_ref_input_index: 1n,
   state_queue_node_ref_input_index: 2n,
   native_tx_id: h32,
-  native_tx_compact_cbor: nativeTxCompactCbor,
+  l2_transaction_source_cbor: "80",
   transactions_phas_root: h32,
   tx_membership_proof: proof,
   inclusion_proof_script_withdraw_redeemer_index: 3n,
@@ -333,10 +332,9 @@ describe("fault-proof ABI", () => {
     const step02Datum = {
       fraud_prover: h28,
       data: {
-        block_valid_from: 10n,
-        block_valid_to: 20n,
+        block_slot: 10n,
         bad_tx_normalized_validity_range: {
-          ClosedRange: { lower: 9n, upper: 19n },
+          ClosedRange: { lower: 11n, upper: 19n },
         },
       },
     };
@@ -494,19 +492,19 @@ describe("fault-proof ABI", () => {
       ),
     ).toEqual({ fraud_prover: h28, data: null });
 
-    // #575 collapsed step-01's arguments to a bare `NativeTxInclusionArgs`
-    // (`2fec6b0fb`), and #604 followed it off-chain. The witness-set *preimage*
+    // #575 collapsed step-01's arguments to the shared inclusion carriage, and
+    // #604 followed it off-chain. The witness-set *preimage*
     // no longer travels here: step-02 opens field 7 through the §8.8 door and
     // re-derives it from the prover's carriage. What step-01 still owes the
     // thread is the witness-set *hash*, and that goes into `step_02.State`
     // below, not into these arguments.
     expect(
       roundTrip(
-        { Continue: [txInclusionArgs] },
+        { Continue: [{ RedeemerCarriedInclusion: [txInclusionArgs] }] },
         SDK.InvalidSignatureStep01SpendRedeemer,
       ),
     ).toMatchObject({
-      Continue: [{ native_tx_id: h32 }],
+      Continue: [{ RedeemerCarriedInclusion: [{ native_tx_id: h32 }] }],
     });
     // The retired two-field wrapper must not encode any more. Left as an
     // explicit negative because emitting it produced a redeemer the validator
@@ -659,10 +657,12 @@ describe("fault-proof ABI", () => {
     ).toEqual({ fraud_prover: h28, data: null });
     expect(
       roundTrip(
-        { Continue: [txInclusionArgs] },
+        { Continue: [{ RedeemerCarriedInclusion: [txInclusionArgs] }] },
         SDK.InputNoIdxStep01SpendRedeemer,
       ),
-    ).toMatchObject({ Continue: [{ native_tx_id: h32 }] });
+    ).toMatchObject({
+      Continue: [{ RedeemerCarriedInclusion: [{ native_tx_id: h32 }] }],
+    });
 
     // #604: the thread carries the §2.5 anchor, and the step redeemer carries a
     // `FieldOpeningV1` rather than a reproduced `inputs_preimage`. The retired
@@ -720,10 +720,12 @@ describe("fault-proof ABI", () => {
     );
     expect(
       roundTrip(
-        { Continue: [txInclusionArgs] },
+        { Continue: [{ RedeemerCarriedInclusion: [txInclusionArgs] }] },
         SDK.InputNoIdxStep03SpendRedeemer,
       ),
-    ).toMatchObject({ Continue: [{ native_tx_id: h32 }] });
+    ).toMatchObject({
+      Continue: [{ RedeemerCarriedInclusion: [{ native_tx_id: h32 }] }],
+    });
 
     const step04Datum = {
       fraud_prover: h28,
@@ -773,10 +775,12 @@ describe("fault-proof ABI", () => {
 
     expect(
       roundTrip(
-        { Continue: [txInclusionArgs] },
+        { Continue: [{ RedeemerCarriedInclusion: [txInclusionArgs] }] },
         SDK.ReferenceInputNoIdxStep01SpendRedeemer,
       ),
-    ).toMatchObject({ Continue: [{ native_tx_id: h32 }] });
+    ).toMatchObject({
+      Continue: [{ RedeemerCarriedInclusion: [{ native_tx_id: h32 }] }],
+    });
 
     const step02Datum = {
       fraud_prover: h28,
@@ -830,10 +834,12 @@ describe("fault-proof ABI", () => {
     );
     expect(
       roundTrip(
-        { Continue: [txInclusionArgs] },
+        { Continue: [{ RedeemerCarriedInclusion: [txInclusionArgs] }] },
         SDK.ReferenceInputNoIdxStep03SpendRedeemer,
       ),
-    ).toMatchObject({ Continue: [{ native_tx_id: h32 }] });
+    ).toMatchObject({
+      Continue: [{ RedeemerCarriedInclusion: [{ native_tx_id: h32 }] }],
+    });
 
     const step04Datum = {
       fraud_prover: h28,
@@ -1144,26 +1150,27 @@ describe("fault-proof ABI", () => {
   it("classifies invalid-range violations with validator boundary semantics", () => {
     const classify = (normalizedRange: NormalizedTimeRange) =>
       invalidRangeViolationReason({
-        blockValidFrom: 10n,
-        blockValidTo: 20n,
+        blockSlot: 10n,
         normalizedRange,
       });
 
     expect(classify("Always")).toBeNull();
     expect(classify("InvalidRange")).toBe("invalid-range");
-    expect(classify({ ClosedRange: { lower: 10n, upper: 19n } })).toBeNull();
-    expect(classify({ ClosedRange: { lower: 9n, upper: 19n } })).toBe(
-      "lower-before-block",
+    expect(classify({ ClosedRange: { lower: 10n, upper: 10n } })).toBeNull();
+    expect(classify({ ClosedRange: { lower: 11n, upper: 19n } })).toBe(
+      "starts-after-block-slot",
     );
-    expect(classify({ ClosedRange: { lower: 10n, upper: 20n } })).toBe(
-      "upper-at-or-after-block",
+    expect(classify({ ClosedRange: { lower: 1n, upper: 9n } })).toBe(
+      "ends-before-block-slot",
     );
-    expect(classify({ FromNegInf: { upper: 19n } })).toBeNull();
-    expect(classify({ FromNegInf: { upper: 20n } })).toBe(
-      "upper-at-or-after-block",
+    expect(classify({ FromNegInf: { upper: 10n } })).toBeNull();
+    expect(classify({ FromNegInf: { upper: 9n } })).toBe(
+      "ends-before-block-slot",
     );
     expect(classify({ ToPosInf: { lower: 10n } })).toBeNull();
-    expect(classify({ ToPosInf: { lower: 9n } })).toBe("lower-before-block");
+    expect(classify({ ToPosInf: { lower: 11n } })).toBe(
+      "starts-after-block-slot",
+    );
   });
 });
 
@@ -1237,12 +1244,13 @@ describe("fault-proof contract builder", () => {
     );
     expect(contracts.referenceInputNoIdx.steps).toHaveLength(4);
     // `reference_input_no_idx` is the reference-input mirror of `input_no_idx`.
-    // Steps 01 and 02 genuinely differ — step 01 commits the bad tx's
-    // reference-inputs hash instead of its spend-inputs hash, and step 02 opens
+    // Steps 01–03 genuinely differ — step 01 commits the bad tx's
+    // reference-inputs hash instead of its spend-inputs hash, step 02 opens
     // consensus field 1 with a flat `Args` rather than the spend side's
-    // Complete/Published/Fold enum. Steps 03 and 04 differ only in record field
-    // *names*, which PlutusData erases, so they compile to the same UPLC and the
-    // two chains share those two scripts — exactly like the
+    // Complete/Published/Fold enum, and the carried source refactor left the
+    // step 03 pair compiling to distinct UPLC. Step 04 differs only in record
+    // field *names*, which PlutusData erases, so it compiles to the same UPLC
+    // and the two chains share that one script — exactly like the
     // `no_input`/`no_reference_input` pair. The threads stay distinguishable
     // because the computation-thread token asset name binds each thread to its
     // own category and block.
@@ -1255,14 +1263,14 @@ describe("fault-proof contract builder", () => {
           (step) => step.spendingScriptHash,
         ),
       ]).size,
-    ).toBe(6);
+    ).toBe(7);
     expect(
       contracts.referenceInputNoIdx.steps
-        .slice(2)
+        .slice(3)
         .map((step) => step.spendingScriptHash),
     ).toEqual(
       contracts.nonExistentInputNoIndex.steps
-        .slice(2)
+        .slice(3)
         .map((step) => step.spendingScriptHash),
     );
     expect(contracts.invalidRange.firstStep).toBe(
@@ -1288,9 +1296,9 @@ describe("fault-proof contract builder", () => {
     );
     expect(contracts.fabricatedDeposit.steps).toHaveLength(4);
     expect(contracts.fabricatedWithdrawal.steps).toHaveLength(4);
-    expect(contracts.nativeScriptDecoding.steps).toHaveLength(4);
+    expect(contracts.nativeScriptDecoding.steps).toHaveLength(6);
     expect(contracts.missingSignature.steps).toHaveLength(4);
-    expect(contracts.missingNativeScriptTx.steps).toHaveLength(6);
+    expect(contracts.missingNativeScriptTx.steps).toHaveLength(8);
     expect(contracts.withdrawnReferenceInput.steps).toHaveLength(3);
     expect(contracts.canonicalDecodability.steps).toHaveLength(2);
     expect(contracts.committedFieldShape.steps).toHaveLength(2);
@@ -1322,12 +1330,13 @@ describe("fault-proof contract builder", () => {
       ).size,
       // The split stage-one route contributes the envelope resolver plus five
       // internal stage hashes to the applied proof surface; the four
-      // `reference_input_no_idx` steps add two more distinct hashes, since its
-      // steps 03-04 are the same UPLC as `input_no_idx`'s; the two
-      // `invalid_signature` steps are distinct from every other family. R5
+      // `reference_input_no_idx` steps add three more distinct hashes, since
+      // only its steps 01 and 04 remain the same UPLC as `input_no_idx`'s (the
+      // carried native-tx view split the previously twin step-03 bodies); the
+      // two `invalid_signature` steps are distinct from every other family. R5
       // item 1 replaced the two cek/ValueAndMint direct resolvers with two
       // prepare resolvers plus fifteen semantic resolvers (+15 distinct).
-    ).toBe(150);
+    ).toBe(151);
   });
 
   it("builds invalid-range with the validator parameter order from the blueprint", async () => {

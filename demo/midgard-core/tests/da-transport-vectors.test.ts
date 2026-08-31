@@ -587,6 +587,8 @@ describe("DA transport full message vectors", () => {
             deploymentFingerprint,
             headerHash,
             payloadHash,
+            availabilityCommitmentCbor: Buffer.from([0x80]),
+            availabilityCommitmentDigest: b(0x0e, 32),
             signerIndex: 4,
             daVkey: b(0x0c, 32),
             onChainWitness: b(0x0d, 65),
@@ -601,10 +603,12 @@ describe("DA transport full message vectors", () => {
         "00",
         `581c${h("02", 28)}`,
         "81",
-        "88",
+        "8a",
         `5820${h("01", 32)}`,
         `581c${h("02", 28)}`,
         `5820${h("03", 32)}`,
+        "4180",
+        `5820${h("0e", 32)}`,
         "04",
         `5820${h("0c", 32)}`,
         `5841${h("0d", 65)}`,
@@ -631,12 +635,14 @@ describe("DA transport full message vectors", () => {
       decodeDaConflictingSignatureHeaderEvidenceV1Cbor,
       equivocation,
       [
-        "86",
+        "88",
         "04",
         `5820${h("0c", 32)}`,
         `581c${h("02", 28)}`,
+        "4180",
         `584104${h("aa", 64)}`,
         `581c${h("03", 28)}`,
+        "428100",
         `584104${h("bb", 64)}`,
       ].join(""),
     );
@@ -688,6 +694,8 @@ describe("DA transport full message vectors", () => {
         deploymentFingerprint,
         headerHash,
         payloadHash,
+        availabilityCommitmentCbor: Buffer.from([0x80]),
+        availabilityCommitmentDigest: b(0x0e, 32),
         signerIndex: 256,
         daVkey: b(0x0c, 32),
         onChainWitness: b(0x0d, 65),
@@ -882,6 +890,8 @@ describe("DA transport full message vectors", () => {
       deploymentFingerprint,
       headerHash,
       payloadHash,
+      availabilityCommitmentCbor: Buffer.from([0x80]),
+      availabilityCommitmentDigest: b(0x0e, 32),
       signerIndex: 4,
       daVkey: b(0x0c, 32),
       onChainWitness: b(0x0d, 65),
@@ -896,7 +906,7 @@ describe("DA transport full message vectors", () => {
     ).toThrow(/announced_by_peer_id must be a non-empty string/u);
     expect(() =>
       decodeDaAttestationGossipV1Cbor(
-        replaceTupleItem(encodeDaAttestationGossipV1Cbor(attestation), 7, ""),
+        replaceTupleItem(encodeDaAttestationGossipV1Cbor(attestation), 9, ""),
       ),
     ).toThrow(/announced_by_peer_id must be a non-empty string/u);
     expect(() =>
@@ -966,8 +976,10 @@ describe("DA transport full message vectors", () => {
       encodeDaConflictingSignatureHeaderEvidenceV1Cbor({
         ...conflictingSignatureHeaderEvidence(),
         upperHeaderHash: headerHash,
+        upperCommitmentCbor:
+          conflictingSignatureHeaderEvidence().lowerCommitmentCbor,
       }),
-    ).toThrow(/hashes must be strictly ordered/u);
+    ).toThrow(/identities must be strictly ordered/u);
     expect(() =>
       encodeDaConflictingSignatureHeaderEvidenceV1Cbor({
         ...conflictingSignatureHeaderEvidence(),
@@ -982,7 +994,7 @@ describe("DA transport full message vectors", () => {
           ),
         ),
       ),
-    ).toThrow(/must have exactly 6 elements/u);
+    ).toThrow(/must have exactly 8 elements/u);
 
     const unknownStatusCases: readonly {
       readonly encoded: Buffer;
@@ -1293,7 +1305,7 @@ describe("DA transport full message vectors", () => {
       {
         label: "attestation gossip",
         encoded: encodeDaAttestationGossipV1Cbor(attestation),
-        arity: 8,
+        arity: 10,
         decode: decodeDaAttestationGossipV1Cbor,
       },
       {
@@ -1348,8 +1360,10 @@ const conflictingSignatureHeaderEvidence =
     signerIndex: 4,
     daVkey: b(0x0c, 32),
     lowerHeaderHash: headerHash,
+    lowerCommitmentCbor: Buffer.from([0x80]),
     lowerHeaderWitness: Buffer.concat([Buffer.from([4]), b(0xaa, 64)]),
     upperHeaderHash: b(0x03, 28),
+    upperCommitmentCbor: Buffer.from([0x81, 0x00]),
     upperHeaderWitness: Buffer.concat([Buffer.from([4]), b(0xbb, 64)]),
   });
 

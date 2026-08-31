@@ -142,6 +142,8 @@ export const MISSING_NATIVE_SCRIPT_TX_FAULT_PROOF_TITLES = {
   step04: "fraud_proofs/missing_native_script_tx/step_04.main.spend",
   step05: "fraud_proofs/missing_native_script_tx/step_05.main.spend",
   step06: "fraud_proofs/missing_native_script_tx/step_06.main.spend",
+  step07: "fraud_proofs/missing_native_script_tx/step_07.main.spend",
+  step08: "fraud_proofs/missing_native_script_tx/step_08.main.spend",
 } as const;
 
 export const WITHDRAWN_REFERENCE_INPUT_FAULT_PROOF_TITLES = {
@@ -212,6 +214,37 @@ export const MINT_AUTHORIZATION_FAULT_PROOF_TITLES = {
   step03: "fraud_proofs/mint_authorization/step_03.main.spend",
   step04: "fraud_proofs/mint_authorization/step_04.main.spend",
   step05: "fraud_proofs/mint_authorization/step_05.main.spend",
+} as const;
+
+export const NETWORK_ID_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/network_id/step_01.main.spend",
+  step02: "fraud_proofs/network_id/step_02.main.spend",
+} as const;
+
+export const MISSING_NATIVE_SCRIPT_UTXO_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/missing_native_script_utxo/step_01.main.spend",
+  step02: "fraud_proofs/missing_native_script_utxo/step_02.main.spend",
+  step03: "fraud_proofs/missing_native_script_utxo/step_03.main.spend",
+  step04: "fraud_proofs/missing_native_script_utxo/step_04.main.spend",
+  step05: "fraud_proofs/missing_native_script_utxo/step_05.main.spend",
+  step06: "fraud_proofs/missing_native_script_utxo/step_06.main.spend",
+  step07: "fraud_proofs/missing_native_script_utxo/step_07.main.spend",
+} as const;
+
+export const NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/native_script_invalid/step_01.main.spend",
+  step02: "fraud_proofs/native_script_invalid/step_02.main.spend",
+  step03: "fraud_proofs/native_script_invalid/step_03.main.spend",
+  step04: "fraud_proofs/native_script_invalid/step_04.main.spend",
+  step05: "fraud_proofs/native_script_invalid/step_05.main.spend",
+} as const;
+
+export const MIN_ADA_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/min_ada/step_01.main.spend",
+  step02: "fraud_proofs/min_ada/step_02.main.spend",
+  step03: "fraud_proofs/min_ada/step_03.main.spend",
+  step04: "fraud_proofs/min_ada/step_04.main.spend",
+  step05: "fraud_proofs/min_ada/step_05.main.spend",
 } as const;
 
 export const TRANSITION_TRACE_FAULT_PROOF_TITLES = {
@@ -470,6 +503,7 @@ export const CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1 =
 export const VALIDATION_TRACE_RESOLVER_COUNT_V1 = 14;
 
 export const FAULT_PROOF_SHARED_TITLES = {
+  claimRegistrySpend: "claim_registry.spend.spend",
   computationThreadMint: "computation_thread.mint.mint",
   fraudProofMint: "fraud_proof.mint.mint",
   fraudProofSpend: "fraud_proof.spend.else",
@@ -485,6 +519,7 @@ export type FraudProofChain = {
 export type DoubleSpendFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
   readonly doubleSpend: FraudProofChain & {
     readonly steps: readonly [
       SpendingValidator,
@@ -535,6 +570,7 @@ export type NoReferenceInputFaultProofContracts = {
 export type InputNoIdxFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
   readonly nonExistentInputNoIndex: FraudProofChain & {
     readonly steps: readonly [
       SpendingValidator,
@@ -555,6 +591,7 @@ export type InputNoIdxFaultProofContracts = {
 export type ReferenceInputNoIdxFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
   readonly referenceInputNoIdx: FraudProofChain & {
     readonly steps: readonly [
       SpendingValidator,
@@ -664,6 +701,8 @@ export type MissingNativeScriptTxFaultProofContracts = {
   readonly fraudProof: AuthenticatedValidator;
   readonly missingNativeScriptTx: FraudProofChain & {
     readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
       SpendingValidator,
       SpendingValidator,
       SpendingValidator,
@@ -785,6 +824,62 @@ export type MintAuthorizationFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
   readonly mintAuthorization: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type NetworkIdFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
+  readonly networkId: FraudProofChain & {
+    readonly steps: readonly [SpendingValidator, SpendingValidator];
+  };
+};
+
+export type MissingNativeScriptUtxoFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
+  readonly missingNativeScriptUtxo: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type NativeScriptInvalidFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
+  readonly nativeScriptInvalid: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type MinAdaFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
+  readonly minAda: FraudProofChain & {
     readonly steps: readonly [
       SpendingValidator,
       SpendingValidator,
@@ -1009,6 +1104,10 @@ export type FaultProofContracts = {
   readonly valueNotPreserved: ValueNotPreservedFaultProofContracts["valueNotPreserved"];
   readonly inputSetUniqueness: InputSetUniquenessFaultProofContracts["inputSetUniqueness"];
   readonly mintAuthorization: MintAuthorizationFaultProofContracts["mintAuthorization"];
+  readonly networkId: NetworkIdFaultProofContracts["networkId"];
+  readonly missingNativeScriptUtxo: MissingNativeScriptUtxoFaultProofContracts["missingNativeScriptUtxo"];
+  readonly nativeScriptInvalid: NativeScriptInvalidFaultProofContracts["nativeScriptInvalid"];
+  readonly minAda: MinAdaFaultProofContracts["minAda"];
 };
 
 /**
@@ -1025,6 +1124,7 @@ type SharedFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
   readonly fraudProofTokenAddressData: Data;
+  readonly fieldPreimageCertificate: MintingValidator;
   /**
    * The §8.6 field-preimage certificate minting policy id. #592 gave the
    * step validators that consult a carried field preimage a trailing
@@ -1121,6 +1221,18 @@ export type BuildInputSetUniquenessFaultProofContractsParams =
   BuildFaultProofContractsParams;
 
 export type BuildMintAuthorizationFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildNetworkIdFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildMissingNativeScriptUtxoFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildNativeScriptInvalidFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+
+export type BuildMinAdaFaultProofContractsParams =
   BuildFaultProofContractsParams;
 
 export type BuildTransitionTraceFaultProofContractsParams =
@@ -1379,6 +1491,30 @@ const tryBuild = <A>(
       ),
   });
 
+/**
+ * Deterministically derives the deployment-bound claim-registry validator.
+ * Kept as a narrow public builder so one-category submitters can authenticate
+ * the shared singleton without constructing every fraud-proof family.
+ */
+export const buildClaimRegistrySpendingValidator = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+}: Pick<
+  BuildFaultProofContractsParams,
+  "blueprint" | "network" | "hubOraclePolicyId"
+>): Effect.Effect<SpendingValidator, Error> =>
+  tryBuild("Failed to build claim-registry spending validator", () =>
+    makeSpendingValidator(
+      network,
+      applyBlueprintParams(
+        blueprint,
+        FAULT_PROOF_SHARED_TITLES.claimRegistrySpend,
+        [hubOraclePolicyId],
+      ),
+    ),
+  );
+
 const buildSharedFaultProofContracts = ({
   blueprint,
   network,
@@ -1389,6 +1525,11 @@ const buildSharedFaultProofContracts = ({
   Error
 > =>
   Effect.gen(function* () {
+    const claimRegistry = yield* buildClaimRegistrySpendingValidator({
+      blueprint,
+      network,
+      hubOraclePolicyId,
+    });
     const computationThread = yield* tryBuild(
       "Failed to build computation-thread minting policy",
       () =>
@@ -1396,7 +1537,11 @@ const buildSharedFaultProofContracts = ({
           applyBlueprintParams(
             blueprint,
             FAULT_PROOF_SHARED_TITLES.computationThreadMint,
-            [fraudProofCataloguePolicyId, hubOraclePolicyId],
+            [
+              fraudProofCataloguePolicyId,
+              hubOraclePolicyId,
+              claimRegistry.spendingScriptHash,
+            ],
           ),
         ),
     );
@@ -1437,6 +1582,7 @@ const buildSharedFaultProofContracts = ({
       computationThread,
       fraudProof,
       fraudProofTokenAddressData,
+      fieldPreimageCertificate,
       fieldPreimageCertificatePolicyId: fieldPreimageCertificate.policyId,
     };
   });
@@ -2480,10 +2626,32 @@ const buildMissingNativeScriptTxChain = ({
 > =>
   Effect.gen(function* () {
     const context = { blueprint, network };
+    const step08 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_NATIVE_SCRIPT_TX_FAULT_PROOF_TITLES.step08,
+      [
+        computationThread.policyId,
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build missing-native-script-tx step 08",
+    );
+    const step07 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_NATIVE_SCRIPT_TX_FAULT_PROOF_TITLES.step07,
+      [
+        step08.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build missing-native-script-tx step 07",
+    );
     const step06 = yield* buildFaultProofSpendingStep(
       context,
       MISSING_NATIVE_SCRIPT_TX_FAULT_PROOF_TITLES.step06,
       [
+        step07.spendingScriptHash,
         computationThread.policyId,
         fraudProof.policyId,
         fraudProofTokenAddressData,
@@ -2539,7 +2707,7 @@ const buildMissingNativeScriptTxChain = ({
     );
     return {
       firstStep: step01,
-      steps: [step01, step02, step03, step04, step05, step06],
+      steps: [step01, step02, step03, step04, step05, step06, step07, step08],
     };
   });
 
@@ -3076,6 +3244,265 @@ const buildMintAuthorizationChain = ({
         hubOraclePolicyId,
       ],
       "Failed to build mint-authorization step 01",
+    );
+    return {
+      firstStep: step01,
+      steps: [step01, step02, step03, step04, step05],
+    };
+  });
+
+const buildNetworkIdChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  NetworkIdFaultProofContracts["networkId"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      NETWORK_ID_FAULT_PROOF_TITLES.step02,
+      [
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build network-id step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      NETWORK_ID_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+        network === "Mainnet" ? 1n : 0n,
+      ],
+      "Failed to build network-id step 01",
+    );
+    return { firstStep: step01, steps: [step01, step02] };
+  });
+
+const buildMissingNativeScriptUtxoChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  MissingNativeScriptUtxoFaultProofContracts["missingNativeScriptUtxo"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step07 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_NATIVE_SCRIPT_UTXO_FAULT_PROOF_TITLES.step07,
+      [
+        computationThread.policyId,
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build missing-native-script-utxo step 07",
+    );
+    const step06 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_NATIVE_SCRIPT_UTXO_FAULT_PROOF_TITLES.step06,
+      [
+        step07.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build missing-native-script-utxo step 06",
+    );
+    const step05 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_NATIVE_SCRIPT_UTXO_FAULT_PROOF_TITLES.step05,
+      [
+        step06.spendingScriptHash,
+        computationThread.policyId,
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build missing-native-script-utxo step 05",
+    );
+    const step04 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_NATIVE_SCRIPT_UTXO_FAULT_PROOF_TITLES.step04,
+      [step05.spendingScriptHash, computationThread.policyId],
+      "Failed to build missing-native-script-utxo step 04",
+    );
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_NATIVE_SCRIPT_UTXO_FAULT_PROOF_TITLES.step03,
+      [step04.spendingScriptHash, computationThread.policyId],
+      "Failed to build missing-native-script-utxo step 03",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_NATIVE_SCRIPT_UTXO_FAULT_PROOF_TITLES.step02,
+      [
+        step03.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build missing-native-script-utxo step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_NATIVE_SCRIPT_UTXO_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build missing-native-script-utxo step 01",
+    );
+    return {
+      firstStep: step01,
+      steps: [step01, step02, step03, step04, step05, step06, step07],
+    };
+  });
+
+const buildNativeScriptInvalidChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  NativeScriptInvalidFaultProofContracts["nativeScriptInvalid"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step05 = yield* buildFaultProofSpendingStep(
+      context,
+      NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.step05,
+      [
+        computationThread.policyId,
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+      ],
+      "Failed to build native-script-invalid step 05",
+    );
+    const step04 = yield* buildFaultProofSpendingStep(
+      context,
+      NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.step04,
+      [
+        step05.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build native-script-invalid step 04",
+    );
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.step03,
+      [
+        step04.spendingScriptHash,
+        computationThread.policyId,
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build native-script-invalid step 03",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.step02,
+      [
+        step03.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build native-script-invalid step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build native-script-invalid step 01",
+    );
+    return {
+      firstStep: step01,
+      steps: [step01, step02, step03, step04, step05],
+    };
+  });
+
+const buildMinAdaChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  MinAdaFaultProofContracts["minAda"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step05 = yield* buildFaultProofSpendingStep(
+      context,
+      MIN_ADA_FAULT_PROOF_TITLES.step05,
+      [
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        computationThread.policyId,
+      ],
+      "Failed to build min-ada step 05",
+    );
+    const step04 = yield* buildFaultProofSpendingStep(
+      context,
+      MIN_ADA_FAULT_PROOF_TITLES.step04,
+      [step05.spendingScriptHash, computationThread.policyId],
+      "Failed to build min-ada step 04",
+    );
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      MIN_ADA_FAULT_PROOF_TITLES.step03,
+      [step04.spendingScriptHash, computationThread.policyId],
+      "Failed to build min-ada step 03",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      MIN_ADA_FAULT_PROOF_TITLES.step02,
+      [
+        step03.spendingScriptHash,
+        step05.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build min-ada step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      MIN_ADA_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build min-ada step 01",
     );
     return {
       firstStep: step01,
@@ -4003,10 +4430,24 @@ export const buildFaultProofContracts = (
       ...params,
       ...shared,
     });
+    const networkId = yield* buildNetworkIdChain({
+      ...params,
+      ...shared,
+    });
+    const missingNativeScriptUtxo = yield* buildMissingNativeScriptUtxoChain({
+      ...params,
+      ...shared,
+    });
+    const nativeScriptInvalid = yield* buildNativeScriptInvalidChain({
+      ...params,
+      ...shared,
+    });
+    const minAda = yield* buildMinAdaChain({ ...params, ...shared });
 
     return {
       computationThread: shared.computationThread,
       fraudProof: shared.fraudProof,
+      fieldPreimageCertificate: shared.fieldPreimageCertificate,
       doubleSpend,
       nonExistentInput,
       noReferenceInput,
@@ -4035,6 +4476,10 @@ export const buildFaultProofContracts = (
       valueNotPreserved,
       inputSetUniqueness,
       mintAuthorization,
+      networkId,
+      missingNativeScriptUtxo,
+      nativeScriptInvalid,
+      minAda,
     };
   });
 
@@ -4077,6 +4522,10 @@ export const fraudProofContractsToFirstSteps = (
   valueNotPreserved: contracts.valueNotPreserved.firstStep,
   inputSetUniqueness: contracts.inputSetUniqueness.firstStep,
   mintAuthorization: contracts.mintAuthorization.firstStep,
+  networkId: contracts.networkId.firstStep,
+  missingNativeScriptUtxo: contracts.missingNativeScriptUtxo.firstStep,
+  nativeScriptInvalid: contracts.nativeScriptInvalid.firstStep,
+  minAda: contracts.minAda.firstStep,
 });
 
 export const buildDoubleSpendFaultProofContracts = (
@@ -4091,6 +4540,7 @@ export const buildDoubleSpendFaultProofContracts = (
     return {
       computationThread: shared.computationThread,
       fraudProof: shared.fraudProof,
+      fieldPreimageCertificate: shared.fieldPreimageCertificate,
       doubleSpend,
     };
   });
@@ -4139,6 +4589,7 @@ export const buildInputNoIdxFaultProofContracts = (
     return {
       computationThread: shared.computationThread,
       fraudProof: shared.fraudProof,
+      fieldPreimageCertificate: shared.fieldPreimageCertificate,
       nonExistentInputNoIndex,
     };
   });
@@ -4155,6 +4606,7 @@ export const buildReferenceInputNoIdxFaultProofContracts = (
     return {
       computationThread: shared.computationThread,
       fraudProof: shared.fraudProof,
+      fieldPreimageCertificate: shared.fieldPreimageCertificate,
       referenceInputNoIdx,
     };
   });
@@ -4427,6 +4879,51 @@ export const buildMintAuthorizationFaultProofContracts = (
       ...shared,
     });
     return { ...shared, mintAuthorization };
+  });
+
+export const buildNetworkIdFaultProofContracts = (
+  params: BuildNetworkIdFaultProofContractsParams,
+): Effect.Effect<NetworkIdFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const networkId = yield* buildNetworkIdChain({
+      ...params,
+      ...shared,
+    });
+    return { ...shared, networkId };
+  });
+
+export const buildMissingNativeScriptUtxoFaultProofContracts = (
+  params: BuildMissingNativeScriptUtxoFaultProofContractsParams,
+): Effect.Effect<MissingNativeScriptUtxoFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const missingNativeScriptUtxo = yield* buildMissingNativeScriptUtxoChain({
+      ...params,
+      ...shared,
+    });
+    return { ...shared, missingNativeScriptUtxo };
+  });
+
+export const buildNativeScriptInvalidFaultProofContracts = (
+  params: BuildNativeScriptInvalidFaultProofContractsParams,
+): Effect.Effect<NativeScriptInvalidFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const nativeScriptInvalid = yield* buildNativeScriptInvalidChain({
+      ...params,
+      ...shared,
+    });
+    return { ...shared, nativeScriptInvalid };
+  });
+
+export const buildMinAdaFaultProofContracts = (
+  params: BuildMinAdaFaultProofContractsParams,
+): Effect.Effect<MinAdaFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const minAda = yield* buildMinAdaChain({ ...params, ...shared });
+    return { ...shared, minAda };
   });
 
 export const buildTransitionTraceFaultProofContracts = (

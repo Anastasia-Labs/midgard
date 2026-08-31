@@ -9,6 +9,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyDaAttestationSignatureWitnesses,
+  availabilityResponseGeometryV1,
+  buildDaAvailabilityCommitmentV1,
   castStateQueueNodeV1ToData,
   type DaAttestationBuildError,
   DaAttestationDatum,
@@ -38,6 +40,18 @@ import {
 const h28 = (byte: string): string => byte.repeat(28);
 const h32 = (byte: string): string => byte.repeat(32);
 const signature = (byte: string): string => byte.repeat(64);
+const availabilityCommitment = (headerHash: string) =>
+  buildDaAvailabilityCommitmentV1({
+    deploymentIdentity: h28("71"),
+    headerHash,
+    payload: Uint8Array.of(1),
+    bondOwner: h28("72"),
+    responseGeometry: availabilityResponseGeometryV1({
+      chunkByteLength: 4096,
+      trancheByteLength: 4 * 1024 * 1024,
+      maxTrancheCount: 16,
+    }),
+  });
 
 type RecordedPayment = {
   readonly address: string;
@@ -129,7 +143,11 @@ const makeFixture = () => {
   const contracts = {
     daAttestation: validator("aa", "addr_da_attestation"),
     stateQueue: validator("bb", "addr_state_queue"),
-  } as Pick<MidgardValidators, "daAttestation" | "stateQueue">;
+    availabilityChallenge: validator("cc", "addr_availability_challenge"),
+  } as Pick<
+    MidgardValidators,
+    "availabilityChallenge" | "daAttestation" | "stateQueue"
+  >;
   const headerHash = h28("10");
   const stateQueueNode: StateQueueNodeV1 = {
     header: {
@@ -191,10 +209,15 @@ const makeFixture = () => {
     contracts.daAttestation,
     headerHash,
   );
-  const attestationDatum = {
+  const attestationDatum: DaAttestationDatum = {
     header_hash: headerHash,
+    availability_commitment: availabilityCommitment(headerHash),
     da_threshold: 2n,
     committee_signers_hash: daParamsDatum.committee_signers_hash,
+    rescue_beneficiary: {
+      paymentCredential: { PublicKeyCredential: [h28("66")] },
+      stakeCredential: null,
+    },
     attested_signers: EMPTY_ATTESTED_SIGNER_BITMAP,
     attestation_count: 0n,
   };
@@ -208,6 +231,7 @@ const makeFixture = () => {
     datum: attestationDatum,
   };
   const referenceScripts: DaAttestationReferenceScripts = {
+    availabilityChallengeMinting: makeUtxo(8),
     daAttestationMinting: makeUtxo(4),
     daAttestationSpending: makeUtxo(5),
     stateQueueMinting: makeUtxo(6),
@@ -222,6 +246,7 @@ const makeFixture = () => {
     attestation,
     attestationUnit,
     referenceScripts,
+    hubOracleRefInput: makeUtxo(9),
   };
 };
 
@@ -313,6 +338,9 @@ describe("DA attestation SDK builders", () => {
         target: fixture.target,
         referenceScripts: fixture.referenceScripts,
         attestationOutputLovelace: 5_000_000n,
+        rescueBeneficiary: fixture.attestation.datum.rescue_beneficiary,
+        availabilityCommitment:
+          fixture.attestation.datum.availability_commitment,
       }),
     );
 
@@ -428,6 +456,7 @@ describe("DA attestation SDK builders", () => {
         lucid,
         fixture.contracts,
         {
+          hubOracleRefInput: fixture.hubOracleRefInput,
           daParamsUtxo: fixture.daParamsUtxo,
           daParamsDatum: fixture.daParamsDatum,
           target: fixture.target,
@@ -439,7 +468,9 @@ describe("DA attestation SDK builders", () => {
 
     expect(record.reads).toEqual([
       [
+        fixture.hubOracleRefInput,
         fixture.daParamsUtxo,
+        fixture.referenceScripts.availabilityChallengeMinting,
         fixture.referenceScripts.daAttestationMinting,
         fixture.referenceScripts.daAttestationSpending,
         fixture.referenceScripts.stateQueueMinting,
@@ -472,9 +503,11 @@ describe("DA attestation SDK builders", () => {
       expect(stateQueueNode.header).toEqual(
         fixture.target.stateQueueNode.header,
       );
-      expect(stateQueueNode.da_attestation).toBe(
-        fixture.contracts.daAttestation.policyId,
-      );
+      expect(stateQueueNode.da_attestation).toMatchObject({
+        Attested: {
+          da_bond_asset_name: expect.stringMatching(/^[0-9a-f]{64}$/u),
+        },
+      });
     }
   });
 
@@ -487,6 +520,7 @@ describe("DA attestation SDK builders", () => {
         lucid,
         fixture.contracts,
         {
+          hubOracleRefInput: fixture.hubOracleRefInput,
           daParamsUtxo: fixture.daParamsUtxo,
           daParamsDatum: fixture.daParamsDatum,
           target: fixture.target,
@@ -500,6 +534,7 @@ describe("DA attestation SDK builders", () => {
         lucid,
         fixture.contracts,
         {
+          hubOracleRefInput: fixture.hubOracleRefInput,
           daParamsUtxo: fixture.daParamsUtxo,
           daParamsDatum: fixture.daParamsDatum,
           target: fixture.target,

@@ -9,18 +9,25 @@ import {
   FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+  INPUT_SET_UNIQUENESS_FRAUD_CATEGORY_ID_V1,
   L2_TX_MISTAG_FRAUD_CATEGORY_ID_V1,
+  MIN_ADA_FRAUD_CATEGORY_ID_V1,
   MIN_FEE_FRAUD_CATEGORY_ID_V1,
+  MINT_AUTHORIZATION_FRAUD_CATEGORY_ID_V1,
   MISSING_NATIVE_SCRIPT_TX_FRAUD_CATEGORY_ID_V1,
+  MISSING_NATIVE_SCRIPT_UTXO_FRAUD_CATEGORY_ID_V1,
   MISSING_SIGNATURE_FRAUD_CATEGORY_ID_V1,
   NATIVE_SCRIPT_DECODING_FRAUD_CATEGORY_ID_V1,
+  NATIVE_SCRIPT_INVALID_FRAUD_CATEGORY_ID_V1,
+  NETWORK_ID_FRAUD_CATEGORY_ID_V1,
+  VALUE_NOT_PRESERVED_FRAUD_CATEGORY_ID_V1,
   WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID_V1,
   WITHDRAWN_INPUT_FRAUD_CATEGORY_ID_V1,
   WITHDRAWN_REFERENCE_INPUT_FRAUD_CATEGORY_ID_V1,
 } from "../src/index.js";
 
 describe("production fraud-proof catalogue registration", () => {
-  it("pins the append-only category order and four-byte ids through 0x18", () => {
+  it("pins the append-only category order and four-byte ids through 0x1f", () => {
     expect(FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER).toEqual([
       "doubleSpend",
       "nonExistentInput",
@@ -47,6 +54,13 @@ describe("production fraud-proof catalogue registration", () => {
       "crossBlockDuplicateEvent",
       "l2TxMistag",
       "withdrawnInput",
+      "valueNotPreserved",
+      "inputSetUniqueness",
+      "mintAuthorization",
+      "networkId",
+      "missingNativeScriptUtxo",
+      "nativeScriptInvalid",
+      "minAda",
     ]);
 
     expect(
@@ -76,6 +90,13 @@ describe("production fraud-proof catalogue registration", () => {
         CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID_V1,
       l2TxMistag: L2_TX_MISTAG_FRAUD_CATEGORY_ID_V1,
       withdrawnInput: WITHDRAWN_INPUT_FRAUD_CATEGORY_ID_V1,
+      valueNotPreserved: VALUE_NOT_PRESERVED_FRAUD_CATEGORY_ID_V1,
+      inputSetUniqueness: INPUT_SET_UNIQUENESS_FRAUD_CATEGORY_ID_V1,
+      mintAuthorization: MINT_AUTHORIZATION_FRAUD_CATEGORY_ID_V1,
+      networkId: NETWORK_ID_FRAUD_CATEGORY_ID_V1,
+      missingNativeScriptUtxo: MISSING_NATIVE_SCRIPT_UTXO_FRAUD_CATEGORY_ID_V1,
+      nativeScriptInvalid: NATIVE_SCRIPT_INVALID_FRAUD_CATEGORY_ID_V1,
+      minAda: MIN_ADA_FRAUD_CATEGORY_ID_V1,
     }).toEqual({
       fabricatedDeposit: "0000000b",
       fabricatedWithdrawal: "0000000c",
@@ -91,6 +112,13 @@ describe("production fraud-proof catalogue registration", () => {
       crossBlockDuplicateEvent: "00000016",
       l2TxMistag: "00000017",
       withdrawnInput: "00000018",
+      valueNotPreserved: "00000019",
+      inputSetUniqueness: "0000001a",
+      mintAuthorization: "0000001b",
+      networkId: "0000001c",
+      missingNativeScriptUtxo: "0000001d",
+      nativeScriptInvalid: "0000001e",
+      minAda: "0000001f",
     });
   });
 });

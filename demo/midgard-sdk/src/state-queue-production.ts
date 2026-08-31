@@ -29,6 +29,10 @@ import type {
 } from "@/common.js";
 import { outputReferenceFromUTxO } from "@/common.js";
 import {
+  CorrectionLockDatum,
+  type CorrectionLockUTxO,
+} from "@/correction-lock.js";
+import {
   castConfirmedStateToData,
   castStateQueueNodeV1ToData,
   type ConfirmedState,
@@ -68,6 +72,7 @@ import {
   requireReferenceInputIndex as requireContextReferenceInputIndex,
   requireSpendRedeemerIndex as requireContextSpendRedeemerIndex,
 } from "@/tx-context-redeemer.js";
+import { dedupeAndSortUtxos } from "@/tx-out-ref-order.js";
 import { outputDatumCborMatches } from "@/tx-output-utils.js";
 
 const STATE_QUEUE_HEADER_NODE_LOVELACE = 5_000_000n;
@@ -107,6 +112,12 @@ export type StateQueueCommitWitnessContext = {
   readonly operatorKeyHash: string;
   readonly schedulerRefInput: UTxO;
   readonly hubOracleRefInput: UTxO;
+  /** Authenticated deployment singleton; append is permitted only while Idle. */
+  readonly correctionLockRefInput: CorrectionLockUTxO;
+  /** Authenticated singleton root; required exactly for a non-empty queue. */
+  readonly confirmedStateRefInput?: UTxO;
+  /** Authenticated current head; required when the consumed tail is deeper. */
+  readonly headStateQueueNodeRefInput?: UTxO;
   readonly activeOperatorInput: UTxO & { readonly datum: string };
   readonly activeOperatorsSpendingScript: Script;
   readonly activeOperatorsSpendingScriptRef?: UTxO;
@@ -124,6 +135,8 @@ type StateQueueCommitLayout = {
   readonly activeOperatorOutputIndex: bigint;
   readonly hubOracleRefInputIndex: bigint;
   readonly stateQueueMintRedeemerIndex: bigint;
+  readonly confirmedStateRefInputIndex: bigint | null;
+  readonly headStateQueueNodeRefInputIndex: bigint | null;
 };
 
 type StateQueueCommitRedeemer = {
@@ -134,6 +147,8 @@ type StateQueueCommitRedeemer = {
     readonly scheduler_ref_input_index: bigint;
     readonly active_operators_input_index: bigint;
     readonly active_operators_redeemer_index: bigint;
+    readonly m_confirmed_state_ref_input_index: bigint | null;
+    readonly m_head_state_queue_node_ref_input_index: bigint | null;
   };
 };
 
@@ -189,6 +204,9 @@ const makeStateQueueCommitRedeemer = (
     scheduler_ref_input_index: layout.schedulerRefInputIndex,
     active_operators_input_index: layout.activeOperatorsInputIndex,
     active_operators_redeemer_index: layout.activeOperatorsRedeemerIndex,
+    m_confirmed_state_ref_input_index: layout.confirmedStateRefInputIndex,
+    m_head_state_queue_node_ref_input_index:
+      layout.headStateQueueNodeRefInputIndex,
   },
 });
 
@@ -235,6 +253,8 @@ type CommitLayoutLike = {
   readonly continuedLatestBlockOutputIndex: bigint;
   readonly activeOperatorOutputIndex: bigint;
   readonly hubOracleRefInputIndex: bigint;
+  readonly confirmedStateRefInputIndex: bigint | null;
+  readonly headStateQueueNodeRefInputIndex: bigint | null;
 };
 
 const COMMIT_LAYOUT_FIELDS = [
@@ -255,6 +275,14 @@ const COMMIT_LAYOUT_FIELDS = [
   },
   { key: "activeOperatorOutputIndex", label: "active_operator_output_index" },
   { key: "hubOracleRefInputIndex", label: "hub_oracle_ref_input_index" },
+  {
+    key: "confirmedStateRefInputIndex",
+    label: "m_confirmed_state_ref_input_index",
+  },
+  {
+    key: "headStateQueueNodeRefInputIndex",
+    label: "m_head_state_queue_node_ref_input_index",
+  },
 ] as const satisfies readonly {
   readonly key: keyof CommitLayoutLike;
   readonly label: string;
@@ -262,7 +290,7 @@ const COMMIT_LAYOUT_FIELDS = [
 
 const formatCommitLayout = (layout: CommitLayoutLike): string =>
   COMMIT_LAYOUT_FIELDS.map(
-    ({ key, label }) => `${label}=${layout[key].toString()}`,
+    ({ key, label }) => `${label}=${layout[key]?.toString() ?? "null"}`,
   ).join(",");
 
 const requireUniqueContextOutputIndex = (
@@ -291,6 +319,8 @@ const deriveCommitLayoutFromRedeemerContext = ({
   schedulerRefInput,
   hubOracleRefInput,
   activeOperatorInput,
+  confirmedStateRefInput,
+  headStateQueueNodeRefInput,
   stateQueuePolicyId,
   stateQueueAddress,
   headerNodeUnit,
@@ -301,6 +331,8 @@ const deriveCommitLayoutFromRedeemerContext = ({
   readonly schedulerRefInput: UTxO;
   readonly hubOracleRefInput: UTxO;
   readonly activeOperatorInput: UTxO;
+  readonly confirmedStateRefInput?: UTxO;
+  readonly headStateQueueNodeRefInput?: UTxO;
   readonly stateQueuePolicyId: string;
   readonly stateQueueAddress: string;
   readonly headerNodeUnit: string;
@@ -356,6 +388,22 @@ const deriveCommitLayoutFromRedeemerContext = ({
       stateQueuePolicyId,
       "state-queue commit mint",
     ),
+    confirmedStateRefInputIndex:
+      confirmedStateRefInput === undefined
+        ? null
+        : requireContextReferenceInputIndex(
+            ctx,
+            confirmedStateRefInput,
+            "state-queue commit confirmed-state root",
+          ),
+    headStateQueueNodeRefInputIndex:
+      headStateQueueNodeRefInput === undefined
+        ? null
+        : requireContextReferenceInputIndex(
+            ctx,
+            headStateQueueNodeRefInput,
+            "state-queue commit current head",
+          ),
   };
 };
 
@@ -394,9 +442,10 @@ export const buildDeterministicCommitTxBuilder = ({
       `🔹 Using ${presetWalletInputs.length.toString()} preset operator wallet input(s) for state_queue commit tx.`,
     );
 
-    const referenceInputs = [
+    const referenceInputs = dedupeAndSortUtxos([
       witness.schedulerRefInput,
       witness.hubOracleRefInput,
+      witness.correctionLockRefInput.utxo,
       ...(witness.activeOperatorsSpendingScriptRef === undefined
         ? []
         : [witness.activeOperatorsSpendingScriptRef]),
@@ -406,7 +455,13 @@ export const buildDeterministicCommitTxBuilder = ({
       ...(witness.stateQueueMintingScriptRef === undefined
         ? []
         : [witness.stateQueueMintingScriptRef]),
-    ];
+      ...(witness.confirmedStateRefInput === undefined
+        ? []
+        : [witness.confirmedStateRefInput]),
+      ...(witness.headStateQueueNodeRefInput === undefined
+        ? []
+        : [witness.headStateQueueNodeRefInput]),
+    ]);
 
     let commitLayout: StateQueueCommitLayout | undefined;
     const layoutFromContext = (
@@ -417,6 +472,8 @@ export const buildDeterministicCommitTxBuilder = ({
         schedulerRefInput: witness.schedulerRefInput,
         hubOracleRefInput: witness.hubOracleRefInput,
         activeOperatorInput: witness.activeOperatorInput,
+        confirmedStateRefInput: witness.confirmedStateRefInput,
+        headStateQueueNodeRefInput: witness.headStateQueueNodeRefInput,
         stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
         stateQueuePolicyId: contracts.stateQueue.policyId,
         headerNodeUnit,
@@ -536,6 +593,30 @@ export const buildProductionCommitBlockHeaderTxProgram = ({
   StateQueueError | HashingError
 > =>
   Effect.gen(function* () {
+    if (witness.correctionLockRefInput.datum !== "Idle") {
+      return yield* Effect.fail(
+        new StateQueueError({
+          message: "Refusing to append while state correction is locked",
+          cause: Data.to(
+            witness.correctionLockRefInput.datum,
+            CorrectionLockDatum,
+          ),
+        }),
+      );
+    }
+    const queueIsEmpty = latestBlock.datum.key === "Empty";
+    if (
+      queueIsEmpty !== (witness.confirmedStateRefInput === undefined) ||
+      (queueIsEmpty && witness.headStateQueueNodeRefInput !== undefined)
+    ) {
+      return yield* Effect.fail(
+        new StateQueueError({
+          message:
+            "Refusing to build a commit transaction without the canonical root/head append-fence witnesses",
+          cause: `queue_empty=${String(queueIsEmpty)},confirmed_state_ref=${String(witness.confirmedStateRefInput !== undefined)},head_ref=${String(witness.headStateQueueNodeRefInput !== undefined)}`,
+        }),
+      );
+    }
     const inclusiveValidityUpperBound = validTo - 1;
     if (!isProductionCommitValidityInterval({ validFrom, validTo })) {
       return yield* Effect.fail(
@@ -669,6 +750,8 @@ export type ProductionMergeToConfirmedStateParams = {
   readonly validFrom: number;
   readonly presetWalletInputs?: readonly UTxO[];
   readonly hubOracleRefInput: UTxO;
+  /** Authenticated deployment singleton; merge is permitted only while Idle. */
+  readonly correctionLockRefInput: CorrectionLockUTxO;
   readonly referenceScripts?: StateQueueMergeReferenceScripts;
   readonly settlementOutputLovelace?: bigint;
 };
@@ -1021,6 +1104,7 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
   validFrom,
   presetWalletInputs,
   hubOracleRefInput,
+  correctionLockRefInput,
   referenceScripts,
   settlementOutputLovelace = MIN_SETTLEMENT_OUTPUT_LOVELACE,
 }: ProductionMergeToConfirmedStateParams): Effect.Effect<
@@ -1028,6 +1112,14 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
   StateQueueError | DataCoercionError | HashingError
 > =>
   Effect.gen(function* () {
+    if (correctionLockRefInput.datum !== "Idle") {
+      return yield* Effect.fail(
+        new StateQueueError({
+          message: "Refusing to merge while state correction is locked",
+          cause: Data.to(correctionLockRefInput.datum, CorrectionLockDatum),
+        }),
+      );
+    }
     const { data: confirmedStateData } =
       yield* getConfirmedStateFromStateQueueDatum(confirmedUTxO.datum);
     if (
@@ -1101,6 +1193,7 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
     const encodedSettlementDatum = Data.to(settlementDatum, SettlementDatum);
     const mergeReferenceInputs = [
       hubOracleRefInput,
+      correctionLockRefInput.utxo,
       ...(referenceScripts?.stateQueueSpending === undefined
         ? []
         : [referenceScripts.stateQueueSpending]),

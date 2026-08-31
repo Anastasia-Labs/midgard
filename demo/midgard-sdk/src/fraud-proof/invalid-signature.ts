@@ -1,11 +1,6 @@
 /**
- * Re-derived onto the flat field commitments by #604 (the #575 off-chain builder
- * remediation): thread state carries the §2.5 anchor rather than a per-field
- * collection commitment, and a step redeemer carries a `FieldOpeningV1` rather
- * than a reproduced `..._preimage: List<…>`. The rebind is explained once in
- * `docs/fault-proofs/offchain-builder-staleness-575.md`.
- *
- * `invalid-signature` fault-proof family (Goal task `Q15`).
+ * `invalid-signature` fault-proof family (Goal task `Q15`). Thread state carries
+ * the §2.5 transaction anchor, and field 7 is opened through `FieldOpeningV1`.
  *
  * **Rule.** Every address witness of every committed transaction must carry an
  * Ed25519 signature that verifies against that transaction's native id:
@@ -54,8 +49,8 @@ import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   type MidgardAddressWitness as MidgardAddressWitnessData,
-  NativeTxInclusionArgs,
-  NativeTxInclusionArgsSchema,
+  NativeTxInclusionCarriage,
+  NativeTxInclusionCarriageSchema,
   type NativeTxWitnessSetCompact as NativeTxWitnessSetCompactData,
 } from "./native.js";
 
@@ -250,10 +245,10 @@ export const nativeTxHasInvalidSignatureViolation = ({
 // ## Shared step aliases
 
 export const InvalidSignatureTxInclusionArgsSchema =
-  NativeTxInclusionArgsSchema;
-export type InvalidSignatureTxInclusionArgs = NativeTxInclusionArgs;
+  NativeTxInclusionCarriageSchema;
+export type InvalidSignatureTxInclusionArgs = NativeTxInclusionCarriage;
 export const InvalidSignatureTxInclusionArgs =
-  NativeTxInclusionArgs as unknown as InvalidSignatureTxInclusionArgs;
+  NativeTxInclusionCarriage as unknown as InvalidSignatureTxInclusionArgs;
 
 export const InvalidSignatureStepCancelSchema = FaultProofStepCancelSchema;
 export type InvalidSignatureStepCancel = FaultProofStepCancel;
@@ -279,24 +274,15 @@ export const InvalidSignatureStep01Datum =
 /**
  * Mirrors `midgard/fraud_proofs/invalid_signature/step_01.Args`.
  *
- * **A fourth #575 divergence, found by #604 and named nowhere else.**
- * `docs/fault-proofs/offchain-builder-staleness-575.md` §2 lists three — the
- * thread anchor, the `FieldOpeningV1`, the certificate-policy parameter — and
- * this is not one of them: #575 (`2fec6b0fb`) also *deleted* step-01's
- * `bad_tx_witness_set_compact` argument, collapsing a two-field record to a bare
- * `NativeTxInclusionArgs`.
+ * Step 01 accepts `NativeTxInclusionCarriage`. Step 02 opens field 7 through
+ * the shared field-opening door; step 01 forwards the authenticated witness-set
+ * hash in its next-state datum because the transaction id alone does not commit
+ * witness fields.
  *
- * The witness-set preimage no longer travels through step-01, because step-02
- * opens field 7 through the §8.8 door and re-derives it from whatever carriage
- * the prover chose. What step-01 still owes the thread is the witness-set
- * *hash*, which it alone can authenticate — §3's transaction id does not commit
- * it — and that goes into `step_02.State`, not into these arguments.
- *
- * Emitting the retired wrapper produces a redeemer the validator decodes
- * positionally into the wrong fields; the observed signature was
- * `Spend[0] unexpected empty list`, not a clean decode failure.
+ * Any additional wrapper fields change the positional PlutusData shape and are
+ * therefore outside this ABI.
  */
-export const InvalidSignatureStep01ArgsSchema = NativeTxInclusionArgsSchema;
+export const InvalidSignatureStep01ArgsSchema = NativeTxInclusionCarriageSchema;
 export type InvalidSignatureStep01Args = Data.Static<
   typeof InvalidSignatureStep01ArgsSchema
 >;

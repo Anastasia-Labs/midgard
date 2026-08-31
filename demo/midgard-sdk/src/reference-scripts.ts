@@ -150,6 +150,76 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
   "V1 fraud-proof mint-authorization step-03": "V1FpMintAuthorizationS03",
   "V1 fraud-proof mint-authorization step-04": "V1FpMintAuthorizationS04",
   "V1 fraud-proof mint-authorization step-05": "V1FpMintAuthorizationS05",
+  "V1 fraud-proof network-id step-01": "V1FpNetworkIdS01",
+  "V1 fraud-proof network-id step-02": "V1FpNetworkIdS02",
+  "V1 fraud-proof computation-thread minting": "V1FpComputationThreadMint",
+  "V1 fraud-proof token minting": "V1FpTokenMint",
+  "V1 MPF chunked-verify withdrawal": "V1MpfChunkedVerifyWithdraw",
+  "V1 MPF pexcludes withdrawal": "V1MpfPexcludesWithdraw",
+  "V1 fraud-proof double-spend step-01": "V1FpDoubleSpendS01",
+  "V1 fraud-proof double-spend step-02": "V1FpDoubleSpendS02",
+  "V1 fraud-proof double-spend step-03": "V1FpDoubleSpendS03",
+  "V1 fraud-proof double-spend step-04": "V1FpDoubleSpendS04",
+  "V1 fraud-proof non-existent-input step-01": "V1FpNonExistentInputS01",
+  "V1 fraud-proof non-existent-input step-02": "V1FpNonExistentInputS02",
+  "V1 fraud-proof non-existent-input step-03": "V1FpNonExistentInputS03",
+  "V1 fraud-proof non-existent-input step-04": "V1FpNonExistentInputS04",
+  "V1 fraud-proof non-existent-input-no-index step-01":
+    "V1FpNonExistentInputNoIdxS01",
+  "V1 fraud-proof non-existent-input-no-index step-02":
+    "V1FpNonExistentInputNoIdxS02",
+  "V1 fraud-proof non-existent-input-no-index step-03":
+    "V1FpNonExistentInputNoIdxS03",
+  "V1 fraud-proof non-existent-input-no-index step-04":
+    "V1FpNonExistentInputNoIdxS04",
+  "V1 fraud-proof invalid-range step-01": "V1FpInvalidRangeS01",
+  "V1 fraud-proof invalid-range step-02": "V1FpInvalidRangeS02",
+  "V1 fraud-proof zero-input step-01": "V1FpZeroInputS01",
+  "V1 fraud-proof zero-input step-02": "V1FpZeroInputS02",
+  "V1 fraud-proof da-hash-preimage step-01": "V1FpDaHashPreimageS01",
+  "V1 fraud-proof da-hash-preimage step-02": "V1FpDaHashPreimageS02",
+  "V1 fraud-proof no-reference-input step-01": "V1FpNoReferenceInputS01",
+  "V1 fraud-proof no-reference-input step-02": "V1FpNoReferenceInputS02",
+  "V1 fraud-proof no-reference-input step-03": "V1FpNoReferenceInputS03",
+  "V1 fraud-proof no-reference-input step-04": "V1FpNoReferenceInputS04",
+  "V1 fraud-proof reference-input-no-idx step-01": "V1FpReferenceInputNoIdxS01",
+  "V1 fraud-proof reference-input-no-idx step-02": "V1FpReferenceInputNoIdxS02",
+  "V1 fraud-proof reference-input-no-idx step-03": "V1FpReferenceInputNoIdxS03",
+  "V1 fraud-proof reference-input-no-idx step-04": "V1FpReferenceInputNoIdxS04",
+  "V1 fraud-proof invalid-signature step-01": "V1FpInvalidSignatureS01",
+  "V1 fraud-proof invalid-signature step-02": "V1FpInvalidSignatureS02",
+  "V1 fraud-proof missing-native-script-tx step-07":
+    "V1FpMissingNativeScriptTxS07",
+  "V1 fraud-proof missing-native-script-tx step-08":
+    "V1FpMissingNativeScriptTxS08",
+  "V1 fraud-proof missing-native-script-utxo step-01":
+    "V1FpMissingNativeScriptUtxoS01",
+  "V1 fraud-proof missing-native-script-utxo step-02":
+    "V1FpMissingNativeScriptUtxoS02",
+  "V1 fraud-proof missing-native-script-utxo step-03":
+    "V1FpMissingNativeScriptUtxoS03",
+  "V1 fraud-proof missing-native-script-utxo step-04":
+    "V1FpMissingNativeScriptUtxoS04",
+  "V1 fraud-proof missing-native-script-utxo step-05":
+    "V1FpMissingNativeScriptUtxoS05",
+  "V1 fraud-proof native-script-invalid step-01": "V1FpNativeScriptInvalidS01",
+  "V1 fraud-proof native-script-invalid step-02": "V1FpNativeScriptInvalidS02",
+  "V1 fraud-proof native-script-invalid step-03": "V1FpNativeScriptInvalidS03",
+  "V1 fraud-proof min-ada step-01": "V1FpMinAdaS01",
+  "V1 fraud-proof min-ada step-02": "V1FpMinAdaS02",
+  "correction-lock spending": "CorrectionLockSpend",
+  "claim-registry spending": "ClaimRegistrySpend",
+  "V1 fraud-proof min-ada step-03": "V1FpMinAdaS03",
+  "V1 fraud-proof min-ada step-04": "V1FpMinAdaS04",
+  "V1 fraud-proof min-ada step-05": "V1FpMinAdaS05",
+  // Mirrors `midgard-core`'s
+  // `DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES` role for role: the
+  // node's manifest verifier compares a manifest's
+  // `referenceScriptAuthPolicy.tokenNames` against THIS vocabulary while
+  // `midgard-core`'s compares it against its own, so a role present in one and
+  // absent from the other makes every manifest unverifiable by one of the two.
+  "availability-challenge spending": "AvailabilityChallengeSpend",
+  "availability-challenge minting": "AvailabilityChallengeMint",
 } as const;
 
 export type ReferenceScriptAuthTokenTarget =

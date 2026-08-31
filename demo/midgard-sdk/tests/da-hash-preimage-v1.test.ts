@@ -1,154 +1,166 @@
-/**
- * `da-hash-preimage` family (Goal task `Q44`) — rule and codec agreement.
- *
- * Every vector here is shared with the Aiken selectors in
- * `onchain/aiken/validators/fraud-proofs/da-hash-preimage/step-01.ak` and
- * `.../step-02.ak`, so the TypeScript builder and the L1 verifier cannot
- * drift.
- */
-import {
-  computeMidgardNativeTxIdV1,
-  decodeMidgardNativeTxCompactV1,
-} from "@al-ft/midgard-core";
+/** Cross-language vectors for the total Q44 source-leaf adjudicator. */
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
-  committedLeafBodyCborV1,
-  committedLeafIsUnderframedV1,
-  DA_HASH_PREIMAGE_COMPACT_V1_FRAME_BYTE_COUNT,
-  DA_HASH_PREIMAGE_COMPACT_V1_HEAD_BYTE_COUNT,
-  DA_HASH_PREIMAGE_COMPACT_V1_TAIL_BYTE_COUNT,
+  adjudicateCommittedSourceLeafV1,
   DA_HASH_PREIMAGE_VIOLATION_ID_V1,
   daHashPreimageEvidenceFromCommittedLeafV1,
   DaHashPreimageStep02Datum,
-  DaHashPreimageStep02DatumSchema,
   DaHashPreimageStep02SpendRedeemer,
-  DaHashPreimageStep02SpendRedeemerSchema,
   DaHashPreimageStep02State,
   daHashPreimageStep02StateFromEvidenceV1,
-  deriveCommittedLeafTxIdV1,
   isDaHashPreimageViolationV1,
 } from "../src/fraud-proof/da-hash-preimage.js";
+import {
+  L2TransactionSourceV1,
+  L2TransactionSourceV1Schema,
+} from "../src/ledger-state.js";
 
-/**
- * Largest canonical compact transaction the Cardano boundary admits (296
- * spend redeemers). Same bytes as
- * `lib/midgard/fraud-proofs/native-tx.max-redeemers.test.ak:36` and the Aiken
- * selector `da_hash_preimage_rule_holds_at_the_maximum_cardano_transaction`.
- */
-const MAXIMUM_CARDANO_COMPACT_CBOR_HEX =
-  "84018c58207fac00ce59ee1a8c6f84fe48c8ff61af01e76a9f4cfe210a6245f0cbbe7781265820971b52c16ad426099e34913c7b4adc0059f82f4b1025d866f7abcf0df2f00b9f58205581fd909e08e4dea9336a8928f0d2731f2f31e1ce31a16cb1f5b2ebc2c9dccf1a000de2ec20205820e5ccfcd8e326be04d73634d1ef2cb659e5dd6c49b5ce3e511d57081b54f6e1095820491655fbd9fd82df78078e397b6785aa4fc65e32b9786bb5e0deda42b351ea745820b6c7c8c1905cda580cf99b528418df3b62a7182102d089fefa4323fbd18ac47d5820e650a24c14c0e6a48877805b4185f8ff2ee711e964e6aa63ce05c29ddeb1bd26582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820723dfb187dd11e5d8b44a3ebc9b44da9037807f5ff794e07f962798509df1f6100";
+const VALID_TX_ID =
+  "7b4e4657e0083544359f4398fb092c482766220cd53ad99b598239297d1e9813";
+const FOREIGN_TX_ID = "99".repeat(32);
 
-const MAXIMUM_CARDANO_TRANSACTION_ID =
-  "82c56f324a18a66255e3d48ddcf80a86f5b7db89dd8f5b1e0c3d3cce02668b40";
+// Same accepted Cardano maximum source as the Aiken max-fit selector.
+const COMPACT_CBOR =
+  "84018c58202d56d604247c43792618a75b77864f8a6c6d35b9b5a66d25b944476d6930588e582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c05820095c12f5790acc50dbbf52c0b47fe4ebd1dfd9ab308b14701543d6d4d78a06ae1a000d59492020582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c05820e2d5bb3b4c4475d516516e5396ec041b553ada06379a53f665b47e1485e0451f582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53582001f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab5318ff5820ad12ff89400f2f7975c77231241032e6a7bf49d0f2ab388425b3de0cefef003000";
+const WITNESS_SET_CBOR =
+  "835820689afcab7a4406fa8da9a4f97b325f34458bd2114d6b2ae9eb357e681acc0e97582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0582045b0cfc220ceec5b7c1c62c4d4193d38e4eba48e8815729ce75f9c0ab0e4c1c0";
+const FIELD_LENGTHS_CBOR = "89182901183001190e8a01011931e601";
 
-const FOREIGN_COMMITTED_KEY =
-  "9999999999999999999999999999999999999999999999999999999999999999";
+const source = (
+  overrides: Partial<L2TransactionSourceV1> = {},
+): L2TransactionSourceV1 => ({
+  tx_id: VALID_TX_ID,
+  source: {
+    compact_cbor: COMPACT_CBOR,
+    witness_set_compact_cbor: WITNESS_SET_CBOR,
+    field_preimage_lengths_cbor: FIELD_LENGTHS_CBOR,
+  },
+  ...overrides,
+});
 
-const maximumLeaf = Buffer.from(MAXIMUM_CARDANO_COMPACT_CBOR_HEX, "hex");
+const sourceBytes = (value: L2TransactionSourceV1): Buffer =>
+  Buffer.from(Data.to(value, L2TransactionSourceV1), "hex");
 
-describe("Q44 da-hash-preimage rule", () => {
-  it("pins the canonical frame constants shared with rule.ak", () => {
-    expect(DA_HASH_PREIMAGE_COMPACT_V1_HEAD_BYTE_COUNT).toBe(2);
-    expect(DA_HASH_PREIMAGE_COMPACT_V1_TAIL_BYTE_COUNT).toBe(35);
-    expect(DA_HASH_PREIMAGE_COMPACT_V1_FRAME_BYTE_COUNT).toBe(37);
-  });
+describe("Q44 da-hash-preimage total source verdict", () => {
+  it("accepts the exact maximum valid source as the valid-block negative", () => {
+    const value = sourceBytes(source());
+    const adjudication = adjudicateCommittedSourceLeafV1({
+      committedTxId: VALID_TX_ID,
+      committedLeafValue: value,
+    });
+    expect(adjudication).toEqual({
+      verdict: "NoViolation",
+      embeddedTxId: VALID_TX_ID,
+      derivedTxId: VALID_TX_ID,
+    });
 
-  it("recovers the committed body preimage without decoding the leaf", () => {
-    const decoded = decodeMidgardNativeTxCompactV1(maximumLeaf);
-    const decodedTxId = computeMidgardNativeTxIdV1(decoded).toString("hex");
-    expect(decodedTxId).toBe(MAXIMUM_CARDANO_TRANSACTION_ID);
-    // The decoder-free derivation must agree with the full decoder at the
-    // largest leaf the boundary admits.
-    expect(deriveCommittedLeafTxIdV1(maximumLeaf).toString("hex")).toBe(
-      MAXIMUM_CARDANO_TRANSACTION_ID,
-    );
-    expect(committedLeafBodyCborV1(maximumLeaf).length).toBe(
-      maximumLeaf.length - DA_HASH_PREIMAGE_COMPACT_V1_FRAME_BYTE_COUNT,
-    );
-  });
-
-  it("never convicts an honestly keyed committed leaf", () => {
     const evidence = daHashPreimageEvidenceFromCommittedLeafV1({
-      committedTxId: MAXIMUM_CARDANO_TRANSACTION_ID,
-      committedLeafValue: maximumLeaf,
+      committedTxId: VALID_TX_ID,
+      committedLeafValue: value,
     });
     expect(evidence.violationId).toBe(DA_HASH_PREIMAGE_VIOLATION_ID_V1);
-    expect(evidence.derivedTxId).toBe(MAXIMUM_CARDANO_TRANSACTION_ID);
     expect(evidence.isViolation).toBe(false);
   });
 
-  it("convicts a canonical transaction committed under a foreign key", () => {
-    const evidence = daHashPreimageEvidenceFromCommittedLeafV1({
-      committedTxId: FOREIGN_COMMITTED_KEY,
-      committedLeafValue: maximumLeaf,
+  it("convicts a valid source committed under a different MPF key", () => {
+    expect(
+      adjudicateCommittedSourceLeafV1({
+        committedTxId: FOREIGN_TX_ID,
+        committedLeafValue: sourceBytes(source()),
+      }),
+    ).toEqual({
+      verdict: "KeyMismatch",
+      embeddedTxId: VALID_TX_ID,
+      derivedTxId: null,
     });
-    expect(evidence.isViolation).toBe(true);
-    expect(evidence.derivedTxId).toBe(MAXIMUM_CARDANO_TRANSACTION_ID);
-    expect(evidence.committedLeafByteCount).toBe(maximumLeaf.length);
   });
 
-  it("convicts a committed leaf that is not a transaction at all", () => {
-    const garbage = Buffer.from("deadbeef", "hex");
-    const evidence = daHashPreimageEvidenceFromCommittedLeafV1({
-      committedTxId: FOREIGN_COMMITTED_KEY,
-      committedLeafValue: garbage,
-    });
-    expect(evidence.isViolation).toBe(true);
-    expect(committedLeafIsUnderframedV1(garbage.length)).toBe(true);
-    // Underframed leaves are convicted even when the clamped derivation would
-    // collide with the committed key.
+  it.each([
+    ["raw garbage", Buffer.from("deadbeef", "hex")],
+    [
+      "canonical source with trailing bytes",
+      Buffer.concat([sourceBytes(source()), Buffer.from("00", "hex")]),
+    ],
+  ])("convicts malformed source: %s", (_label, committedLeafValue) => {
     expect(
-      isDaHashPreimageViolationV1({
-        committedTxId: deriveCommittedLeafTxIdV1(garbage).toString("hex"),
-        derivedTxId: deriveCommittedLeafTxIdV1(garbage).toString("hex"),
-        committedLeafByteCount: garbage.length,
-      }),
-    ).toBe(true);
+      adjudicateCommittedSourceLeafV1({
+        committedTxId: VALID_TX_ID,
+        committedLeafValue,
+      }).verdict,
+    ).toBe("MalformedSource");
   });
 
-  it("is exact on the predicate boundary", () => {
-    const a = "11".repeat(32);
-    const b = "22".repeat(32);
-    expect(
-      isDaHashPreimageViolationV1({
-        committedTxId: a,
-        derivedTxId: a,
-        committedLeafByteCount: DA_HASH_PREIMAGE_COMPACT_V1_FRAME_BYTE_COUNT,
+  it.each([
+    [
+      "malformed witness CBOR",
+      source({
+        source: {
+          ...source().source,
+          witness_set_compact_cbor: "deadbeef",
+        },
       }),
-    ).toBe(false);
-    expect(
-      isDaHashPreimageViolationV1({
-        committedTxId: a,
-        derivedTxId: b,
-        committedLeafByteCount: DA_HASH_PREIMAGE_COMPACT_V1_FRAME_BYTE_COUNT,
+    ],
+    [
+      "forged witness-set hash binding",
+      source({
+        source: {
+          ...source().source,
+          witness_set_compact_cbor: `${WITNESS_SET_CBOR.slice(0, -2)}c1`,
+        },
       }),
-    ).toBe(true);
-    expect(
-      isDaHashPreimageViolationV1({
-        committedTxId: a,
-        derivedTxId: a,
-        committedLeafByteCount:
-          DA_HASH_PREIMAGE_COMPACT_V1_FRAME_BYTE_COUNT - 1,
+    ],
+    [
+      "malformed field lengths",
+      source({
+        source: {
+          ...source().source,
+          field_preimage_lengths_cbor: "deadbeef",
+        },
       }),
-    ).toBe(true);
+    ],
+  ])("convicts malformed proof source: %s", (_label, value) => {
+    expect(
+      adjudicateCommittedSourceLeafV1({
+        committedTxId: VALID_TX_ID,
+        committedLeafValue: sourceBytes(value),
+      }).verdict,
+    ).toBe("MalformedProofSource");
+  });
+
+  it("convicts an internally valid source whose embedded id is not its body id", () => {
+    const value = source({ tx_id: FOREIGN_TX_ID });
+    expect(
+      adjudicateCommittedSourceLeafV1({
+        committedTxId: FOREIGN_TX_ID,
+        committedLeafValue: sourceBytes(value),
+      }),
+    ).toEqual({
+      verdict: "DerivedIdMismatch",
+      embeddedTxId: FOREIGN_TX_ID,
+      derivedTxId: VALID_TX_ID,
+    });
+  });
+
+  it("marks exactly the four accusation verdicts as violations", () => {
+    expect(isDaHashPreimageViolationV1("MalformedSource")).toBe(true);
+    expect(isDaHashPreimageViolationV1("KeyMismatch")).toBe(true);
+    expect(isDaHashPreimageViolationV1("MalformedProofSource")).toBe(true);
+    expect(isDaHashPreimageViolationV1("DerivedIdMismatch")).toBe(true);
+    expect(isDaHashPreimageViolationV1("NoViolation")).toBe(false);
   });
 });
 
 describe("Q44 da-hash-preimage on-chain schemas", () => {
   const evidence = daHashPreimageEvidenceFromCommittedLeafV1({
-    committedTxId: FOREIGN_COMMITTED_KEY,
-    committedLeafValue: maximumLeaf,
+    committedTxId: FOREIGN_TX_ID,
+    committedLeafValue: sourceBytes(source()),
   });
 
-  it("round-trips the step-02 state exactly as step-01 derives it", () => {
+  it("round-trips the exact verdict-only step-02 state", () => {
     const state = daHashPreimageStep02StateFromEvidenceV1(evidence);
-    expect(state).toEqual({
-      committed_tx_id: FOREIGN_COMMITTED_KEY,
-      derived_tx_id: MAXIMUM_CARDANO_TRANSACTION_ID,
-      committed_leaf_byte_count: BigInt(maximumLeaf.length),
-    });
+    expect(state).toEqual({ verdict: "KeyMismatch" });
     const cbor = Data.to(state, DaHashPreimageStep02State);
     expect(Data.from(cbor, DaHashPreimageStep02State)).toEqual(state);
   });
@@ -176,21 +188,21 @@ describe("Q44 da-hash-preimage on-chain schemas", () => {
     );
   });
 
-  it("rejects a non-32-byte commitment in the step-02 state", () => {
-    expect(() =>
-      Data.to(
-        {
-          committed_tx_id: "00",
-          derived_tx_id: MAXIMUM_CARDANO_TRANSACTION_ID,
-          committed_leaf_byte_count: 1n,
-        },
-        DaHashPreimageStep02State,
-      ),
-    ).toThrow();
+  it("pins the verdict constructor order through CBOR round trips", () => {
+    for (const verdict of [
+      "MalformedSource",
+      "KeyMismatch",
+      "MalformedProofSource",
+      "DerivedIdMismatch",
+      "NoViolation",
+    ] as const) {
+      const state: DaHashPreimageStep02State = { verdict };
+      const cbor = Data.to(state, DaHashPreimageStep02State);
+      expect(Data.from(cbor, DaHashPreimageStep02State)).toEqual(state);
+    }
   });
 
-  it("exposes both step-02 schemas under their schema aliases", () => {
-    expect(DaHashPreimageStep02DatumSchema).toBeDefined();
-    expect(DaHashPreimageStep02SpendRedeemerSchema).toBeDefined();
+  it("keeps the schema alias available to source builders", () => {
+    expect(L2TransactionSourceV1Schema).toBeDefined();
   });
 });

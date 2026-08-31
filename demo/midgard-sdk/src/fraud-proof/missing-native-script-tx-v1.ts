@@ -12,7 +12,10 @@
  * no script-witness item hashes to the credential. The rule is unconditional
  * over the block's transactions.
  *
- * The proof is a six-step computation thread:
+ * The proof is an eight-script computation thread. Steps 1–5 bind and
+ * classify the accused credential; step 6 either finalizes the bounded direct
+ * route or starts the authenticated grammar walk; steps 7–8 own the grammar
+ * and semantic resumptions for larger fields.
  *
  * 1. bind the bad transaction to the block's counted `transactions_root` and
  *    forward its id together with the block-committed `witness_set_hash`;
@@ -26,11 +29,15 @@
  *    bytes and the step equates `versioned_script_hash` (language tag 0) with
  *    the credential; and
  * 6. open the bad transaction's script-witness field (witness field 6)
- *    against the thread-anchored witness-set hash and prove by one fold that
- *    no committed item hashes to the credential, finalizing the proof.
+ *    against the thread-anchored witness-set hash, finalizing directly at or
+ *    below 64 items or starting a 32-item grammar-certification batch;
+ * 7. resume grammar certification until terminal, then start the semantic
+ *    absence scan; and
+ * 8. resume the semantic scan in bounded batches and finalize only at the
+ *    authenticated terminal with the presence accumulator still false.
  *
  * This module is the strict TypeScript twin of
- * `onchain/aiken/lib/midgard/fraud-proofs/missing-native-script-tx/step-0{1..6}.ak`.
+ * `onchain/aiken/lib/midgard/fraud-proofs/missing-native-script-tx/step-0{1..8}.ak`.
  * Field order in every `Data.Object` mirrors the aiken record declarations
  * 1:1 — the PlutusData encoding is positional, so re-ordering here would
  * silently produce redeemers the validators reject.
@@ -65,6 +72,12 @@ export const MISSING_NATIVE_SCRIPT_TX_VIOLATION_ID_V1 =
  * set. The §8.8 door refuses a preimage built for any other field.
  */
 export const MISSING_NATIVE_SCRIPT_TX_SCRIPT_TX_WITS_FIELD_INDEX_V1 = 6;
+
+/** Direct step-06 fold limit; larger fields use the staged 06→07→08 route. */
+export const MISSING_NATIVE_SCRIPT_TX_DIRECT_WITNESS_LIMIT_V1 = 64;
+
+/** Authenticated grammar/semantic items processed per staged transaction. */
+export const MISSING_NATIVE_SCRIPT_TX_STAGED_BATCH_LIMIT_V1 = 32;
 
 const H28Schema = Data.Bytes({ minLength: 28, maxLength: 28 });
 
@@ -369,11 +382,35 @@ export const MissingNativeScriptTxStep05SpendRedeemer =
  * Mirrors `midgard/fraud_proofs/missing_native_script_tx/step_06.State` —
  * identical to step-05's state; the classification happened in between.
  */
-export const MissingNativeScriptTxStep06StateSchema =
-  MissingNativeScriptTxStep05StateSchema;
-export type MissingNativeScriptTxStep06State = MissingNativeScriptTxStep05State;
+export const MissingNativeScriptTxPhaseV1Schema = Data.Enum([
+  Data.Literal("Ready"),
+  Data.Object({
+    GrammarCertification: Data.Object({ checkpoint_hash: H32Schema }),
+  }),
+  Data.Object({
+    SemanticScan: Data.Object({
+      checkpoint_hash: H32Schema,
+      required_script_is_present: Data.Boolean(),
+    }),
+  }),
+]);
+export type MissingNativeScriptTxPhaseV1 = Data.Static<
+  typeof MissingNativeScriptTxPhaseV1Schema
+>;
+export const MissingNativeScriptTxPhaseV1 =
+  MissingNativeScriptTxPhaseV1Schema as unknown as MissingNativeScriptTxPhaseV1;
+
+export const MissingNativeScriptTxStep06StateSchema = Data.Object({
+  expected_missing_script_hash: H28Schema,
+  bad_tx_id: H32Schema,
+  bad_tx_witness_set_hash: H32Schema,
+  phase: MissingNativeScriptTxPhaseV1Schema,
+});
+export type MissingNativeScriptTxStep06State = Data.Static<
+  typeof MissingNativeScriptTxStep06StateSchema
+>;
 export const MissingNativeScriptTxStep06State =
-  MissingNativeScriptTxStep05State as unknown as MissingNativeScriptTxStep06State;
+  MissingNativeScriptTxStep06StateSchema as unknown as MissingNativeScriptTxStep06State;
 
 export const MissingNativeScriptTxStep06DatumSchema = faultProofStepDatumSchema(
   MissingNativeScriptTxStep06StateSchema,
@@ -394,12 +431,24 @@ export const MissingNativeScriptTxStep06Datum =
  * carriage aborts at `field_item_count` (§8.3 erratum E2 limit 2); the
  * offchain planner never routes into that tier silently.
  */
-export const MissingNativeScriptTxStep06ArgsSchema = Data.Object({
-  input_index: Data.Integer(),
-  output_index: Data.Integer(),
-  fraud_proof_mint_redeemer_index: Data.Integer(),
-  script_tx_wits_opening: FieldOpeningV1Schema,
-});
+export const MissingNativeScriptTxStep06ArgsSchema = Data.Enum([
+  Data.Object({
+    DirectFinalize: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      fraud_proof_mint_redeemer_index: Data.Integer(),
+      script_tx_wits_opening: FieldOpeningV1Schema,
+    }),
+  }),
+  Data.Object({
+    StartGrammarCertification: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      script_tx_wits_opening: FieldOpeningV1Schema,
+      item_budget: Data.Integer(),
+    }),
+  }),
+]);
 export type MissingNativeScriptTxStep06Args = Data.Static<
   typeof MissingNativeScriptTxStep06ArgsSchema
 >;
@@ -413,6 +462,109 @@ export type MissingNativeScriptTxStep06SpendRedeemer = Data.Static<
 >;
 export const MissingNativeScriptTxStep06SpendRedeemer =
   MissingNativeScriptTxStep06SpendRedeemerSchema as unknown as MissingNativeScriptTxStep06SpendRedeemer;
+
+// ## Step 07 — grammar certification and semantic-scan transition
+
+export const MissingNativeScriptTxStep07StateSchema =
+  MissingNativeScriptTxStep06StateSchema;
+export type MissingNativeScriptTxStep07State = MissingNativeScriptTxStep06State;
+export const MissingNativeScriptTxStep07State =
+  MissingNativeScriptTxStep06State as unknown as MissingNativeScriptTxStep07State;
+
+export const MissingNativeScriptTxStep07DatumSchema = faultProofStepDatumSchema(
+  MissingNativeScriptTxStep07StateSchema,
+);
+export type MissingNativeScriptTxStep07Datum = Data.Static<
+  typeof MissingNativeScriptTxStep07DatumSchema
+>;
+export const MissingNativeScriptTxStep07Datum =
+  MissingNativeScriptTxStep07DatumSchema as unknown as MissingNativeScriptTxStep07Datum;
+
+export const MissingNativeScriptTxStep07ArgsSchema = Data.Enum([
+  Data.Object({
+    ResumeGrammarCertification: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      script_tx_wits_opening: FieldOpeningV1Schema,
+      checkpoint_bytes: Data.Bytes(),
+      item_budget: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    StartSemanticScan: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      script_tx_wits_opening: FieldOpeningV1Schema,
+      grammar_checkpoint_bytes: Data.Bytes(),
+      item_budget: Data.Integer(),
+    }),
+  }),
+]);
+export type MissingNativeScriptTxStep07Args = Data.Static<
+  typeof MissingNativeScriptTxStep07ArgsSchema
+>;
+export const MissingNativeScriptTxStep07Args =
+  MissingNativeScriptTxStep07ArgsSchema as unknown as MissingNativeScriptTxStep07Args;
+
+export const MissingNativeScriptTxStep07SpendRedeemerSchema =
+  faultProofStepRedeemerSchema(MissingNativeScriptTxStep07ArgsSchema);
+export type MissingNativeScriptTxStep07SpendRedeemer = Data.Static<
+  typeof MissingNativeScriptTxStep07SpendRedeemerSchema
+>;
+export const MissingNativeScriptTxStep07SpendRedeemer =
+  MissingNativeScriptTxStep07SpendRedeemerSchema as unknown as MissingNativeScriptTxStep07SpendRedeemer;
+
+// ## Step 08 — bounded semantic resume/finalize
+
+export const MissingNativeScriptTxStep08StateSchema =
+  MissingNativeScriptTxStep06StateSchema;
+export type MissingNativeScriptTxStep08State = MissingNativeScriptTxStep06State;
+export const MissingNativeScriptTxStep08State =
+  MissingNativeScriptTxStep06State as unknown as MissingNativeScriptTxStep08State;
+
+export const MissingNativeScriptTxStep08DatumSchema = faultProofStepDatumSchema(
+  MissingNativeScriptTxStep08StateSchema,
+);
+export type MissingNativeScriptTxStep08Datum = Data.Static<
+  typeof MissingNativeScriptTxStep08DatumSchema
+>;
+export const MissingNativeScriptTxStep08Datum =
+  MissingNativeScriptTxStep08DatumSchema as unknown as MissingNativeScriptTxStep08Datum;
+
+export const MissingNativeScriptTxStep08ArgsSchema = Data.Enum([
+  Data.Object({
+    ResumeSemanticScan: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      script_tx_wits_opening: FieldOpeningV1Schema,
+      checkpoint_bytes: Data.Bytes(),
+      item_budget: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    FinalizeSemanticScan: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      fraud_proof_mint_redeemer_index: Data.Integer(),
+      script_tx_wits_opening: FieldOpeningV1Schema,
+      checkpoint_bytes: Data.Bytes(),
+      item_budget: Data.Integer(),
+    }),
+  }),
+]);
+export type MissingNativeScriptTxStep08Args = Data.Static<
+  typeof MissingNativeScriptTxStep08ArgsSchema
+>;
+export const MissingNativeScriptTxStep08Args =
+  MissingNativeScriptTxStep08ArgsSchema as unknown as MissingNativeScriptTxStep08Args;
+
+export const MissingNativeScriptTxStep08SpendRedeemerSchema =
+  faultProofStepRedeemerSchema(MissingNativeScriptTxStep08ArgsSchema);
+export type MissingNativeScriptTxStep08SpendRedeemer = Data.Static<
+  typeof MissingNativeScriptTxStep08SpendRedeemerSchema
+>;
+export const MissingNativeScriptTxStep08SpendRedeemer =
+  MissingNativeScriptTxStep08SpendRedeemerSchema as unknown as MissingNativeScriptTxStep08SpendRedeemer;
 
 // ## Step-state builders (twins of the on-chain forwarding rules)
 
@@ -480,4 +632,12 @@ export const missingNativeScriptTxStep05StateV1 = ({
   expected_missing_script_hash: expectedMissingScriptHash.toLowerCase(),
   bad_tx_id: badTxId.toLowerCase(),
   bad_tx_witness_set_hash: badTxWitnessSetHash.toLowerCase(),
+});
+
+/** Exact state step-05 writes at the step-06 direct/staged routing boundary. */
+export const missingNativeScriptTxStep06ReadyStateV1 = (
+  state: MissingNativeScriptTxStep05State,
+): MissingNativeScriptTxStep06State => ({
+  ...state,
+  phase: "Ready",
 });

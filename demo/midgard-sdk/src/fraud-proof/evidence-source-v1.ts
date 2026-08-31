@@ -79,7 +79,7 @@ export type CanonicalEvidenceRejectionCodeV1 =
   | "header_hash_mismatch"
   | "da_evidence_wrong_trust_class"
   | "payload_header_mismatch"
-  | "native_inclusion_root_unauthenticated"
+  | "transaction_source_inclusion_root_unauthenticated"
   | "evidence_grade_mismatch";
 
 /**
@@ -372,50 +372,34 @@ export const admitAuthenticatedStateQueueHeaderObservationV1 = async ({
   });
 };
 
-/**
- * Result of authenticating a raw transactions MPF root against the header's
- * counted `transactions_root`.
- *
- * Two leaf-value conventions exist in the tree today:
- *
- * - `payload_source_value` — `(tx_id -> Data(L2TransactionSourceV1))`, produced
- *   by the node (`encodeTransactionRootValue`) and re-derived by
- *   `reconstructDaPayloadV1`; this is what a committed header commits to.
- * - `native_compact_value` — `(tx_id -> native_tx_compact_cbor)`, which the
- *   deployed Aiken `verify_native_tx_in_state_queue_node` requires the prover's
- *   membership proof to open.
- *
- * Only the convention whose counted commitment equals the header's
- * `transactions_root` can back a submittable proof, so this record is checked
- * before any inclusion argument is built.
- */
+/** Exact authentication of the normative transaction-source MPF root. */
 export type TransactionsInclusionRootAuthenticationV1 = {
   readonly headerTransactionsRoot: string;
   readonly l2TransactionCount: bigint;
-  readonly payloadSourcePhasRoot: string;
-  readonly payloadSourceCountedRoot: string;
-  readonly nativeCompactPhasRoot: string;
-  readonly nativeCompactCountedRoot: string;
-  /** True when the native-compact convention opens the committed header root. */
-  readonly nativeInclusionAuthenticated: boolean;
-  /** True when the payload-source convention opens the committed header root. */
-  readonly payloadSourceAuthenticated: boolean;
+  /** MPF root over `(tx_id -> Data(L2TransactionSourceV1))`. */
+  readonly sourceValuePhasRoot: string;
+  readonly sourceValueCountedRoot: string;
+  readonly sourceValueCount: bigint;
+  readonly sourceInclusionAuthenticated: boolean;
 };
 
 /**
- * Fail-closed gate for native inclusion arguments: a builder must never hand a
- * prover a membership proof whose root cannot be authenticated on-chain.
+ * Fail-closed gate for the one normative source-leaf convention. Compact-only
+ * leaves are not a compatibility route and cannot satisfy this API.
  */
-export const assertNativeInclusionRootAuthenticatedV1 = (
+export const assertTransactionSourceInclusionRootAuthenticatedV1 = (
   authentication: TransactionsInclusionRootAuthenticationV1,
 ): TransactionsInclusionRootAuthenticationV1 => {
-  if (!authentication.nativeInclusionAuthenticated) {
+  if (
+    !authentication.sourceInclusionAuthenticated ||
+    authentication.sourceValueCount !== authentication.l2TransactionCount
+  ) {
     reject(
-      "native_inclusion_root_unauthenticated",
+      "transaction_source_inclusion_root_unauthenticated",
       [
         `header_transactions_root=${authentication.headerTransactionsRoot}`,
-        `native_compact_counted_root=${authentication.nativeCompactCountedRoot}`,
-        `payload_source_counted_root=${authentication.payloadSourceCountedRoot}`,
+        `source_value_counted_root=${authentication.sourceValueCountedRoot}`,
+        `source_value_count=${authentication.sourceValueCount.toString()}`,
         `l2_transaction_count=${authentication.l2TransactionCount.toString()}`,
       ].join(" "),
     );

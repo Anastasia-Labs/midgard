@@ -82,17 +82,28 @@ describe("Midgard output codec", () => {
     );
   });
 
-  it("rejects reserved network-nibble bits other than the protected bit", () => {
-    for (const reservedNetworkBit of [0x02, 0x04]) {
-      const badAddress = Buffer.from(
-        midgardAddressFromText(unprotectedAddress),
-      );
-      badAddress[0] |= reservedNetworkBit;
+  it("decodes foreign network nibbles so network-id fraud remains provable", () => {
+    const network2 = Buffer.from(midgardAddressFromText(unprotectedAddress));
+    network2[0] = (network2[0] & 0xf0) | 0x02;
+    expect(decodeMidgardAddressBytes(network2)).toMatchObject({
+      protected: false,
+      networkId: 2,
+    });
+    expect(() => encodeMidgardAddressText(network2)).toThrow(
+      /Unsupported Midgard address network id/,
+    );
 
-      expect(() => decodeMidgardAddressBytes(badAddress)).toThrow(
-        /Unsupported Midgard address network id/,
-      );
-    }
+    // Raw nibble 15 carries Midgard's protection bit and decodes to the
+    // underlying foreign network 7. It must remain inspectable as fraud.
+    const network15 = Buffer.from(midgardAddressFromText(unprotectedAddress));
+    network15[0] = (network15[0] & 0xf0) | 0x0f;
+    expect(decodeMidgardAddressBytes(network15)).toMatchObject({
+      protected: true,
+      networkId: 7,
+    });
+    expect(() => encodeMidgardAddressText(network15)).toThrow(
+      /Unsupported Midgard address network id/,
+    );
   });
 
   it("round trips output CBOR byte-exactly", () => {

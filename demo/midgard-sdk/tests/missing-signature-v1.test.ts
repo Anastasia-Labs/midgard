@@ -35,7 +35,7 @@ describe("missing-signature v1 SDK wire twins", () => {
       hub_ref_input_index: 2n,
       state_queue_node_ref_input_index: 3n,
       native_tx_id: h32("44"),
-      native_tx_compact_cbor: "80",
+      l2_transaction_source_cbor: "80",
       transactions_phas_root: h32("55"),
       tx_membership_proof: proof,
       inclusion_proof_script_withdraw_redeemer_index: 0n,

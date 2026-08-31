@@ -23,10 +23,12 @@ import {
 } from "../src/state-queue.js";
 import {
   buildProductionCommitBlockHeaderTxProgram,
+  buildProductionMergeToConfirmedStateTxProgram,
   isProductionCommitValidityInterval,
   PRODUCTION_COMMIT_MAX_VALIDITY_RANGE_MS,
   type ProductionCommitBlockHeaderParams,
   productionCommitHeaderMatchesValidityUpperBound,
+  type ProductionMergeToConfirmedStateParams,
 } from "../src/state-queue-production.js";
 
 const DUMMY_ADDRESS =
@@ -131,6 +133,11 @@ const makeProductionCommitParams = (
       hubOracleRefInput: makeUtxo("66".repeat(32), 0, {
         lovelace: 1_000_000n,
       }),
+      correctionLockRefInput: {
+        utxo: makeUtxo("68".repeat(32), 0, { lovelace: 1_000_000n }),
+        datum: "Idle",
+        assetName: "MIDGARD_CORRECTION_LOCK",
+      },
       activeOperatorInput,
       activeOperatorsSpendingScript: DUMMY_SCRIPT,
       operatorWalletView: {
@@ -189,6 +196,67 @@ describe("production commit validity binding", () => {
           validTo,
         ),
       ),
+    );
+
+    expect(result._tag).toBe("Failure");
+    expect(newTx).not.toHaveBeenCalled();
+  });
+
+  it("rejects append while the authenticated correction lock is held", async () => {
+    const validFrom = 1_000_000;
+    const validTo = validFrom + PRODUCTION_COMMIT_MAX_VALIDITY_RANGE_MS;
+    const newTx = vi.fn(() => {
+      throw new Error("newTx should not be called while correction is locked");
+    });
+    const params = makeProductionCommitParams(
+      { newTx } as unknown as LucidEvolution,
+      validFrom,
+      validTo,
+    );
+
+    const result = await Effect.runPromiseExit(
+      buildProductionCommitBlockHeaderTxProgram({
+        ...params,
+        witness: {
+          ...params.witness,
+          correctionLockRefInput: {
+            ...params.witness.correctionLockRefInput,
+            datum: {
+              Locked: {
+                target_header_hash: "99".repeat(28),
+                correction_identity: "AttestationTimeout",
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    expect(result._tag).toBe("Failure");
+    expect(newTx).not.toHaveBeenCalled();
+  });
+
+  it("rejects merge while the authenticated correction lock is held", async () => {
+    const newTx = vi.fn(() => {
+      throw new Error("newTx should not be called while correction is locked");
+    });
+    const lockedDatum = {
+      Locked: {
+        target_header_hash: "99".repeat(28),
+        correction_identity: "AttestationTimeout" as const,
+      },
+    };
+    const params = {
+      lucid: { newTx } as unknown as LucidEvolution,
+      correctionLockRefInput: {
+        utxo: makeUtxo("98".repeat(32), 0, { lovelace: 2_000_000n }),
+        datum: lockedDatum,
+        assetName: "MIDGARD_CORRECTION_LOCK",
+      },
+    } as unknown as ProductionMergeToConfirmedStateParams;
+
+    const result = await Effect.runPromiseExit(
+      buildProductionMergeToConfirmedStateTxProgram(params),
     );
 
     expect(result._tag).toBe("Failure");

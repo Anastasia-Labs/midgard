@@ -216,7 +216,7 @@ export const FIELD_CARRIAGE_V1_CONSTRUCTOR_INDEXES: Readonly<
 
 export const FIELD_VIEW_V1_CONSTRUCTOR_INDEXES: Readonly<
   Record<(typeof MIDGARD_FIELD_VIEW_CONSTRUCTORS_V1)[number], number>
-> = Object.freeze({ Whole: 0, Chunked: 1 });
+> = Object.freeze({ Whole: 0, Chunked: 1, ProvisionalWhole: 2 });
 
 /**
  * The frozen §8.6 mint-redeemer Constr indexes. Same reason as the two above:

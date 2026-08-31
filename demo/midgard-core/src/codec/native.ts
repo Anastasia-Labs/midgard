@@ -386,22 +386,56 @@ export const encodeMidgardNativeTxCanonicalV1 = (
   ]);
 };
 
-export const decodeMidgardNativeTxCanonicalV1 = (
+const encodeMidgardNativeTxCanonicalEnvelopeV1 = (
+  tx: MidgardNativeTxCanonicalV1,
+): Buffer =>
+  encodeCbor([
+    requireNativeTxV1Version(tx.version, "transaction.version"),
+    encodeNativeTxBodyCanonicalValue(tx.body),
+    encodeNativeTxWitnessSetCanonicalValue(tx.version, tx.witnessSet),
+    encodeValidityCode(tx.validity),
+  ]);
+
+/**
+ * Decodes the exact outer native-V1 transaction envelope for fraud evidence.
+ *
+ * Unlike {@link decodeMidgardNativeTxCanonicalV1}, this boundary deliberately
+ * keeps the nine committed field-preimage byte strings opaque. It exists so a
+ * watcher can authenticate and prove a block whose operator committed a
+ * malformed §5.1 field envelope. The outer transaction/body/witness records,
+ * version, scalar fields, hashes and CBOR encoding remain strict and canonical;
+ * normal transaction admission must continue to use the strict decoder below.
+ */
+export const decodeMidgardNativeTxCanonicalEnvelopeForFaultEvidenceV1 = (
   bytes: Uint8Array,
 ): MidgardNativeTxCanonicalV1 => {
-  const decoded = decodeSingleCbor(bytes);
-  const v = asFixedArray(decoded, 4, "transaction");
-  const version = requireNativeTxV1Version(v[0], "transaction[0]");
+  const source = Buffer.from(bytes);
+  const decoded = decodeSingleCbor(source);
+  const value = asFixedArray(decoded, 4, "transaction");
+  const version = requireNativeTxV1Version(value[0], "transaction[0]");
   const tx: MidgardNativeTxCanonicalV1 = {
     version,
-    body: decodeNativeTxBodyCanonicalValue(v[1], "transaction[1]"),
+    body: decodeNativeTxBodyCanonicalValue(value[1], "transaction[1]"),
     witnessSet: decodeNativeTxWitnessSetCanonicalValue(
-      v[2],
+      value[2],
       "transaction[2]",
       version,
     ),
-    validity: decodeValidityCode(v[3], "transaction[3]"),
+    validity: decodeValidityCode(value[3], "transaction[3]"),
   };
+  if (!encodeMidgardNativeTxCanonicalEnvelopeV1(tx).equals(source)) {
+    throw new MidgardTxCodecError(
+      MidgardTxCodecErrorCodes.CborDecode,
+      "fault-evidence transaction envelope is not canonical CBOR",
+    );
+  }
+  return tx;
+};
+
+export const decodeMidgardNativeTxCanonicalV1 = (
+  bytes: Uint8Array,
+): MidgardNativeTxCanonicalV1 => {
+  const tx = decodeMidgardNativeTxCanonicalEnvelopeForFaultEvidenceV1(bytes);
   validateMidgardNativeTxCanonicalV1(tx);
   return tx;
 };
@@ -640,6 +674,60 @@ export const deriveMidgardNativeTxProofSourceV1FromCanonicalCbor = (
   deriveMidgardNativeTxProofSourceV1(
     decodeMidgardNativeTxFullV1FromCanonicalCbor(canonicalTransactionCbor),
   );
+
+export type MidgardNativeTxFaultEvidenceMaterialV1 = Readonly<{
+  canonical: MidgardNativeTxCanonicalV1;
+  compact: MidgardNativeTxCompactV1;
+  transactionId: Buffer;
+  proofSource: MidgardNativeTxProofSourceV1;
+  fieldPreimages: readonly Buffer[];
+}>;
+
+/**
+ * Derives the one canonical compact/source identity from a raw fault-evidence
+ * envelope without first accepting the nine inner field grammars.
+ */
+export const deriveMidgardNativeTxFaultEvidenceMaterialV1 = (
+  canonicalTransactionCbor: Uint8Array,
+): MidgardNativeTxFaultEvidenceMaterialV1 => {
+  const canonical = decodeMidgardNativeTxCanonicalEnvelopeForFaultEvidenceV1(
+    canonicalTransactionCbor,
+  );
+  const compact = deriveMidgardNativeTxCompactV1(
+    canonical.body,
+    canonical.witnessSet,
+    canonical.validity,
+    canonical.version,
+  );
+  const witnessSetCompact = deriveMidgardNativeTxWitnessSetCompactV1(
+    canonical.witnessSet,
+  );
+  const proofSource: MidgardNativeTxProofSourceV1 = {
+    compactCbor: encodeMidgardNativeTxCompactV1(compact),
+    witnessSetCompactCbor:
+      encodeMidgardNativeTxWitnessSetCompactV1(witnessSetCompact),
+    fieldPreimageLengthsCbor: encodeMidgardNativeTxProofFieldLengthsV1(
+      midgardNativeTxProofFieldPreimageLengthsV1(canonical),
+    ),
+  };
+  return Object.freeze({
+    canonical,
+    compact,
+    transactionId: computeMidgardNativeTxIdV1(compact),
+    proofSource,
+    fieldPreimages: Object.freeze([
+      Buffer.from(canonical.body.spendInputsPreimageCbor),
+      Buffer.from(canonical.body.referenceInputsPreimageCbor),
+      Buffer.from(canonical.body.outputsPreimageCbor),
+      Buffer.from(canonical.body.requiredObserversPreimageCbor),
+      Buffer.from(canonical.body.requiredSignersPreimageCbor),
+      Buffer.from(canonical.body.mintPreimageCbor),
+      Buffer.from(canonical.witnessSet.scriptTxWitsPreimageCbor),
+      Buffer.from(canonical.witnessSet.addrTxWitsPreimageCbor),
+      Buffer.from(canonical.witnessSet.redeemerTxWitsPreimageCbor),
+    ]),
+  });
+};
 
 /**
  * Stamps the operator's adjudicated validity onto a decoded transaction —

@@ -70,6 +70,30 @@ const withdrawalProof = (): CommittedDuplicateEventProofV1 => ({
   },
 });
 
+const forcedTransactionProof = (
+  key = EVENT_KEY,
+): CommittedDuplicateEventProofV1 => ({
+  CommittedDuplicateForcedTransactionV1: {
+    membership: {
+      domain: "ForcedTransactionsV1RootDomain",
+      root: "2a".repeat(32),
+      phas_root: "3b".repeat(32),
+      count: 1n,
+      key,
+      value: {
+        tx_id: "4c".repeat(32),
+        source: {
+          compact_cbor: "80",
+          witness_set_compact_cbor: "80",
+          field_preimage_lengths_cbor: "80",
+        },
+        verdict: "ForcedTxValid",
+      },
+      proof: [],
+    },
+  },
+});
+
 describe("cross-block-duplicate-event V1 wire types", () => {
   it("reserves 00000016 and binds the challenged header in the thread name", () => {
     expect(CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID_V1).toBe("00000016");
@@ -81,8 +105,12 @@ describe("cross-block-duplicate-event V1 wire types", () => {
     );
   });
 
-  it("pins deposit and withdrawal constructor order by canonical round-trip", () => {
-    for (const proof of [depositProof(), withdrawalProof()]) {
+  it("pins all three event-domain constructors by canonical round-trip", () => {
+    for (const proof of [
+      depositProof(),
+      withdrawalProof(),
+      forcedTransactionProof(),
+    ]) {
       const cbor = Data.to(proof, CommittedDuplicateEventProofV1Type);
       expect(Data.from(cbor, CommittedDuplicateEventProofV1Type)).toEqual(
         proof,
@@ -94,6 +122,9 @@ describe("cross-block-duplicate-event V1 wire types", () => {
     expect(
       Data.to(withdrawalProof(), CommittedDuplicateEventProofV1Type),
     ).toMatch(/^d87a/u);
+    expect(
+      Data.to(forcedTransactionProof(), CommittedDuplicateEventProofV1Type),
+    ).toMatch(/^d87b/u);
   });
 
   it("derives and round-trips the exact step-01 handoff", () => {
@@ -147,6 +178,27 @@ describe("cross-block-duplicate-event V1 wire types", () => {
         state,
         settledHeaderHash: SETTLED_HEADER_HASH,
         settledEvent: depositProof(FOREIGN_EVENT_KEY),
+      }),
+    ).toThrow(/event identities differ/u);
+
+    const forcedState = crossBlockDuplicateEventStep02StateV1({
+      challengedHeaderHash: HEADER_HASH,
+      settlementPolicyId: SETTLEMENT_POLICY_ID,
+      committedEvent: forcedTransactionProof(),
+    });
+    expect(forcedState.event_kind).toBe("DuplicateForcedTransactionV1");
+    expect(() =>
+      assertConfirmedDuplicateEventV1({
+        state: forcedState,
+        settledHeaderHash: SETTLED_HEADER_HASH,
+        settledEvent: forcedTransactionProof(),
+      }),
+    ).not.toThrow();
+    expect(() =>
+      assertConfirmedDuplicateEventV1({
+        state: forcedState,
+        settledHeaderHash: SETTLED_HEADER_HASH,
+        settledEvent: forcedTransactionProof(FOREIGN_EVENT_KEY),
       }),
     ).toThrow(/event identities differ/u);
   });

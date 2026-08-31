@@ -20,12 +20,15 @@ import {
   PubKeyHashSchema,
   ValueSchema,
 } from "@/common.js";
+import { DaAvailabilityStateQueueStatusV1Schema } from "@/da-availability-state-v1.js";
 import {
   EMPTY_MERKLE_TREE_ROOT,
   GENESIS_HEADER_HASH,
   GENESIS_PROTOCOL_VERSION,
 } from "@/ledger-constants.js";
 import { OperatorVerdictV1Schema } from "@/rejection-reason-v1.js";
+
+export { NO_DA_ATTESTATION } from "@/da-availability-state-v1.js";
 
 export const HeaderHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
 export type HeaderHash = Data.Static<typeof HeaderHashSchema>;
@@ -359,11 +362,9 @@ export const makeHeaderTransitionCommitmentsV1Program = (
     });
   });
 
-export const NO_DA_ATTESTATION = "";
-
 export const StateQueueNodeV1Schema = Data.Object({
   header: HeaderV1Schema,
-  da_attestation: Data.Bytes(),
+  da_attestation: DaAvailabilityStateQueueStatusV1Schema,
 });
 export type StateQueueNodeV1 = Data.Static<typeof StateQueueNodeV1Schema>;
 export const StateQueueNodeV1 =

@@ -276,6 +276,8 @@ export const retentionDeadlineForBlockV1 = (args: {
 };
 
 export type RetentionPruneReasonCodeV1 =
+  | "active_availability_challenge"
+  | "availability_challenge_state_unknown"
   | "still_within_maturity"
   | "still_within_retention_window"
   | "header_status_not_terminal"
@@ -311,9 +313,23 @@ export const daRetentionPruneDecisionV1 = (
     readonly window?: RetentionWindowV1;
     readonly retentionDays?: number;
     readonly headerStatus?: unknown;
+    /** Only an authenticated `inactive` observation permits pruning. */
+    readonly availabilityChallengeState?: unknown;
   },
 ): RetentionPruneDecisionV1 => {
   const window = options.window ?? MIDGARD_RETENTION_WINDOW_V1;
+  if (options.availabilityChallengeState === "active") {
+    return {
+      decision: "retain",
+      reasonCode: "active_availability_challenge",
+    };
+  }
+  if (options.availabilityChallengeState !== "inactive") {
+    return {
+      decision: "retain",
+      reasonCode: "availability_challenge_state_unknown",
+    };
+  }
   const blockEndTimeMs = record.blockEndTimeMs;
   if (
     blockEndTimeMs === undefined ||

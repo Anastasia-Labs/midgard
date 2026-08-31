@@ -6,8 +6,10 @@ import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
  * Canonical 32-byte hash used by the Midgard tx codec.
  */
 export type Hash32 = Buffer;
+export type Hash28 = Buffer;
 
 export const HASH32_LENGTH = 32;
+export const HASH28_LENGTH = 28;
 
 /**
  * Validates that a byte slice is exactly 32 bytes long before treating it as a
@@ -30,6 +32,10 @@ export const ensureHash32 = (value: Uint8Array, fieldName: string): Buffer => {
  */
 export const computeHash32 = (value: Uint8Array): Buffer =>
   Buffer.from(blake2b(value, { dkLen: HASH32_LENGTH }));
+
+/** Computes the canonical Blake2b-224 hash used by Cardano script/header ids. */
+export const computeHash28 = (value: Uint8Array): Buffer =>
+  Buffer.from(blake2b(value, { dkLen: HASH28_LENGTH }));
 
 /**
  * Recomputes the payload hash and fails if it does not match the expected

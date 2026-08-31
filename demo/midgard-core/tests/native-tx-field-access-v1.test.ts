@@ -331,6 +331,7 @@ describe("§8 carriage ladder", () => {
     expect([...MIDGARD_FIELD_VIEW_CONSTRUCTORS_V1]).toEqual([
       "Whole",
       "Chunked",
+      "ProvisionalWhole",
     ]);
   });
 

@@ -384,7 +384,8 @@ const negativeVectors = [
     label: "carriage_inline_preimage_as_integer",
     aikenType: "FieldCarriageV1",
     cborHex: Data.to(new Constr(0, [5n])),
-    reason: "`Inline.preimage` is a ByteArray; this vector puts an Integer there",
+    reason:
+      "`Inline.preimage` is a ByteArray; this vector puts an Integer there",
     rejectedBy: { aiken: "data-cast", typescript: "throws" },
   },
   {
@@ -401,16 +402,15 @@ const negativeVectors = [
     label: "view_trailing_bytes",
     aikenType: "FieldViewV1",
     cborHex: withTrailingItem("view_whole_empty_field"),
-    reason:
-      "a valid `Whole` encoding followed by a complete extra CBOR item",
+    reason: "a valid `Whole` encoding followed by a complete extra CBOR item",
     rejectedBy: { aiken: "cbor-parse", typescript: "tolerates-trailing-bytes" },
   },
   {
     label: "view_constructor_index_out_of_range",
     aikenType: "FieldViewV1",
-    cborHex: Data.to(new Constr(2, [hex(emptyFieldPreimage), 0n, 40n])),
+    cborHex: Data.to(new Constr(3, [hex(emptyFieldPreimage), 0n, 40n])),
     reason:
-      "constructor index 2; FieldViewV1 declares exactly Whole/Chunked at 0/1",
+      "constructor index 3; FieldViewV1 declares exactly Whole/Chunked/ProvisionalWhole at 0/1/2",
     rejectedBy: { aiken: "data-cast", typescript: "throws" },
   },
   {

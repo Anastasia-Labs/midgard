@@ -8,7 +8,7 @@
 
 import { Data } from "@lucid-evolution/lucid";
 
-import { H32Schema, ProofSchema } from "@/common.js";
+import { H32Schema } from "@/common.js";
 
 import { FieldOpeningV1Schema } from "./field-opening-v1.js";
 import {
@@ -17,8 +17,9 @@ import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,
   MidgardTxInputSchema,
-  NativeTxInclusionArgs,
-  NativeTxInclusionArgsSchema,
+  NativeTxInclusionCarriage,
+  NativeTxInclusionCarriageSchema,
+  NonMembershipCarriageSchema,
 } from "./native.js";
 
 /**
@@ -35,10 +36,10 @@ import {
  */
 
 export const NoReferenceInputTxInclusionArgsSchema =
-  NativeTxInclusionArgsSchema;
-export type NoReferenceInputTxInclusionArgs = NativeTxInclusionArgs;
+  NativeTxInclusionCarriageSchema;
+export type NoReferenceInputTxInclusionArgs = NativeTxInclusionCarriage;
 export const NoReferenceInputTxInclusionArgs =
-  NativeTxInclusionArgs as unknown as NoReferenceInputTxInclusionArgs;
+  NativeTxInclusionCarriage as unknown as NoReferenceInputTxInclusionArgs;
 
 export const NoReferenceInputStepCancelSchema = FaultProofStepCancelSchema;
 export type NoReferenceInputStepCancel = FaultProofStepCancel;
@@ -142,8 +143,7 @@ export const NoReferenceInputStep03Datum =
 export const NoReferenceInputStep03ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
-  non_membership_proof_in_ledger: ProofSchema,
-  non_membership_proof_script_redeemer_index: Data.Integer(),
+  non_membership_in_ledger: NonMembershipCarriageSchema,
 });
 export type NoReferenceInputStep03Args = Data.Static<
   typeof NoReferenceInputStep03ArgsSchema
@@ -185,8 +185,7 @@ export const NoReferenceInputStep04ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
   fraud_proof_mint_redeemer_index: Data.Integer(),
-  non_membership_proof_in_txs: ProofSchema,
-  non_membership_proof_script_redeemer_index: Data.Integer(),
+  non_membership_in_txs: NonMembershipCarriageSchema,
 });
 export type NoReferenceInputStep04Args = Data.Static<
   typeof NoReferenceInputStep04ArgsSchema

@@ -35,7 +35,9 @@ export const NativeTxInclusionArgsSchema = Data.Object({
   hub_ref_input_index: Data.Integer(),
   state_queue_node_ref_input_index: Data.Integer(),
   native_tx_id: H32Schema,
-  native_tx_compact_cbor: Data.Bytes(),
+  // Canonical CBOR `Data(L2TransactionSourceV1)`, exactly the transactions-root
+  // MPF leaf value. This keeps compact/witness/field-length evidence atomic.
+  l2_transaction_source_cbor: Data.Bytes(),
   // Raw transactions MPF root; authenticated on-chain against the header's
   // counted `transactions_root`. Positional slot must match the aiken
   // `NativeTxInclusionArgs` type.
@@ -62,7 +64,7 @@ export const PublishedChunkInclusionArgsSchema = Data.Object({
   hub_ref_input_index: Data.Integer(),
   state_queue_node_ref_input_index: Data.Integer(),
   native_tx_id: H32Schema,
-  native_tx_compact_cbor: Data.Bytes(),
+  l2_transaction_source_cbor: Data.Bytes(),
   transactions_phas_root: H32Schema,
   ordered_chunk_reference_input_indices: Data.Array(Data.Integer()),
 });
@@ -123,6 +125,22 @@ export type NonMembershipCarriage = Data.Static<
 export const NonMembershipCarriage =
   NonMembershipCarriageSchema as unknown as NonMembershipCarriage;
 
+/** Membership twin of `NonMembershipCarriageSchema`. */
+export const MembershipCarriageSchema = Data.Enum([
+  Data.Object({
+    RedeemerCarriedMembership: Data.Object({
+      membership_proof: ProofSchema,
+      membership_proof_script_redeemer_index: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    PublishedChunkMembership: Data.Tuple([PublishedProofCarriageSchema]),
+  }),
+]);
+export type MembershipCarriage = Data.Static<typeof MembershipCarriageSchema>;
+export const MembershipCarriage =
+  MembershipCarriageSchema as unknown as MembershipCarriage;
+
 /**
  * One published proof chunk's inline datum: nothing but MPF proof steps.
  * Mirrors the aiken `mpf_chunked_proof_v1.ProofChunkDatum`.
@@ -167,6 +185,10 @@ export const ChunkedProofClaim =
 /** Blueprint title of the merkelized published-chunk verifier. */
 export const MPF_CHUNKED_VERIFY_WITHDRAW_TITLE =
   "mpf_chunked_verify.verify.withdraw";
+
+/** Blueprint title of the direct MPF non-membership verifier. */
+export const PEXCLUDES_EXCLUSION_WITHDRAW_TITLE =
+  "pexcludes.exclusion.withdraw";
 
 /** The `value_hash` slot of a non-membership claim, which has no value. */
 export const ABSENT_VALUE_HASH = "00".repeat(32);

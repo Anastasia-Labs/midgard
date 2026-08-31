@@ -139,10 +139,15 @@ describe("§8.8 FieldCarriageV1 wire contract", () => {
 
 describe("§8.8 FieldViewV1 wire contract", () => {
   it("keeps the frozen constructor order the Aiken door declares", () => {
-    expect(aikenConstructorOrder("FieldViewV1")).toEqual(["Whole", "Chunked"]);
+    expect(aikenConstructorOrder("FieldViewV1")).toEqual([
+      "Whole",
+      "Chunked",
+      "ProvisionalWhole",
+    ]);
     expect(FIELD_VIEW_V1_CONSTRUCTOR_INDEXES).toEqual({
       Whole: 0,
       Chunked: 1,
+      ProvisionalWhole: 2,
     });
   });
 

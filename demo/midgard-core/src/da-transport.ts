@@ -393,6 +393,8 @@ export type DaAttestationGossipV1 = {
   readonly deploymentFingerprint: Buffer;
   readonly headerHash: Buffer;
   readonly payloadHash: Buffer;
+  readonly availabilityCommitmentCbor: Buffer;
+  readonly availabilityCommitmentDigest: Buffer;
   readonly signerIndex: number;
   readonly daVkey: Buffer;
   readonly onChainWitness: Buffer;
@@ -426,8 +428,10 @@ export type DaConflictingSignatureHeaderEvidenceV1 = {
   readonly signerIndex: number;
   readonly daVkey: Buffer;
   readonly lowerHeaderHash: Buffer;
+  readonly lowerCommitmentCbor: Buffer;
   readonly lowerHeaderWitness: Buffer;
   readonly upperHeaderHash: Buffer;
+  readonly upperCommitmentCbor: Buffer;
   readonly upperHeaderWitness: Buffer;
 };
 
@@ -613,6 +617,17 @@ const optionalBytesValue = (
   value: unknown,
   fieldName: string,
 ): Buffer | null => (value == null ? null : bytesValue(value, fieldName));
+
+const ensureNonEmptyBytes = (value: Uint8Array, fieldName: string): Buffer => {
+  const bytes = Buffer.from(value);
+  if (bytes.length === 0) {
+    fail(
+      MidgardTxCodecErrorCodes.InvalidFieldType,
+      `${fieldName} must be non-empty`,
+    );
+  }
+  return bytes;
+};
 
 export const ensureDaDeploymentFingerprint = (
   value: Uint8Array,
@@ -2187,6 +2202,14 @@ const encodeAttestationGossipValue = (
   ensureDaDeploymentFingerprint(message.deploymentFingerprint),
   ensureDaHeaderHash(message.headerHash),
   ensureDaPayloadHash(message.payloadHash),
+  ensureNonEmptyBytes(
+    message.availabilityCommitmentCbor,
+    "availability_commitment_cbor",
+  ),
+  ensureDaHash32(
+    message.availabilityCommitmentDigest,
+    "availability_commitment_digest",
+  ),
   cborUint(ensureUint8(message.signerIndex, "signer_index"), "signer_index"),
   ensureDaHash32(message.daVkey, "da_vkey"),
   ensureByteLength(
@@ -2202,7 +2225,7 @@ const decodeAttestationGossipValue = (
   value: unknown,
   fieldName: string,
 ): DaAttestationGossipV1 => {
-  const v = fixedArray(value, 8, fieldName);
+  const v = fixedArray(value, 10, fieldName);
   return {
     deploymentFingerprint: deploymentFingerprintValue(
       v[0],
@@ -2210,16 +2233,24 @@ const decodeAttestationGossipValue = (
     ),
     headerHash: headerHashValue(v[1], `${fieldName}.header_hash`),
     payloadHash: payloadHashValue(v[2], `${fieldName}.payload_hash`),
-    signerIndex: ensureUint8(v[3], `${fieldName}.signer_index`),
-    daVkey: hashValue(v[4], `${fieldName}.da_vkey`),
+    availabilityCommitmentCbor: ensureNonEmptyBytes(
+      asBytes(v[3], `${fieldName}.availability_commitment_cbor`),
+      `${fieldName}.availability_commitment_cbor`,
+    ),
+    availabilityCommitmentDigest: ensureDaHash32(
+      asBytes(v[4], `${fieldName}.availability_commitment_digest`),
+      `${fieldName}.availability_commitment_digest`,
+    ),
+    signerIndex: ensureUint8(v[5], `${fieldName}.signer_index`),
+    daVkey: hashValue(v[6], `${fieldName}.da_vkey`),
     onChainWitness: ensureByteLength(
-      asBytes(v[5], `${fieldName}.on_chain_witness`),
+      asBytes(v[7], `${fieldName}.on_chain_witness`),
       DA_ON_CHAIN_WITNESS_LENGTH,
       `${fieldName}.on_chain_witness`,
     ),
-    retentionUntilSlot: ensureUint(v[6], `${fieldName}.retention_until_slot`),
+    retentionUntilSlot: ensureUint(v[8], `${fieldName}.retention_until_slot`),
     announcedByPeerId: nonEmptyStringValue(
-      v[7],
+      v[9],
       `${fieldName}.announced_by_peer_id`,
     ),
   };
@@ -2331,6 +2362,14 @@ const validateConflictingSignatureHeaderEvidenceV1 = (
   const daVkey = ensureDaHash32(evidence.daVkey, "da_vkey");
   const lowerHeaderHash = ensureDaHeaderHash(evidence.lowerHeaderHash);
   const upperHeaderHash = ensureDaHeaderHash(evidence.upperHeaderHash);
+  const lowerCommitmentCbor = ensureNonEmptyBytes(
+    evidence.lowerCommitmentCbor,
+    "lower_commitment_cbor",
+  );
+  const upperCommitmentCbor = ensureNonEmptyBytes(
+    evidence.upperCommitmentCbor,
+    "upper_commitment_cbor",
+  );
   const lowerHeaderWitness = ensureByteLength(
     evidence.lowerHeaderWitness,
     DA_ON_CHAIN_WITNESS_LENGTH,
@@ -2341,10 +2380,18 @@ const validateConflictingSignatureHeaderEvidenceV1 = (
     DA_ON_CHAIN_WITNESS_LENGTH,
     "upper_header_witness",
   );
-  if (Buffer.compare(lowerHeaderHash, upperHeaderHash) >= 0) {
+  const lowerIdentity = Buffer.concat([
+    lowerHeaderHash,
+    computeDaSha256Hash(lowerCommitmentCbor),
+  ]);
+  const upperIdentity = Buffer.concat([
+    upperHeaderHash,
+    computeDaSha256Hash(upperCommitmentCbor),
+  ]);
+  if (Buffer.compare(lowerIdentity, upperIdentity) >= 0) {
     fail(
       MidgardTxCodecErrorCodes.InvalidFieldType,
-      "conflicting signature/header evidence hashes must be strictly ordered",
+      "conflicting signature/commitment evidence identities must be strictly ordered",
     );
   }
   if (
@@ -2360,8 +2407,10 @@ const validateConflictingSignatureHeaderEvidenceV1 = (
     signerIndex,
     daVkey,
     lowerHeaderHash,
+    lowerCommitmentCbor,
     lowerHeaderWitness,
     upperHeaderHash,
+    upperCommitmentCbor,
     upperHeaderWitness,
   };
 };
@@ -2374,8 +2423,10 @@ const encodeConflictingSignatureHeaderEvidenceValue = (
     cborUint(canonical.signerIndex, "signer_index"),
     canonical.daVkey,
     canonical.lowerHeaderHash,
+    canonical.lowerCommitmentCbor,
     canonical.lowerHeaderWitness,
     canonical.upperHeaderHash,
+    canonical.upperCommitmentCbor,
     canonical.upperHeaderWitness,
   ];
 };
@@ -2384,7 +2435,7 @@ const decodeConflictingSignatureHeaderEvidenceValue = (
   value: unknown,
   fieldName: string,
 ): DaConflictingSignatureHeaderEvidenceV1 => {
-  const tuple = fixedArray(value, 6, fieldName);
+  const tuple = fixedArray(value, 8, fieldName);
   return validateConflictingSignatureHeaderEvidenceV1({
     signerIndex: ensureUint8(tuple[0], `${fieldName}.signer_index`),
     daVkey: hashValue(tuple[1], `${fieldName}.da_vkey`),
@@ -2392,17 +2443,25 @@ const decodeConflictingSignatureHeaderEvidenceValue = (
       tuple[2],
       `${fieldName}.lower_header_hash`,
     ),
+    lowerCommitmentCbor: asBytes(
+      tuple[3],
+      `${fieldName}.lower_commitment_cbor`,
+    ),
     lowerHeaderWitness: ensureByteLength(
-      asBytes(tuple[3], `${fieldName}.lower_header_witness`),
+      asBytes(tuple[4], `${fieldName}.lower_header_witness`),
       DA_ON_CHAIN_WITNESS_LENGTH,
       `${fieldName}.lower_header_witness`,
     ),
     upperHeaderHash: headerHashValue(
-      tuple[4],
+      tuple[5],
       `${fieldName}.upper_header_hash`,
     ),
+    upperCommitmentCbor: asBytes(
+      tuple[6],
+      `${fieldName}.upper_commitment_cbor`,
+    ),
     upperHeaderWitness: ensureByteLength(
-      asBytes(tuple[5], `${fieldName}.upper_header_witness`),
+      asBytes(tuple[7], `${fieldName}.upper_header_witness`),
       DA_ON_CHAIN_WITNESS_LENGTH,
       `${fieldName}.upper_header_witness`,
     ),

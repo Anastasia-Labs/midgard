@@ -35,12 +35,10 @@
  * PlutusData encoding is positional, so re-ordering here would silently produce
  * redeemers the validators reject.
  *
- * **Re-derived onto the flat field commitments by #604** (the #575 off-chain
- * builder remediation). What moved is recorded once in
- * `docs/fault-proofs/offchain-builder-staleness-575.md`: thread state carries
- * the §2.5 anchor rather than a per-field collection commitment, and a step
- * redeemer carries a `FieldOpeningV1` rather than a reproduced
- * `..._preimage: List<…>`.
+ * Thread state carries the §2.5 transaction anchor rather than a per-field
+ * collection commitment, and a step redeemer carries `FieldOpeningV1` rather
+ * than a reproduced `..._preimage: List<…>`. See
+ * `docs/fault-proofs/offchain-builder-staleness-575.md`.
  */
 import {
   encodeCbor,
@@ -60,8 +58,8 @@ import {
   MidgardTxInput,
   type MidgardTxInput as MidgardTxInputData,
   MidgardTxInputSchema,
-  NativeTxInclusionArgs,
-  NativeTxInclusionArgsSchema,
+  NativeTxInclusionCarriage,
+  NativeTxInclusionCarriageSchema,
 } from "./native.js";
 
 /** Catalogue violation identifier adjudicated by this family. */
@@ -229,7 +227,7 @@ export const InputNoIdxStep01Datum =
   InputNoIdxStep01DatumSchema as unknown as InputNoIdxStep01Datum;
 
 export const InputNoIdxStep01SpendRedeemerSchema = faultProofStepRedeemerSchema(
-  NativeTxInclusionArgsSchema,
+  NativeTxInclusionCarriageSchema,
 );
 export type InputNoIdxStep01SpendRedeemer = Data.Static<
   typeof InputNoIdxStep01SpendRedeemerSchema
@@ -241,13 +239,8 @@ export const InputNoIdxStep01SpendRedeemer =
  * Mirrors `midgard/fraud_proofs/input_no_idx/step_02.State` — **one state, one
  * route**.
  *
- * This step used to carry a two-constructor state (`Direct`/`Folding`) whose
- * folding arm streamed the spend-input collection one counted opening at a
- * time, and the state it carried was the field's *collection commitment*. Both
- * are gone. Under §4's flat scheme the thread carries the §2.5 anchor — the
- * transaction id — and the door hashes the preimage once and reads item `n` by
- * arithmetic, so there is nothing left to stream and nothing left to re-hash.
- * See `docs/fault-proofs/offchain-builder-staleness-575.md` §2, divergence 1.
+ * The thread carries the §2.5 transaction id. The shared door authenticates
+ * the complete preimage and selects item `n`; there is no folding state.
  */
 export const InputNoIdxStep02StateSchema = Data.Object({
   verified_tx_id: H32Schema,
@@ -268,21 +261,9 @@ export const InputNoIdxStep02Datum =
   InputNoIdxStep02DatumSchema as unknown as InputNoIdxStep02Datum;
 
 /**
- * Mirrors `midgard/fraud_proofs/input_no_idx/step_02.Args` — a flat record, not
- * the retired four-arm enum.
- *
- * `Complete` reproduced the whole spend-input list in the redeemer,
- * `CompletePublished` referenced a bespoke `PublishedSpendInputsV1` datum, and
- * `FoldStart`/`FoldNext` streamed the collection with per-item counted proofs.
- * All four existed because the collection had to be reproduced inside the step
- * to re-hash it. The §8.8 door replaced every one of them with a single
- * `FieldOpeningV1` naming one of §8's three carriage tiers, so this step now has
- * exactly one route and the prover's only remaining choice is *how the preimage
- * travels* — which is what `spend_inputs_opening` carries.
- *
- * See `docs/fault-proofs/offchain-builder-staleness-575.md` §2, divergence 2: a
- * builder still emitting a `..._preimage` argument produces a constructor arity
- * the validator cannot decode.
+ * Mirrors `midgard/fraud_proofs/input_no_idx/step_02.Args`. The single route
+ * carries a `FieldOpeningV1`; `spend_inputs_opening` selects the authenticated
+ * carriage tier. A reproduced `..._preimage` list is not part of this ABI.
  */
 export const InputNoIdxStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
@@ -327,7 +308,7 @@ export const InputNoIdxStep03Datum =
 
 /** Step 03 re-enters the shared native inclusion binding. */
 export const InputNoIdxStep03SpendRedeemerSchema = faultProofStepRedeemerSchema(
-  NativeTxInclusionArgsSchema,
+  NativeTxInclusionCarriageSchema,
 );
 export type InputNoIdxStep03SpendRedeemer = Data.Static<
   typeof InputNoIdxStep03SpendRedeemerSchema
@@ -338,10 +319,9 @@ export const InputNoIdxStep03SpendRedeemer =
 /**
  * Mirrors `midgard/fraud_proofs/input_no_idx/step_04.State`.
  *
- * `producing_tx_outputs_hash` became `producing_tx_id` with the rest of
- * divergence 1: step-04 opens the *producing* transaction's field 2 through the
- * door, so what it needs forwarded is that transaction's §2.5 anchor, not a
- * commitment it would have to re-derive a reproduced output list against.
+ * Step 04 opens the *producing* transaction's field 2 through the shared door,
+ * so this state forwards that transaction's §2.5 id anchor plus the challenged
+ * output index.
  */
 export const InputNoIdxStep04StateSchema = Data.Object({
   producing_tx_id: H32Schema,
@@ -396,8 +376,8 @@ export {
   MidgardTxInputSchema as InputNoIdxSpendInputSchema,
   FaultProofStepCancel as InputNoIdxStepCancel,
   FaultProofStepCancelSchema as InputNoIdxStepCancelSchema,
-  NativeTxInclusionArgs as InputNoIdxTxInclusionArgs,
-  NativeTxInclusionArgsSchema as InputNoIdxTxInclusionArgsSchema,
+  NativeTxInclusionCarriage as InputNoIdxTxInclusionArgs,
+  NativeTxInclusionCarriageSchema as InputNoIdxTxInclusionArgsSchema,
 };
 
 // ## Step-state builders (twins of the on-chain forwarding rules)

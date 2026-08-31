@@ -272,6 +272,17 @@ export type FraudProofs = {
    * under a policy that never authorized it.
    */
   mintAuthorization: SpendingValidator;
+  /**
+   * Q35 `network-id`: a committed accepted native transaction or one of its
+   * protected output addresses targets a network other than the deployment.
+   */
+  networkId: SpendingValidator;
+  /** Q33: a consumed UTxO requires a native script absent from tx witnesses. */
+  missingNativeScriptUtxo: SpendingValidator;
+  /** Q34: an authenticated native script evaluates false in tx context. */
+  nativeScriptInvalid: SpendingValidator;
+  /** Q27: an accepted output or newly introduced UTxO is below min-Ada. */
+  minAda: SpendingValidator;
 };
 
 export type MidgardValidators = {
@@ -279,6 +290,12 @@ export type MidgardValidators = {
   hubOracle: AuthenticatedValidator;
   daParamsGovernor: AuthenticatedValidator;
   daAttestation: AuthenticatedValidator;
+  /** Per-header retained DA bond, challenge, tranche and carrier authority. */
+  availabilityChallenge: AuthenticatedValidator;
+  /** Deployment-bound singleton which serializes state correction. */
+  correctionLock: SpendingValidator;
+  /** Deployment-bound singleton which permanently records opened claims. */
+  claimRegistry: SpendingValidator;
   stateQueue: AuthenticatedValidator;
   scheduler: AuthenticatedValidator;
   registeredOperators: AuthenticatedValidator;
@@ -286,7 +303,13 @@ export type MidgardValidators = {
   retiredOperators: AuthenticatedValidator;
   escapeHatch: AuthenticatedValidator;
   fraudProofCatalogue: AuthenticatedValidator;
+  /** Canonical computation-thread policy shared by every fraud-proof family. */
+  computationThread: MintingValidator;
   fraudProof: AuthenticatedValidator;
+  /** Shared published verifier for staged MPF proof chunks. */
+  chunkedVerify: WithdrawalValidator;
+  /** Shared published verifier for direct MPF non-membership claims. */
+  pexcludes: WithdrawalValidator;
   deposit: AuthenticatedValidator;
   withdrawal: AuthenticatedValidator;
   txOrder: AuthenticatedValidator;

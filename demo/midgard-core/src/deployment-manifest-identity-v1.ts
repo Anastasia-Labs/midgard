@@ -175,6 +175,49 @@ export const DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES = Object.freeze([
   "fraudProofTransitionTraceDeposit",
   "fraudProofTransitionTraceL1Event",
   "fraudProofTransitionTraceDuplicate",
+  "fraudProofNetworkId",
+  "fraudProofNetworkIdStep02",
+  "computationThreadMint",
+  "chunkedVerifyWithdraw",
+  "pexcludesWithdraw",
+  "fraudProofDoubleSpendStep02",
+  "fraudProofDoubleSpendStep03",
+  "fraudProofDoubleSpendStep04",
+  "fraudProofNonExistentInputStep02",
+  "fraudProofNonExistentInputStep03",
+  "fraudProofNonExistentInputStep04",
+  "fraudProofNonExistentInputNoIndexStep02",
+  "fraudProofNonExistentInputNoIndexStep03",
+  "fraudProofNonExistentInputNoIndexStep04",
+  "fraudProofInvalidRangeStep02",
+  "fraudProofZeroInputStep02",
+  "fraudProofDaHashPreimageStep02",
+  "fraudProofNoReferenceInputStep02",
+  "fraudProofNoReferenceInputStep03",
+  "fraudProofNoReferenceInputStep04",
+  "fraudProofReferenceInputNoIdxStep02",
+  "fraudProofReferenceInputNoIdxStep03",
+  "fraudProofReferenceInputNoIdxStep04",
+  "fraudProofInvalidSignatureStep02",
+  "fraudProofMissingNativeScriptTxStep07",
+  "fraudProofMissingNativeScriptTxStep08",
+  "fraudProofMissingNativeScriptUtxo",
+  "fraudProofMissingNativeScriptUtxoStep02",
+  "fraudProofMissingNativeScriptUtxoStep03",
+  "fraudProofMissingNativeScriptUtxoStep04",
+  "fraudProofMissingNativeScriptUtxoStep05",
+  "fraudProofNativeScriptInvalid",
+  "fraudProofNativeScriptInvalidStep02",
+  "fraudProofNativeScriptInvalidStep03",
+  "fraudProofMinAda",
+  "fraudProofMinAdaStep02",
+  "correctionLockSpend",
+  "claimRegistrySpend",
+  "fraudProofMinAdaStep03",
+  "fraudProofMinAdaStep04",
+  "fraudProofMinAdaStep05",
+  "availabilityChallengeSpend",
+  "availabilityChallengeMint",
 ] as const);
 
 export const DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER =
@@ -207,6 +250,10 @@ export const DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER =
     "valueNotPreserved",
     "inputSetUniqueness",
     "mintAuthorization",
+    "networkId",
+    "missingNativeScriptUtxo",
+    "nativeScriptInvalid",
+    "minAda",
   ] as const);
 
 export type DeploymentManifestV1FraudProofCatalogueCategory =
@@ -390,6 +437,84 @@ export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofTransitionTraceL1Event",
     "V1 fraud-proof transition-trace final-7":
       "fraudProofTransitionTraceDuplicate",
+    "V1 fraud-proof network-id step-01": "fraudProofNetworkId",
+    "V1 fraud-proof network-id step-02": "fraudProofNetworkIdStep02",
+    "V1 fraud-proof computation-thread minting": "computationThreadMint",
+    "V1 fraud-proof token minting": "fraudProofMint",
+    "V1 MPF chunked-verify withdrawal": "chunkedVerifyWithdraw",
+    "V1 MPF pexcludes withdrawal": "pexcludesWithdraw",
+    "V1 fraud-proof double-spend step-01": "fraudProofDoubleSpend",
+    "V1 fraud-proof double-spend step-02": "fraudProofDoubleSpendStep02",
+    "V1 fraud-proof double-spend step-03": "fraudProofDoubleSpendStep03",
+    "V1 fraud-proof double-spend step-04": "fraudProofDoubleSpendStep04",
+    "V1 fraud-proof non-existent-input step-01": "fraudProofNonExistentInput",
+    "V1 fraud-proof non-existent-input step-02":
+      "fraudProofNonExistentInputStep02",
+    "V1 fraud-proof non-existent-input step-03":
+      "fraudProofNonExistentInputStep03",
+    "V1 fraud-proof non-existent-input step-04":
+      "fraudProofNonExistentInputStep04",
+    "V1 fraud-proof non-existent-input-no-index step-01":
+      "fraudProofNonExistentInputNoIndex",
+    "V1 fraud-proof non-existent-input-no-index step-02":
+      "fraudProofNonExistentInputNoIndexStep02",
+    "V1 fraud-proof non-existent-input-no-index step-03":
+      "fraudProofNonExistentInputNoIndexStep03",
+    "V1 fraud-proof non-existent-input-no-index step-04":
+      "fraudProofNonExistentInputNoIndexStep04",
+    "V1 fraud-proof invalid-range step-01": "fraudProofInvalidRange",
+    "V1 fraud-proof invalid-range step-02": "fraudProofInvalidRangeStep02",
+    "V1 fraud-proof zero-input step-01": "fraudProofZeroInput",
+    "V1 fraud-proof zero-input step-02": "fraudProofZeroInputStep02",
+    "V1 fraud-proof da-hash-preimage step-01": "fraudProofDaHashPreimage",
+    "V1 fraud-proof da-hash-preimage step-02": "fraudProofDaHashPreimageStep02",
+    "V1 fraud-proof no-reference-input step-01": "fraudProofNoReferenceInput",
+    "V1 fraud-proof no-reference-input step-02":
+      "fraudProofNoReferenceInputStep02",
+    "V1 fraud-proof no-reference-input step-03":
+      "fraudProofNoReferenceInputStep03",
+    "V1 fraud-proof no-reference-input step-04":
+      "fraudProofNoReferenceInputStep04",
+    "V1 fraud-proof reference-input-no-idx step-01":
+      "fraudProofReferenceInputNoIdx",
+    "V1 fraud-proof reference-input-no-idx step-02":
+      "fraudProofReferenceInputNoIdxStep02",
+    "V1 fraud-proof reference-input-no-idx step-03":
+      "fraudProofReferenceInputNoIdxStep03",
+    "V1 fraud-proof reference-input-no-idx step-04":
+      "fraudProofReferenceInputNoIdxStep04",
+    "V1 fraud-proof invalid-signature step-01": "fraudProofInvalidSignature",
+    "V1 fraud-proof invalid-signature step-02":
+      "fraudProofInvalidSignatureStep02",
+    "V1 fraud-proof missing-native-script-tx step-07":
+      "fraudProofMissingNativeScriptTxStep07",
+    "V1 fraud-proof missing-native-script-tx step-08":
+      "fraudProofMissingNativeScriptTxStep08",
+    "V1 fraud-proof missing-native-script-utxo step-01":
+      "fraudProofMissingNativeScriptUtxo",
+    "V1 fraud-proof missing-native-script-utxo step-02":
+      "fraudProofMissingNativeScriptUtxoStep02",
+    "V1 fraud-proof missing-native-script-utxo step-03":
+      "fraudProofMissingNativeScriptUtxoStep03",
+    "V1 fraud-proof missing-native-script-utxo step-04":
+      "fraudProofMissingNativeScriptUtxoStep04",
+    "V1 fraud-proof missing-native-script-utxo step-05":
+      "fraudProofMissingNativeScriptUtxoStep05",
+    "V1 fraud-proof native-script-invalid step-01":
+      "fraudProofNativeScriptInvalid",
+    "V1 fraud-proof native-script-invalid step-02":
+      "fraudProofNativeScriptInvalidStep02",
+    "V1 fraud-proof native-script-invalid step-03":
+      "fraudProofNativeScriptInvalidStep03",
+    "V1 fraud-proof min-ada step-01": "fraudProofMinAda",
+    "V1 fraud-proof min-ada step-02": "fraudProofMinAdaStep02",
+    "correction-lock spending": "correctionLockSpend",
+    "claim-registry spending": "claimRegistrySpend",
+    "V1 fraud-proof min-ada step-03": "fraudProofMinAdaStep03",
+    "V1 fraud-proof min-ada step-04": "fraudProofMinAdaStep04",
+    "V1 fraud-proof min-ada step-05": "fraudProofMinAdaStep05",
+    "availability-challenge spending": "availabilityChallengeSpend",
+    "availability-challenge minting": "availabilityChallengeMint",
   } as const);
 
 export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES =
@@ -527,6 +652,77 @@ export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES =
     "V1 fraud-proof transition-trace final-5": "V1FpTransitionTraceFinal5",
     "V1 fraud-proof transition-trace final-6": "V1FpTransitionTraceFinal6",
     "V1 fraud-proof transition-trace final-7": "V1FpTransitionTraceFinal7",
+    "V1 fraud-proof network-id step-01": "V1FpNetworkIdS01",
+    "V1 fraud-proof network-id step-02": "V1FpNetworkIdS02",
+    "V1 fraud-proof computation-thread minting": "V1FpComputationThreadMint",
+    "V1 fraud-proof token minting": "V1FpTokenMint",
+    "V1 MPF chunked-verify withdrawal": "V1MpfChunkedVerifyWithdraw",
+    "V1 MPF pexcludes withdrawal": "V1MpfPexcludesWithdraw",
+    "V1 fraud-proof double-spend step-01": "V1FpDoubleSpendS01",
+    "V1 fraud-proof double-spend step-02": "V1FpDoubleSpendS02",
+    "V1 fraud-proof double-spend step-03": "V1FpDoubleSpendS03",
+    "V1 fraud-proof double-spend step-04": "V1FpDoubleSpendS04",
+    "V1 fraud-proof non-existent-input step-01": "V1FpNonExistentInputS01",
+    "V1 fraud-proof non-existent-input step-02": "V1FpNonExistentInputS02",
+    "V1 fraud-proof non-existent-input step-03": "V1FpNonExistentInputS03",
+    "V1 fraud-proof non-existent-input step-04": "V1FpNonExistentInputS04",
+    "V1 fraud-proof non-existent-input-no-index step-01":
+      "V1FpNonExistentInputNoIdxS01",
+    "V1 fraud-proof non-existent-input-no-index step-02":
+      "V1FpNonExistentInputNoIdxS02",
+    "V1 fraud-proof non-existent-input-no-index step-03":
+      "V1FpNonExistentInputNoIdxS03",
+    "V1 fraud-proof non-existent-input-no-index step-04":
+      "V1FpNonExistentInputNoIdxS04",
+    "V1 fraud-proof invalid-range step-01": "V1FpInvalidRangeS01",
+    "V1 fraud-proof invalid-range step-02": "V1FpInvalidRangeS02",
+    "V1 fraud-proof zero-input step-01": "V1FpZeroInputS01",
+    "V1 fraud-proof zero-input step-02": "V1FpZeroInputS02",
+    "V1 fraud-proof da-hash-preimage step-01": "V1FpDaHashPreimageS01",
+    "V1 fraud-proof da-hash-preimage step-02": "V1FpDaHashPreimageS02",
+    "V1 fraud-proof no-reference-input step-01": "V1FpNoReferenceInputS01",
+    "V1 fraud-proof no-reference-input step-02": "V1FpNoReferenceInputS02",
+    "V1 fraud-proof no-reference-input step-03": "V1FpNoReferenceInputS03",
+    "V1 fraud-proof no-reference-input step-04": "V1FpNoReferenceInputS04",
+    "V1 fraud-proof reference-input-no-idx step-01":
+      "V1FpReferenceInputNoIdxS01",
+    "V1 fraud-proof reference-input-no-idx step-02":
+      "V1FpReferenceInputNoIdxS02",
+    "V1 fraud-proof reference-input-no-idx step-03":
+      "V1FpReferenceInputNoIdxS03",
+    "V1 fraud-proof reference-input-no-idx step-04":
+      "V1FpReferenceInputNoIdxS04",
+    "V1 fraud-proof invalid-signature step-01": "V1FpInvalidSignatureS01",
+    "V1 fraud-proof invalid-signature step-02": "V1FpInvalidSignatureS02",
+    "V1 fraud-proof missing-native-script-tx step-07":
+      "V1FpMissingNativeScriptTxS07",
+    "V1 fraud-proof missing-native-script-tx step-08":
+      "V1FpMissingNativeScriptTxS08",
+    "V1 fraud-proof missing-native-script-utxo step-01":
+      "V1FpMissingNativeScriptUtxoS01",
+    "V1 fraud-proof missing-native-script-utxo step-02":
+      "V1FpMissingNativeScriptUtxoS02",
+    "V1 fraud-proof missing-native-script-utxo step-03":
+      "V1FpMissingNativeScriptUtxoS03",
+    "V1 fraud-proof missing-native-script-utxo step-04":
+      "V1FpMissingNativeScriptUtxoS04",
+    "V1 fraud-proof missing-native-script-utxo step-05":
+      "V1FpMissingNativeScriptUtxoS05",
+    "V1 fraud-proof native-script-invalid step-01":
+      "V1FpNativeScriptInvalidS01",
+    "V1 fraud-proof native-script-invalid step-02":
+      "V1FpNativeScriptInvalidS02",
+    "V1 fraud-proof native-script-invalid step-03":
+      "V1FpNativeScriptInvalidS03",
+    "V1 fraud-proof min-ada step-01": "V1FpMinAdaS01",
+    "V1 fraud-proof min-ada step-02": "V1FpMinAdaS02",
+    "correction-lock spending": "CorrectionLockSpend",
+    "claim-registry spending": "ClaimRegistrySpend",
+    "V1 fraud-proof min-ada step-03": "V1FpMinAdaS03",
+    "V1 fraud-proof min-ada step-04": "V1FpMinAdaS04",
+    "V1 fraud-proof min-ada step-05": "V1FpMinAdaS05",
+    "availability-challenge spending": "AvailabilityChallengeSpend",
+    "availability-challenge minting": "AvailabilityChallengeMint",
   } as const);
 
 export const DEPLOYMENT_MANIFEST_V1_STEP_NAMES = Object.freeze([
@@ -537,6 +733,93 @@ export const DEPLOYMENT_MANIFEST_V1_STEP_NAMES = Object.freeze([
   "operatorRegistration",
   "operatorActivation",
 ] as const);
+
+export const DEPLOYMENT_MANIFEST_V1_L1_FINALITY = Object.freeze({
+  confirmationDepth: 30,
+  automaticRecoveryMaxDepth: 2160,
+  deepRollbackPolicy: "automated_rewind_replay_incident-v1",
+} as const);
+
+export type DeploymentManifestV1L1Finality =
+  typeof DEPLOYMENT_MANIFEST_V1_L1_FINALITY;
+
+export type DeploymentManifestV1CanonicalRational = Readonly<{
+  numerator: string;
+  denominator: string;
+}>;
+
+/**
+ * Exact release-bound subset used to size prover funding, collateral and
+ * reference-script fees. All ledger naturals use canonical decimal strings;
+ * rationals retain numerator/denominator identity and never pass through a
+ * JavaScript float.
+ */
+export type DeploymentManifestV1CardanoProtocolParameters = Readonly<{
+  minFeeA: string;
+  minFeeB: string;
+  priceMemory: DeploymentManifestV1CanonicalRational;
+  priceSteps: DeploymentManifestV1CanonicalRational;
+  coinsPerUtxoByte: string;
+  collateralPercentage: string;
+  maxCollateralInputs: string;
+  maxTxSize: string;
+  maxValueSize: string;
+  maxTxExUnits: Readonly<{ memory: string; steps: string }>;
+  referenceScriptFee: Readonly<{
+    base: DeploymentManifestV1CanonicalRational;
+    range: string;
+    multiplier: DeploymentManifestV1CanonicalRational;
+    maximumSizeBytes: string;
+  }>;
+}>;
+
+export const DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE = Object.freeze({
+  "public-preprod-launch-v1": Object.freeze({
+    profile: "public-preprod-launch-v1" as const,
+    requiredBondLovelace: 100_000_000_000,
+    slashingPenaltyLovelace: 25_000_000_000,
+    inactivitySlashingPenaltyLovelace: 10_000_000_000,
+    fraudProverRewardLovelace: 75_000_000_000,
+    proverCollateralFloorLovelace: 5_000_000,
+  }),
+  "bounded-acceptance-v1": Object.freeze({
+    profile: "bounded-acceptance-v1" as const,
+    requiredBondLovelace: 900_000_000,
+    slashingPenaltyLovelace: 500_000_000,
+    inactivitySlashingPenaltyLovelace: 100_000_000,
+    fraudProverRewardLovelace: 400_000_000,
+    proverCollateralFloorLovelace: 5_000_000,
+  }),
+} as const);
+
+export type DeploymentManifestV1EconomicsProfile =
+  keyof typeof DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE;
+
+export type DeploymentManifestV1Economics =
+  (typeof DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE)[DeploymentManifestV1EconomicsProfile];
+
+export type DeploymentManifestV1AvailabilityChallenge = Readonly<{
+  responseClasses: Readonly<{
+    smallPayloadMaxBytes: 65_536;
+    smallResponseWindowMs: 3_600_000;
+    fullPayloadMaxBytes: 67_108_864;
+    fullResponseWindowMs: 172_800_000;
+  }>;
+  responseGeometry: Readonly<{
+    chunkByteLength: number;
+    trancheByteLength: number;
+    maxTrancheCount: number;
+  }>;
+  daBondLovelace: number;
+  challengerBondLovelace: number;
+  maxOpenFeeLovelace: number;
+  maxPublicationFeeLovelace: number;
+  maxSettlementFeeLovelace: number;
+  maxCloseFeeLovelace: number;
+  maxTimeoutFeeLovelace: number;
+  /** Exact enterprise vkey credential that owns the retained per-header bond. */
+  bondOwnerCredential: string;
+}>;
 
 export const DEPLOYMENT_MANIFEST_V1_ROOT_KEYS = Object.freeze([
   "schemaVersion",
@@ -557,6 +840,9 @@ export const DEPLOYMENT_MANIFEST_V1_ROOT_KEYS = Object.freeze([
   "proofEvidence",
   "steps",
   "validationDispute",
+  "l1Finality",
+  "economics",
+  "availabilityChallenge",
 ] as const);
 
 export type DeploymentManifestV1JsonValue =
@@ -600,6 +886,274 @@ const requireDeploymentManifestIdV1 = (
     throw new Error(`${field} must be lowercase SHA-256 hex`);
   }
   return value;
+};
+
+/**
+ * Parse the release-bound operator/fraud-proof economics block without a node
+ * package dependency. Only the two compiled launch profiles and their exact
+ * tuples are admissible; a network label is never consulted.
+ */
+export const parseDeploymentManifestV1Economics = (
+  value: unknown,
+): DeploymentManifestV1Economics => {
+  const candidate = requireRecord(value, "Deployment manifest economics");
+  const required = [
+    "profile",
+    "requiredBondLovelace",
+    "slashingPenaltyLovelace",
+    "inactivitySlashingPenaltyLovelace",
+    "fraudProverRewardLovelace",
+    "proverCollateralFloorLovelace",
+  ] as const;
+  if (
+    Object.keys(candidate).length !== required.length ||
+    required.some(
+      (key) => !Object.prototype.hasOwnProperty.call(candidate, key),
+    )
+  ) {
+    throw new Error(
+      `Deployment manifest economics must contain exactly ${required.join(", ")}`,
+    );
+  }
+  if (
+    candidate.profile !== "public-preprod-launch-v1" &&
+    candidate.profile !== "bounded-acceptance-v1"
+  ) {
+    throw new Error(
+      "Deployment manifest economics.profile must be public-preprod-launch-v1 or bounded-acceptance-v1",
+    );
+  }
+  const profile = candidate.profile;
+  const expected = DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE[profile];
+  for (const key of required.slice(1)) {
+    const observed = candidate[key];
+    if (!Number.isSafeInteger(observed) || observed !== expected[key]) {
+      throw new Error(
+        `Deployment manifest economics.${key} must equal ${expected[key].toString()} for ${profile}`,
+      );
+    }
+  }
+  if (
+    expected.requiredBondLovelace !==
+    expected.slashingPenaltyLovelace + expected.fraudProverRewardLovelace
+  ) {
+    throw new Error(
+      "Deployment manifest economics required bond must equal slash plus reward",
+    );
+  }
+  if (
+    expected.requiredBondLovelace -
+      expected.inactivitySlashingPenaltyLovelace <=
+    0
+  ) {
+    throw new Error(
+      "Deployment manifest economics required bond minus inactivity penalty must be positive",
+    );
+  }
+  return expected;
+};
+
+const exactAvailabilityInteger = (value: unknown, field: string): number => {
+  if (!Number.isSafeInteger(value) || (value as number) <= 0) {
+    throw new Error(`${field} must be a positive safe integer`);
+  }
+  return value as number;
+};
+
+/**
+ * Absolute Q58 response-publication safety ceiling. This is deliberately
+ * separate from the 4,095-byte transaction-field proof chunk bound: the
+ * activated DA response chunk length is release-authenticated and must be
+ * justified by the signed transaction-size measurement artifact.
+ */
+export const MIDGARD_DA_AVAILABILITY_MAX_RESPONSE_CHUNK_SAFETY_BYTES_V1 = 15_148;
+
+/**
+ * Parse the release-authenticated Q58 geometry, response classes and fee/bond
+ * ceilings. These values are deployment identity: neither a network label nor
+ * caller metadata may choose them after the scripts are applied.
+ */
+export const parseDeploymentManifestV1AvailabilityChallenge = (
+  value: unknown,
+): DeploymentManifestV1AvailabilityChallenge => {
+  const candidate = requireRecord(
+    value,
+    "Deployment manifest availabilityChallenge",
+  );
+  const required = [
+    "responseClasses",
+    "responseGeometry",
+    "daBondLovelace",
+    "challengerBondLovelace",
+    "maxOpenFeeLovelace",
+    "maxPublicationFeeLovelace",
+    "maxSettlementFeeLovelace",
+    "maxCloseFeeLovelace",
+    "maxTimeoutFeeLovelace",
+    "bondOwnerCredential",
+  ] as const;
+  if (
+    Object.keys(candidate).length !== required.length ||
+    required.some(
+      (key) => !Object.prototype.hasOwnProperty.call(candidate, key),
+    )
+  ) {
+    throw new Error(
+      `Deployment manifest availabilityChallenge must contain exactly ${required.join(", ")}`,
+    );
+  }
+
+  const responseClasses = requireRecord(
+    candidate.responseClasses,
+    "Deployment manifest availabilityChallenge.responseClasses",
+  );
+  const expectedClasses = {
+    smallPayloadMaxBytes: 65_536,
+    smallResponseWindowMs: 3_600_000,
+    fullPayloadMaxBytes: 67_108_864,
+    fullResponseWindowMs: 172_800_000,
+  } as const;
+  if (
+    Object.keys(responseClasses).length !== Object.keys(expectedClasses).length
+  ) {
+    throw new Error(
+      "Deployment manifest availabilityChallenge.responseClasses must contain exactly the canonical V1 response class fields",
+    );
+  }
+  for (const [key, expected] of Object.entries(expectedClasses)) {
+    if (responseClasses[key] !== expected) {
+      throw new Error(
+        `Deployment manifest availabilityChallenge.responseClasses.${key} must equal ${expected.toString()}`,
+      );
+    }
+  }
+
+  const geometry = requireRecord(
+    candidate.responseGeometry,
+    "Deployment manifest availabilityChallenge.responseGeometry",
+  );
+  const geometryKeys = [
+    "chunkByteLength",
+    "trancheByteLength",
+    "maxTrancheCount",
+  ] as const;
+  if (
+    Object.keys(geometry).length !== geometryKeys.length ||
+    geometryKeys.some(
+      (key) => !Object.prototype.hasOwnProperty.call(geometry, key),
+    )
+  ) {
+    throw new Error(
+      `Deployment manifest availabilityChallenge.responseGeometry must contain exactly ${geometryKeys.join(", ")}`,
+    );
+  }
+  const chunkByteLength = exactAvailabilityInteger(
+    geometry.chunkByteLength,
+    "Deployment manifest availabilityChallenge.responseGeometry.chunkByteLength",
+  );
+  const trancheByteLength = exactAvailabilityInteger(
+    geometry.trancheByteLength,
+    "Deployment manifest availabilityChallenge.responseGeometry.trancheByteLength",
+  );
+  const maxTrancheCount = exactAvailabilityInteger(
+    geometry.maxTrancheCount,
+    "Deployment manifest availabilityChallenge.responseGeometry.maxTrancheCount",
+  );
+  if (
+    chunkByteLength >
+      MIDGARD_DA_AVAILABILITY_MAX_RESPONSE_CHUNK_SAFETY_BYTES_V1 ||
+    trancheByteLength < expectedClasses.smallPayloadMaxBytes ||
+    trancheByteLength > expectedClasses.fullPayloadMaxBytes ||
+    maxTrancheCount > MIDGARD_CONSENSUS_PROFILE_V1.limits.maxOutputCount ||
+    Math.ceil(expectedClasses.fullPayloadMaxBytes / trancheByteLength) >
+      maxTrancheCount
+  ) {
+    throw new Error(
+      "Deployment manifest availabilityChallenge.responseGeometry violates canonical V1 safety/coverage bounds",
+    );
+  }
+
+  const daBondLovelace = exactAvailabilityInteger(
+    candidate.daBondLovelace,
+    "Deployment manifest availabilityChallenge.daBondLovelace",
+  );
+  const challengerBondLovelace = exactAvailabilityInteger(
+    candidate.challengerBondLovelace,
+    "Deployment manifest availabilityChallenge.challengerBondLovelace",
+  );
+  const maxPublicationFeeLovelace = exactAvailabilityInteger(
+    candidate.maxPublicationFeeLovelace,
+    "Deployment manifest availabilityChallenge.maxPublicationFeeLovelace",
+  );
+  const maxOpenFeeLovelace = exactAvailabilityInteger(
+    candidate.maxOpenFeeLovelace,
+    "Deployment manifest availabilityChallenge.maxOpenFeeLovelace",
+  );
+  const maxSettlementFeeLovelace = exactAvailabilityInteger(
+    candidate.maxSettlementFeeLovelace,
+    "Deployment manifest availabilityChallenge.maxSettlementFeeLovelace",
+  );
+  const maxCloseFeeLovelace = exactAvailabilityInteger(
+    candidate.maxCloseFeeLovelace,
+    "Deployment manifest availabilityChallenge.maxCloseFeeLovelace",
+  );
+  const maxTimeoutFeeLovelace = exactAvailabilityInteger(
+    candidate.maxTimeoutFeeLovelace,
+    "Deployment manifest availabilityChallenge.maxTimeoutFeeLovelace",
+  );
+  if (challengerBondLovelace !== daBondLovelace) {
+    throw new Error(
+      "Deployment manifest availabilityChallenge DA and challenger bonds must match exactly",
+    );
+  }
+  const bondOwnerCredential = candidate.bondOwnerCredential;
+  if (
+    typeof bondOwnerCredential !== "string" ||
+    !/^[0-9a-f]{56}$/u.test(bondOwnerCredential)
+  ) {
+    throw new Error(
+      "Deployment manifest availabilityChallenge.bondOwnerCredential must be exactly 28 lowercase hex bytes",
+    );
+  }
+  let publicationCount = 0;
+  for (
+    let offset = 0;
+    offset < expectedClasses.fullPayloadMaxBytes;
+    offset += trancheByteLength
+  ) {
+    publicationCount += Math.ceil(
+      Math.min(
+        trancheByteLength,
+        expectedClasses.fullPayloadMaxBytes - offset,
+      ) / chunkByteLength,
+    );
+  }
+  if (
+    publicationCount * maxPublicationFeeLovelace +
+      maxTrancheCount * maxSettlementFeeLovelace +
+      Math.max(maxCloseFeeLovelace, maxTimeoutFeeLovelace) >=
+    challengerBondLovelace
+  ) {
+    throw new Error(
+      "Deployment manifest availabilityChallenge challenger bond must cover every maximum-size publication, tranche-settlement, and terminal fee ceiling",
+    );
+  }
+  return Object.freeze({
+    responseClasses: Object.freeze(expectedClasses),
+    responseGeometry: Object.freeze({
+      chunkByteLength,
+      trancheByteLength,
+      maxTrancheCount,
+    }),
+    daBondLovelace,
+    challengerBondLovelace,
+    maxOpenFeeLovelace,
+    maxPublicationFeeLovelace,
+    maxSettlementFeeLovelace,
+    maxCloseFeeLovelace,
+    maxTimeoutFeeLovelace,
+    bondOwnerCredential,
+  });
 };
 
 export const parseDeploymentMarkerV1 = (value: unknown): DeploymentMarkerV1 => {
@@ -797,6 +1351,10 @@ export const verifyDeploymentManifestV1Identity = (
       "Deployment manifest consensusProfileDigest must exactly match canonical V1",
     );
   }
+  parseDeploymentManifestV1Economics(candidate.economics);
+  parseDeploymentManifestV1AvailabilityChallenge(
+    candidate.availabilityChallenge,
+  );
   if (
     typeof candidate.manifestId !== "string" ||
     !/^[0-9a-f]{64}$/u.test(candidate.manifestId)
@@ -870,6 +1428,365 @@ const requireInteger = (value: unknown, field: string, minimum = 0): number => {
     );
   }
   return value;
+};
+
+const requireCanonicalNatural = (value: unknown, field: string): string => {
+  if (typeof value !== "string" || !/^(?:0|[1-9][0-9]*)$/u.test(value)) {
+    throw new Error(
+      `Deployment manifest ${field} must be a canonical natural decimal string`,
+    );
+  }
+  return value;
+};
+
+const greatestCommonDivisor = (left: bigint, right: bigint): bigint => {
+  let a = left;
+  let b = right;
+  while (b !== 0n) {
+    const remainder = a % b;
+    a = b;
+    b = remainder;
+  }
+  return a;
+};
+
+const requireCanonicalRational = (
+  value: unknown,
+  field: string,
+): DeploymentManifestV1CanonicalRational => {
+  const candidate = requireRecord(value, `Deployment manifest ${field}`);
+  requireExactKeys(candidate, ["numerator", "denominator"], [], field);
+  const numerator = requireCanonicalNatural(
+    candidate.numerator,
+    `${field}.numerator`,
+  );
+  const denominator = requireCanonicalNatural(
+    candidate.denominator,
+    `${field}.denominator`,
+  );
+  if (denominator === "0") {
+    throw new Error(
+      `Deployment manifest ${field}.denominator must be positive`,
+    );
+  }
+  if (greatestCommonDivisor(BigInt(numerator), BigInt(denominator)) !== 1n) {
+    throw new Error(`Deployment manifest ${field} must be reduced`);
+  }
+  return Object.freeze({ numerator, denominator });
+};
+
+export const parseDeploymentManifestV1CardanoProtocolParameters = (
+  value: unknown,
+): DeploymentManifestV1CardanoProtocolParameters => {
+  const candidate = requireRecord(
+    value,
+    "Deployment manifest cardanoProtocolParameters.snapshot",
+  );
+  requireExactKeys(
+    candidate,
+    [
+      "minFeeA",
+      "minFeeB",
+      "priceMemory",
+      "priceSteps",
+      "coinsPerUtxoByte",
+      "collateralPercentage",
+      "maxCollateralInputs",
+      "maxTxSize",
+      "maxValueSize",
+      "maxTxExUnits",
+      "referenceScriptFee",
+    ],
+    [],
+    "cardanoProtocolParameters.snapshot",
+  );
+  const maxTxExUnits = requireRecord(
+    candidate.maxTxExUnits,
+    "Deployment manifest cardanoProtocolParameters.snapshot.maxTxExUnits",
+  );
+  requireExactKeys(
+    maxTxExUnits,
+    ["memory", "steps"],
+    [],
+    "cardanoProtocolParameters.snapshot.maxTxExUnits",
+  );
+  const referenceScriptFee = requireRecord(
+    candidate.referenceScriptFee,
+    "Deployment manifest cardanoProtocolParameters.snapshot.referenceScriptFee",
+  );
+  requireExactKeys(
+    referenceScriptFee,
+    ["base", "range", "multiplier", "maximumSizeBytes"],
+    [],
+    "cardanoProtocolParameters.snapshot.referenceScriptFee",
+  );
+  const parsed = {
+    minFeeA: requireCanonicalNatural(
+      candidate.minFeeA,
+      "cardanoProtocolParameters.snapshot.minFeeA",
+    ),
+    minFeeB: requireCanonicalNatural(
+      candidate.minFeeB,
+      "cardanoProtocolParameters.snapshot.minFeeB",
+    ),
+    priceMemory: requireCanonicalRational(
+      candidate.priceMemory,
+      "cardanoProtocolParameters.snapshot.priceMemory",
+    ),
+    priceSteps: requireCanonicalRational(
+      candidate.priceSteps,
+      "cardanoProtocolParameters.snapshot.priceSteps",
+    ),
+    coinsPerUtxoByte: requireCanonicalNatural(
+      candidate.coinsPerUtxoByte,
+      "cardanoProtocolParameters.snapshot.coinsPerUtxoByte",
+    ),
+    collateralPercentage: requireCanonicalNatural(
+      candidate.collateralPercentage,
+      "cardanoProtocolParameters.snapshot.collateralPercentage",
+    ),
+    maxCollateralInputs: requireCanonicalNatural(
+      candidate.maxCollateralInputs,
+      "cardanoProtocolParameters.snapshot.maxCollateralInputs",
+    ),
+    maxTxSize: requireCanonicalNatural(
+      candidate.maxTxSize,
+      "cardanoProtocolParameters.snapshot.maxTxSize",
+    ),
+    maxValueSize: requireCanonicalNatural(
+      candidate.maxValueSize,
+      "cardanoProtocolParameters.snapshot.maxValueSize",
+    ),
+    maxTxExUnits: Object.freeze({
+      memory: requireCanonicalNatural(
+        maxTxExUnits.memory,
+        "cardanoProtocolParameters.snapshot.maxTxExUnits.memory",
+      ),
+      steps: requireCanonicalNatural(
+        maxTxExUnits.steps,
+        "cardanoProtocolParameters.snapshot.maxTxExUnits.steps",
+      ),
+    }),
+    referenceScriptFee: Object.freeze({
+      base: requireCanonicalRational(
+        referenceScriptFee.base,
+        "cardanoProtocolParameters.snapshot.referenceScriptFee.base",
+      ),
+      range: requireCanonicalNatural(
+        referenceScriptFee.range,
+        "cardanoProtocolParameters.snapshot.referenceScriptFee.range",
+      ),
+      multiplier: requireCanonicalRational(
+        referenceScriptFee.multiplier,
+        "cardanoProtocolParameters.snapshot.referenceScriptFee.multiplier",
+      ),
+      maximumSizeBytes: requireCanonicalNatural(
+        referenceScriptFee.maximumSizeBytes,
+        "cardanoProtocolParameters.snapshot.referenceScriptFee.maximumSizeBytes",
+      ),
+    }),
+  } satisfies DeploymentManifestV1CardanoProtocolParameters;
+  if (
+    BigInt(parsed.maxTxSize) === 0n ||
+    BigInt(parsed.maxValueSize) === 0n ||
+    BigInt(parsed.maxTxExUnits.memory) === 0n ||
+    BigInt(parsed.maxTxExUnits.steps) === 0n ||
+    BigInt(parsed.coinsPerUtxoByte) === 0n ||
+    BigInt(parsed.maxCollateralInputs) === 0n ||
+    BigInt(parsed.referenceScriptFee.range) === 0n ||
+    BigInt(parsed.referenceScriptFee.maximumSizeBytes) === 0n ||
+    BigInt(parsed.referenceScriptFee.base.numerator) === 0n ||
+    BigInt(parsed.referenceScriptFee.multiplier.numerator) === 0n
+  ) {
+    throw new Error(
+      "Deployment manifest funding protocol-parameter bounds must be positive",
+    );
+  }
+  return Object.freeze(parsed);
+};
+
+const protocolParameterNaturalV1 = (value: unknown, field: string): string => {
+  if (typeof value === "bigint" && value >= 0n) return value.toString(10);
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
+    return value.toString(10);
+  }
+  if (typeof value === "string" && /^(?:0|[1-9][0-9]*)$/u.test(value)) {
+    return value;
+  }
+  throw new Error(`Ogmios protocol parameter ${field} must be a natural`);
+};
+
+const protocolParameterRationalV1 = (
+  value: unknown,
+  field: string,
+): DeploymentManifestV1CanonicalRational => {
+  let numerator: bigint;
+  let denominator: bigint;
+  if (typeof value === "string" && /^[0-9]+\/[1-9][0-9]*$/u.test(value)) {
+    const [left, right] = value.split("/") as [string, string];
+    numerator = BigInt(left);
+    denominator = BigInt(right);
+  } else if (
+    (typeof value === "number" && Number.isFinite(value) && value >= 0) ||
+    (typeof value === "string" &&
+      /^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/u.test(value))
+  ) {
+    const decimal = typeof value === "number" ? value.toString() : value;
+    if (/e/iu.test(decimal)) {
+      throw new Error(
+        `Ogmios protocol parameter ${field} must not use exponent notation`,
+      );
+    }
+    const [whole, fractional = ""] = decimal.split(".") as [string, string?];
+    denominator = 10n ** BigInt(fractional.length);
+    numerator = BigInt(`${whole}${fractional}`);
+  } else {
+    throw new Error(
+      `Ogmios protocol parameter ${field} must be an exact nonnegative rational`,
+    );
+  }
+  const divisor = greatestCommonDivisor(numerator, denominator);
+  return Object.freeze({
+    numerator: (numerator / divisor).toString(10),
+    denominator: (denominator / divisor).toString(10),
+  });
+};
+
+/**
+ * Derives the release identity directly from Ogmios' raw Conway protocol-
+ * parameter response.  Consumers compare this canonical value with the
+ * signed deployment snapshot; a provider-normalized projection is never an
+ * authority at runtime.
+ */
+export const deriveDeploymentManifestV1CardanoProtocolParametersFromOgmios = (
+  value: unknown,
+): DeploymentManifestV1CardanoProtocolParameters => {
+  const envelope = requireRecord(value, "Ogmios protocol parameters response");
+  const raw = requireRecord(
+    Object.prototype.hasOwnProperty.call(envelope, "result")
+      ? envelope.result
+      : envelope,
+    "Ogmios protocol parameters result",
+  );
+  const minFeeConstant = requireRecord(
+    raw.minFeeConstant,
+    "Ogmios minFeeConstant",
+  );
+  const minFeeAda = requireRecord(
+    minFeeConstant.ada,
+    "Ogmios minFeeConstant.ada",
+  );
+  const maxTransactionSize = requireRecord(
+    raw.maxTransactionSize,
+    "Ogmios maxTransactionSize",
+  );
+  const maxValueSize = requireRecord(raw.maxValueSize, "Ogmios maxValueSize");
+  const maxExecutionUnits = requireRecord(
+    raw.maxExecutionUnitsPerTransaction,
+    "Ogmios maxExecutionUnitsPerTransaction",
+  );
+  const prices = requireRecord(
+    raw.scriptExecutionPrices,
+    "Ogmios scriptExecutionPrices",
+  );
+  const referenceFee = requireRecord(
+    raw.minFeeReferenceScripts,
+    "Ogmios minFeeReferenceScripts",
+  );
+  const canonicalMaximum = raw.maxReferenceScriptsSizePerTransaction;
+  const legacyMaximum = raw.maxReferenceScriptsSize;
+  if (canonicalMaximum === undefined && legacyMaximum === undefined) {
+    throw new Error(
+      "Ogmios protocol parameters omit maxReferenceScriptsSizePerTransaction",
+    );
+  }
+  const maximum = requireRecord(
+    canonicalMaximum ?? legacyMaximum,
+    "Ogmios maxReferenceScriptsSizePerTransaction",
+  );
+  if (
+    canonicalMaximum !== undefined &&
+    legacyMaximum !== undefined &&
+    protocolParameterNaturalV1(
+      requireRecord(
+        canonicalMaximum,
+        "Ogmios maxReferenceScriptsSizePerTransaction",
+      ).bytes,
+      "maxReferenceScriptsSizePerTransaction.bytes",
+    ) !==
+      protocolParameterNaturalV1(
+        requireRecord(legacyMaximum, "Ogmios maxReferenceScriptsSize").bytes,
+        "maxReferenceScriptsSize.bytes",
+      )
+  ) {
+    throw new Error("Ogmios reference-script maximum aliases disagree");
+  }
+  return parseDeploymentManifestV1CardanoProtocolParameters({
+    minFeeA: protocolParameterNaturalV1(
+      raw.minFeeCoefficient,
+      "minFeeCoefficient",
+    ),
+    minFeeB: protocolParameterNaturalV1(
+      minFeeAda.lovelace,
+      "minFeeConstant.ada.lovelace",
+    ),
+    priceMemory: protocolParameterRationalV1(
+      prices.memory,
+      "scriptExecutionPrices.memory",
+    ),
+    priceSteps: protocolParameterRationalV1(
+      prices.cpu,
+      "scriptExecutionPrices.cpu",
+    ),
+    coinsPerUtxoByte: protocolParameterNaturalV1(
+      raw.minUtxoDepositCoefficient,
+      "minUtxoDepositCoefficient",
+    ),
+    collateralPercentage: protocolParameterNaturalV1(
+      raw.collateralPercentage,
+      "collateralPercentage",
+    ),
+    maxCollateralInputs: protocolParameterNaturalV1(
+      raw.maxCollateralInputs,
+      "maxCollateralInputs",
+    ),
+    maxTxSize: protocolParameterNaturalV1(
+      maxTransactionSize.bytes,
+      "maxTransactionSize.bytes",
+    ),
+    maxValueSize: protocolParameterNaturalV1(
+      maxValueSize.bytes,
+      "maxValueSize.bytes",
+    ),
+    maxTxExUnits: {
+      memory: protocolParameterNaturalV1(
+        maxExecutionUnits.memory,
+        "maxExecutionUnitsPerTransaction.memory",
+      ),
+      steps: protocolParameterNaturalV1(
+        maxExecutionUnits.cpu,
+        "maxExecutionUnitsPerTransaction.cpu",
+      ),
+    },
+    referenceScriptFee: {
+      base: protocolParameterRationalV1(
+        referenceFee.base,
+        "minFeeReferenceScripts.base",
+      ),
+      range: protocolParameterNaturalV1(
+        referenceFee.range,
+        "minFeeReferenceScripts.range",
+      ),
+      multiplier: protocolParameterRationalV1(
+        referenceFee.multiplier,
+        "minFeeReferenceScripts.multiplier",
+      ),
+      maximumSizeBytes: protocolParameterNaturalV1(
+        maximum.bytes,
+        "maxReferenceScriptsSizePerTransaction.bytes",
+      ),
+    },
+  });
 };
 
 const requireFinalOutRef = (
@@ -1231,6 +2148,36 @@ export const verifyDeploymentManifestV1FraudProofCatalogueIdentity = (
   return catalogue;
 };
 
+// Script-hash derivation is a pure function of (type, cborHex), but each
+// derivation pays a full CBOR decode of the compiled script. A manifest
+// carries every deployment contract, and callers re-verify the manifest on
+// every authority check, so uncached derivation is quadratic in practice.
+// A cache hit returns exactly what re-derivation would, including for
+// tampered manifests: a changed script changes the key.
+const SCRIPT_HASH_DERIVATION_CACHE_LIMIT_V1 = 4096;
+const scriptHashDerivationCacheV1 = new Map<string, string>();
+const deriveScriptHashCachedV1 = (
+  type: "Native" | "PlutusV1" | "PlutusV2" | "PlutusV3",
+  cborHex: string,
+): string => {
+  const key = `${type}:${cborHex}`;
+  const cached = scriptHashDerivationCacheV1.get(key);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const derived = validatorToScriptHash({ type, script: cborHex });
+  if (
+    scriptHashDerivationCacheV1.size >= SCRIPT_HASH_DERIVATION_CACHE_LIMIT_V1
+  ) {
+    const oldest = scriptHashDerivationCacheV1.keys().next().value;
+    if (oldest !== undefined) {
+      scriptHashDerivationCacheV1.delete(oldest);
+    }
+  }
+  scriptHashDerivationCacheV1.set(key, derived);
+  return derived;
+};
+
 const validateFinalizedContracts = (
   contracts: Record<string, unknown>,
 ): void => {
@@ -1280,10 +2227,7 @@ const validateFinalizedContracts = (
     const scriptHash = requireHex(entry.scriptHash, 28, `${field}.scriptHash`);
     let derivedScriptHash: string;
     try {
-      derivedScriptHash = validatorToScriptHash({
-        type: contract.type,
-        script: cborHex,
-      });
+      derivedScriptHash = deriveScriptHashCachedV1(contract.type, cborHex);
     } catch (cause) {
       throw new Error(
         `Deployment manifest ${field}.contract.cborHex is invalid: ${String(cause)}`,
@@ -1349,6 +2293,10 @@ const validateFinalizedContracts = (
     valueNotPreserved: "fraudProofValueNotPreserved",
     inputSetUniqueness: "fraudProofInputSetUniqueness",
     mintAuthorization: "fraudProofMintAuthorization",
+    networkId: "fraudProofNetworkId",
+    missingNativeScriptUtxo: "fraudProofMissingNativeScriptUtxo",
+    nativeScriptInvalid: "fraudProofNativeScriptInvalid",
+    minAda: "fraudProofMinAda",
   } as const satisfies Record<
     DeploymentManifestV1FraudProofCatalogueCategory,
     string
@@ -1593,10 +2541,24 @@ const validateFinalizedDa = (value: unknown): void => {
   }
 };
 
+// manifestIds whose deep finalized verification already succeeded in this
+// process. Reusing one is sound only because verifyDeploymentManifestV1Identity
+// runs uncached on every call: it re-hashes the manifest's full normalized
+// content and requires manifestId to equal that hash, so a mutated manifest
+// either fails identity verification outright or arrives under a new
+// manifestId and misses this cache. Everything the deep pass checks is a pure
+// function of that same content plus module constants.
+const VERIFIED_FINALIZED_MANIFEST_ID_CACHE_LIMIT_V1 = 64;
+const verifiedFinalizedManifestIdsV1 = new Set<string>();
+
 export const verifyFinalizedDeploymentManifestV1 = (
   value: unknown,
 ): Record<string, unknown> => {
   const candidate = verifyDeploymentManifestV1Identity(value);
+  const verifiedManifestId = candidate.manifestId as string;
+  if (verifiedFinalizedManifestIdsV1.has(verifiedManifestId)) {
+    return candidate;
+  }
   if (
     candidate.network !== "Mainnet" &&
     candidate.network !== "Preprod" &&
@@ -1630,6 +2592,7 @@ export const verifyFinalizedDeploymentManifestV1 = (
     32,
     "cardanoProtocolParameters.digest",
   );
+  parseDeploymentManifestV1CardanoProtocolParameters(cardano.snapshot);
   const expectedCardanoDigest = computeDeploymentManifestV1JsonDigest(
     cardano.snapshot,
   );
@@ -1732,10 +2695,7 @@ export const verifyFinalizedDeploymentManifestV1 = (
     "referenceScriptAuthPolicy.nativeScript.timelockDurationMs",
     1,
   );
-  const derivedPolicyId = validatorToScriptHash({
-    type: "Native",
-    script: nativeScriptCbor,
-  });
+  const derivedPolicyId = deriveScriptHashCachedV1("Native", nativeScriptCbor);
   if (derivedPolicyId !== policyId) {
     throw new Error(
       `Deployment manifest referenceScriptAuthPolicy.policyId mismatch: expected ${derivedPolicyId}`,
@@ -1883,5 +2843,35 @@ export const verifyFinalizedDeploymentManifestV1 = (
       );
     }
   }
+
+  const l1Finality = requireRecord(
+    candidate.l1Finality,
+    "Deployment manifest l1Finality",
+  );
+  requireExactKeys(
+    l1Finality,
+    ["confirmationDepth", "automaticRecoveryMaxDepth", "deepRollbackPolicy"],
+    [],
+    "l1Finality",
+  );
+  for (const [key, expected] of Object.entries(
+    DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
+  )) {
+    if (l1Finality[key] !== expected) {
+      throw new Error(
+        `Deployment manifest l1Finality.${key} must equal ${String(expected)}`,
+      );
+    }
+  }
+  if (
+    verifiedFinalizedManifestIdsV1.size >=
+    VERIFIED_FINALIZED_MANIFEST_ID_CACHE_LIMIT_V1
+  ) {
+    const oldest = verifiedFinalizedManifestIdsV1.values().next().value;
+    if (oldest !== undefined) {
+      verifiedFinalizedManifestIdsV1.delete(oldest);
+    }
+  }
+  verifiedFinalizedManifestIdsV1.add(verifiedManifestId);
   return candidate;
 };

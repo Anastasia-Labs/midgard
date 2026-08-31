@@ -15,6 +15,8 @@ import {
   missingNativeScriptTxStep04StateV1,
   MissingNativeScriptTxStep05State,
   missingNativeScriptTxStep05StateV1,
+  missingNativeScriptTxStep06ReadyStateV1,
+  MissingNativeScriptTxStep06State,
   missingNativeScriptTxVersionedScriptHashV1,
 } from "../src/fraud-proof/missing-native-script-tx-v1.js";
 
@@ -82,6 +84,14 @@ describe("missing-native-script-tx V1 twins", () => {
         MissingNativeScriptTxStep05State,
       ),
     ).toStrictEqual(step05);
+
+    const step06 = missingNativeScriptTxStep06ReadyStateV1(step05);
+    expect(
+      Data.from(
+        Data.to(step06, MissingNativeScriptTxStep06State),
+        MissingNativeScriptTxStep06State,
+      ),
+    ).toStrictEqual(step06);
   });
 
   it("hashes tag-0 native scripts and distinguishes absence from presence", () => {

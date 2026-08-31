@@ -13,8 +13,8 @@ import {
   admitAuthenticatedStateQueueHeaderObservationV1,
   admitEvidenceProvenanceV1,
   ADMITTED_EVIDENCE_TRUST_CLASSES_V1,
-  assertNativeInclusionRootAuthenticatedV1,
   assertSecurityGradeEvidenceV1,
+  assertTransactionSourceInclusionRootAuthenticatedV1,
   type AuthenticatedStateQueueHeaderObservationV1,
   CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION,
   CanonicalEvidenceRejectionV1,
@@ -309,40 +309,42 @@ describe("authenticated L1 observations", () => {
   });
 });
 
-describe("native inclusion-root gate", () => {
+describe("transaction-source inclusion-root gate", () => {
   const authentication = (
-    nativeInclusionAuthenticated: boolean,
+    sourceInclusionAuthenticated: boolean,
   ): TransactionsInclusionRootAuthenticationV1 => ({
     headerTransactionsRoot: h(0xaa, 32),
     l2TransactionCount: 2n,
-    payloadSourcePhasRoot: h(0xbb, 32),
-    payloadSourceCountedRoot: h(0xaa, 32),
-    nativeCompactPhasRoot: h(0xcc, 32),
-    nativeCompactCountedRoot: nativeInclusionAuthenticated
+    sourceValuePhasRoot: h(0xbb, 32),
+    sourceValueCountedRoot: sourceInclusionAuthenticated
       ? h(0xaa, 32)
       : h(0xdd, 32),
-    nativeInclusionAuthenticated,
-    payloadSourceAuthenticated: true,
+    sourceValueCount: 2n,
+    sourceInclusionAuthenticated,
   });
 
-  it("passes an authenticated native-compact root through unchanged", () => {
+  it("passes an authenticated transaction-source root through unchanged", () => {
     const value = authentication(true);
-    expect(assertNativeInclusionRootAuthenticatedV1(value)).toEqual(value);
+    expect(assertTransactionSourceInclusionRootAuthenticatedV1(value)).toEqual(
+      value,
+    );
   });
 
-  it("rejects an unauthenticated native-compact root with both roots in the code", async () => {
+  it("rejects an unauthenticated transaction-source root", async () => {
     const value = authentication(false);
     expect(
-      await code(() => assertNativeInclusionRootAuthenticatedV1(value)),
-    ).toBe("native_inclusion_root_unauthenticated");
+      await code(() =>
+        assertTransactionSourceInclusionRootAuthenticatedV1(value),
+      ),
+    ).toBe("transaction_source_inclusion_root_unauthenticated");
     try {
-      assertNativeInclusionRootAuthenticatedV1(value);
+      assertTransactionSourceInclusionRootAuthenticatedV1(value);
     } catch (error) {
       expect((error as CanonicalEvidenceRejectionV1).detail).toContain(
         "header_transactions_root=",
       );
       expect((error as CanonicalEvidenceRejectionV1).detail).toContain(
-        "native_compact_counted_root=",
+        "source_value_counted_root=",
       );
     }
   });

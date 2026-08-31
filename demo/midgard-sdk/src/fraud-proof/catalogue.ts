@@ -52,6 +52,10 @@ export const FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER = [
   "valueNotPreserved",
   "inputSetUniqueness",
   "mintAuthorization",
+  "networkId",
+  "missingNativeScriptUtxo",
+  "nativeScriptInvalid",
+  "minAda",
 ] as const satisfies readonly (keyof FraudProofs)[];
 
 export type FraudProofCatalogueCategoryName =
@@ -91,6 +95,10 @@ export const FRAUD_PROOF_CATALOGUE_CATEGORY_IDS = {
   valueNotPreserved: "00000019",
   inputSetUniqueness: "0000001a",
   mintAuthorization: "0000001b",
+  networkId: "0000001c",
+  missingNativeScriptUtxo: "0000001d",
+  nativeScriptInvalid: "0000001e",
+  minAda: "0000001f",
 } as const satisfies Readonly<Record<FraudProofCatalogueCategoryName, string>>;
 
 export const NATIVE_SCRIPT_DECODING_FRAUD_CATEGORY_ID_V1 =
@@ -121,6 +129,14 @@ export const INPUT_SET_UNIQUENESS_FRAUD_CATEGORY_ID_V1 =
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.inputSetUniqueness;
 export const MINT_AUTHORIZATION_FRAUD_CATEGORY_ID_V1 =
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.mintAuthorization;
+export const NETWORK_ID_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.networkId;
+export const MISSING_NATIVE_SCRIPT_UTXO_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.missingNativeScriptUtxo;
+export const NATIVE_SCRIPT_INVALID_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.nativeScriptInvalid;
+export const MIN_ADA_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.minAda;
 
 export type FraudProofCatalogueCategoryDeploymentInfo = {
   readonly categoryId: string;

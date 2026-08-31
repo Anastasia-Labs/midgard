@@ -2,13 +2,20 @@ import {
   type MidgardFieldCarriagePlanV1,
   planMidgardFieldCarriageV1,
 } from "@al-ft/midgard-core/codec/native-tx-carriage-v1";
-import type { UTxO } from "@lucid-evolution/lucid";
+import {
+  CML,
+  type MintingPolicy,
+  type UTxO,
+  validatorToScriptHash,
+} from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
   deriveFieldPreimageCertificationV1,
   fieldPreimagePublicationDatumCborV1,
+  requireFieldPreimageCertificateReferenceScriptV1,
   resolveCertificateReferenceIndexV1,
+  resolveFieldPreimageCertificationReferenceLayoutV1,
 } from "@/fraud-proof/field-preimage-carriage-v1.js";
 import { FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1 } from "@/native-tx-field-access-v1.js";
 
@@ -67,19 +74,36 @@ const utxo = ({
   address,
   datum,
   assets,
+  scriptRef,
 }: {
   readonly txHash: string;
   readonly outputIndex: number;
   readonly address: string;
   readonly datum: string;
   readonly assets?: Record<string, bigint>;
+  readonly scriptRef?: MintingPolicy;
 }): UTxO => ({
   txHash,
   outputIndex,
   address,
   assets: { lovelace: 5_000_000n, ...(assets ?? {}) },
   datum,
+  ...(scriptRef === undefined ? {} : { scriptRef }),
 });
+
+const nativePolicy = (): {
+  readonly policy: MintingPolicy;
+  readonly policyId: string;
+} => {
+  const script = CML.NativeScript.new_script_pubkey(
+    CML.PrivateKey.generate_ed25519().to_public().hash(),
+  );
+  const policy: MintingPolicy = {
+    type: "Native",
+    script: Buffer.from(script.to_cbor_bytes()).toString("hex"),
+  };
+  return { policy, policyId: validatorToScriptHash(policy) };
+};
 
 const planFor = ({
   fieldIndex,
@@ -168,6 +192,56 @@ const resolveFor = (
   });
 
 describe("§8.6 certificate selection under the constant asset name V1", () => {
+  it("binds the strict certification ABI to the complete reference-input set", () => {
+    const plan = planFor({ fieldIndex: 2, fill: 0xa5 });
+    const chunks = chunkUtxosFor(plan, "10".repeat(32));
+    const { policy, policyId } = nativePolicy();
+    const policyReference = utxo({
+      txHash: "00".repeat(32),
+      outputIndex: 0,
+      address: "addr_test1_published_certificate_policy",
+      datum: "d87980",
+      scriptRef: policy,
+    });
+    const layout = resolveFieldPreimageCertificationReferenceLayoutV1({
+      plan,
+      certificatePolicyId: policyId,
+      certificatePolicyReferenceUtxo: policyReference,
+      chunkUtxos: [...chunks].reverse(),
+    });
+    expect(layout.referenceInputs).toEqual([
+      ...[...chunks].reverse(),
+      policyReference,
+    ]);
+    // The published policy sorts first, so the Certify redeemer must name the
+    // two chunks at indices 1 and 2 in the complete ledger reference set.
+    expect(layout.chunkRefInputIndices).toEqual([1, 2]);
+  });
+
+  it("rejects a substituted or absent certificate-policy reference script", () => {
+    const expected = nativePolicy();
+    const substituted = nativePolicy();
+    const reference = utxo({
+      txHash: "00".repeat(32),
+      outputIndex: 0,
+      address: "addr_test1_published_certificate_policy",
+      datum: "d87980",
+      scriptRef: substituted.policy,
+    });
+    expect(() =>
+      requireFieldPreimageCertificateReferenceScriptV1({
+        certificatePolicyId: expected.policyId,
+        referenceUtxo: reference,
+      }),
+    ).toThrow("reference script hashes to");
+    expect(() =>
+      requireFieldPreimageCertificateReferenceScriptV1({
+        certificatePolicyId: expected.policyId,
+        referenceUtxo: { ...reference, scriptRef: undefined },
+      }),
+    ).toThrow("carries no reference script");
+  });
+
   it("discriminates two same-name certificates of one transaction by field index", () => {
     // One step, two tier-3 fields of the same L2 transaction — the shape the
     // ruling calls out. Both certificates are the same unit.

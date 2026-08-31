@@ -31,13 +31,11 @@ import {
   makeReturn,
   MerkleRootSchema,
   POSIXTimeSchema,
-  UnspecifiedNetworkError,
   VerificationKeyHashSchema,
 } from "@/common.js";
 import { fetchHubOracleUTxOProgram, HubOracleError } from "@/hub-oracle.js";
 import { AuthenticUTxO } from "@/internals.js";
 import { WithdrawalValiditySchema } from "@/ledger-state.js";
-import { getProtocolParameters } from "@/protocol-parameters.js";
 import { OperatorVerdictV1Schema } from "@/rejection-reason-v1.js";
 import {
   FetchRetiredOperatorParams,
@@ -617,6 +615,8 @@ export const incompleteDisproveResolutionClaimTxProgram = (
  */
 export type RemoveOperatorBadSettlementParams = {
   slashedOperatorKey: string;
+  /** Exact release-manifest slashing fee; never infer it from a network label. */
+  slashingPenaltyLovelace: bigint;
   activeOperatorMintingPolicy: MintingPolicy;
   hubOracleValidator: AuthenticatedValidator;
   eventType: EventType;
@@ -671,7 +671,6 @@ export const incompleteRemoveOperatorBadSettlementTxProgram = (
   | LucidError
   | HubOracleError
   | SettlementError
-  | UnspecifiedNetworkError
 > =>
   Effect.gen(function* () {
     const activeOperatorUTxOs: ActiveOperatorUTxO[] =
@@ -701,15 +700,12 @@ export const incompleteRemoveOperatorBadSettlementTxProgram = (
       hubOraclePolicyId: params.hubOracleValidator.policyId,
     });
 
-    const network = lucid.config().network;
-    if (!network) {
-      return yield* new UnspecifiedNetworkError({
-        message: "",
-        cause: "Cardano network not found",
+    if (params.slashingPenaltyLovelace <= 0n) {
+      return yield* new SettlementError({
+        message: "Bad-settlement slashing fee must be positive",
+        cause: params.slashingPenaltyLovelace,
       });
     }
-
-    const slashingPenalty = getProtocolParameters(network).slashing_penalty;
 
     const userEventRefUTxO = yield* fetchUserEventRefUTxO(
       params.eventType,
@@ -730,7 +726,7 @@ export const incompleteRemoveOperatorBadSettlementTxProgram = (
         mintRedeemerCBOR,
       )
       .attach.MintingPolicy(params.activeOperatorMintingPolicy)
-      .setMinFee(slashingPenalty);
+      .setMinFee(params.slashingPenaltyLovelace);
     return buildsettlementTx;
   }).pipe(
     Effect.catchAllDefect((defect) => {
@@ -753,7 +749,6 @@ export const unsignedDisproveResolutionClaimTxProgram = (
   | LucidError
   | SettlementError
   | HubOracleError
-  | UnspecifiedNetworkError
 > =>
   Effect.gen(function* () {
     const disproveResolutionClaimTx =
