@@ -18,6 +18,11 @@ describe("onChainCoordinatorFromConfig", () => {
       }),
       mode: "coordinator" as const,
       midgardNodeDeployment: {
+        hubOraclePolicyId: "99".repeat(28),
+        correctionLockAddress: "addr_test1correctionlock",
+        hubOracle: fakeDeployment("99".repeat(28)),
+        availabilityChallenge: fakeDeployment("ee".repeat(28)),
+        fraudProof: fakeDeployment("dd".repeat(28)),
         daAttestation: fakeDeployment("aa".repeat(28)),
         daParamsGovernor: fakeDeployment("bb".repeat(28)),
         stateQueue: fakeDeployment("cc".repeat(28)),
@@ -138,6 +143,11 @@ const l1ReadyConfig = () => ({
     retryDelayMs: 5_000,
   },
   midgardNodeDeployment: {
+    hubOraclePolicyId: "99".repeat(28),
+    correctionLockAddress: "addr_test1correctionlock",
+    hubOracle: fakeDeployment("99".repeat(28)),
+    availabilityChallenge: fakeDeployment("ee".repeat(28)),
+    fraudProof: fakeDeployment("dd".repeat(28)),
     daAttestation: fakeDeployment("aa".repeat(28)),
     daParamsGovernor: fakeDeployment("bb".repeat(28)),
     stateQueue: fakeDeployment("cc".repeat(28)),
@@ -176,6 +186,7 @@ const fakeReferenceUtxo = {
 } as UTxO;
 
 const fakeReferenceScripts = {
+  availabilityChallengeMinting: fakeReferenceUtxo,
   daAttestationMinting: fakeReferenceUtxo,
   daAttestationSpending: fakeReferenceUtxo,
   stateQueueMinting: fakeReferenceUtxo,

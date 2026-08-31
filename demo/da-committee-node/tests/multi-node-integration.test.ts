@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { OnChainLifecycleCoordinator } from "../src/coordinator/on-chain.js";
 import type { DaAttestationCandidateRecord } from "../src/domain.js";
+import { deriveExpectedDaAvailabilityCommitmentV1 } from "../src/peer/signatures.js";
 import { loadDaSigner, validateDaSignerMembership } from "../src/signer.js";
 import { JsonFileWatcherStore } from "../src/store.js";
 import { bytesToHex } from "../src/utils/hex.js";
@@ -98,8 +99,23 @@ describe("multi-node DA committee integration", () => {
       skippedHeaders: 0,
       errors: [],
     });
+    const storedPayload = await peerStore.getDaPayload(headerHash);
+    const expectedCommitment = deriveExpectedDaAvailabilityCommitmentV1({
+      authority: {
+        deploymentIdentity: peerConfig.hubOraclePolicyId,
+        bondOwnerCredential:
+          peerConfig.availabilityChallenge.bondOwnerCredential,
+        responseGeometry: peerConfig.availabilityChallenge.responseGeometry,
+      },
+      headerHash,
+      payloadCborHex: storedPayload!.payloadCborHex,
+    });
     await expect(
-      coordinatorStore.getDaSignature({ headerHash, signerIndex: 1 }),
+      coordinatorStore.getDaSignature({
+        headerHash,
+        availabilityCommitmentDigest: expectedCommitment.commitmentDigest,
+        signerIndex: 1,
+      }),
     ).resolves.toMatchObject({
       headerHash,
       signerIndex: 1,

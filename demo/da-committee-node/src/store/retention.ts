@@ -28,6 +28,9 @@ export type RetentionCandidateV1 = {
   readonly headerStatus: StateQueueHeaderRecord["status"] | undefined;
   readonly headerPresent: boolean;
   readonly fingerprintMismatch: boolean;
+  readonly terminalHistoryAuthorityMismatch: boolean;
+  readonly availabilityChallengeAuthorityMismatch: boolean;
+  readonly activeAvailabilityChallenge: boolean;
   readonly decision: RetentionPruneDecisionV1;
 };
 
@@ -39,6 +42,16 @@ export type RetentionScanOptionsV1 = {
    * always retained (and reported), never pruned.
    */
   readonly deploymentFingerprint?: string;
+  /**
+   * Release-bound L1 depth. A terminal header is never pruning authority when
+   * this is absent/malformed or its authenticated transition was shallower.
+   */
+  readonly minimumFinalityDepth?: number;
+  readonly availabilityChallengeAuthority?: {
+    readonly deploymentFingerprint: string;
+    readonly capability: "deployed";
+    readonly activeHeaderHashes: ReadonlySet<string>;
+  };
 };
 
 const blockEndTimeMsOf = (
@@ -55,6 +68,40 @@ const blockEndTimeMsOf = (
         ? endTime
         : Number.NaN;
   return Number.isSafeInteger(asNumber) && asNumber >= 0 ? asNumber : null;
+};
+
+const isTerminalStatus = (status: StateQueueHeaderRecord["status"]): boolean =>
+  status === "merged" || status === "removed";
+
+const hasAuthenticatedTerminalHistory = (
+  header: StateQueueHeaderRecord | undefined,
+  minimumFinalityDepth: number | undefined,
+): boolean => {
+  if (header === undefined || !isTerminalStatus(header.status)) {
+    return false;
+  }
+  const point = header.observedChainPoint;
+  return (
+    Number.isSafeInteger(minimumFinalityDepth) &&
+    minimumFinalityDepth !== undefined &&
+    minimumFinalityDepth >= 0 &&
+    header.finalized === true &&
+    point.finalized === true &&
+    point.providerSource === "authenticated_state_queue_transition_v1" &&
+    typeof point.slot === "number" &&
+    Number.isSafeInteger(point.slot) &&
+    point.slot >= 0 &&
+    typeof point.blockHash === "string" &&
+    /^[0-9a-f]{64}$/u.test(point.blockHash) &&
+    typeof point.blockHeight === "number" &&
+    Number.isSafeInteger(point.blockHeight) &&
+    point.blockHeight >= 0 &&
+    typeof point.depth === "number" &&
+    Number.isSafeInteger(point.depth) &&
+    point.depth >= minimumFinalityDepth &&
+    header.computedHeaderHash === header.headerHash &&
+    header.validationErrors.length === 0
+  );
 };
 
 /**
@@ -75,8 +122,31 @@ export const retentionCandidatesV1 = async (
     const header = headerByHash.get(payload.headerHash);
     const blockEndTimeMs = blockEndTimeMsOf(header);
     const fingerprintMismatch =
-      options.deploymentFingerprint !== undefined &&
-      payload.deploymentFingerprint !== options.deploymentFingerprint;
+      (options.deploymentFingerprint !== undefined &&
+        payload.deploymentFingerprint !== options.deploymentFingerprint) ||
+      (header !== undefined &&
+        (header.deploymentFingerprint !== payload.deploymentFingerprint ||
+          (options.deploymentFingerprint !== undefined &&
+            header.deploymentFingerprint !== options.deploymentFingerprint)));
+    const terminalHistoryAuthorityMismatch =
+      header !== undefined &&
+      isTerminalStatus(header.status) &&
+      !hasAuthenticatedTerminalHistory(header, options.minimumFinalityDepth);
+    const challengeAuthority = options.availabilityChallengeAuthority;
+    const availabilityChallengeAuthorityMismatch =
+      challengeAuthority === undefined ||
+      options.deploymentFingerprint === undefined ||
+      challengeAuthority.deploymentFingerprint !==
+        options.deploymentFingerprint;
+    const activeAvailabilityChallenge =
+      !availabilityChallengeAuthorityMismatch &&
+      challengeAuthority.capability === "deployed" &&
+      challengeAuthority.activeHeaderHashes.has(payload.headerHash);
+    const availabilityChallengeState = availabilityChallengeAuthorityMismatch
+      ? "unknown"
+      : activeAvailabilityChallenge
+        ? "active"
+        : "inactive";
     const decision = daRetentionPruneDecisionV1(
       { headerHash: payload.headerHash, blockEndTimeMs },
       {
@@ -84,7 +154,10 @@ export const retentionCandidatesV1 = async (
         retentionDays: options.retentionDays,
         // A missing header row yields an undefined status, which the core
         // decision treats as unknown and therefore retains.
-        headerStatus: header?.status,
+        headerStatus: terminalHistoryAuthorityMismatch
+          ? undefined
+          : header?.status,
+        availabilityChallengeState,
       },
     );
     return {
@@ -94,6 +167,9 @@ export const retentionCandidatesV1 = async (
       headerStatus: header?.status,
       headerPresent: header !== undefined,
       fingerprintMismatch,
+      terminalHistoryAuthorityMismatch,
+      availabilityChallengeAuthorityMismatch,
+      activeAvailabilityChallenge,
       decision: fingerprintMismatch
         ? { decision: "retain", reasonCode: "header_status_unknown" }
         : decision,
@@ -107,26 +183,18 @@ export type RetentionPruneResultV1 = {
   readonly retained: number;
 };
 
-/**
- * Deletes only `expired_and_terminal` retained DA payloads.
- *
- * NOTE (deliberately inert today): the L1 state-queue scanner does not yet emit
- * `merged` or `removed` header statuses, so no record can currently reach the
- * terminal precondition and this pruner deletes nothing in practice. The
- * terminal-status requirement must NOT be loosened to make it active; the
- * scanner must start emitting terminal statuses instead.
- */
-export const pruneExpiredDaPayloadsV1 = async (
+const pruneRetentionCandidatesV1 = async (
   store: WatcherStore,
-  options: RetentionScanOptionsV1,
+  candidates: readonly RetentionCandidateV1[],
 ): Promise<RetentionPruneResultV1> => {
-  const candidates = await retentionCandidatesV1(store, options);
   const prunedHeaderHashes: string[] = [];
   for (const candidate of candidates) {
     if (
       candidate.decision.decision !== "prune" ||
       candidate.decision.reasonCode !== "expired_and_terminal" ||
-      candidate.fingerprintMismatch
+      candidate.fingerprintMismatch ||
+      candidate.terminalHistoryAuthorityMismatch ||
+      candidate.availabilityChallengeAuthorityMismatch
     ) {
       continue;
     }
@@ -140,6 +208,20 @@ export const pruneExpiredDaPayloadsV1 = async (
     prunedHeaderHashes,
     retained: candidates.length - prunedHeaderHashes.length,
   };
+};
+
+/**
+ * Deletes only `expired_and_terminal` retained DA payloads.
+ *
+ * Terminal status must come from authenticated ordered L1 transition history;
+ * neither local disappearance nor a latest-root snapshot is sufficient.
+ */
+export const pruneExpiredDaPayloadsV1 = async (
+  store: WatcherStore,
+  options: RetentionScanOptionsV1,
+): Promise<RetentionPruneResultV1> => {
+  const candidates = await retentionCandidatesV1(store, options);
+  return pruneRetentionCandidatesV1(store, candidates);
 };
 
 export type RetentionDeadlineEntryV1 = {
@@ -164,19 +246,22 @@ export type RetentionDeadlineReportV1 = {
   readonly entries: readonly RetentionDeadlineEntryV1[];
 };
 
-/** Executable deadline report over the retained DA payload set. */
-export const retentionDeadlineReportV1 = async (
-  store: WatcherStore,
+const retentionDeadlineReportFromCandidatesV1 = (
+  candidates: readonly RetentionCandidateV1[],
   options: RetentionScanOptionsV1 & { readonly alertThresholdMs?: number },
-): Promise<RetentionDeadlineReportV1> => {
+): RetentionDeadlineReportV1 => {
   const alertThresholdMs =
     options.alertThresholdMs ?? MIDGARD_RETENTION_WINDOW_V1.marginMs;
   if (!Number.isSafeInteger(alertThresholdMs) || alertThresholdMs < 0) {
     throw new Error("alertThresholdMs must be a non-negative safe integer");
   }
-  const candidates = await retentionCandidatesV1(store, options);
   const entries = candidates.map<RetentionDeadlineEntryV1>((candidate) => {
-    if (candidate.blockEndTimeMs === null || candidate.fingerprintMismatch) {
+    if (
+      candidate.blockEndTimeMs === null ||
+      candidate.fingerprintMismatch ||
+      candidate.terminalHistoryAuthorityMismatch ||
+      candidate.availabilityChallengeAuthorityMismatch
+    ) {
       // Fail closed: no computable deadline, so report it as alerting rather
       // than fabricating headroom.
       return {
@@ -219,4 +304,35 @@ export const retentionDeadlineReportV1 = async (
     alerting: entries.filter((entry) => entry.alerting).length,
     entries,
   };
+};
+
+/** Executable deadline report over the retained DA payload set. */
+export const retentionDeadlineReportV1 = async (
+  store: WatcherStore,
+  options: RetentionScanOptionsV1 & { readonly alertThresholdMs?: number },
+): Promise<RetentionDeadlineReportV1> => {
+  const candidates = await retentionCandidatesV1(store, options);
+  return retentionDeadlineReportFromCandidatesV1(candidates, options);
+};
+
+export type RetentionCycleResultV1 = {
+  readonly deadlines: RetentionDeadlineReportV1;
+  readonly prune: RetentionPruneResultV1;
+};
+
+/** One non-overlapping production retention cycle: report before deletion. */
+export const runRetentionCycleV1 = async (
+  store: WatcherStore,
+  options: RetentionScanOptionsV1 & { readonly alertThresholdMs?: number },
+): Promise<RetentionCycleResultV1> => {
+  // Use one joined snapshot for both reporting and deletion. Incoming DA writes
+  // may run concurrently with the watcher tick; a second scan could otherwise
+  // delete a record that was never present in the preceding report.
+  const candidates = await retentionCandidatesV1(store, options);
+  const deadlines = retentionDeadlineReportFromCandidatesV1(
+    candidates,
+    options,
+  );
+  const prune = await pruneRetentionCandidatesV1(store, candidates);
+  return { deadlines, prune };
 };

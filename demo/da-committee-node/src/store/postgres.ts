@@ -45,7 +45,9 @@ type JsonRecordRow = {
   readonly deployment_fingerprint?: unknown;
   readonly evidence_hash?: unknown;
   readonly header_hash?: unknown;
+  readonly commitment_digest?: unknown;
   readonly conflicting_header_hash?: unknown;
+  readonly conflicting_commitment_digest?: unknown;
   readonly reporter_peer_id?: unknown;
   readonly signer_index?: unknown;
   readonly effect_id?: unknown;
@@ -561,12 +563,13 @@ export class PostgresWatcherStore implements WatcherStore {
 
   async getDaSignature(args: {
     readonly headerHash: string;
+    readonly availabilityCommitmentDigest: string;
     readonly signerIndex: number;
   }): Promise<DaSignatureRecordV1 | undefined> {
     return this.getParsedRecord(
-      `SELECT header_hash, signer_index, record FROM watcher_da_signatures
-       WHERE header_hash = $1 AND signer_index = $2`,
-      [args.headerHash, args.signerIndex],
+      `SELECT header_hash, commitment_digest, signer_index, record FROM watcher_da_signatures
+       WHERE header_hash = $1 AND commitment_digest = $2 AND signer_index = $3`,
+      [args.headerHash, args.availabilityCommitmentDigest, args.signerIndex],
       parseDaSignatureRecordV1,
       assertSignatureRowIdentity,
     );
@@ -577,13 +580,13 @@ export class PostgresWatcherStore implements WatcherStore {
   ): Promise<readonly DaSignatureRecordV1[]> {
     return this.listParsedRecords(
       headerHash === undefined
-        ? `SELECT header_hash, signer_index, record
+        ? `SELECT header_hash, commitment_digest, signer_index, record
            FROM watcher_da_signatures
-           ORDER BY header_hash, signer_index`
-        : `SELECT header_hash, signer_index, record
+           ORDER BY header_hash, commitment_digest, signer_index`
+        : `SELECT header_hash, commitment_digest, signer_index, record
            FROM watcher_da_signatures
            WHERE header_hash = $1
-           ORDER BY header_hash, signer_index`,
+           ORDER BY header_hash, commitment_digest, signer_index`,
       headerHash === undefined ? [] : [headerHash],
       parseDaSignatureRecordV1,
       assertSignatureRowIdentity,
@@ -599,19 +602,23 @@ export class PostgresWatcherStore implements WatcherStore {
          deployment_fingerprint,
          evidence_hash,
          header_hash,
+         commitment_digest,
          conflicting_header_hash,
+         conflicting_commitment_digest,
          signer_index,
          reporter_peer_id,
          record,
          created_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, NOW())
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, NOW())
        ON CONFLICT (deployment_fingerprint, evidence_hash) DO NOTHING`,
       [
         canonicalRecord.deploymentFingerprint,
         canonicalRecord.evidenceHash,
         canonicalRecord.headerHash,
+        canonicalRecord.commitmentDigest,
         canonicalRecord.conflictingHeaderHash,
+        canonicalRecord.conflictingCommitmentDigest,
         canonicalRecord.signerIndex,
         canonicalRecord.reporterPeerId,
         encodeRecord(canonicalRecord),
@@ -626,12 +633,14 @@ export class PostgresWatcherStore implements WatcherStore {
     return this.listParsedRecords(
       headerHash === undefined
         ? `SELECT deployment_fingerprint, evidence_hash, header_hash,
-                  conflicting_header_hash, signer_index, reporter_peer_id,
+                  commitment_digest, conflicting_header_hash,
+                  conflicting_commitment_digest, signer_index, reporter_peer_id,
                   record
            FROM watcher_da_conflict_evidence
            ORDER BY header_hash, signer_index, evidence_hash`
         : `SELECT deployment_fingerprint, evidence_hash, header_hash,
-                  conflicting_header_hash, signer_index, reporter_peer_id,
+                  commitment_digest, conflicting_header_hash,
+                  conflicting_commitment_digest, signer_index, reporter_peer_id,
                   record
            FROM watcher_da_conflict_evidence
            WHERE header_hash = $1
@@ -703,17 +712,19 @@ export class PostgresWatcherStore implements WatcherStore {
       `INSERT INTO watcher_peer_broadcasts (
          peer_id,
          header_hash,
+         commitment_digest,
          signer_index,
          record,
          updated_at
        )
-       VALUES ($1, $2, $3, $4::jsonb, NOW())
-       ON CONFLICT (peer_id, header_hash, signer_index) DO UPDATE SET
+       VALUES ($1, $2, $3, $4, $5::jsonb, NOW())
+       ON CONFLICT (peer_id, header_hash, commitment_digest, signer_index) DO UPDATE SET
          record = EXCLUDED.record,
          updated_at = NOW()`,
       [
         record.peerId,
         record.headerHash,
+        record.availabilityCommitmentDigest,
         record.signerIndex,
         encodeRecord(record),
       ],
@@ -723,12 +734,18 @@ export class PostgresWatcherStore implements WatcherStore {
   async getPeerBroadcast(args: {
     readonly peerId: string;
     readonly headerHash: string;
+    readonly availabilityCommitmentDigest: string;
     readonly signerIndex: number;
   }): Promise<DaPeerBroadcastRecord | undefined> {
     return this.getRecord<DaPeerBroadcastRecord>(
       `SELECT record FROM watcher_peer_broadcasts
-       WHERE peer_id = $1 AND header_hash = $2 AND signer_index = $3`,
-      [args.peerId, args.headerHash, args.signerIndex],
+       WHERE peer_id = $1 AND header_hash = $2 AND commitment_digest = $3 AND signer_index = $4`,
+      [
+        args.peerId,
+        args.headerHash,
+        args.availabilityCommitmentDigest,
+        args.signerIndex,
+      ],
     );
   }
 
@@ -738,10 +755,10 @@ export class PostgresWatcherStore implements WatcherStore {
     return this.listRecords<DaPeerBroadcastRecord>(
       headerHash === undefined
         ? `SELECT record FROM watcher_peer_broadcasts
-           ORDER BY header_hash, signer_index, peer_id`
+           ORDER BY header_hash, commitment_digest, signer_index, peer_id`
         : `SELECT record FROM watcher_peer_broadcasts
            WHERE header_hash = $1
-           ORDER BY header_hash, signer_index, peer_id`,
+           ORDER BY header_hash, commitment_digest, signer_index, peer_id`,
       headerHash === undefined ? [] : [headerHash],
     );
   }
@@ -832,18 +849,22 @@ export class PostgresWatcherStore implements WatcherStore {
 
       CREATE TABLE IF NOT EXISTS watcher_da_signatures (
         header_hash text NOT NULL,
+        commitment_digest text NOT NULL CHECK (commitment_digest ~ '^[0-9a-f]{64}$'),
         signer_index integer NOT NULL CHECK (signer_index >= 0 AND signer_index <= 255),
         record jsonb NOT NULL,
         created_at timestamptz NOT NULL DEFAULT NOW(),
         updated_at timestamptz NOT NULL DEFAULT NOW(),
-        PRIMARY KEY (header_hash, signer_index)
+        PRIMARY KEY (header_hash, commitment_digest, signer_index)
       );
 
       CREATE TABLE IF NOT EXISTS watcher_da_conflict_evidence (
         deployment_fingerprint text NOT NULL CHECK (deployment_fingerprint ~ '^[0-9a-f]{64}$'),
         evidence_hash text NOT NULL CHECK (evidence_hash ~ '^[0-9a-f]{64}$'),
         header_hash text NOT NULL CHECK (header_hash ~ '^[0-9a-f]{56}$'),
-        conflicting_header_hash text NOT NULL CHECK (conflicting_header_hash ~ '^[0-9a-f]{56}$' AND conflicting_header_hash > header_hash),
+        commitment_digest text NOT NULL CHECK (commitment_digest ~ '^[0-9a-f]{64}$'),
+        conflicting_header_hash text NOT NULL CHECK (conflicting_header_hash ~ '^[0-9a-f]{56}$'),
+        conflicting_commitment_digest text NOT NULL CHECK (conflicting_commitment_digest ~ '^[0-9a-f]{64}$'),
+        CHECK ((conflicting_header_hash || conflicting_commitment_digest) > (header_hash || commitment_digest)),
         signer_index integer NOT NULL CHECK (signer_index >= 0 AND signer_index <= 255),
         reporter_peer_id text NOT NULL CHECK (length(reporter_peer_id) > 0),
         record jsonb NOT NULL,
@@ -873,11 +894,12 @@ export class PostgresWatcherStore implements WatcherStore {
       CREATE TABLE IF NOT EXISTS watcher_peer_broadcasts (
         peer_id text NOT NULL,
         header_hash text NOT NULL,
+        commitment_digest text NOT NULL CHECK (commitment_digest ~ '^[0-9a-f]{64}$'),
         signer_index integer NOT NULL CHECK (signer_index >= 0 AND signer_index <= 255),
         record jsonb NOT NULL,
         created_at timestamptz NOT NULL DEFAULT NOW(),
         updated_at timestamptz NOT NULL DEFAULT NOW(),
-        PRIMARY KEY (peer_id, header_hash, signer_index)
+        PRIMARY KEY (peer_id, header_hash, commitment_digest, signer_index)
       );
 
       CREATE TABLE IF NOT EXISTS watcher_peer_health (
@@ -1037,11 +1059,16 @@ const upsertSignatureWithClient = async (
 ): Promise<void> => {
   await client.query(
     `INSERT INTO watcher_da_signatures
-       (header_hash, signer_index, record, updated_at)
-     VALUES ($1, $2, $3::jsonb, NOW())
-     ON CONFLICT (header_hash, signer_index) DO UPDATE SET
+       (header_hash, commitment_digest, signer_index, record, updated_at)
+     VALUES ($1, $2, $3, $4::jsonb, NOW())
+     ON CONFLICT (header_hash, commitment_digest, signer_index) DO UPDATE SET
        record = EXCLUDED.record, updated_at = NOW()`,
-    [record.headerHash, record.signerIndex, encodeRecord(record)],
+    [
+      record.headerHash,
+      record.availabilityCommitmentDigest,
+      record.signerIndex,
+      encodeRecord(record),
+    ],
   );
 };
 
@@ -1098,6 +1125,7 @@ const assertSignatureRowIdentity = (
 ): void => {
   if (
     row.header_hash !== record.headerHash ||
+    row.commitment_digest !== record.availabilityCommitmentDigest ||
     row.signer_index !== record.signerIndex
   ) {
     throw new Error(
@@ -1114,7 +1142,9 @@ const assertConflictEvidenceRowIdentity = (
     row.deployment_fingerprint !== record.deploymentFingerprint ||
     row.evidence_hash !== record.evidenceHash ||
     row.header_hash !== record.headerHash ||
+    row.commitment_digest !== record.commitmentDigest ||
     row.conflicting_header_hash !== record.conflictingHeaderHash ||
+    row.conflicting_commitment_digest !== record.conflictingCommitmentDigest ||
     row.signer_index !== record.signerIndex ||
     row.reporter_peer_id !== record.reporterPeerId
   ) {

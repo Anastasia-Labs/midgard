@@ -21,6 +21,7 @@ export type PeerSignatureCoordinatorDeps = {
   readonly signer: DaSigner;
   readonly signerIndex: number;
   readonly signerValidation: DaSignerValidation;
+  readonly availabilityCommitmentAuthority: import("./signatures.js").DaAvailabilityCommitmentAuthorityV1;
   readonly store: WatcherStore;
   readonly requestTimeoutMs?: number;
   readonly retryInitialDelayMs: number;
@@ -51,6 +52,7 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
         : { localPeerId: deps.localPeerId }),
       attestationExchange: deps.attestationExchange,
       signerValidation: deps.signerValidation,
+      availabilityCommitmentAuthority: deps.availabilityCommitmentAuthority,
       store: deps.store,
       requestTimeoutMs: deps.requestTimeoutMs,
     });
@@ -126,6 +128,7 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
     const existing = await this.deps.store.getPeerBroadcast({
       peerId: peer.peerId,
       headerHash: record.headerHash,
+      availabilityCommitmentDigest: record.availabilityCommitmentDigest,
       signerIndex: record.signerIndex,
     });
     if (existing?.status === "posted") {
@@ -144,6 +147,7 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
         deploymentFingerprint: record.deploymentFingerprint,
         peerId: peer.peerId,
         headerHash: record.headerHash,
+        availabilityCommitmentDigest: record.availabilityCommitmentDigest,
         signerIndex: record.signerIndex,
         status: "failed",
         attempts: existing?.attempts ?? this.deps.retryMaxAttempts,
@@ -156,6 +160,7 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
       deploymentFingerprint: record.deploymentFingerprint,
       peerId: peer.peerId,
       headerHash: record.headerHash,
+      availabilityCommitmentDigest: record.availabilityCommitmentDigest,
       signerIndex: record.signerIndex,
       status: "pending",
       attempts,
@@ -177,6 +182,7 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
         deploymentFingerprint: record.deploymentFingerprint,
         peerId: peer.peerId,
         headerHash: record.headerHash,
+        availabilityCommitmentDigest: record.availabilityCommitmentDigest,
         signerIndex: record.signerIndex,
         status: "posted",
         attempts,
@@ -192,6 +198,7 @@ export class PeerSignatureCoordinator implements AttestationCoordinator {
         deploymentFingerprint: record.deploymentFingerprint,
         peerId: peer.peerId,
         headerHash: record.headerHash,
+        availabilityCommitmentDigest: record.availabilityCommitmentDigest,
         signerIndex: record.signerIndex,
         status: "failed",
         attempts,

@@ -3,7 +3,7 @@ import {
   decodeDaConflictingSignatureHeaderEvidenceV1Cbor,
   encodeDaConflictingSignatureHeaderEvidenceV1Cbor,
 } from "@al-ft/midgard-core/da-transport";
-import type * as SDK from "@al-ft/midgard-sdk";
+import * as SDK from "@al-ft/midgard-sdk";
 
 export type ChainPoint = {
   readonly slot?: number;
@@ -23,8 +23,20 @@ export type ObservedStateQueueNode = {
   readonly linkedListKey: string | "Empty";
   readonly rawDatumCbor?: string;
   readonly header: HeaderV1;
-  readonly daAttestation: string;
+  readonly daAttestation: SDK.DaAvailabilityStateQueueStatusV1;
   readonly chainPoint: ChainPoint;
+};
+
+/**
+ * One atomically observed state-queue view. The confirmed root is retained in
+ * the observation so disappearance of a block node can only become a terminal
+ * outcome when the root observation itself is final.
+ */
+export type ObservedStateQueueSnapshotV1 = {
+  readonly nodes: readonly ObservedStateQueueNode[];
+  readonly confirmedHeaderHash: string;
+  readonly confirmedStateOutRef: string;
+  readonly observedChainPoint: ChainPoint;
 };
 
 export type StateQueueHeaderStatus =
@@ -43,7 +55,7 @@ export type StateQueueHeaderRecord = {
   readonly rawStateQueueDatumCbor?: string;
   readonly header: HeaderV1;
   readonly computedHeaderHash: string;
-  readonly daAttestation: string;
+  readonly daAttestation: SDK.DaAvailabilityStateQueueStatusV1;
   readonly observedChainPoint: ChainPoint;
   readonly finalized: boolean;
   readonly status: StateQueueHeaderStatus;
@@ -137,6 +149,8 @@ export type DaSignatureRecord = {
   readonly headerHash: string;
   readonly signerIndex: number;
   readonly signatureWitness: string;
+  readonly availabilityCommitmentCbor: string;
+  readonly availabilityCommitmentDigest: string;
   readonly payloadHash: string;
   readonly committeeSignersHash: string;
   readonly signedAt: string;
@@ -161,7 +175,9 @@ export type DaStoredConflictEvidenceRecordV1 = {
   readonly conflictSchemaVersion: 1;
   readonly deploymentFingerprint: string;
   readonly headerHash: string;
+  readonly commitmentDigest: string;
   readonly conflictingHeaderHash: string;
+  readonly conflictingCommitmentDigest: string;
   readonly signerIndex: number;
   readonly evidenceKind: "equivocation";
   readonly evidenceHash: string;
@@ -205,6 +221,7 @@ export type DaPeerBroadcastRecord = {
   readonly deploymentFingerprint: string;
   readonly peerId: string;
   readonly headerHash: string;
+  readonly availabilityCommitmentDigest: string;
   readonly signerIndex: number;
   readonly status: "pending" | "posted" | "failed";
   readonly attempts: number;
@@ -306,6 +323,8 @@ const signatureRecordRequiredKeys = [
   "headerHash",
   "signerIndex",
   "signatureWitness",
+  "availabilityCommitmentCbor",
+  "availabilityCommitmentDigest",
   "payloadHash",
   "committeeSignersHash",
   "signedAt",
@@ -325,7 +344,9 @@ const conflictEvidenceRecordKeys = [
   "conflictSchemaVersion",
   "deploymentFingerprint",
   "headerHash",
+  "commitmentDigest",
   "conflictingHeaderHash",
+  "conflictingCommitmentDigest",
   "signerIndex",
   "evidenceKind",
   "evidenceHash",
@@ -448,6 +469,29 @@ export const parseDaSignatureRecordV1 = (
       "DA signature record V1.validation.headerHash must match headerHash",
     );
   }
+  const availabilityCommitmentCbor = requireString(
+    record.availabilityCommitmentCbor,
+    "DA signature record V1.availabilityCommitmentCbor",
+  );
+  const availabilityCommitment = SDK.parseDaAvailabilityCommitmentV1Cbor(
+    availabilityCommitmentCbor,
+  );
+  const availabilityCommitmentDigest = requireLowerHex(
+    record.availabilityCommitmentDigest,
+    32,
+    "DA signature record V1.availabilityCommitmentDigest",
+  );
+  const computedCommitmentDigest = computeDaSha256Hash(
+    Buffer.from(availabilityCommitmentCbor, "hex"),
+  ).toString("hex");
+  if (
+    availabilityCommitment.header_hash !== headerHash ||
+    availabilityCommitmentDigest !== computedCommitmentDigest
+  ) {
+    throw new Error(
+      "DA signature record V1 commitment header/digest does not match its outer identity",
+    );
+  }
   return {
     deploymentFingerprint: requireString(
       record.deploymentFingerprint,
@@ -462,6 +506,8 @@ export const parseDaSignatureRecordV1 = (
       record.signatureWitness,
       "DA signature record V1.signatureWitness",
     ),
+    availabilityCommitmentCbor,
+    availabilityCommitmentDigest,
     payloadHash: requireString(
       record.payloadHash,
       "DA signature record V1.payloadHash",
@@ -535,6 +581,16 @@ export const parseDaStoredConflictEvidenceRecordV1 = (
     28,
     "DA stored conflict evidence record V1.conflictingHeaderHash",
   );
+  const commitmentDigest = requireLowerHex(
+    record.commitmentDigest,
+    32,
+    "DA stored conflict evidence record V1.commitmentDigest",
+  );
+  const conflictingCommitmentDigest = requireLowerHex(
+    record.conflictingCommitmentDigest,
+    32,
+    "DA stored conflict evidence record V1.conflictingCommitmentDigest",
+  );
   const signerIndex = requireUint8(
     record.signerIndex,
     "DA stored conflict evidence record V1.signerIndex",
@@ -566,13 +622,38 @@ export const parseDaStoredConflictEvidenceRecordV1 = (
       "DA stored conflict evidence record V1.compactEvidenceCborHex must be canonical CBOR",
     );
   }
+  const lowerCommitment = SDK.parseDaAvailabilityCommitmentV1Cbor(
+    decoded.lowerCommitmentCbor.toString("hex"),
+  );
+  const upperCommitment = SDK.parseDaAvailabilityCommitmentV1Cbor(
+    decoded.upperCommitmentCbor.toString("hex"),
+  );
+  const decodedCommitmentDigest = computeDaSha256Hash(
+    decoded.lowerCommitmentCbor,
+  ).toString("hex");
+  const decodedConflictingCommitmentDigest = computeDaSha256Hash(
+    decoded.upperCommitmentCbor,
+  ).toString("hex");
   if (
     decoded.lowerHeaderHash.toString("hex") !== headerHash ||
+    lowerCommitment.header_hash !== headerHash ||
+    decodedCommitmentDigest !== commitmentDigest ||
     decoded.upperHeaderHash.toString("hex") !== conflictingHeaderHash ||
+    upperCommitment.header_hash !== conflictingHeaderHash ||
+    decodedConflictingCommitmentDigest !== conflictingCommitmentDigest ||
     decoded.signerIndex !== signerIndex
   ) {
     throw new Error(
       "DA stored conflict evidence record V1 derived conflict identity does not match compact evidence",
+    );
+  }
+  if (
+    `${headerHash}${commitmentDigest}`.localeCompare(
+      `${conflictingHeaderHash}${conflictingCommitmentDigest}`,
+    ) >= 0
+  ) {
+    throw new Error(
+      "DA stored conflict evidence record V1 composite identities must be strictly ordered",
     );
   }
   if (computeDaSha256Hash(compactEvidence).toString("hex") !== evidenceHash) {
@@ -584,7 +665,9 @@ export const parseDaStoredConflictEvidenceRecordV1 = (
     conflictSchemaVersion: 1,
     deploymentFingerprint,
     headerHash,
+    commitmentDigest,
     conflictingHeaderHash,
+    conflictingCommitmentDigest,
     signerIndex,
     evidenceKind: "equivocation",
     evidenceHash,

@@ -12,7 +12,11 @@ import {
   type DaLibp2pRuntimeManifest,
   parseDaLibp2pRuntimeManifest,
 } from "@al-ft/midgard-core/da-transport";
-import { verifyFinalizedDeploymentManifestV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import {
+  type DeploymentManifestV1AvailabilityChallenge,
+  parseDeploymentManifestV1AvailabilityChallenge,
+  verifyFinalizedDeploymentManifestV1,
+} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { multiaddr } from "@multiformats/multiaddr";
 import { blake2b } from "@noble/hashes/blake2.js";
 
@@ -103,6 +107,7 @@ export type WatcherConfig = {
   readonly deploymentManifestRaw: string;
   readonly deploymentManifest: Record<string, unknown>;
   readonly contractDeploymentInfo: Record<string, unknown>;
+  readonly availabilityChallenge: DeploymentManifestV1AvailabilityChallenge;
   readonly consensusProfile: MidgardConsensusProfileV1;
   readonly midgardNodeDeployment: MidgardNodeDeployment;
   readonly l1Source: L1SourceConfig;
@@ -128,6 +133,10 @@ export type WatcherConfig = {
   readonly daParamsGovernorAddress: string;
   readonly stateQueuePolicyId: string;
   readonly stateQueueAddress: string;
+  readonly hubOraclePolicyId: string;
+  readonly correctionLockAddress: string;
+  readonly fraudProofPolicyId: string;
+  readonly fraudProofAddress: string;
   readonly peerRequestTimeoutMs: number;
   readonly peerReplayWindowMs: number;
   readonly peerMaxBodyBytes: number;
@@ -282,6 +291,8 @@ export const loadWatcherConfig = async (
     consensusProfile,
     network: contractDeploymentNetwork,
     daRetentionDays: manifestDaRetentionDays,
+    finalityDepth: manifestFinalityDepth,
+    availabilityChallenge: manifestAvailabilityChallenge,
   } = contractDeploymentManifestConfig(
     contractDeploymentInfo,
     contractDeploymentInfoPath,
@@ -327,6 +338,11 @@ export const loadWatcherConfig = async (
   const stateQueuePolicyId = midgardNodeDeployment.stateQueue.policyId;
   const stateQueueAddress =
     midgardNodeDeployment.stateQueue.spendingScriptAddress;
+  const hubOraclePolicyId = midgardNodeDeployment.hubOraclePolicyId;
+  const correctionLockAddress = midgardNodeDeployment.correctionLockAddress;
+  const fraudProofPolicyId = midgardNodeDeployment.fraudProof.policyId;
+  const fraudProofAddress =
+    midgardNodeDeployment.fraudProof.spendingScriptAddress;
   const l1SubmitterKeySource = optionalKeySource(
     env.L1_SUBMITTER_KEY_SOURCE,
     "L1_SUBMITTER_KEY_SOURCE",
@@ -383,6 +399,15 @@ export const loadWatcherConfig = async (
     env,
     daCommitteeMembers,
   );
+  const configuredFinalityDepth = nonNegativeInt(
+    requireEnv(env, "CARDANO_FINALITY_DEPTH"),
+    "CARDANO_FINALITY_DEPTH",
+  );
+  if (configuredFinalityDepth !== manifestFinalityDepth) {
+    throw new Error(
+      `CARDANO_FINALITY_DEPTH must exactly equal the verified deployment manifest l1Finality.confirmationDepth: runtime=${configuredFinalityDepth.toString()}, manifest=${manifestFinalityDepth.toString()}`,
+    );
+  }
 
   return {
     network,
@@ -395,14 +420,12 @@ export const loadWatcherConfig = async (
     deploymentManifestRaw,
     deploymentManifest,
     contractDeploymentInfo,
+    availabilityChallenge: manifestAvailabilityChallenge,
     consensusProfile,
     midgardNodeDeployment,
     l1Source,
     cardanoProviderUrls,
-    finalityDepth: nonNegativeInt(
-      requireEnv(env, "CARDANO_FINALITY_DEPTH"),
-      "CARDANO_FINALITY_DEPTH",
-    ),
+    finalityDepth: configuredFinalityDepth,
     daTransport: libp2pDaTransport,
     libp2pPrivateKeySource,
     ...maybeSigner,
@@ -439,6 +462,10 @@ export const loadWatcherConfig = async (
       byteLength: 28,
     }),
     stateQueueAddress,
+    hubOraclePolicyId,
+    correctionLockAddress,
+    fraudProofPolicyId,
+    fraudProofAddress,
     peerRequestTimeoutMs: positiveInt(
       env.DA_PEER_REQUEST_TIMEOUT_MS ?? "5000",
       "DA_PEER_REQUEST_TIMEOUT_MS",
@@ -1235,6 +1262,8 @@ const contractDeploymentManifestConfig = (
   readonly consensusProfile: MidgardConsensusProfileV1;
   readonly network: string;
   readonly daRetentionDays: number;
+  readonly finalityDepth: number;
+  readonly availabilityChallenge: DeploymentManifestV1AvailabilityChallenge;
 } => {
   const verified = verifyFinalizedDeploymentManifestV1(contractDeploymentInfo);
   const exactProfile = verified.consensusProfile;
@@ -1250,6 +1279,18 @@ const contractDeploymentManifestConfig = (
   // Q54: the retention window is part of deployment identity, so read it from
   // the *verified* deployment manifest rather than from the runtime manifest.
   const daRetentionDays = assertRetentionWindowCoversDeploymentV1(verified);
+  const l1Finality = verified.l1Finality as Record<string, unknown>;
+  const finalityDepth = l1Finality.confirmationDepth;
+  if (
+    typeof finalityDepth !== "number" ||
+    !Number.isSafeInteger(finalityDepth) ||
+    finalityDepth < 0
+  ) {
+    // `verifyFinalizedDeploymentManifestV1` already establishes this shape.
+    // Keep the local assertion at the boundary so a future parser change
+    // cannot silently turn release finality back into caller configuration.
+    throw new Error(`${path} has invalid l1Finality.confirmationDepth`);
+  }
   return {
     manifestId: normalizeHex(manifestId, {
       fieldName: "contract deployment manifestId",
@@ -1258,6 +1299,10 @@ const contractDeploymentManifestConfig = (
     consensusProfile: exactProfile,
     network,
     daRetentionDays,
+    finalityDepth,
+    availabilityChallenge: parseDeploymentManifestV1AvailabilityChallenge(
+      verified.availabilityChallenge,
+    ),
   };
 };
 

@@ -59,10 +59,26 @@ describe("Scalus DA add-signatures evaluation", () => {
       owners: ["22".repeat(28), "33".repeat(28)],
       update_threshold: 2n,
     };
+    const availabilityCommitment = SDK.buildDaAvailabilityCommitmentV1({
+      deploymentIdentity: deployment.hubOraclePolicyId,
+      headerHash,
+      payload: Buffer.from("public retained DA"),
+      bondOwner: "76".repeat(28),
+      responseGeometry: SDK.availabilityResponseGeometryV1({
+        chunkByteLength: 14_020,
+        trancheByteLength: 4 * 1_024 * 1_024,
+        maxTrancheCount: 16,
+      }),
+    });
     const attestationDatum: SDK.DaAttestationDatum = {
       header_hash: headerHash,
+      availability_commitment: availabilityCommitment,
       da_threshold: 2n,
       committee_signers_hash: committeeSignersHash,
+      rescue_beneficiary: {
+        paymentCredential: { PublicKeyCredential: ["56".repeat(28)] },
+        stakeCredential: null,
+      },
       attested_signers: SDK.EMPTY_ATTESTED_SIGNER_BITMAP,
       attestation_count: 0n,
     };
@@ -107,7 +123,11 @@ describe("Scalus DA add-signatures evaluation", () => {
         attestationDatum,
         packedWitnessesHex: packSortedSignatureWitnesses(
           committeeSigners.map((signer, signerIndex) =>
-            signDaAttestation({ signer, signerIndex, headerHash }),
+            signDaAttestation({
+              signer,
+              signerIndex,
+              availabilityCommitment,
+            }),
           ),
         ),
         signerIndexes: [0, 1],
@@ -136,6 +156,11 @@ const referenceScriptUtxos = (
   deployment: MidgardNodeDeployment,
   address: string,
 ): DaAttestationReferenceScripts => ({
+  availabilityChallengeMinting: referenceScriptUtxo(
+    "24",
+    address,
+    deployment.availabilityChallenge.mint.script,
+  ),
   daAttestationMinting: referenceScriptUtxo(
     "20",
     address,

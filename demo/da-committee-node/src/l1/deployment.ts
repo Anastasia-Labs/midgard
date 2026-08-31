@@ -24,7 +24,9 @@ export type MidgardDeploymentContract = {
   readonly purpose: "mint" | "spend";
   readonly script: MidgardDeploymentScript;
   readonly scriptHash: string;
-  readonly refScriptOutRef: MidgardDeploymentOutRef;
+  // Null for contracts the deployment manifest gives no reference-script
+  // role; consumers that dereference a UTxO must require a non-null value.
+  readonly refScriptOutRef: MidgardDeploymentOutRef | null;
 };
 
 export type MidgardAuthenticatedDeployment = {
@@ -36,12 +38,19 @@ export type MidgardAuthenticatedDeployment = {
 };
 
 export type MidgardNodeDeployment = {
+  readonly hubOraclePolicyId: string;
+  readonly correctionLockAddress: string;
+  readonly hubOracle: MidgardAuthenticatedDeployment;
+  readonly availabilityChallenge: MidgardAuthenticatedDeployment;
+  readonly fraudProof: MidgardAuthenticatedDeployment;
   readonly daAttestation: MidgardAuthenticatedDeployment;
   readonly daParamsGovernor: MidgardAuthenticatedDeployment;
   readonly stateQueue: MidgardAuthenticatedDeployment;
 };
 
 export type DaAttestationValidatorSet = {
+  readonly hubOracle: AuthenticatedValidator;
+  readonly availabilityChallenge: AuthenticatedValidator;
   readonly daAttestation: AuthenticatedValidator;
   readonly daParamsGovernor: AuthenticatedValidator;
   readonly stateQueue: AuthenticatedValidator;
@@ -50,6 +59,10 @@ export type DaAttestationValidatorSet = {
 export const daAttestationValidatorsFromDeployment = (
   deployment: MidgardNodeDeployment,
 ): DaAttestationValidatorSet => ({
+  hubOracle: authenticatedValidatorFromDeployment(deployment.hubOracle),
+  availabilityChallenge: authenticatedValidatorFromDeployment(
+    deployment.availabilityChallenge,
+  ),
   daAttestation: authenticatedValidatorFromDeployment(deployment.daAttestation),
   daParamsGovernor: authenticatedValidatorFromDeployment(
     deployment.daParamsGovernor,
@@ -62,7 +75,49 @@ export const parseMidgardNodeDeploymentInfo = (
   network: string,
 ): MidgardNodeDeployment => {
   const lucidNetwork = normalizeLucidNetwork(network);
+  const hubOracleMint = deploymentContract(
+    deploymentInfo,
+    "hubOracleMint",
+    "hub oracle mint",
+    "mint",
+  );
+  const correctionLockSpend = deploymentContract(
+    deploymentInfo,
+    "correctionLockSpend",
+    "correction lock spend",
+    "spend",
+  );
   return {
+    hubOraclePolicyId: hubOracleMint.scriptHash,
+    correctionLockAddress: validatorToAddress(
+      lucidNetwork,
+      correctionLockSpend.script as never,
+    ),
+    // The hub oracle is a mint-only script: no `hubOracleSpend` entry exists in
+    // any deployment document, and its beacon UTxO sits at the address whose
+    // payment credential is the minting policy hash itself.
+    hubOracle: {
+      mint: hubOracleMint,
+      spend: hubOracleMint,
+      policyId: hubOracleMint.scriptHash,
+      spendingScriptHash: hubOracleMint.scriptHash,
+      spendingScriptAddress: validatorToAddress(
+        lucidNetwork,
+        hubOracleMint.script as never,
+      ),
+    },
+    availabilityChallenge: authenticatedDeployment(
+      deploymentInfo,
+      "availabilityChallenge",
+      "availability challenge",
+      lucidNetwork,
+    ),
+    fraudProof: authenticatedDeployment(
+      deploymentInfo,
+      "fraudProof",
+      "fraud proof",
+      lucidNetwork,
+    ),
     daAttestation: authenticatedDeployment(
       deploymentInfo,
       "daAttestation",
@@ -100,7 +155,13 @@ export const normalizeLucidNetwork = (value: string): LucidNetwork => {
 
 const authenticatedDeployment = (
   deploymentInfo: Record<string, unknown>,
-  prefix: "daAttestation" | "daParamsGovernor" | "stateQueue",
+  prefix:
+    | "hubOracle"
+    | "availabilityChallenge"
+    | "daAttestation"
+    | "daParamsGovernor"
+    | "stateQueue"
+    | "fraudProof",
   label: string,
   network: LucidNetwork,
 ): MidgardAuthenticatedDeployment => {
@@ -208,7 +269,11 @@ const deploymentScript = (
 const deploymentOutRef = (
   root: Record<string, unknown>,
   label: string,
-): MidgardDeploymentOutRef => {
+): MidgardDeploymentOutRef | null => {
+  const rawRefScriptUTxO = valueAt(root, ["refScriptUTxO"]);
+  if (rawRefScriptUTxO === null) {
+    return null;
+  }
   const refScriptUTxO = objectAt(root, ["refScriptUTxO"]);
   if (refScriptUTxO === undefined) {
     throw new Error(`${label} refScriptUTxO is required`);

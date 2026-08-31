@@ -15,6 +15,8 @@ export type DaAttestationContext = Pick<
   | "deploymentFingerprint"
   | "headerHash"
   | "payloadHash"
+  | "availabilityCommitmentCbor"
+  | "availabilityCommitmentDigest"
   | "committeeSignersHash"
   | "l1ChainPoint"
   | "validation"
@@ -42,7 +44,12 @@ export type AttestationSubmissionResult =
 
 export interface OnChainAttestationSubmitter {
   initAttestation(
-    record: Pick<DaAttestationContext, "headerHash">,
+    record: Pick<
+      DaAttestationContext,
+      | "headerHash"
+      | "availabilityCommitmentCbor"
+      | "availabilityCommitmentDigest"
+    >,
   ): Promise<AttestationSubmissionResult>;
   addSignatures(args: {
     readonly record: DaAttestationContext;
@@ -541,6 +548,10 @@ const usablePeerSignature = (
   peerRecord.deploymentFingerprint === context.deploymentFingerprint &&
   peerRecord.headerHash === context.headerHash &&
   peerRecord.payloadHash === context.payloadHash &&
+  peerRecord.availabilityCommitmentCbor ===
+    context.availabilityCommitmentCbor &&
+  peerRecord.availabilityCommitmentDigest ===
+    context.availabilityCommitmentDigest &&
   peerRecord.committeeSignersHash === context.committeeSignersHash &&
   peerRecord.validation.headerHash === context.headerHash &&
   peerRecord.validation.rootsMatch;
@@ -551,6 +562,8 @@ const contextFromSignatureRecord = (
   deploymentFingerprint: record.deploymentFingerprint,
   headerHash: record.headerHash,
   payloadHash: record.payloadHash,
+  availabilityCommitmentCbor: record.availabilityCommitmentCbor,
+  availabilityCommitmentDigest: record.availabilityCommitmentDigest,
   committeeSignersHash: record.committeeSignersHash,
   l1ChainPoint: record.l1ChainPoint,
   validation: record.validation,

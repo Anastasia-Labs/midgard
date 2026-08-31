@@ -303,7 +303,7 @@ export const makeObservedNode = ({
 }: {
   readonly header: HeaderV1;
   readonly headerHash: string;
-  readonly daAttestation?: string;
+  readonly daAttestation?: SDK.DaAvailabilityStateQueueStatusV1;
   readonly depth?: number;
   readonly outRef?: string;
   readonly slot?: number;
@@ -386,8 +386,49 @@ export const minimalConfig = ({
   deploymentManifestRaw: "{}",
   deploymentManifest: {},
   contractDeploymentInfo: {},
+  availabilityChallenge: {
+    responseClasses: {
+      smallPayloadMaxBytes: 65_536,
+      smallResponseWindowMs: 3_600_000,
+      fullPayloadMaxBytes: 67_108_864,
+      fullResponseWindowMs: 172_800_000,
+    },
+    responseGeometry: {
+      chunkByteLength: 14_020,
+      trancheByteLength: 4 * 1024 * 1024,
+      maxTrancheCount: 16,
+    },
+    daBondLovelace: 10_000_000_000,
+    challengerBondLovelace: 10_000_000_000,
+    maxOpenFeeLovelace: 500_000,
+    maxPublicationFeeLovelace: 500_000,
+    maxSettlementFeeLovelace: 500_000,
+    maxCloseFeeLovelace: 1_000_000,
+    maxTimeoutFeeLovelace: 1_200_000,
+    bondOwnerCredential: "76".repeat(28),
+  },
   consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
   midgardNodeDeployment: {
+    hubOraclePolicyId: "99".repeat(28),
+    correctionLockAddress: "addr_test1correctionlock",
+    hubOracle: minimalAuthenticatedDeployment({
+      prefix: "hubOracle",
+      policyId: "99".repeat(28),
+      spendingScriptHash: "97".repeat(28),
+      spendingScriptAddress: "addr_test1huboracle",
+    }),
+    availabilityChallenge: minimalAuthenticatedDeployment({
+      prefix: "availabilityChallenge",
+      policyId: "96".repeat(28),
+      spendingScriptHash: "95".repeat(28),
+      spendingScriptAddress: "addr_test1availability",
+    }),
+    fraudProof: minimalAuthenticatedDeployment({
+      prefix: "fraudProof",
+      policyId: "98".repeat(28),
+      spendingScriptHash: "97".repeat(28),
+      spendingScriptAddress: "addr_test1fraudproof",
+    }),
     daAttestation: minimalAuthenticatedDeployment({
       prefix: "daAttestation",
       policyId: "33".repeat(28),
@@ -476,6 +517,10 @@ export const minimalConfig = ({
   daParamsGovernorAddress: "addr_test1daparams",
   stateQueuePolicyId: "44".repeat(28),
   stateQueueAddress: "addr_test1statequeue",
+  hubOraclePolicyId: "99".repeat(28),
+  correctionLockAddress: "addr_test1correctionlock",
+  fraudProofPolicyId: "98".repeat(28),
+  fraudProofAddress: "addr_test1fraudproof",
   peerRequestTimeoutMs: 1000,
   peerReplayWindowMs: 300_000,
   peerMaxBodyBytes: 1_048_576,

@@ -1,3 +1,5 @@
+import * as SDK from "@al-ft/midgard-sdk";
+
 import type { WatcherConfig } from "../config.js";
 import { type DaAttestationChainReader } from "../l1/da-attestation-reader.js";
 import { daAttestationValidatorsFromDeployment } from "../l1/deployment.js";
@@ -82,6 +84,30 @@ export const onChainCoordinatorFromConfig = async (
     lucid,
     contracts,
     referenceScripts,
+    availabilityParameters: SDK.daAvailabilityParametersV1({
+      responseGeometry: SDK.availabilityResponseGeometryV1(
+        config.availabilityChallenge.responseGeometry,
+      ),
+      daBondLovelace: BigInt(config.availabilityChallenge.daBondLovelace),
+      challengerBondLovelace: BigInt(
+        config.availabilityChallenge.challengerBondLovelace,
+      ),
+      maxOpenFeeLovelace: BigInt(
+        config.availabilityChallenge.maxOpenFeeLovelace,
+      ),
+      maxPublicationFeeLovelace: BigInt(
+        config.availabilityChallenge.maxPublicationFeeLovelace,
+      ),
+      maxSettlementFeeLovelace: BigInt(
+        config.availabilityChallenge.maxSettlementFeeLovelace,
+      ),
+      maxCloseFeeLovelace: BigInt(
+        config.availabilityChallenge.maxCloseFeeLovelace,
+      ),
+      maxTimeoutFeeLovelace: BigInt(
+        config.availabilityChallenge.maxTimeoutFeeLovelace,
+      ),
+    }),
   });
   return new OnChainLifecycleCoordinator({
     chainReader,

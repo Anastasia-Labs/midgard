@@ -20,7 +20,11 @@ import type {
 } from "../src/domain.js";
 import { PeerSignatureCoordinator } from "../src/peer/coordinator.js";
 import { PeerSignaturePoller } from "../src/peer/poller.js";
-import { validateDaSignatureRecord } from "../src/peer/signatures.js";
+import {
+  type DaAvailabilityCommitmentAuthorityV1,
+  deriveExpectedDaAvailabilityCommitmentV1,
+  validateDaSignatureRecord,
+} from "../src/peer/signatures.js";
 import { resolveRemoteDaAttestationTargets } from "../src/peer/targets.js";
 import {
   loadDaSigner,
@@ -31,6 +35,23 @@ import {
 import { JsonFileWatcherStore } from "../src/store.js";
 import { bytesToHex } from "../src/utils/hex.js";
 import { makePayloadFixture, tempDir } from "./helpers.js";
+
+const availabilityCommitmentAuthority: DaAvailabilityCommitmentAuthorityV1 = {
+  deploymentIdentity: "99".repeat(28),
+  bondOwnerCredential: "44".repeat(28),
+  responseGeometry: {
+    chunkByteLength: 4_096,
+    trancheByteLength: 4 * 1_024 * 1_024,
+    maxTrancheCount: 16,
+  },
+};
+
+const commitmentFor = (headerHash: string, payloadCborHex = "aabb") =>
+  deriveExpectedDaAvailabilityCommitmentV1({
+    authority: availabilityCommitmentAuthority,
+    headerHash,
+    payloadCborHex,
+  });
 
 describe("PeerSignatureCoordinator", () => {
   it("does not rebroadcast or submit signatures while durable L1 state is quarantined", async () => {
@@ -70,10 +91,12 @@ describe("PeerSignatureCoordinator", () => {
           return { status: "accepted" };
         },
         attestationsByHeader: async () => [],
+        publishConflictEvidence: async () => undefined,
       },
       signer,
       signerIndex: 0,
       signerValidation,
+      availabilityCommitmentAuthority,
       store,
       retryInitialDelayMs: 1,
       retryMaxDelayMs: 2,
@@ -85,15 +108,17 @@ describe("PeerSignatureCoordinator", () => {
         },
       },
     });
+    const quarantinedCommitment = commitmentFor("42".repeat(28));
     const record = signatureRecord({
       deploymentFingerprint: "dep",
       headerHash: "42".repeat(28),
       signerIndex: 0,
       committeeSignersHash,
+      commitment: quarantinedCommitment,
       signatureWitness: signDaAttestation({
         signer,
         signerIndex: 0,
-        headerHash: "42".repeat(28),
+        availabilityCommitment: quarantinedCommitment.commitment,
       }),
     });
 
@@ -161,6 +186,7 @@ describe("PeerSignatureCoordinator", () => {
       headerHash: "22".repeat(28),
       signerIndex: 0,
       committeeSignersHash: "33".repeat(32),
+      commitment: commitmentFor("22".repeat(28)),
       signatureWitness: "00" + "44".repeat(64),
     });
     const { source: _, ...missingSource } = record;
@@ -225,6 +251,7 @@ describe("PeerSignatureCoordinator", () => {
       deploymentFingerprint,
       localPeerId: "receiver-peer",
       committeeValidation: receiverValidation,
+      availabilityCommitmentAuthority,
       store: receiverStore,
     });
     const coordinator = new PeerSignatureCoordinator({
@@ -237,6 +264,7 @@ describe("PeerSignatureCoordinator", () => {
       signer: senderSigner,
       signerIndex: 1,
       signerValidation: senderValidation,
+      availabilityCommitmentAuthority,
       store: senderStore,
       requestTimeoutMs: 1000,
       retryInitialDelayMs: 10,
@@ -244,23 +272,29 @@ describe("PeerSignatureCoordinator", () => {
       retryMaxAttempts: 3,
     });
 
+    const commitment = commitmentFor(headerHash);
     const result = await coordinator.publishSignature(
       signatureRecord({
         deploymentFingerprint,
         headerHash,
         signerIndex: 1,
         committeeSignersHash,
+        commitment,
         signatureWitness: signDaAttestation({
           signer: senderSigner,
           signerIndex: 1,
-          headerHash,
+          availabilityCommitment: commitment.commitment,
         }),
       }),
     );
 
     expect(result).toBe("posted");
     await expect(
-      receiverStore.getDaSignature({ headerHash, signerIndex: 1 }),
+      receiverStore.getDaSignature({
+        headerHash,
+        availabilityCommitmentDigest: commitment.commitmentDigest,
+        signerIndex: 1,
+      }),
     ).resolves.toMatchObject({
       source: "peer",
       sourcePeer: "sender-peer",
@@ -301,6 +335,7 @@ describe("PeerSignatureCoordinator", () => {
       deploymentFingerprint,
       localPeerId: "receiver-peer",
       committeeValidation: receiverValidation,
+      availabilityCommitmentAuthority,
       store: receiverStore,
     });
     const coordinator = new PeerSignatureCoordinator({
@@ -313,6 +348,7 @@ describe("PeerSignatureCoordinator", () => {
       signer: senderSigner,
       signerIndex: 1,
       signerValidation: senderValidation,
+      availabilityCommitmentAuthority,
       store: senderStore,
       requestTimeoutMs: 1000,
       retryInitialDelayMs: 10,
@@ -322,15 +358,17 @@ describe("PeerSignatureCoordinator", () => {
         publishSignature: async () => "posted",
       },
     });
+    const commitment = commitmentFor(headerHash);
     const record = signatureRecord({
       deploymentFingerprint,
       headerHash,
       signerIndex: 1,
       committeeSignersHash,
+      commitment,
       signatureWitness: signDaAttestation({
         signer: senderSigner,
         signerIndex: 1,
-        headerHash,
+        availabilityCommitment: commitment.commitment,
       }),
     });
 
@@ -362,7 +400,11 @@ describe("PeerSignatureCoordinator", () => {
       { peerId: "receiver-peer", status: "posted", attempts: 2 },
     ]);
     await expect(
-      receiverStore.getDaSignature({ headerHash, signerIndex: 1 }),
+      receiverStore.getDaSignature({
+        headerHash,
+        availabilityCommitmentDigest: commitment.commitmentDigest,
+        signerIndex: 1,
+      }),
     ).resolves.toMatchObject({ source: "peer" });
   });
 
@@ -394,6 +436,7 @@ describe("PeerSignatureCoordinator", () => {
       validationStatus: "verified",
       conflictStatus: "none",
     });
+    const commitment = commitmentFor(headerHash);
     const exchange: DaAttestationExchange = {
       publishAttestation: async () => ({ status: "accepted" }),
       attestationsByHeader: async () => [
@@ -402,10 +445,11 @@ describe("PeerSignatureCoordinator", () => {
           headerHash,
           signerIndex: 3,
           committeeSignersHash,
+          commitment,
           signatureWitness: signDaAttestation({
             signer: signers[3]!,
             signerIndex: 3,
-            headerHash,
+            availabilityCommitment: commitment.commitment,
           }),
         }),
         signatureRecord({
@@ -413,19 +457,22 @@ describe("PeerSignatureCoordinator", () => {
           headerHash,
           signerIndex: 4,
           committeeSignersHash,
+          commitment,
           signatureWitness: signDaAttestation({
             signer: signers[4]!,
             signerIndex: 4,
-            headerHash,
+            availabilityCommitment: commitment.commitment,
           }),
         }),
       ],
+      publishConflictEvidence: async () => undefined,
     };
     const poller = new PeerSignaturePoller({
       deploymentFingerprint,
       peers: [{ peerId: "committee-peer" }],
       attestationExchange: exchange,
       signerValidation: committeeValidation,
+      availabilityCommitmentAuthority,
       store: localStore,
       requestTimeoutMs: 1000,
     });
@@ -470,16 +517,18 @@ describe("PeerSignatureCoordinator", () => {
       payloadCbor,
       header,
     });
+    const commitment = commitmentFor(headerHash, payloadCbor.toString("hex"));
     const receiverRecord = signatureRecord({
       deploymentFingerprint,
       headerHash,
       signerIndex: 0,
       committeeSignersHash,
       payloadHash,
+      commitment,
       signatureWitness: signDaAttestation({
         signer: receiverSigner,
         signerIndex: 0,
-        headerHash,
+        availabilityCommitment: commitment.commitment,
       }),
     });
     await receiverStore.saveDaSignature(receiverRecord);
@@ -487,12 +536,14 @@ describe("PeerSignatureCoordinator", () => {
       deploymentFingerprint,
       localPeerId: "receiver-peer",
       committeeValidation,
+      availabilityCommitmentAuthority,
       store: receiverStore,
     });
     const localProtocol = new StoreBackedDaAttestationProtocol({
       deploymentFingerprint,
       localPeerId: "local-peer",
       committeeValidation,
+      availabilityCommitmentAuthority,
       store: localStore,
     });
     const exchange = new DaLibp2pAttestationExchange({
@@ -588,12 +639,14 @@ describe("PeerSignatureCoordinator", () => {
         committeeSignersHash,
         threshold: 1,
       },
+      availabilityCommitmentAuthority,
       store: await JsonFileWatcherStore.open(await tempDir()),
     });
+    const commitment = commitmentFor(headerHash);
     const signatureWitness = signDaAttestation({
       signer,
       signerIndex: 0,
-      headerHash,
+      availabilityCommitment: commitment.commitment,
     });
     const gossip = protocol.gossipMessageFor(
       signatureRecord({
@@ -601,6 +654,7 @@ describe("PeerSignatureCoordinator", () => {
         headerHash,
         signerIndex: 0,
         committeeSignersHash,
+        commitment,
         signatureWitness,
       }),
     );
@@ -639,6 +693,7 @@ const inMemoryExchange = ({
       headerHash,
     });
   },
+  publishConflictEvidence: async () => undefined,
 });
 
 const seedByte = (value: number): string => {
@@ -655,6 +710,7 @@ const signatureRecord = ({
   committeeSignersHash,
   payloadHash = "22".repeat(32),
   signatureWitness,
+  commitment,
 }: {
   readonly deploymentFingerprint: string;
   readonly headerHash: string;
@@ -662,11 +718,14 @@ const signatureRecord = ({
   readonly committeeSignersHash: string;
   readonly payloadHash?: string;
   readonly signatureWitness: string;
+  readonly commitment: ReturnType<typeof commitmentFor>;
 }): DaSignatureRecordV1 => ({
   deploymentFingerprint,
   headerHash,
   signerIndex,
   signatureWitness,
+  availabilityCommitmentCbor: commitment.commitmentCbor,
+  availabilityCommitmentDigest: commitment.commitmentDigest,
   payloadHash,
   committeeSignersHash,
   signedAt: new Date().toISOString(),

@@ -671,6 +671,12 @@ describe("L1 provider adapters", () => {
       [
         {
           fetchStateQueueNodes: async () => [],
+          fetchStateQueueSnapshot: async () => ({
+            nodes: [],
+            confirmedHeaderHash: "00".repeat(28),
+            confirmedStateOutRef: `${"00".repeat(32)}#0`,
+            observedChainPoint: stalePoint,
+          }),
           currentChainPoint: async () => stalePoint,
         },
       ],
@@ -716,6 +722,17 @@ describe("L1 provider adapters", () => {
               chainPoint: { ...first.chainPoint, finalized: true },
             },
           ],
+          fetchStateQueueSnapshot: async () => ({
+            nodes: [
+              {
+                ...first,
+                chainPoint: { ...first.chainPoint, finalized: true },
+              },
+            ],
+            confirmedHeaderHash: "00".repeat(28),
+            confirmedStateOutRef: `${"00".repeat(32)}#0`,
+            observedChainPoint: queryPoint("query:kupo-a"),
+          }),
           currentChainPoint: async () => queryPoint("query:kupo-a"),
         },
         {
@@ -725,6 +742,17 @@ describe("L1 provider adapters", () => {
               chainPoint: { ...second.chainPoint, finalized: false },
             },
           ],
+          fetchStateQueueSnapshot: async () => ({
+            nodes: [
+              {
+                ...second,
+                chainPoint: { ...second.chainPoint, finalized: false },
+              },
+            ],
+            confirmedHeaderHash: "00".repeat(28),
+            confirmedStateOutRef: `${"00".repeat(32)}#0`,
+            observedChainPoint: queryPoint("query:db-sync-a"),
+          }),
           currentChainPoint: async () => queryPoint("query:db-sync-a"),
         },
       ],

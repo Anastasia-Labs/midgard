@@ -9,11 +9,12 @@ import type {
   PayloadRootSet,
   StateQueueHeaderRecord,
 } from "../domain.js";
+import { classifyDaAttestationMarker } from "../l1/attestation-marker.js";
 import {
-  classifyDaAttestationMarker,
-  formatUnexpectedDaAttestationMarker,
-} from "../l1/attestation-marker.js";
-import { validateDaSignatureRecord } from "../peer/signatures.js";
+  type DaAvailabilityCommitmentAuthorityV1,
+  deriveExpectedDaAvailabilityCommitmentV1,
+  validateDaSignatureRecord,
+} from "../peer/signatures.js";
 import type { DaCommitteeValidation } from "../signer.js";
 import type { WatcherStore } from "../store.js";
 import type {
@@ -31,7 +32,7 @@ export type SubmitterReconcileResult = {
 export type SubmitterReconcilerDeps = {
   readonly deploymentFingerprint: string;
   readonly committeeValidation: DaCommitteeValidation;
-  readonly daAttestationPolicyId: string;
+  readonly availabilityCommitmentAuthority: DaAvailabilityCommitmentAuthorityV1;
   readonly store: Pick<WatcherStore, "getDaPayload" | "listDaSignatures">;
   readonly coordinator: {
     readonly reconcileAttestation: (
@@ -57,25 +58,13 @@ export class SubmitterReconciler {
   async reconcileHeader(
     header: StateQueueHeaderRecord,
   ): Promise<SubmitterReconcileResult> {
-    const marker = classifyDaAttestationMarker(
-      header.daAttestation,
-      this.deps.daAttestationPolicyId,
-    );
+    const marker = classifyDaAttestationMarker(header.daAttestation);
     if (
       header.finalized &&
       header.status === "attested" &&
       marker.kind === "already_attested_expected"
     ) {
       return { status: "reconciled", reason: "already attested" };
-    }
-    if (
-      header.finalized &&
-      (marker.kind === "already_attested_foreign" || marker.kind === "invalid")
-    ) {
-      return {
-        status: "post_failed",
-        reason: formatUnexpectedDaAttestationMarker(header.headerHash, marker),
-      };
     }
     if (!isReconcilableHeader(header)) {
       return { status: "skipped", reason: "header is not in submitter scope" };
@@ -85,15 +74,24 @@ export class SubmitterReconciler {
       return { status: "skipped", reason: "verified payload is not available" };
     }
     await this.deps.peerPoller?.pollPeerSignatures(header.headerHash);
+    const expectedCommitment = deriveExpectedDaAvailabilityCommitmentV1({
+      authority: this.deps.availabilityCommitmentAuthority,
+      headerHash: header.headerHash,
+      payloadCborHex: payload.payloadCborHex,
+    });
     const witnessHexes = await this.validWitnessHexes(
       header.headerHash,
       payload,
+      expectedCommitment.commitmentCbor,
+      expectedCommitment.commitmentDigest,
     );
     const context = contextFromHeader({
       deploymentFingerprint: this.deps.deploymentFingerprint,
       committeeSignersHash: this.deps.committeeValidation.committeeSignersHash,
       header,
       payload,
+      availabilityCommitmentCbor: expectedCommitment.commitmentCbor,
+      availabilityCommitmentDigest: expectedCommitment.commitmentDigest,
     });
     const result = await this.deps.coordinator.reconcileAttestation({
       context,
@@ -115,6 +113,8 @@ export class SubmitterReconciler {
   private async validWitnessHexes(
     headerHash: string,
     payload: DaPayloadRecord,
+    expectedAvailabilityCommitmentCbor: string,
+    expectedAvailabilityCommitmentDigest: string,
   ): Promise<readonly string[]> {
     const selected = new Map<number, string>();
     for (const signature of await this.deps.store.listDaSignatures(
@@ -126,6 +126,8 @@ export class SubmitterReconciler {
         deploymentFingerprint: this.deps.deploymentFingerprint,
         signerValidation: this.deps.committeeValidation,
         verifiedPayload: payload,
+        expectedAvailabilityCommitmentCbor,
+        expectedAvailabilityCommitmentDigest,
       });
       if (validationError !== undefined) {
         continue;
@@ -154,15 +156,21 @@ const contextFromHeader = ({
   committeeSignersHash,
   header,
   payload,
+  availabilityCommitmentCbor,
+  availabilityCommitmentDigest,
 }: {
   readonly deploymentFingerprint: string;
   readonly committeeSignersHash: string;
   readonly header: StateQueueHeaderRecord;
   readonly payload: DaPayloadRecord;
+  readonly availabilityCommitmentCbor: string;
+  readonly availabilityCommitmentDigest: string;
 }): DaAttestationContext => ({
   deploymentFingerprint,
   headerHash: header.headerHash,
   payloadHash: payload.payloadSha256,
+  availabilityCommitmentCbor,
+  availabilityCommitmentDigest,
   committeeSignersHash,
   l1ChainPoint: header.observedChainPoint,
   validation: validationSummaryFromHeader(

@@ -34,6 +34,7 @@ import {
   parseDaStoredConflictEvidenceRecordV1,
   parseDaStoredPayloadRecordV1,
 } from "./domain.js";
+import type { StateQueueReplayAnchorV1 } from "./l1/state-queue-scanner.js";
 
 type StoreData = {
   readonly deployment?: WatcherDeploymentRecord;
@@ -101,6 +102,7 @@ export type L1SourceState = {
   readonly status: "healthy" | "quarantined";
   readonly observations: readonly L1ObservedDecision[];
   readonly observedAt: string;
+  readonly stateQueueReplayAnchor?: StateQueueReplayAnchorV1;
   readonly quarantineReason?: string;
   readonly quarantinedAt?: string;
 };
@@ -160,6 +162,7 @@ export interface WatcherStore {
   saveDaSignature(record: DaSignatureRecord): Promise<void>;
   getDaSignature(args: {
     readonly headerHash: string;
+    readonly availabilityCommitmentDigest: string;
     readonly signerIndex: number;
   }): Promise<DaSignatureRecord | undefined>;
   listDaSignatures(headerHash?: string): Promise<readonly DaSignatureRecord[]>;
@@ -181,6 +184,7 @@ export interface WatcherStore {
   getPeerBroadcast(args: {
     readonly peerId: string;
     readonly headerHash: string;
+    readonly availabilityCommitmentDigest: string;
     readonly signerIndex: number;
   }): Promise<DaPeerBroadcastRecord | undefined>;
   listPeerBroadcasts(
@@ -365,8 +369,11 @@ export class JsonFileWatcherStore implements WatcherStore {
           : {
               daSignatures: {
                 ...data.daSignatures,
-                [signatureKey(signature.headerHash, signature.signerIndex)]:
-                  signature,
+                [signatureKey(
+                  signature.headerHash,
+                  signature.availabilityCommitmentDigest,
+                  signature.signerIndex,
+                )]: signature,
               },
             }),
       };
@@ -424,8 +431,11 @@ export class JsonFileWatcherStore implements WatcherStore {
           : {
               daSignatures: {
                 ...data.daSignatures,
-                [signatureKey(signature.headerHash, signature.signerIndex)]:
-                  signature,
+                [signatureKey(
+                  signature.headerHash,
+                  signature.availabilityCommitmentDigest,
+                  signature.signerIndex,
+                )]: signature,
               },
             }),
       };
@@ -619,6 +629,7 @@ export class JsonFileWatcherStore implements WatcherStore {
           ...data.daSignatures,
           [signatureKey(
             canonicalRecord.headerHash,
+            canonicalRecord.availabilityCommitmentDigest,
             canonicalRecord.signerIndex,
           )]: canonicalRecord,
         },
@@ -628,10 +639,17 @@ export class JsonFileWatcherStore implements WatcherStore {
 
   async getDaSignature(args: {
     readonly headerHash: string;
+    readonly availabilityCommitmentDigest: string;
     readonly signerIndex: number;
   }): Promise<DaSignatureRecordV1 | undefined> {
     const data = await this.read();
-    return data.daSignatures[signatureKey(args.headerHash, args.signerIndex)];
+    return data.daSignatures[
+      signatureKey(
+        args.headerHash,
+        args.availabilityCommitmentDigest,
+        args.signerIndex,
+      )
+    ];
   }
 
   async listDaSignatures(
@@ -646,6 +664,9 @@ export class JsonFileWatcherStore implements WatcherStore {
       .sort(
         (left, right) =>
           left.headerHash.localeCompare(right.headerHash) ||
+          left.availabilityCommitmentDigest.localeCompare(
+            right.availabilityCommitmentDigest,
+          ) ||
           left.signerIndex - right.signerIndex,
       );
   }
@@ -745,6 +766,7 @@ export class JsonFileWatcherStore implements WatcherStore {
         [peerBroadcastKey(
           record.peerId,
           record.headerHash,
+          record.availabilityCommitmentDigest,
           record.signerIndex,
         )]: record,
       },
@@ -754,11 +776,17 @@ export class JsonFileWatcherStore implements WatcherStore {
   async getPeerBroadcast(args: {
     readonly peerId: string;
     readonly headerHash: string;
+    readonly availabilityCommitmentDigest: string;
     readonly signerIndex: number;
   }): Promise<DaPeerBroadcastRecord | undefined> {
     const data = await this.read();
     return data.peerBroadcasts[
-      peerBroadcastKey(args.peerId, args.headerHash, args.signerIndex)
+      peerBroadcastKey(
+        args.peerId,
+        args.headerHash,
+        args.availabilityCommitmentDigest,
+        args.signerIndex,
+      )
     ];
   }
 
@@ -774,6 +802,9 @@ export class JsonFileWatcherStore implements WatcherStore {
       .sort(
         (left, right) =>
           left.headerHash.localeCompare(right.headerHash) ||
+          left.availabilityCommitmentDigest.localeCompare(
+            right.availabilityCommitmentDigest,
+          ) ||
           left.signerIndex - right.signerIndex ||
           left.peerId.localeCompare(right.peerId),
       );
@@ -852,8 +883,12 @@ export class JsonFileWatcherStore implements WatcherStore {
   }
 }
 
-const signatureKey = (headerHash: string, signerIndex: number): string =>
-  `${headerHash}:${signerIndex.toString()}`;
+const signatureKey = (
+  headerHash: string,
+  availabilityCommitmentDigest: string,
+  signerIndex: number,
+): string =>
+  `${headerHash}:${availabilityCommitmentDigest}:${signerIndex.toString()}`;
 
 const conflictEvidenceKey = (
   record: Pick<
@@ -865,8 +900,10 @@ const conflictEvidenceKey = (
 const peerBroadcastKey = (
   peerId: string,
   headerHash: string,
+  availabilityCommitmentDigest: string,
   signerIndex: number,
-): string => `${peerId}:${headerHash}:${signerIndex.toString()}`;
+): string =>
+  `${peerId}:${headerHash}:${availabilityCommitmentDigest}:${signerIndex.toString()}`;
 
 const peerNonceKey = (
   deploymentFingerprint: string,
@@ -990,7 +1027,12 @@ const normalizeStoreData = (value: unknown): StoreData => {
     daSignatures: parseStoredRecordMap(
       record.daSignatures,
       parseDaSignatureRecordV1,
-      (entry) => signatureKey(entry.headerHash, entry.signerIndex),
+      (entry) =>
+        signatureKey(
+          entry.headerHash,
+          entry.availabilityCommitmentDigest,
+          entry.signerIndex,
+        ),
       "DA signature records V1",
     ),
     daConflictEvidence: parseStoredRecordMap(
@@ -1403,6 +1445,68 @@ const assertDecisionSignature = (
   }
 };
 
+const parseStateQueueReplayAnchorV1 = (
+  value: unknown,
+): StateQueueReplayAnchorV1 | undefined => {
+  if (value === undefined) return undefined;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  const anchor = value as Partial<StateQueueReplayAnchorV1>;
+  const keys = [
+    "deploymentIdentityDigest",
+    "stateQueuePolicyId",
+    "queue",
+    "blockNo",
+    "transactionIndex",
+  ];
+  if (
+    Object.keys(anchor).length !== keys.length ||
+    !Object.keys(anchor).every((key) => keys.includes(key)) ||
+    typeof anchor.deploymentIdentityDigest !== "string" ||
+    !/^[0-9a-f]{64}$/u.test(anchor.deploymentIdentityDigest) ||
+    typeof anchor.stateQueuePolicyId !== "string" ||
+    !/^[0-9a-f]{56}$/u.test(anchor.stateQueuePolicyId) ||
+    typeof anchor.blockNo !== "string" ||
+    !/^(?:0|[1-9][0-9]*)$/u.test(anchor.blockNo) ||
+    typeof anchor.transactionIndex !== "string" ||
+    !/^(?:0|[1-9][0-9]*)$/u.test(anchor.transactionIndex) ||
+    !Array.isArray(anchor.queue) ||
+    anchor.queue.length === 0
+  ) {
+    return undefined;
+  }
+  const queue = anchor.queue.map((value) => {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      return null;
+    }
+    const node = value as { headerHash?: unknown; outRef?: unknown };
+    return Object.keys(node).length === 2 &&
+      (node.headerHash === null ||
+        (typeof node.headerHash === "string" &&
+          /^[0-9a-f]{56}$/u.test(node.headerHash))) &&
+      typeof node.outRef === "string" &&
+      /^[0-9a-f]{64}#(?:0|[1-9][0-9]*)$/u.test(node.outRef)
+      ? { headerHash: node.headerHash as string | null, outRef: node.outRef }
+      : null;
+  });
+  if (
+    queue.some((node) => node === null) ||
+    queue[0]?.headerHash !== null ||
+    new Set(queue.map((node) => node!.headerHash)).size !== queue.length ||
+    new Set(queue.map((node) => node!.outRef)).size !== queue.length
+  ) {
+    return undefined;
+  }
+  return {
+    deploymentIdentityDigest: anchor.deploymentIdentityDigest,
+    stateQueuePolicyId: anchor.stateQueuePolicyId,
+    queue: queue as StateQueueReplayAnchorV1["queue"],
+    blockNo: anchor.blockNo,
+    transactionIndex: anchor.transactionIndex,
+  };
+};
+
 export const parseL1SourceState = (value: unknown): L1SourceState => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error("watcher L1 source state must be an object");
@@ -1416,6 +1520,7 @@ export const parseL1SourceState = (value: unknown): L1SourceState => {
     "status",
     "observations",
     "observedAt",
+    "stateQueueReplayAnchor",
     "quarantineReason",
     "quarantinedAt",
   ]);
@@ -1510,6 +1615,15 @@ export const parseL1SourceState = (value: unknown): L1SourceState => {
   ) {
     throw new Error("watcher L1 source observations contain duplicate headers");
   }
+  const stateQueueReplayAnchor = parseStateQueueReplayAnchorV1(
+    state.stateQueueReplayAnchor,
+  );
+  if (
+    state.stateQueueReplayAnchor !== undefined &&
+    stateQueueReplayAnchor === undefined
+  ) {
+    throw new Error("watcher L1 source replay anchor is malformed");
+  }
   return {
     schemaVersion: 1,
     sourceMode: state.sourceMode,
@@ -1518,6 +1632,7 @@ export const parseL1SourceState = (value: unknown): L1SourceState => {
     status: state.status,
     observations,
     observedAt: state.observedAt,
+    ...(stateQueueReplayAnchor === undefined ? {} : { stateQueueReplayAnchor }),
     ...(state.quarantineReason === undefined
       ? {}
       : { quarantineReason: state.quarantineReason }),

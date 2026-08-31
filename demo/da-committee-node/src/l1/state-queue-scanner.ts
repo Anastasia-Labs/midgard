@@ -8,35 +8,121 @@ import { blake2b } from "@noble/hashes/blake2.js";
 
 import type {
   ObservedStateQueueNode,
+  ObservedStateQueueSnapshotV1,
   StateQueueHeaderRecord,
 } from "../domain.js";
 import { bytesToHex, normalizeHex } from "../utils/hex.js";
 import { classifyDaAttestationMarker } from "./attestation-marker.js";
 import type { ChainSyncCursor, ChainSyncEvent } from "./provider.js";
+import { terminalRetentionOutcomesV1 } from "./terminal-retention-observation-v1.js";
 
 export interface StateQueueProvider {
   fetchStateQueueNodes(): Promise<readonly ObservedStateQueueNode[]>;
+  fetchStateQueueSnapshot?(): Promise<ObservedStateQueueSnapshotV1>;
+  fetchStateQueueReplayCheckpoints?(
+    anchor: readonly SDK.StateQueueTransitionNodeV1[],
+    current: readonly SDK.StateQueueTransitionNodeV1[],
+  ): Promise<readonly SDK.StateQueueAuthenticatedReplayCheckpointV1[]>;
   currentChainSyncCursor?(): Promise<ChainSyncCursor>;
   replayChainSyncEvents?(
     afterSequence: number,
   ): Promise<readonly ChainSyncEvent[]>;
 }
 
+export type StateQueueReplayAnchorV1 = Readonly<{
+  deploymentIdentityDigest: string;
+  stateQueuePolicyId: string;
+  queue: readonly SDK.StateQueueTransitionNodeV1[];
+  blockNo: string;
+  transactionIndex: string;
+}>;
+
 export type StateQueueScanConfig = {
   readonly deploymentFingerprint: string;
+  readonly deploymentIdentityDigest: string;
+  readonly stateQueuePolicyId: string;
   readonly daAttestationPolicyId: string;
   readonly finalityDepth: number;
   readonly consensusProfile: MidgardConsensusProfileV1;
+  readonly previousHeaders?: readonly StateQueueHeaderRecord[];
+  readonly terminalReplayAnchor?: StateQueueReplayAnchorV1;
+  readonly recordReplayAnchor?: (anchor: StateQueueReplayAnchorV1) => void;
 };
 
 export const scanStateQueue = async (
   provider: StateQueueProvider,
   config: StateQueueScanConfig,
 ): Promise<readonly StateQueueHeaderRecord[]> => {
-  const nodes = await provider.fetchStateQueueNodes();
-  return nodes
+  const snapshot =
+    provider.fetchStateQueueSnapshot === undefined
+      ? undefined
+      : await provider.fetchStateQueueSnapshot();
+  const nodes = snapshot?.nodes ?? (await provider.fetchStateQueueNodes());
+  const current = nodes
     .filter((node) => node.linkedListKey !== "Empty")
     .map((node) => validateObservedNode(node, config));
+  const replayAnchor = config.terminalReplayAnchor;
+  const finalQueue =
+    snapshot === undefined
+      ? []
+      : [
+          { headerHash: null, outRef: snapshot.confirmedStateOutRef },
+          ...current.map(({ headerHash, stateQueueOutRef }) => ({
+            headerHash,
+            outRef: stateQueueOutRef,
+          })),
+        ];
+  const checkpoints =
+    provider.fetchStateQueueReplayCheckpoints === undefined ||
+    replayAnchor === undefined
+      ? []
+      : await provider.fetchStateQueueReplayCheckpoints(
+          replayAnchor.queue,
+          finalQueue,
+        );
+  if (
+    replayAnchor !== undefined &&
+    JSON.stringify(replayAnchor.queue) !== JSON.stringify(finalQueue) &&
+    checkpoints.length === 0
+  ) {
+    throw new Error(
+      "state-queue changed without an authenticated replay checkpoint",
+    );
+  }
+  const records = terminalRetentionOutcomesV1(
+    config.previousHeaders ?? [],
+    current,
+    checkpoints,
+    snapshot,
+    {
+      deploymentFingerprint: config.deploymentFingerprint,
+      deploymentIdentityDigest: config.deploymentIdentityDigest,
+      stateQueuePolicyId: config.stateQueuePolicyId,
+      finalityDepth: config.finalityDepth,
+      ...(config.terminalReplayAnchor === undefined
+        ? {}
+        : { replayAnchor: config.terminalReplayAnchor }),
+    },
+  );
+  if (snapshot !== undefined && config.recordReplayAnchor !== undefined) {
+    const last = checkpoints.at(-1);
+    const bootstrapBlockNo = Math.max(
+      snapshot.observedChainPoint.blockHeight ?? 0,
+      ...current.map(
+        ({ observedChainPoint }) => observedChainPoint.blockHeight ?? 0,
+      ),
+    );
+    config.recordReplayAnchor({
+      deploymentIdentityDigest: config.deploymentIdentityDigest,
+      stateQueuePolicyId: config.stateQueuePolicyId,
+      queue: finalQueue,
+      blockNo:
+        last?.blockNo ?? replayAnchor?.blockNo ?? bootstrapBlockNo.toString(),
+      transactionIndex:
+        last?.transactionIndex ?? replayAnchor?.transactionIndex ?? "0",
+    });
+  }
+  return records;
 };
 
 export const hashBlockHeaderV1 = (header: SDK.HeaderV1): string => {
@@ -70,22 +156,13 @@ const validateObservedNode = (
       validationErrors.push("block_asset_suffix_mismatch");
     }
   }
-  const attestationMarker = classifyDaAttestationMarker(
-    node.daAttestation,
-    config.daAttestationPolicyId,
-  );
-  const unexpectedAttestation =
-    attestationMarker.kind === "already_attested_foreign" ||
-    attestationMarker.kind === "invalid";
+  const attestationMarker = classifyDaAttestationMarker(node.daAttestation);
   const status =
-    validationErrors.length > 0 || unexpectedAttestation
+    validationErrors.length > 0
       ? "conflicted"
       : attestationMarker.kind === "unattested"
         ? "unattested"
         : "attested";
-  if (status === "conflicted" && unexpectedAttestation) {
-    validationErrors.push("unexpected_da_attestation_marker");
-  }
   return {
     deploymentFingerprint: config.deploymentFingerprint,
     headerHash: computedHeaderHash,

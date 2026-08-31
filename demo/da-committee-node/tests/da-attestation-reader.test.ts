@@ -88,14 +88,20 @@ describe("LucidDaAttestationChainReader", () => {
     );
     const datum: SDK.DaAttestationDatum = {
       header_hash: headerHash,
+      availability_commitment: availabilityCommitment(headerHash),
       da_threshold: 2n,
       committee_signers_hash: "34".repeat(32),
+      rescue_beneficiary: {
+        paymentCredential: { PublicKeyCredential: ["56".repeat(28)] },
+        stakeCredential: null,
+      },
       attested_signers: "80" + "00".repeat(31),
       attestation_count: 1n,
     };
     const foreignDatum: SDK.DaAttestationDatum = {
       ...datum,
       header_hash: "99".repeat(28),
+      availability_commitment: availabilityCommitment("99".repeat(28)),
     };
     const lucid = fakeLucid([
       {
@@ -319,6 +325,21 @@ describe("LucidDaAttestationChainReader", () => {
     ).rejects.toThrow(/observation provenance disagreement/u);
   });
 });
+
+const availabilityCommitment = (
+  headerHash: string,
+): SDK.DaAvailabilityCommitmentV1 =>
+  SDK.buildDaAvailabilityCommitmentV1({
+    deploymentIdentity: "99".repeat(28),
+    headerHash,
+    payload: Buffer.from("public retained DA"),
+    bondOwner: "76".repeat(28),
+    responseGeometry: SDK.availabilityResponseGeometryV1({
+      chunkByteLength: 14_020,
+      trancheByteLength: 4 * 1_024 * 1_024,
+      maxTrancheCount: 16,
+    }),
+  });
 
 const fakeLucid = (utxos: readonly UTxO[]) =>
   ({

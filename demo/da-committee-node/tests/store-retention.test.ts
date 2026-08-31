@@ -17,12 +17,23 @@ import {
   pruneExpiredDaPayloadsV1,
   retentionCandidatesV1,
   retentionDeadlineReportV1,
+  runRetentionCycleV1,
 } from "../src/store/retention.js";
 import { fixtureHeaderBase, tempDir } from "./helpers.js";
 
 const FINGERPRINT = "cd".repeat(32);
 const NOW = Date.UTC(2026, 7, 3);
 const REQUIRED_RETENTION_MS = MIDGARD_RETENTION_WINDOW_V1.requiredRetentionMs;
+const retentionOptions = (nowMs = NOW) => ({
+  nowMs,
+  deploymentFingerprint: FINGERPRINT,
+  minimumFinalityDepth: 30,
+  availabilityChallengeAuthority: {
+    deploymentFingerprint: FINGERPRINT,
+    capability: "deployed" as const,
+    activeHeaderHashes: new Set<string>(),
+  },
+});
 
 const openStores = new Set<JsonFileWatcherStore>();
 
@@ -57,7 +68,17 @@ const headerRecord = (
   },
   computedHeaderHash: headerHash,
   daAttestation: SDK.NO_DA_ATTESTATION,
-  observedChainPoint: { finalized: true },
+  observedChainPoint:
+    status === "merged" || status === "removed"
+      ? {
+          slot: 100,
+          blockHash: "12".repeat(32),
+          blockHeight: 90,
+          depth: 30,
+          finalized: true,
+          providerSource: "authenticated_state_queue_transition_v1",
+        }
+      : { finalized: true },
   finalized: true,
   status,
   validationErrors: [],
@@ -119,7 +140,7 @@ describe("retentionCandidatesV1", () => {
       { headerHash: hashOf(4), endTimeMs: NOW, status: "merged" },
     ]);
 
-    const candidates = await retentionCandidatesV1(store, { nowMs: NOW });
+    const candidates = await retentionCandidatesV1(store, retentionOptions());
     expect(candidates).toHaveLength(4);
     expect(
       candidates.map((candidate) => [
@@ -138,7 +159,7 @@ describe("retentionCandidatesV1", () => {
   it("retains a payload with no header row (fail closed)", async () => {
     const store = await openStore();
     await seed(store, [{ headerHash: hashOf(5), withoutHeader: true }]);
-    const [candidate] = await retentionCandidatesV1(store, { nowMs: NOW });
+    const [candidate] = await retentionCandidatesV1(store, retentionOptions());
     expect(candidate).toMatchObject({
       headerPresent: false,
       headerStatus: undefined,
@@ -162,8 +183,7 @@ describe("retentionCandidatesV1", () => {
       },
     ]);
     const [candidate] = await retentionCandidatesV1(store, {
-      nowMs: NOW,
-      deploymentFingerprint: FINGERPRINT,
+      ...retentionOptions(),
     });
     expect(candidate?.fingerprintMismatch).toBe(true);
     expect(candidate?.decision.decision).toBe("retain");
@@ -179,7 +199,7 @@ describe("retentionCandidatesV1", () => {
         status: "merged",
       },
     ]);
-    const candidates = await retentionCandidatesV1(store, { nowMs: NOW });
+    const candidates = await retentionCandidatesV1(store, retentionOptions());
     for (const candidate of candidates) {
       expect(candidate.blockEndTimeMs).toBeNull();
       expect(candidate.decision).toEqual({
@@ -196,7 +216,7 @@ describe("retentionCandidatesV1", () => {
       { headerHash: hashOf(9), endTimeMs: endTime, status: "merged" },
       { headerHash: hashOf(10), endTimeMs: endTime - 1, status: "merged" },
     ]);
-    const candidates = await retentionCandidatesV1(store, { nowMs: NOW });
+    const candidates = await retentionCandidatesV1(store, retentionOptions());
     expect(candidates[0]?.decision).toMatchObject({
       decision: "retain",
       reasonCode: "still_within_retention_window",
@@ -220,7 +240,7 @@ describe("pruneExpiredDaPayloadsV1", () => {
       { headerHash: hashOf(3), endTimeMs: expired, status: "conflicted" },
       { headerHash: hashOf(4), withoutHeader: true },
     ]);
-    const result = await pruneExpiredDaPayloadsV1(store, { nowMs: NOW });
+    const result = await pruneExpiredDaPayloadsV1(store, retentionOptions());
     expect(result).toEqual({
       scanned: 4,
       prunedHeaderHashes: [hashOf(1)],
@@ -250,7 +270,7 @@ describe("pruneExpiredDaPayloadsV1", () => {
         }),
       ),
     );
-    const result = await pruneExpiredDaPayloadsV1(store, { nowMs: NOW });
+    const result = await pruneExpiredDaPayloadsV1(store, retentionOptions());
     expect(result.prunedHeaderHashes).toEqual([]);
     expect(result.retained).toBe(4);
   });
@@ -267,11 +287,86 @@ describe("pruneExpiredDaPayloadsV1", () => {
       },
     ]);
     const result = await pruneExpiredDaPayloadsV1(store, {
-      nowMs: NOW,
-      deploymentFingerprint: FINGERPRINT,
+      ...retentionOptions(),
     });
     expect(result.prunedHeaderHashes).toEqual([]);
     expect(await store.getDaPayload(hashOf(30))).toBeDefined();
+  });
+
+  it("requires exact finalized authenticated terminal-transition provenance", async () => {
+    const store = await openStore();
+    const expired = NOW - 40 * RETENTION_MS_PER_DAY_V1;
+    const headerHash = hashOf(33);
+    await seed(store, [{ headerHash, endTimeMs: expired, status: "merged" }]);
+    const authenticated = (await store.getStateQueueHeader(headerHash))!;
+
+    for (const forged of [
+      { ...authenticated, finalized: false },
+      {
+        ...authenticated,
+        observedChainPoint: {
+          ...authenticated.observedChainPoint,
+          finalized: false,
+        },
+      },
+      {
+        ...authenticated,
+        observedChainPoint: {
+          ...authenticated.observedChainPoint,
+          providerSource: "caller-authored",
+        },
+      },
+      {
+        ...authenticated,
+        observedChainPoint: {
+          ...authenticated.observedChainPoint,
+          depth: 29,
+        },
+      },
+      { ...authenticated, computedHeaderHash: hashOf(34) },
+      { ...authenticated, validationErrors: ["forged"] },
+    ]) {
+      await store.upsertStateQueueHeader(forged);
+      const result = await pruneExpiredDaPayloadsV1(store, retentionOptions());
+      expect(result.prunedHeaderHashes).toEqual([]);
+      expect(await store.getDaPayload(headerHash)).toBeDefined();
+    }
+
+    await store.upsertStateQueueHeader(authenticated);
+    const missingReleaseDepth = await pruneExpiredDaPayloadsV1(store, {
+      ...retentionOptions(),
+      minimumFinalityDepth: undefined,
+    });
+    expect(missingReleaseDepth.prunedHeaderHashes).toEqual([]);
+
+    const exact = await pruneExpiredDaPayloadsV1(store, retentionOptions());
+    expect(exact.prunedHeaderHashes).toEqual([headerHash]);
+  });
+
+  it("treats active or unavailable availability-challenge authority as a hold", async () => {
+    const store = await openStore();
+    const expired = NOW - 40 * RETENTION_MS_PER_DAY_V1;
+    await seed(store, [
+      { headerHash: hashOf(31), endTimeMs: expired, status: "merged" },
+      { headerHash: hashOf(32), endTimeMs: expired, status: "removed" },
+    ]);
+    const active = await pruneExpiredDaPayloadsV1(store, {
+      ...retentionOptions(),
+      availabilityChallengeAuthority: {
+        deploymentFingerprint: FINGERPRINT,
+        capability: "deployed",
+        activeHeaderHashes: new Set([hashOf(31)]),
+      },
+    });
+    expect(active.prunedHeaderHashes).toEqual([hashOf(32)]);
+    expect(await store.getDaPayload(hashOf(31))).toBeDefined();
+
+    const unavailable = await pruneExpiredDaPayloadsV1(store, {
+      nowMs: NOW,
+      deploymentFingerprint: FINGERPRINT,
+    });
+    expect(unavailable.prunedHeaderHashes).toEqual([]);
+    expect(await store.getDaPayload(hashOf(31))).toBeDefined();
   });
 });
 
@@ -286,7 +381,7 @@ describe("retentionDeadlineReportV1", () => {
         status: "attested",
       },
     ]);
-    const report = await retentionDeadlineReportV1(store, { nowMs: NOW });
+    const report = await retentionDeadlineReportV1(store, retentionOptions());
     expect(report.requiredRetentionMs).toBe(907_200_000);
     expect(report.deployedRetentionMs).toBe(1_296_000_000);
     expect(report.marginMs).toBe(388_800_000);
@@ -308,7 +403,7 @@ describe("retentionDeadlineReportV1", () => {
         status: "attested",
       },
     ]);
-    const report = await retentionDeadlineReportV1(store, { nowMs: NOW });
+    const report = await retentionDeadlineReportV1(store, retentionOptions());
     expect(report.entries[0]).toMatchObject({ headroomMs: 1, alerting: false });
     expect(report.alerting).toBe(0);
   });
@@ -316,7 +411,7 @@ describe("retentionDeadlineReportV1", () => {
   it("alerts on records with no computable deadline", async () => {
     const store = await openStore();
     await seed(store, [{ headerHash: hashOf(42), withoutHeader: true }]);
-    const report = await retentionDeadlineReportV1(store, { nowMs: NOW });
+    const report = await retentionDeadlineReportV1(store, retentionOptions());
     expect(report.entries[0]).toEqual({
       headerHash: hashOf(42),
       reasonCode: "missing_block_end_time",
@@ -332,11 +427,78 @@ describe("retentionDeadlineReportV1", () => {
     for (const bad of [Number.NaN, -1, 1.5, 2 ** 53]) {
       await expect(
         retentionDeadlineReportV1(store, {
-          nowMs: NOW,
+          ...retentionOptions(),
           alertThresholdMs: bad,
         }),
       ).rejects.toThrow(/alertThresholdMs/u);
     }
+  });
+});
+
+describe("runRetentionCycleV1", () => {
+  it("reports the authenticated Q54 decision set before deleting it", async () => {
+    const store = await openStore();
+    const headerHash = hashOf(43);
+    await seed(store, [
+      {
+        headerHash,
+        endTimeMs: NOW - 40 * RETENTION_MS_PER_DAY_V1,
+        status: "removed",
+      },
+    ]);
+
+    const cycle = await runRetentionCycleV1(store, retentionOptions());
+    expect(cycle.deadlines).toMatchObject({
+      scanned: 1,
+      retained: 0,
+      prunable: 1,
+      alerting: 0,
+    });
+    expect(cycle.prune).toEqual({
+      scanned: 1,
+      prunedHeaderHashes: [headerHash],
+      retained: 0,
+    });
+    expect(await store.getDaPayload(headerHash)).toBeUndefined();
+  });
+
+  it("never deletes a concurrent payload absent from the preceding report", async () => {
+    const store = await openStore();
+    const reported = hashOf(44);
+    const concurrent = hashOf(45);
+    const expired = NOW - 40 * RETENTION_MS_PER_DAY_V1;
+    await seed(store, [
+      { headerHash: reported, endTimeMs: expired, status: "merged" },
+    ]);
+    let injected = false;
+    const wrapped = new Proxy(store, {
+      get(target, property, receiver) {
+        if (property === "listStateQueueHeaders") {
+          return async () => {
+            if (!injected) {
+              injected = true;
+              await seed(store, [
+                {
+                  headerHash: concurrent,
+                  endTimeMs: expired,
+                  status: "removed",
+                },
+              ]);
+            }
+            return store.listStateQueueHeaders();
+          };
+        }
+        const value = Reflect.get(target, property, receiver) as unknown;
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+
+    const cycle = await runRetentionCycleV1(wrapped, retentionOptions());
+    expect(cycle.deadlines.entries.map(({ headerHash }) => headerHash)).toEqual(
+      [reported],
+    );
+    expect(cycle.prune.prunedHeaderHashes).toEqual([reported]);
+    expect(await store.getDaPayload(concurrent)).toBeDefined();
   });
 });
 

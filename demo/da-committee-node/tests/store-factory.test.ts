@@ -6,6 +6,7 @@ import {
   encodeDaConflictingSignatureHeaderEvidenceV1Cbor,
 } from "@al-ft/midgard-core/da-transport";
 import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import * as SDK from "@al-ft/midgard-sdk";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type {
@@ -175,6 +176,16 @@ describe("openWatcherStore", () => {
       status: "quarantined",
       observations: [],
       observedAt: "2026-07-28T00:00:00.000Z",
+      stateQueueReplayAnchor: {
+        deploymentIdentityDigest: "81".repeat(32),
+        stateQueuePolicyId: "82".repeat(28),
+        queue: [
+          { headerHash: null, outRef: `${"83".repeat(32)}#0` },
+          { headerHash: "84".repeat(28), outRef: `${"85".repeat(32)}#1` },
+        ],
+        blockNo: "90",
+        transactionIndex: "2",
+      },
       quarantineReason: "provider fork",
       quarantinedAt: "2026-07-28T00:00:01.000Z",
     });
@@ -184,6 +195,12 @@ describe("openWatcherStore", () => {
       sourceMode: "external_providers",
       status: "quarantined",
       quarantineReason: "provider fork",
+      stateQueueReplayAnchor: {
+        deploymentIdentityDigest: "81".repeat(32),
+        stateQueuePolicyId: "82".repeat(28),
+        blockNo: "90",
+        transactionIndex: "2",
+      },
     });
     await expect(
       restarted.saveL1SourceState({
@@ -228,6 +245,52 @@ describe("openWatcherStore", () => {
         observedAt: "2026-07-28T00:00:00.000Z",
       }),
     ).rejects.toThrow(/state is malformed/u);
+
+    const validState = {
+      schemaVersion: 1 as const,
+      sourceMode: "local_node" as const,
+      network: "Preview",
+      authoritySha256: "91".repeat(32),
+      status: "healthy" as const,
+      observations: [],
+      observedAt: "2026-07-28T00:00:00.000Z",
+    };
+    const validAnchor = {
+      deploymentIdentityDigest: "81".repeat(32),
+      stateQueuePolicyId: "82".repeat(28),
+      queue: [
+        { headerHash: null, outRef: `${"83".repeat(32)}#0` },
+        { headerHash: "84".repeat(28), outRef: `${"85".repeat(32)}#1` },
+      ],
+      blockNo: "90",
+      transactionIndex: "2",
+    };
+    const hostileAnchors: readonly unknown[] = [
+      { ...validAnchor, trusted: true },
+      { ...validAnchor, queue: [] },
+      {
+        ...validAnchor,
+        queue: [
+          { headerHash: "84".repeat(28), outRef: `${"83".repeat(32)}#0` },
+        ],
+      },
+      {
+        ...validAnchor,
+        queue: [
+          ...validAnchor.queue,
+          { headerHash: "86".repeat(28), outRef: `${"85".repeat(32)}#1` },
+        ],
+      },
+      { ...validAnchor, transactionIndex: "02" },
+    ];
+    for (const stateQueueReplayAnchor of hostileAnchors) {
+      await expect(
+        restarted.saveL1SourceState({
+          ...validState,
+          stateQueueReplayAnchor,
+        } as never),
+      ).rejects.toThrow(/replay anchor is malformed/u);
+    }
   });
 
   it("accepts only exact explicit-source DA signature records on JSON writes", async () => {
@@ -237,6 +300,7 @@ describe("openWatcherStore", () => {
     await expect(
       store.getDaSignature({
         headerHash: signature.headerHash,
+        availabilityCommitmentDigest: signature.availabilityCommitmentDigest,
         signerIndex: signature.signerIndex,
       }),
     ).resolves.toEqual(signature);
@@ -364,6 +428,7 @@ describe("openWatcherStore", () => {
     await expect(
       restarted.getDaSignature({
         headerHash: signature.headerHash,
+        availabilityCommitmentDigest: signature.availabilityCommitmentDigest,
         signerIndex: signature.signerIndex,
       }),
     ).resolves.toEqual(signature);
@@ -428,11 +493,17 @@ describe("openWatcherStore", () => {
   it("serializes concurrent decisions and makes L1 quarantine terminal", async () => {
     const store = await openJsonWatcherStore(await tempDir());
     const firstSignature = daSignatureRecord();
+    const secondCommitment = availabilityCommitment(
+      "23".repeat(28),
+      "44".repeat(28),
+    );
     const secondSignature: DaSignatureRecordV1 = {
       ...firstSignature,
       headerHash: "23".repeat(28),
       signerIndex: 1,
       signatureWitness: "01" + "45".repeat(64),
+      availabilityCommitmentCbor: secondCommitment.cbor,
+      availabilityCommitmentDigest: secondCommitment.digest,
       l1ChainPoint: {
         ...firstSignature.l1ChainPoint,
         slot: 2,
@@ -548,6 +619,8 @@ describe("openWatcherStore", () => {
     await expect(
       store.getDaSignature({
         headerHash: firstSignature.headerHash,
+        availabilityCommitmentDigest:
+          firstSignature.availabilityCommitmentDigest,
         signerIndex: firstSignature.signerIndex,
       }),
     ).resolves.toMatchObject({ broadcastStatus: "post_failed" });
@@ -627,11 +700,38 @@ const daPayloadRecord = (): DaPayloadRecord => ({
   validationStatus: "fetched",
 });
 
+const availabilityCommitment = (headerHash: string, bondOwner: string) => {
+  const commitment = SDK.buildDaAvailabilityCommitmentV1({
+    deploymentIdentity: "99".repeat(28),
+    headerHash,
+    payload: Buffer.from("public retained DA"),
+    bondOwner,
+    responseGeometry: SDK.availabilityResponseGeometryV1({
+      chunkByteLength: 4_096,
+      trancheByteLength: 4 * 1_024 * 1_024,
+      maxTrancheCount: 16,
+    }),
+  });
+  const cbor = SDK.encodeDaAvailabilityCommitmentV1(commitment);
+  return {
+    commitment,
+    cbor,
+    digest: computeDaSha256Hash(Buffer.from(cbor, "hex")).toString("hex"),
+  };
+};
+
+const signatureCommitment = availabilityCommitment(
+  "22".repeat(28),
+  "44".repeat(28),
+);
+
 const daSignatureRecord = (): DaSignatureRecordV1 => ({
   deploymentFingerprint: "11".repeat(32),
   headerHash: "22".repeat(28),
   signerIndex: 0,
   signatureWitness: "00" + "44".repeat(64),
+  availabilityCommitmentCbor: signatureCommitment.cbor,
+  availabilityCommitmentDigest: signatureCommitment.digest,
   payloadHash: "33".repeat(32),
   committeeSignersHash: "55".repeat(32),
   signedAt: "2026-07-27T00:00:01.000Z",
@@ -680,15 +780,19 @@ const daSignatureRecord = (): DaSignatureRecordV1 => ({
 });
 
 const daConflictEvidenceRecord = (): DaStoredConflictEvidenceRecordV1 => {
+  const lower = availabilityCommitment("11".repeat(28), "44".repeat(28));
+  const upper = availabilityCommitment("22".repeat(28), "55".repeat(28));
   const compactEvidence = encodeDaConflictingSignatureHeaderEvidenceV1Cbor({
     signerIndex: 0,
     daVkey: Buffer.alloc(32, 0x44),
     lowerHeaderHash: Buffer.alloc(28, 0x11),
+    lowerCommitmentCbor: Buffer.from(lower.cbor, "hex"),
     lowerHeaderWitness: Buffer.concat([
       Buffer.from([0]),
       Buffer.alloc(64, 0xaa),
     ]),
     upperHeaderHash: Buffer.alloc(28, 0x22),
+    upperCommitmentCbor: Buffer.from(upper.cbor, "hex"),
     upperHeaderWitness: Buffer.concat([
       Buffer.from([0]),
       Buffer.alloc(64, 0xbb),
@@ -698,7 +802,9 @@ const daConflictEvidenceRecord = (): DaStoredConflictEvidenceRecordV1 => {
     conflictSchemaVersion: 1,
     deploymentFingerprint: "11".repeat(32),
     headerHash: "11".repeat(28),
+    commitmentDigest: lower.digest,
     conflictingHeaderHash: "22".repeat(28),
+    conflictingCommitmentDigest: upper.digest,
     signerIndex: 0,
     evidenceKind: "equivocation",
     evidenceHash: computeDaSha256Hash(compactEvidence).toString("hex"),

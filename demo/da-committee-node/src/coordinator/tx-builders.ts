@@ -8,12 +8,11 @@ import {
   type TxSignBuilder,
   type UTxO,
 } from "@lucid-evolution/lucid";
+import { Effect } from "effect";
 
 import type { DaAttestationValidatorSet } from "../l1/deployment.js";
 import type { DaAttestationReferenceScripts } from "../l1/reference-scripts.js";
 import { isSignerBitSet, setSignerBit } from "./witnesses.js";
-
-const DA_ATTESTATION_OUTPUT_LOVELACE = 5_000_000n;
 
 type Assets = Record<string, bigint>;
 
@@ -45,6 +44,9 @@ export const buildInitDaAttestationTx = async ({
   daParamsDatum,
   target,
   referenceScripts,
+  rescueBeneficiary,
+  availabilityCommitment,
+  attestationOutputLovelace,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: DaAttestationValidatorSet;
@@ -52,19 +54,24 @@ export const buildInitDaAttestationTx = async ({
   readonly daParamsDatum: SDK.DaParamsDatum;
   readonly target: DaAttestationTarget;
   readonly referenceScripts: DaAttestationReferenceScripts;
+  readonly rescueBeneficiary: SDK.AddressData;
+  readonly availabilityCommitment: SDK.DaAvailabilityCommitmentV1;
+  readonly attestationOutputLovelace: bigint;
 }): Promise<TxSignBuilder> => {
   const attestationUnit = SDK.daAttestationUnit(
     contracts.daAttestation,
     target.headerHash,
   );
   const attestationAssets: Assets = {
-    lovelace: DA_ATTESTATION_OUTPUT_LOVELACE,
+    lovelace: attestationOutputLovelace,
     [attestationUnit]: 1n,
   };
   const attestationDatum: SDK.DaAttestationDatum = {
     header_hash: target.headerHash,
+    availability_commitment: availabilityCommitment,
     da_threshold: daParamsDatum.da_threshold,
     committee_signers_hash: daParamsDatum.committee_signers_hash,
+    rescue_beneficiary: rescueBeneficiary,
     attested_signers: SDK.EMPTY_ATTESTED_SIGNER_BITMAP,
     attestation_count: 0n,
   };
@@ -201,123 +208,38 @@ export const buildApplyAttestationTx = async ({
   contracts,
   target,
   attestationUtxo,
+  attestationDatum,
+  hubOracleRefInput,
   daParamsUtxo,
+  daParamsDatum,
   referenceScripts,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: DaAttestationValidatorSet;
   readonly target: DaAttestationTarget;
   readonly attestationUtxo: UTxO;
+  readonly attestationDatum: SDK.DaAttestationDatum;
+  readonly hubOracleRefInput: UTxO;
   readonly daParamsUtxo: UTxO;
+  readonly daParamsDatum: SDK.DaParamsDatum;
   readonly referenceScripts: DaAttestationReferenceScripts;
-}): Promise<TxSignBuilder> => {
-  const attestationUnit = SDK.daAttestationUnit(
-    contracts.daAttestation,
-    target.headerHash,
-  );
-  const updatedStateQueueDatum = SDK.encodeLinkedListNodeView({
-    ...target.stateQueueUtxo.datum,
-    data: SDK.castStateQueueNodeV1ToData({
-      header: target.stateQueueNode.header,
-      da_attestation: contracts.daAttestation.policyId,
-    }) as SDK.LinkedListNodeView["data"],
-  });
-  const daMintRedeemer = ((ctx: RedeemerContextLike) => {
-    SDK.requireOwnMintPurpose(
-      ctx as never,
-      contracts.daAttestation.policyId,
-      "DA attestation apply mint",
-    );
-    return Data.to(
-      {
-        ApplyToStateQueue: {
-          da_attestation_input_index: SDK.requireInputIndex(
-            ctx as never,
-            attestationUtxo,
-            "DA attestation apply DA attestation",
-          ),
-          state_queue_input_index: SDK.requireInputIndex(
-            ctx as never,
-            target.stateQueueUtxo.utxo,
-            "DA attestation apply state queue",
-          ),
-          state_queue_output_index: SDK.requireUniqueOutputIndex(
-            ctx.outputs,
-            (output: TxOutput) =>
-              output.address === contracts.stateQueue.spendingScriptAddress &&
-              outputDatumCborMatches(output, updatedStateQueueDatum) &&
-              assetsEqual(output.assets, target.stateQueueUtxo.utxo.assets),
-            "DA attestation apply state queue",
-          ),
-          da_params_ref_input_index: SDK.requireReferenceInputIndex(
-            ctx as never,
-            daParamsUtxo,
-            "DA attestation apply DA params",
-          ),
-          state_queue_mint_ref_script_input_index:
-            SDK.requireReferenceInputIndex(
-              ctx as never,
-              referenceScripts.stateQueueMinting,
-              "DA attestation apply state_queue mint reference script",
-            ),
-        },
-      } satisfies SDK.DaAttestationMintRedeemer as never,
-      SDK.DaAttestationMintRedeemer as never,
-    );
-  }) as never;
-  const daSpendRedeemer = ((ctx: RedeemerContextLike) =>
-    Data.to(
-      {
-        BurnForStateQueue: {
-          mint_redeemer_index: SDK.requireMintRedeemerIndex(
-            ctx as never,
-            contracts.daAttestation.policyId,
-            "DA attestation apply DA attestation mint",
-          ),
-        },
-      } satisfies SDK.DaAttestationSpendRedeemer as never,
-      SDK.DaAttestationSpendRedeemer as never,
-    )) as never;
-  const stateQueueSpendRedeemer = ((ctx: RedeemerContextLike) =>
-    Data.to(
-      {
-        AttachDaAttestation: {
-          state_queue_input_index: SDK.requireInputIndex(
-            ctx as never,
-            target.stateQueueUtxo.utxo,
-            "DA attestation apply state queue",
-          ),
-          da_attestation_mint_redeemer_index: SDK.requireMintRedeemerIndex(
-            ctx as never,
-            contracts.daAttestation.policyId,
-            "DA attestation apply DA attestation mint",
-          ),
-        },
-      } satisfies SDK.StateQueueSpendRedeemer as never,
-      SDK.StateQueueSpendRedeemer as never,
-    )) as never;
-
-  return completeWithLocalUplc(
-    lucid
-      .newTx()
-      .readFrom([
+}): Promise<TxSignBuilder> =>
+  completeWithLocalUplc(
+    await Effect.runPromise(
+      SDK.incompleteApplyDaAttestationToStateQueueTxProgram(lucid, contracts, {
+        hubOracleRefInput,
         daParamsUtxo,
-        referenceScripts.daAttestationMinting,
-        referenceScripts.daAttestationSpending,
-        referenceScripts.stateQueueMinting,
-        referenceScripts.stateQueueSpending,
-      ])
-      .collectFrom([attestationUtxo], daSpendRedeemer)
-      .collectFrom([target.stateQueueUtxo.utxo], stateQueueSpendRedeemer)
-      .pay.ToContract(
-        contracts.stateQueue.spendingScriptAddress,
-        { kind: "inline", value: updatedStateQueueDatum },
-        target.stateQueueUtxo.utxo.assets,
-      )
-      .mintAssets({ [attestationUnit]: -1n }, daMintRedeemer),
+        daParamsDatum,
+        target,
+        attestation: {
+          utxo: attestationUtxo,
+          datum: attestationDatum,
+        },
+        referenceScripts,
+      }),
+    ),
     "DA attestation apply",
   );
-};
 
 export const addSignaturesToDaAttestationDatum = (
   attestationDatum: SDK.DaAttestationDatum,

@@ -19,7 +19,12 @@ import {
 import { Effect } from "effect";
 
 import type { LoadedWatcherConfig } from "../config.js";
-import type { ChainPoint, ObservedStateQueueNode } from "../domain.js";
+import type {
+  ChainPoint,
+  ObservedStateQueueNode,
+  ObservedStateQueueSnapshotV1,
+} from "../domain.js";
+import { createLocalKupmiosStateQueueReplayProviderV1 } from "./state-queue-replay-provider-v1.js";
 import type { StateQueueProvider } from "./state-queue-scanner.js";
 
 type CardanoNetwork = "Mainnet" | "Preprod" | "Preview" | "Custom";
@@ -637,6 +642,9 @@ export class LucidStateQueueProvider implements StateQueueProvider {
   private readonly providerSource: string;
   private readonly chainPointResolver?: (utxo: UTxO) => Promise<ChainPoint>;
   private readonly currentChainPointResolver: () => Promise<CanonicalChainPoint>;
+  private readonly replayCheckpoints?: NonNullable<
+    StateQueueProvider["fetchStateQueueReplayCheckpoints"]
+  >;
 
   constructor({
     lucid,
@@ -645,6 +653,7 @@ export class LucidStateQueueProvider implements StateQueueProvider {
     providerSource,
     chainPointResolver,
     currentChainPointResolver,
+    replayCheckpoints,
   }: {
     readonly lucid: LucidEvolution;
     readonly stateQueueAddress: string;
@@ -652,6 +661,9 @@ export class LucidStateQueueProvider implements StateQueueProvider {
     readonly providerSource: string;
     readonly chainPointResolver?: (utxo: UTxO) => Promise<ChainPoint>;
     readonly currentChainPointResolver: () => Promise<CanonicalChainPoint>;
+    readonly replayCheckpoints?: NonNullable<
+      StateQueueProvider["fetchStateQueueReplayCheckpoints"]
+    >;
   }) {
     this.lucid = lucid;
     this.stateQueueAddress = stateQueueAddress;
@@ -659,14 +671,19 @@ export class LucidStateQueueProvider implements StateQueueProvider {
     this.providerSource = providerSource;
     this.chainPointResolver = chainPointResolver;
     this.currentChainPointResolver = currentChainPointResolver;
+    this.replayCheckpoints = replayCheckpoints;
   }
 
   async fetchStateQueueNodes(): Promise<readonly ObservedStateQueueNode[]> {
+    return (await this.fetchStateQueueSnapshot()).nodes;
+  }
+
+  async fetchStateQueueSnapshot(): Promise<ObservedStateQueueSnapshotV1> {
     const stateQueueUtxos = await SDK.fetchSortedStateQueueUTxOs(this.lucid, {
       stateQueueAddress: this.stateQueueAddress,
       stateQueuePolicyId: this.stateQueuePolicyId,
     });
-    return stateQueueUtxosToObservedNodes(
+    return stateQueueUtxosToObservedSnapshotV1(
       stateQueueUtxos,
       this.providerSource,
       this.chainPointResolver,
@@ -675,6 +692,18 @@ export class LucidStateQueueProvider implements StateQueueProvider {
 
   async currentChainPoint(): Promise<CanonicalChainPoint> {
     return this.currentChainPointResolver();
+  }
+
+  async fetchStateQueueReplayCheckpoints(
+    anchor: readonly SDK.StateQueueTransitionNodeV1[],
+    current: readonly SDK.StateQueueTransitionNodeV1[],
+  ): Promise<readonly SDK.StateQueueAuthenticatedReplayCheckpointV1[]> {
+    if (this.replayCheckpoints === undefined) {
+      throw new Error(
+        "state-queue provider has no authenticated ordered history source",
+      );
+    }
+    return this.replayCheckpoints(anchor, current);
   }
 }
 
@@ -789,6 +818,116 @@ export class MultiStateQueueProvider implements StateQueueProvider {
     assertCompatibleChainPoints(sortedResults);
     return mergeAgreedObservedNodes(sortedResults, this.mergedIdentities);
   }
+
+  async fetchStateQueueSnapshot(): Promise<ObservedStateQueueSnapshotV1> {
+    const snapshots = await Promise.all(
+      this.providers.map(async (provider, index) => {
+        if (provider.fetchStateQueueSnapshot === undefined) {
+          throw new Error(
+            `state-queue provider ${this.identities[index]!} cannot authenticate the confirmed root`,
+          );
+        }
+        const pointBefore =
+          provider.currentChainPoint === undefined
+            ? undefined
+            : await provider.currentChainPoint();
+        if (
+          this.sourceMode === "external_providers" &&
+          pointBefore === undefined
+        ) {
+          throw new Error(
+            `external provider ${this.identities[index]!} cannot prove its current chain point`,
+          );
+        }
+        const snapshot = await provider.fetchStateQueueSnapshot();
+        const pointAfter =
+          provider.currentChainPoint === undefined
+            ? undefined
+            : await provider.currentChainPoint();
+        if (
+          pointBefore !== undefined &&
+          (pointAfter === undefined ||
+            !sameCanonicalPoint(pointBefore, pointAfter))
+        ) {
+          throw new Error(
+            `provider ${this.identities[index]!} chain point changed while its state-queue root snapshot was read`,
+          );
+        }
+        return { snapshot, point: pointAfter };
+      }),
+    );
+    if (this.sourceMode === "external_providers") {
+      const baselinePoint = snapshots[0]!.point!;
+      for (const [index, { point }] of snapshots.entries()) {
+        if (point === undefined || !sameCanonicalPoint(point, baselinePoint)) {
+          throw new Error(
+            `external provider current chain-point disagreement between ${this.identities[0]!} and ${this.identities[index]!}`,
+          );
+        }
+      }
+    }
+    const baseline = snapshots[0]!.snapshot;
+    const sortedResults = snapshots.map(({ snapshot }) =>
+      sortObservedNodes(snapshot.nodes),
+    );
+    for (const [index, { snapshot }] of snapshots.entries()) {
+      if (
+        snapshot.confirmedHeaderHash !== baseline.confirmedHeaderHash ||
+        snapshot.confirmedStateOutRef !== baseline.confirmedStateOutRef ||
+        !canonicalArraysEqual(
+          canonicalObservedNodes(sortedResults[index]!),
+          canonicalObservedNodes(sortedResults[0]!),
+        ) ||
+        !compatibleChainPoint(
+          snapshot.observedChainPoint,
+          baseline.observedChainPoint,
+        )
+      ) {
+        throw new Error(
+          `state queue root provider disagreement in ${this.sourceMode} mode between ${this.identities[0]!} and ${this.identities[index]!}`,
+        );
+      }
+    }
+    assertCompatibleChainPoints(sortedResults);
+    return {
+      nodes: mergeAgreedObservedNodes(sortedResults, this.mergedIdentities),
+      confirmedHeaderHash: baseline.confirmedHeaderHash,
+      confirmedStateOutRef: baseline.confirmedStateOutRef,
+      observedChainPoint: mergeChainPoints(
+        snapshots.map(({ snapshot }, index) => ({
+          ...snapshot.observedChainPoint,
+          providerSource:
+            this.mergedIdentities?.[index] ??
+            snapshot.observedChainPoint.providerSource,
+        })),
+      ),
+    };
+  }
+
+  async fetchStateQueueReplayCheckpoints(
+    anchor: readonly SDK.StateQueueTransitionNodeV1[],
+    current: readonly SDK.StateQueueTransitionNodeV1[],
+  ): Promise<readonly SDK.StateQueueAuthenticatedReplayCheckpointV1[]> {
+    const histories = await Promise.all(
+      this.providers.map(async (provider, index) => {
+        if (provider.fetchStateQueueReplayCheckpoints === undefined) {
+          throw new Error(
+            `state-queue provider ${this.identities[index]!} has no authenticated ordered history source`,
+          );
+        }
+        return provider.fetchStateQueueReplayCheckpoints(anchor, current);
+      }),
+    );
+    const baseline = canonicalJson(histories[0]);
+    for (const [index, history] of histories.entries()) {
+      if (canonicalJson(history) !== baseline) {
+        throw new Error(
+          `state-queue replay disagreement between ${this.identities[0]!} and ${this.identities[index]!}`,
+        );
+      }
+    }
+    return histories[0]!;
+  }
 }
 
 export class LocalNodeStateQueueProvider
@@ -816,12 +955,21 @@ export class LocalNodeStateQueueProvider
   }
 
   async fetchStateQueueNodes(): Promise<readonly ObservedStateQueueNode[]> {
+    return (await this.fetchStateQueueSnapshot()).nodes;
+  }
+
+  async fetchStateQueueSnapshot(): Promise<ObservedStateQueueSnapshotV1> {
     const canonicalBefore = await this.authority.synchronizeToTip();
     const results = await Promise.all(
       this.queryProviders.map(async (provider, index) => {
+        if (provider.fetchStateQueueSnapshot === undefined) {
+          throw new Error(
+            `local_node query surface ${this.queryIdentities[index]!} cannot authenticate the confirmed root`,
+          );
+        }
         const before = await provider.currentChainPoint();
         this.authority.assertAligned(before, this.queryIdentities[index]!);
-        const nodes = await provider.fetchStateQueueNodes();
+        const snapshot = await provider.fetchStateQueueSnapshot();
         const after = await provider.currentChainPoint();
         if (!sameCanonicalPoint(before, after)) {
           throw new Error(
@@ -829,7 +977,7 @@ export class LocalNodeStateQueueProvider
           );
         }
         this.authority.assertAligned(after, this.queryIdentities[index]!);
-        return { nodes, queryPoint: after };
+        return { snapshot, queryPoint: after };
       }),
     );
     const canonicalAfter = await this.authority.currentPoint();
@@ -838,12 +986,27 @@ export class LocalNodeStateQueueProvider
         "local node chain authority changed while query snapshots were being collected",
       );
     }
-    const sortedResults = results.map(({ nodes }) => sortObservedNodes(nodes));
+    const baselineSnapshot = results[0]!.snapshot;
+    const sortedResults = results.map(({ snapshot }) =>
+      sortObservedNodes(snapshot.nodes),
+    );
     const baseline = canonicalObservedNodes(sortedResults[0]!);
-    for (const [index, nodes] of sortedResults.entries()) {
-      if (!canonicalArraysEqual(canonicalObservedNodes(nodes), baseline)) {
+    for (const [index, { snapshot }] of results.entries()) {
+      if (
+        snapshot.confirmedHeaderHash !== baselineSnapshot.confirmedHeaderHash ||
+        snapshot.confirmedStateOutRef !==
+          baselineSnapshot.confirmedStateOutRef ||
+        !canonicalArraysEqual(
+          canonicalObservedNodes(sortedResults[index]!),
+          baseline,
+        ) ||
+        !compatibleChainPoint(
+          snapshot.observedChainPoint,
+          baselineSnapshot.observedChainPoint,
+        )
+      ) {
         throw new Error(
-          `local_node query surface disagreement between ${this.queryIdentities[0]!} and ${this.queryIdentities[index]!}`,
+          `local_node state-queue root disagreement between ${this.queryIdentities[0]!} and ${this.queryIdentities[index]!}`,
         );
       }
     }
@@ -852,7 +1015,7 @@ export class LocalNodeStateQueueProvider
       this.queryIdentities,
     );
     const cursor = await this.authority.currentCursor();
-    return merged.map((node) => ({
+    const nodes = merged.map((node) => ({
       ...node,
       chainPoint: {
         ...node.chainPoint,
@@ -868,6 +1031,24 @@ export class LocalNodeStateQueueProvider
         rollbackGeneration: cursor.rollbackGeneration,
       },
     }));
+    return {
+      nodes,
+      confirmedHeaderHash: baselineSnapshot.confirmedHeaderHash,
+      confirmedStateOutRef: baselineSnapshot.confirmedStateOutRef,
+      observedChainPoint: {
+        ...mergeChainPoints(
+          results.map(({ snapshot }, index) => ({
+            ...snapshot.observedChainPoint,
+            providerSource: this.queryIdentities[index],
+          })),
+        ),
+        providerSource: [
+          canonicalAfter.providerSource,
+          ...this.queryIdentities,
+        ].join(","),
+        observedAt: new Date().toISOString(),
+      },
+    };
   }
 
   async currentChainPoint(): Promise<CanonicalChainPoint> {
@@ -882,6 +1063,31 @@ export class LocalNodeStateQueueProvider
     afterSequence: number,
   ): Promise<readonly ChainSyncEvent[]> {
     return this.authority.replay(afterSequence);
+  }
+
+  async fetchStateQueueReplayCheckpoints(
+    anchor: readonly SDK.StateQueueTransitionNodeV1[],
+    current: readonly SDK.StateQueueTransitionNodeV1[],
+  ): Promise<readonly SDK.StateQueueAuthenticatedReplayCheckpointV1[]> {
+    const histories = await Promise.all(
+      this.queryProviders.map(async (provider, index) => {
+        if (provider.fetchStateQueueReplayCheckpoints === undefined) {
+          throw new Error(
+            `local-node query surface ${this.queryIdentities[index]!} has no authenticated ordered history source`,
+          );
+        }
+        return provider.fetchStateQueueReplayCheckpoints(anchor, current);
+      }),
+    );
+    const baseline = canonicalJson(histories[0]);
+    for (const [index, history] of histories.entries()) {
+      if (canonicalJson(history) !== baseline) {
+        throw new Error(
+          `local-node state-queue replay disagreement between ${this.queryIdentities[0]!} and ${this.queryIdentities[index]!}`,
+        );
+      }
+    }
+    return histories[0]!;
   }
 
   async loadConsumedChainSyncCursor(): Promise<ChainSyncCursor | undefined> {
@@ -930,6 +1136,40 @@ export const stateQueueUtxosToObservedNodes = async (
     });
   }
   return observed;
+};
+
+export const stateQueueUtxosToObservedSnapshotV1 = async (
+  stateQueueUtxos: readonly SDK.StateQueueUTxO[],
+  providerSource: string,
+  chainPointResolver?: (utxo: UTxO) => Promise<ChainPoint>,
+): Promise<ObservedStateQueueSnapshotV1> => {
+  const confirmed = stateQueueUtxos[0];
+  if (confirmed === undefined || confirmed.datum.key !== "Empty") {
+    throw new Error("state queue snapshot has no confirmed root node");
+  }
+  const [{ data }, nodes] = await Promise.all([
+    Effect.runPromise(
+      SDK.getConfirmedStateFromStateQueueDatum(confirmed.datum),
+    ),
+    stateQueueUtxosToObservedNodes(
+      stateQueueUtxos,
+      providerSource,
+      chainPointResolver,
+    ),
+  ]);
+  const observedChainPoint = {
+    providerSource,
+    observedAt: new Date().toISOString(),
+    ...(chainPointResolver === undefined
+      ? {}
+      : await chainPointResolver(confirmed.utxo)),
+  };
+  return {
+    nodes,
+    confirmedHeaderHash: data.headerHash,
+    confirmedStateOutRef: outRefLabel(confirmed.utxo),
+    observedChainPoint,
+  };
 };
 
 export const providerFromConfig = async (
@@ -1114,7 +1354,14 @@ export const providerFromUrl = async (
   config: Pick<
     LoadedWatcherConfig,
     "network" | "cardanoL1Source" | "stateQueueAddress" | "stateQueuePolicyId"
-  > & { readonly finalityDepth?: number },
+  > & {
+    readonly deploymentFingerprint?: string;
+    readonly finalityDepth?: number;
+    readonly hubOraclePolicyId?: string;
+    readonly correctionLockAddress?: string;
+    readonly fraudProofPolicyId?: string;
+    readonly fraudProofAddress?: string;
+  },
   providerIndex = 0,
 ): Promise<StateQueueProvider> => {
   if (url.startsWith("fixture:")) {
@@ -1154,6 +1401,21 @@ export const providerFromUrl = async (
     });
   }
   if (url.startsWith("kupmios:")) {
+    if (config.deploymentFingerprint === undefined) {
+      throw new Error(
+        "Kupmios state-queue replay requires a deployment fingerprint",
+      );
+    }
+    if (
+      config.hubOraclePolicyId === undefined ||
+      config.correctionLockAddress === undefined ||
+      config.fraudProofPolicyId === undefined ||
+      config.fraudProofAddress === undefined
+    ) {
+      throw new Error(
+        "Kupmios state-queue replay requires deployment-bound CorrectionLock and fraud-proof identities",
+      );
+    }
     const { kupoUrl, ogmiosUrl, headers } = parseKupmiosUrl(url);
     await assertOgmiosNetworkMagic(
       ogmiosUrl,
@@ -1185,6 +1447,17 @@ export const providerFromUrl = async (
         kupoUrl,
         ogmiosUrl,
       ),
+      replayCheckpoints: createLocalKupmiosStateQueueReplayProviderV1({
+        deploymentIdentityDigest: config.deploymentFingerprint,
+        stateQueuePolicyId: config.stateQueuePolicyId,
+        stateQueueAddress: config.stateQueueAddress,
+        hubOraclePolicyId: config.hubOraclePolicyId,
+        correctionLockAddress: config.correctionLockAddress,
+        fraudProofPolicyId: config.fraudProofPolicyId,
+        fraudProofAddress: config.fraudProofAddress,
+        kupoUrl,
+        ogmiosUrl,
+      }),
     });
   }
   throw new Error(

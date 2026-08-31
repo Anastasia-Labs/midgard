@@ -100,6 +100,25 @@ describe("loadWatcherConfig", () => {
     expect(config.daParams.threshold).toBe(1);
   });
 
+  it("binds committee finality to the verified deployment release depth", async () => {
+    const dir = await tempDir();
+    const manifest = libp2pManifest("01".repeat(32));
+    const { manifestPath, deploymentInfoPath } = await writeConfigFiles(
+      dir,
+      manifest,
+    );
+    const base = libp2pConfigEnv(dir, manifestPath, deploymentInfoPath);
+
+    await expect(loadWatcherConfig(base)).resolves.toMatchObject({
+      finalityDepth: 30,
+    });
+    await expect(
+      loadWatcherConfig({ ...base, CARDANO_FINALITY_DEPTH: "29" }),
+    ).rejects.toThrow(
+      /must exactly equal the verified deployment manifest l1Finality\.confirmationDepth/u,
+    );
+  });
+
   it("parses libp2p DA transport manifests without HTTP endpoint config", async () => {
     const dir = await tempDir();
     const member = "01".repeat(32);
@@ -1310,7 +1329,7 @@ const libp2pConfigEnv = (
     "chain-sync-cursor.json",
   ),
   CARDANO_PROVIDER_URLS: "fixture:/tmp/state.json",
-  CARDANO_FINALITY_DEPTH: "2",
+  CARDANO_FINALITY_DEPTH: "30",
   DA_LIBP2P_PRIVATE_KEY_SOURCE: LIBP2P_PRIVATE_KEY_SOURCE,
   WATCHER_DB_PATH: join(dir, "db"),
 });

@@ -21,7 +21,12 @@ import type {
   PayloadRootSet,
   StateQueueHeaderRecord,
 } from "../../domain.js";
-import { validateDaSignatureRecord } from "../../peer/signatures.js";
+import {
+  buildDaSignatureConflictEvidenceV1,
+  type DaAvailabilityCommitmentAuthorityV1,
+  deriveExpectedDaAvailabilityCommitmentV1,
+  validateDaSignatureRecord,
+} from "../../peer/signatures.js";
 import type { DaCommitteeValidation } from "../../signer.js";
 import type { WatcherStore } from "../../store.js";
 import type { DaLibp2pNode, DaLibp2pStreamHandler } from "./DaLibp2pNode.js";
@@ -51,23 +56,36 @@ export interface DaAttestationExchange {
     readonly deploymentFingerprint: string;
     readonly headerHash: string;
   }): Promise<readonly DaSignatureRecord[]>;
+  publishConflictEvidence(gossipCbor: Buffer): Promise<void>;
 }
 
 export type StoreBackedDaAttestationProtocolDeps = {
   readonly deploymentFingerprint: string;
   readonly localPeerId: string;
   readonly committeeValidation: DaCommitteeValidation;
+  readonly availabilityCommitmentAuthority: DaAvailabilityCommitmentAuthorityV1;
   readonly store: Pick<
     WatcherStore,
-    "getDaPayload" | "getL1SourceState" | "saveDaSignature" | "listDaSignatures"
+    | "getDaPayload"
+    | "getL1SourceState"
+    | "saveDaSignature"
+    | "listDaSignatures"
+    | "saveDaConflictEvidence"
   >;
 };
 
 export class StoreBackedDaAttestationProtocol {
   private readonly deps: StoreBackedDaAttestationProtocolDeps;
+  private publishConflictEvidence?: (gossipCbor: Buffer) => Promise<void>;
 
   constructor(deps: StoreBackedDaAttestationProtocolDeps) {
     this.deps = deps;
+  }
+
+  setConflictEvidencePublisher(
+    publisher: (gossipCbor: Buffer) => Promise<void>,
+  ): void {
+    this.publishConflictEvidence = publisher;
   }
 
   async acceptAttestation(args: {
@@ -84,25 +102,66 @@ export class StoreBackedDaAttestationProtocol {
         reason: "verified payload is not available",
       };
     }
-    const validationError = validateDaSignatureRecord({
+    const cryptographicValidationError = validateDaSignatureRecord({
       body: args.record,
       headerHash: args.record.headerHash,
       deploymentFingerprint: this.deps.deploymentFingerprint,
       signerValidation: this.deps.committeeValidation,
-      verifiedPayload: payload,
     });
-    if (validationError !== undefined) {
-      return { status: "rejected", reason: validationError };
+    if (cryptographicValidationError !== undefined) {
+      return { status: "rejected", reason: cryptographicValidationError };
     }
     const now = new Date().toISOString();
-    await this.deps.store.saveDaSignature({
+    const canonicalCandidate: DaSignatureRecord = {
       ...args.record,
       broadcastStatus: "posted",
       source: "peer",
       sourcePeer: args.sourcePeerId,
       receivedAt: now,
       verifiedAt: now,
+    };
+    const priorSameHeaderSigner = (
+      await this.deps.store.listDaSignatures(args.record.headerHash)
+    ).find(
+      (entry) =>
+        entry.signerIndex === canonicalCandidate.signerIndex &&
+        entry.availabilityCommitmentDigest !==
+          canonicalCandidate.availabilityCommitmentDigest,
+    );
+    await this.deps.store.saveDaSignature(canonicalCandidate);
+    if (priorSameHeaderSigner !== undefined) {
+      const conflict = buildDaSignatureConflictEvidenceV1({
+        first: priorSameHeaderSigner,
+        second: canonicalCandidate,
+        daVkey:
+          this.deps.committeeValidation.committeeKeys[
+            canonicalCandidate.signerIndex
+          ]!,
+        reporterPeerId: this.deps.localPeerId,
+        receivedAt: now,
+      });
+      if (
+        conflict !== undefined &&
+        (await this.deps.store.saveDaConflictEvidence(conflict.record))
+      ) {
+        await this.publishConflictEvidence?.(conflict.gossipCbor);
+      }
+    }
+    const authorityValidationError = validateDaSignatureRecord({
+      body: canonicalCandidate,
+      headerHash: args.record.headerHash,
+      deploymentFingerprint: this.deps.deploymentFingerprint,
+      signerValidation: this.deps.committeeValidation,
+      verifiedPayload: payload,
+      ...expectedCommitmentValidation(
+        this.deps.availabilityCommitmentAuthority,
+        args.record.headerHash,
+        payload,
+      ),
     });
+    if (authorityValidationError !== undefined) {
+      return { status: "rejected", reason: authorityValidationError };
+    }
     return { status: "accepted" };
   }
 
@@ -178,14 +237,30 @@ export class StoreBackedDaAttestationProtocol {
     });
   }
 
+  availabilityCommitmentAuthority(): DaAvailabilityCommitmentAuthorityV1 {
+    return this.deps.availabilityCommitmentAuthority;
+  }
+
   private async serveableAttestations(
     headerHash: string,
   ): Promise<readonly DaSignatureRecord[]> {
     if ((await this.deps.store.getL1SourceState())?.status === "quarantined") {
       return [];
     }
+    const payload = await this.deps.store.getDaPayload(headerHash);
+    if (!isVerifiedPayload(payload)) {
+      return [];
+    }
+    const expected = deriveExpectedDaAvailabilityCommitmentV1({
+      authority: this.deps.availabilityCommitmentAuthority,
+      headerHash,
+      payloadCborHex: payload.payloadCborHex,
+    });
     return (await this.deps.store.listDaSignatures(headerHash)).filter(
-      ({ broadcastStatus }) => broadcastStatus !== "post_failed",
+      (record) =>
+        record.broadcastStatus !== "post_failed" &&
+        record.availabilityCommitmentCbor === expected.commitmentCbor &&
+        record.availabilityCommitmentDigest === expected.commitmentDigest,
     );
   }
 }
@@ -204,6 +279,14 @@ export const daAttestationGossipFromRecord = ({
   deploymentFingerprint: Buffer.from(record.deploymentFingerprint, "hex"),
   headerHash: Buffer.from(record.headerHash, "hex"),
   payloadHash: Buffer.from(record.payloadHash, "hex"),
+  availabilityCommitmentCbor: Buffer.from(
+    record.availabilityCommitmentCbor,
+    "hex",
+  ),
+  availabilityCommitmentDigest: Buffer.from(
+    record.availabilityCommitmentDigest,
+    "hex",
+  ),
   signerIndex: record.signerIndex,
   daVkey: Buffer.from(daVkey, "hex"),
   onChainWitness: Buffer.from(record.signatureWitness, "hex"),
@@ -237,6 +320,9 @@ export class DaLibp2pAttestationExchange implements DaAttestationExchange {
   constructor(options: DaLibp2pAttestationExchangeOptions) {
     this.options = options;
     this.protocolIds = createDaProtocolAllowlist(options.deploymentFingerprint);
+    options.protocol.setConflictEvidencePublisher((gossipCbor) =>
+      options.node.publishGossip(DaGossipTopic.conflicts, gossipCbor),
+    );
   }
 
   async publishAttestation({
@@ -305,6 +391,10 @@ export class DaLibp2pAttestationExchange implements DaAttestationExchange {
     return records;
   }
 
+  async publishConflictEvidence(gossipCbor: Buffer): Promise<void> {
+    await this.options.node.publishGossip(DaGossipTopic.conflicts, gossipCbor);
+  }
+
   private async recordFromAttestation({
     peer,
     attestation,
@@ -343,6 +433,10 @@ export class DaLibp2pAttestationExchange implements DaAttestationExchange {
       signerIndex: attestation.signerIndex,
       signatureWitness: attestation.onChainWitness.toString("hex"),
       payloadHash: payload.payloadSha256,
+      availabilityCommitmentCbor:
+        attestation.availabilityCommitmentCbor.toString("hex"),
+      availabilityCommitmentDigest:
+        attestation.availabilityCommitmentDigest.toString("hex"),
       committeeSignersHash:
         this.options.committeeValidation.committeeSignersHash,
       signedAt: now,
@@ -357,12 +451,15 @@ export class DaLibp2pAttestationExchange implements DaAttestationExchange {
         rootSummaryFromHeader(header, payload.rootSummary),
       ),
     };
+    // Pull responses must preserve every cryptographically valid commitment
+    // variant. The poller compares variants and emits equivocation evidence
+    // before deciding whether a record belongs to the locally authorised
+    // commitment group.
     const validationError = validateDaSignatureRecord({
       body: record,
       headerHash,
       deploymentFingerprint: this.options.deploymentFingerprint,
       signerValidation: this.options.committeeValidation,
-      verifiedPayload: payload,
     });
     return validationError === undefined ? record : undefined;
   }
@@ -408,6 +505,25 @@ const isVerifiedPayload = (
   payload !== undefined &&
   payload.validationStatus === "verified" &&
   payload.payloadSha256.length > 0;
+
+const expectedCommitmentValidation = (
+  authority: DaAvailabilityCommitmentAuthorityV1,
+  headerHash: string,
+  payload: DaPayloadRecord,
+): Readonly<{
+  expectedAvailabilityCommitmentCbor: string;
+  expectedAvailabilityCommitmentDigest: string;
+}> => {
+  const expected = deriveExpectedDaAvailabilityCommitmentV1({
+    authority,
+    headerHash,
+    payloadCborHex: payload.payloadCborHex,
+  });
+  return {
+    expectedAvailabilityCommitmentCbor: expected.commitmentCbor,
+    expectedAvailabilityCommitmentDigest: expected.commitmentDigest,
+  };
+};
 
 const validationSummaryFromHeader = (
   header: StateQueueHeaderRecord,

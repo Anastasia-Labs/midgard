@@ -57,6 +57,15 @@ const payloadSubmitProtocolId = daRequestResponseProtocolId(
   deploymentFingerprint,
   DaRequestResponseProtocol.payloadSubmit,
 );
+const availabilityCommitmentAuthority = {
+  deploymentIdentity: "99".repeat(28),
+  bondOwnerCredential: "44".repeat(28),
+  responseGeometry: {
+    chunkByteLength: 4_096,
+    trancheByteLength: 4 * 1_024 * 1_024,
+    maxTrancheCount: 16,
+  },
+};
 
 describe("canonical V1 DA libp2p payload protocols", () => {
   it("advertises only the exact V1 payload and envelope capabilities", async () => {
@@ -442,6 +451,7 @@ describe("canonical V1 DA libp2p payload protocols", () => {
         committeeSignersHash: "00".repeat(32),
         threshold: 0,
       },
+      availabilityCommitmentAuthority,
       store,
     });
     await expect(
@@ -634,11 +644,13 @@ describe("canonical V1 DA libp2p payload protocols", () => {
         committeeSignersHash: "00".repeat(32),
         threshold: 0,
       },
+      availabilityCommitmentAuthority,
       store: {
         getDaPayload: async () => undefined,
         getL1SourceState: async () => undefined,
         saveDaSignature: async () => undefined,
         listDaSignatures: async () => [{} as never],
+        saveDaConflictEvidence: async () => true,
       },
     });
 
@@ -668,6 +680,7 @@ describe("canonical V1 DA libp2p payload protocols", () => {
       getL1SourceState: async () => undefined,
       saveDaSignature: async () => undefined,
       listDaSignatures: async () => [],
+      saveDaConflictEvidence: async () => true,
     };
     const protocol = new StoreBackedDaAttestationProtocol({
       deploymentFingerprint,
@@ -677,6 +690,7 @@ describe("canonical V1 DA libp2p payload protocols", () => {
         committeeSignersHash: "00".repeat(32),
         threshold: 1,
       },
+      availabilityCommitmentAuthority,
       store: protocolStore,
     });
     const exchange = new DaLibp2pAttestationExchange({
@@ -692,6 +706,8 @@ describe("canonical V1 DA libp2p payload protocols", () => {
                 deploymentFingerprint: deploymentFingerprintBytes,
                 headerHash: Buffer.alloc(28, 0x02),
                 payloadHash: Buffer.alloc(32, 0x03),
+                availabilityCommitmentCbor: Buffer.alloc(32, 0x05),
+                availabilityCommitmentDigest: Buffer.alloc(32, 0x06),
                 signerIndex: 0,
                 daVkey,
                 onChainWitness: Buffer.alloc(65, 0x04),

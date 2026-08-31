@@ -1,3 +1,4 @@
+import { computeDaSha256Hash } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
@@ -269,6 +270,8 @@ describe("coordinator witness and candidate planning", () => {
           deploymentFingerprint: signature.deploymentFingerprint,
           headerHash: signature.headerHash,
           payloadHash: signature.payloadHash,
+          availabilityCommitmentCbor: signature.availabilityCommitmentCbor,
+          availabilityCommitmentDigest: signature.availabilityCommitmentDigest,
           committeeSignersHash: signature.committeeSignersHash,
           l1ChainPoint: signature.l1ChainPoint,
           validation: signature.validation,
@@ -690,11 +693,30 @@ const candidateRecord = ({
   status,
 });
 
+const availabilityCommitmentCbor = SDK.encodeDaAvailabilityCommitmentV1(
+  SDK.buildDaAvailabilityCommitmentV1({
+    deploymentIdentity: "99".repeat(28),
+    headerHash: "01".repeat(28),
+    payload: Buffer.from("public retained DA"),
+    bondOwner: "76".repeat(28),
+    responseGeometry: SDK.availabilityResponseGeometryV1({
+      chunkByteLength: 14_020,
+      trancheByteLength: 4 * 1_024 * 1_024,
+      maxTrancheCount: 16,
+    }),
+  }),
+);
+const availabilityCommitmentDigest = computeDaSha256Hash(
+  Buffer.from(availabilityCommitmentCbor, "hex"),
+).toString("hex");
+
 const signatureRecord = (): DaSignatureRecord => ({
   deploymentFingerprint: "dep",
   headerHash: "01".repeat(28),
   signerIndex: 0,
   signatureWitness: "00" + "11".repeat(64),
+  availabilityCommitmentCbor,
+  availabilityCommitmentDigest,
   payloadHash: "03".repeat(32),
   committeeSignersHash: "02".repeat(32),
   signedAt: "2026-01-01T00:00:00.000Z",

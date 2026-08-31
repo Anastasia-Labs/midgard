@@ -31,7 +31,11 @@ import {
   validateDaSignerMembership,
 } from "./signer.js";
 import { openWatcherStore } from "./store/factory.js";
-import { WatcherService } from "./watcher.js";
+import { runRetentionCycleV1 } from "./store/retention.js";
+import {
+  type WatcherRetentionReadinessSnapshot,
+  WatcherService,
+} from "./watcher.js";
 
 const main = async (): Promise<void> => {
   if (process.argv[2] === "l1-wallet-preflight") {
@@ -79,6 +83,11 @@ const main = async (): Promise<void> => {
     deploymentFingerprint: config.deploymentFingerprint,
     localPeerId: daIdentity.peerId,
     committeeValidation,
+    availabilityCommitmentAuthority: {
+      deploymentIdentity: config.midgardNodeDeployment.hubOraclePolicyId,
+      bondOwnerCredential: config.availabilityChallenge.bondOwnerCredential,
+      responseGeometry: config.availabilityChallenge.responseGeometry,
+    },
     store,
   });
   const requestHandlers = new Map([
@@ -148,6 +157,12 @@ const main = async (): Promise<void> => {
           localPeerId: daIdentity.peerId,
           attestationExchange,
           signerValidation: committeeValidation,
+          availabilityCommitmentAuthority: {
+            deploymentIdentity: config.midgardNodeDeployment.hubOraclePolicyId,
+            bondOwnerCredential:
+              config.availabilityChallenge.bondOwnerCredential,
+            responseGeometry: config.availabilityChallenge.responseGeometry,
+          },
           store,
           requestTimeoutMs: config.peerRequestTimeoutMs,
         })
@@ -161,7 +176,12 @@ const main = async (): Promise<void> => {
           store,
           coordinator: onChainCoordinator,
           peerPoller,
-          daAttestationPolicyId: config.daAttestationPolicyId,
+          availabilityCommitmentAuthority: {
+            deploymentIdentity: config.midgardNodeDeployment.hubOraclePolicyId,
+            bondOwnerCredential:
+              config.availabilityChallenge.bondOwnerCredential,
+            responseGeometry: config.availabilityChallenge.responseGeometry,
+          },
           submitterId: config.l1SubmitterId,
         });
   const l1SubmitterPreflight = config.l1SubmissionEnabled
@@ -187,6 +207,12 @@ const main = async (): Promise<void> => {
           signer,
           signerIndex: config.signerIndex,
           signerValidation,
+          availabilityCommitmentAuthority: {
+            deploymentIdentity: config.midgardNodeDeployment.hubOraclePolicyId,
+            bondOwnerCredential:
+              config.availabilityChallenge.bondOwnerCredential,
+            responseGeometry: config.availabilityChallenge.responseGeometry,
+          },
           store,
           attestationExchange,
           requestTimeoutMs: config.peerRequestTimeoutMs,
@@ -212,9 +238,62 @@ const main = async (): Promise<void> => {
   await service.initialize();
   await daLibp2pNode.start();
 
+  let retentionReadiness: WatcherRetentionReadinessSnapshot = {
+    status: "not_checked",
+    scanned: 0,
+    retained: 0,
+    prunable: 0,
+    alerting: 0,
+  };
+  const runRetention = async (): Promise<void> => {
+    // Q58 is not deployed. Absence is not authority that no challenge exists:
+    // the retention decision therefore receives no challenge authority and
+    // holds every payload. Q58 must replace this with an authenticated L1
+    // active/inactive observation before production deletion can start.
+    const options = {
+      nowMs: Date.now(),
+      retentionDays: config.daTransport.retentionDays,
+      deploymentFingerprint: config.deploymentFingerprint,
+      minimumFinalityDepth: config.finalityDepth,
+    };
+    try {
+      const { deadlines, prune } = await runRetentionCycleV1(store, options);
+      retentionReadiness = {
+        status: deadlines.alerting > 0 ? "alerting" : "ok",
+        checkedAt: new Date(options.nowMs).toISOString(),
+        scanned: deadlines.scanned,
+        retained: deadlines.retained,
+        prunable: deadlines.prunable,
+        alerting: deadlines.alerting,
+      };
+      if (prune.prunedHeaderHashes.length > 0) {
+        process.stdout.write(
+          `${JSON.stringify({ event: "da_retention_pruned", ...prune })}\n`,
+        );
+      }
+      if (deadlines.alerting > 0) {
+        process.stderr.write(
+          `${JSON.stringify({ event: "da_retention_deadline_alert", report: deadlines })}\n`,
+        );
+      }
+    } catch (error) {
+      retentionReadiness = {
+        status: "failed",
+        checkedAt: new Date(options.nowMs).toISOString(),
+        scanned: 0,
+        retained: 0,
+        prunable: 0,
+        alerting: 0,
+        error: error instanceof Error ? error.message : String(error),
+      };
+      throw error;
+    }
+  };
+
   if (process.argv.includes("--once")) {
     try {
       const result = await service.tick();
+      await runRetention();
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     } finally {
       await daLibp2pNode.stop();
@@ -232,6 +311,7 @@ const main = async (): Promise<void> => {
       service.readinessSnapshot({
         localPeerId: daIdentity.peerId,
         l1SubmitterPreflight,
+        retention: retentionReadiness,
       }),
     manifest: config.deploymentManifest,
     peerReplayWindowMs: config.peerReplayWindowMs,
@@ -244,9 +324,18 @@ const main = async (): Promise<void> => {
     `midgard-watcher listening on http://${config.apiHost}:${config.apiPort.toString()}\n`,
   );
 
+  let tickInFlight = false;
   const runTick = async (): Promise<void> => {
+    if (tickInFlight) {
+      process.stderr.write(
+        `${JSON.stringify({ event: "watcher_tick_overlap_prevented" })}\n`,
+      );
+      return;
+    }
+    tickInFlight = true;
     try {
       const result = await service.tick();
+      await runRetention();
       if (result.errors.length > 0) {
         process.stderr.write(`${JSON.stringify(result)}\n`);
       }
@@ -254,6 +343,8 @@ const main = async (): Promise<void> => {
       process.stderr.write(
         `${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
       );
+    } finally {
+      tickInFlight = false;
     }
   };
   await runTick();

@@ -85,6 +85,8 @@ describe("PostgresWatcherStore", () => {
           await expect(
             store.getDaSignature({
               headerHash: signature.headerHash,
+              availabilityCommitmentDigest:
+                signature.availabilityCommitmentDigest,
               signerIndex: signature.signerIndex,
             }),
           ).resolves.toEqual(signature);
@@ -118,6 +120,8 @@ describe("PostgresWatcherStore", () => {
           await expect(
             store.getDaSignature({
               headerHash: signature.headerHash,
+              availabilityCommitmentDigest:
+                signature.availabilityCommitmentDigest,
               signerIndex: signature.signerIndex,
             }),
           ).resolves.toMatchObject({ broadcastStatus: "post_failed" });
@@ -130,6 +134,8 @@ describe("PostgresWatcherStore", () => {
           await expect(
             store.getDaSignature({
               headerHash: signature.headerHash,
+              availabilityCommitmentDigest:
+                signature.availabilityCommitmentDigest,
               signerIndex: signature.signerIndex,
             }),
           ).resolves.toMatchObject({ broadcastStatus: "post_failed" });
@@ -235,6 +241,8 @@ describe("PostgresWatcherStore", () => {
         await expect(
           store.getDaSignature({
             headerHash: signature.headerHash,
+            availabilityCommitmentDigest:
+              signature.availabilityCommitmentDigest,
             signerIndex: signature.signerIndex,
           }),
         ).resolves.toEqual(signature);
@@ -437,6 +445,8 @@ describe("PostgresWatcherStore", () => {
         await expect(
           store.getDaSignature({
             headerHash: signature.headerHash,
+            availabilityCommitmentDigest:
+              signature.availabilityCommitmentDigest,
             signerIndex: signature.signerIndex,
           }),
         ).resolves.toMatchObject({ broadcastStatus: "post_failed" });
@@ -449,6 +459,8 @@ describe("PostgresWatcherStore", () => {
         await expect(
           store.getDaSignature({
             headerHash: signature.headerHash,
+            availabilityCommitmentDigest:
+              signature.availabilityCommitmentDigest,
             signerIndex: signature.signerIndex,
           }),
         ).resolves.toMatchObject({ broadcastStatus: "post_failed" });
@@ -479,6 +491,8 @@ describe("PostgresWatcherStore", () => {
         await expect(
           store.getDaSignature({
             headerHash: signature.headerHash,
+            availabilityCommitmentDigest:
+              signature.availabilityCommitmentDigest,
             signerIndex: signature.signerIndex,
           }),
         ).rejects.toThrow(/missing required field source/);
@@ -525,7 +539,7 @@ const stateQueueHeaderRecord = (): StateQueueHeaderRecord => ({
     withdrawalsRoot: "13".repeat(32),
   },
   computedHeaderHash: "01".repeat(28),
-  daAttestation: "",
+  daAttestation: SDK.NO_DA_ATTESTATION,
   observedChainPoint: {
     providerSource: "test",
     depth: 12,
@@ -547,11 +561,38 @@ const daPayloadRecord = (): DaPayloadRecord => ({
   validationStatus: "fetched",
 });
 
+const availabilityCommitment = (headerHash: string, bondOwner: string) => {
+  const commitment = SDK.buildDaAvailabilityCommitmentV1({
+    deploymentIdentity: "99".repeat(28),
+    headerHash,
+    payload: Buffer.from("public retained DA"),
+    bondOwner,
+    responseGeometry: SDK.availabilityResponseGeometryV1({
+      chunkByteLength: 4_096,
+      trancheByteLength: 4 * 1_024 * 1_024,
+      maxTrancheCount: 16,
+    }),
+  });
+  const cbor = SDK.encodeDaAvailabilityCommitmentV1(commitment);
+  return {
+    commitment,
+    cbor,
+    digest: computeDaSha256Hash(Buffer.from(cbor, "hex")).toString("hex"),
+  };
+};
+
+const signatureCommitment = availabilityCommitment(
+  "01".repeat(28),
+  "44".repeat(28),
+);
+
 const daSignatureRecord = (): DaSignatureRecordV1 => ({
   deploymentFingerprint: "dep",
   headerHash: "01".repeat(28),
   signerIndex: 1,
   signatureWitness: "01" + "ab".repeat(64),
+  availabilityCommitmentCbor: signatureCommitment.cbor,
+  availabilityCommitmentDigest: signatureCommitment.digest,
   payloadHash: "11".repeat(32),
   committeeSignersHash: "22".repeat(32),
   signedAt: "2026-06-13T00:00:02.000Z",
@@ -600,15 +641,19 @@ const daSignatureRecord = (): DaSignatureRecordV1 => ({
 });
 
 const daConflictEvidenceRecord = (): DaStoredConflictEvidenceRecordV1 => {
+  const lower = availabilityCommitment("11".repeat(28), "44".repeat(28));
+  const upper = availabilityCommitment("22".repeat(28), "55".repeat(28));
   const compactEvidence = encodeDaConflictingSignatureHeaderEvidenceV1Cbor({
     signerIndex: 1,
     daVkey: Buffer.alloc(32, 0x44),
     lowerHeaderHash: Buffer.alloc(28, 0x11),
+    lowerCommitmentCbor: Buffer.from(lower.cbor, "hex"),
     lowerHeaderWitness: Buffer.concat([
       Buffer.from([1]),
       Buffer.alloc(64, 0xaa),
     ]),
     upperHeaderHash: Buffer.alloc(28, 0x22),
+    upperCommitmentCbor: Buffer.from(upper.cbor, "hex"),
     upperHeaderWitness: Buffer.concat([
       Buffer.from([1]),
       Buffer.alloc(64, 0xbb),
@@ -618,7 +663,9 @@ const daConflictEvidenceRecord = (): DaStoredConflictEvidenceRecordV1 => {
     conflictSchemaVersion: 1,
     deploymentFingerprint: "aa".repeat(32),
     headerHash: "11".repeat(28),
+    commitmentDigest: lower.digest,
     conflictingHeaderHash: "22".repeat(28),
+    conflictingCommitmentDigest: upper.digest,
     signerIndex: 1,
     evidenceKind: "equivocation",
     evidenceHash: computeDaSha256Hash(compactEvidence).toString("hex"),
