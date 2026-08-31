@@ -14,10 +14,16 @@ import {
 import {
   computeDeploymentManifestV1Id,
   computeDeploymentManifestV1JsonDigest,
+  DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
+  type DeploymentManifestV1AvailabilityChallenge,
+  type DeploymentManifestV1CardanoProtocolParameters,
+  type DeploymentManifestV1Economics,
   type DeploymentManifestV1FraudProofCatalogueCategory,
   type DeploymentManifestV1FraudProofCatalogueCategoryIdentity,
   type DeploymentManifestV1JsonValue,
+  type DeploymentManifestV1L1Finality,
   normalizeDeploymentManifestV1JsonValue,
+  parseDeploymentManifestV1Economics,
   verifyDeploymentManifestV1FraudProofCatalogueIdentity,
   verifyDeploymentManifestV1Identity,
   verifyFinalizedDeploymentManifestV1,
@@ -182,6 +188,49 @@ export const DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES = Object.freeze([
   "fraudProofTransitionTraceDeposit",
   "fraudProofTransitionTraceL1Event",
   "fraudProofTransitionTraceDuplicate",
+  "fraudProofNetworkId",
+  "fraudProofNetworkIdStep02",
+  "computationThreadMint",
+  "chunkedVerifyWithdraw",
+  "pexcludesWithdraw",
+  "fraudProofDoubleSpendStep02",
+  "fraudProofDoubleSpendStep03",
+  "fraudProofDoubleSpendStep04",
+  "fraudProofNonExistentInputStep02",
+  "fraudProofNonExistentInputStep03",
+  "fraudProofNonExistentInputStep04",
+  "fraudProofNonExistentInputNoIndexStep02",
+  "fraudProofNonExistentInputNoIndexStep03",
+  "fraudProofNonExistentInputNoIndexStep04",
+  "fraudProofInvalidRangeStep02",
+  "fraudProofZeroInputStep02",
+  "fraudProofDaHashPreimageStep02",
+  "fraudProofNoReferenceInputStep02",
+  "fraudProofNoReferenceInputStep03",
+  "fraudProofNoReferenceInputStep04",
+  "fraudProofReferenceInputNoIdxStep02",
+  "fraudProofReferenceInputNoIdxStep03",
+  "fraudProofReferenceInputNoIdxStep04",
+  "fraudProofInvalidSignatureStep02",
+  "fraudProofMissingNativeScriptTxStep07",
+  "fraudProofMissingNativeScriptTxStep08",
+  "fraudProofMissingNativeScriptUtxo",
+  "fraudProofMissingNativeScriptUtxoStep02",
+  "fraudProofMissingNativeScriptUtxoStep03",
+  "fraudProofMissingNativeScriptUtxoStep04",
+  "fraudProofMissingNativeScriptUtxoStep05",
+  "fraudProofNativeScriptInvalid",
+  "fraudProofNativeScriptInvalidStep02",
+  "fraudProofNativeScriptInvalidStep03",
+  "fraudProofMinAda",
+  "fraudProofMinAdaStep02",
+  "correctionLockSpend",
+  "claimRegistrySpend",
+  "fraudProofMinAdaStep03",
+  "fraudProofMinAdaStep04",
+  "fraudProofMinAdaStep05",
+  "availabilityChallengeSpend",
+  "availabilityChallengeMint",
 ] as const);
 
 export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
@@ -343,6 +392,84 @@ export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofTransitionTraceL1Event",
     "V1 fraud-proof transition-trace final-7":
       "fraudProofTransitionTraceDuplicate",
+    "V1 fraud-proof network-id step-01": "fraudProofNetworkId",
+    "V1 fraud-proof network-id step-02": "fraudProofNetworkIdStep02",
+    "V1 fraud-proof computation-thread minting": "computationThreadMint",
+    "V1 fraud-proof token minting": "fraudProofMint",
+    "V1 MPF chunked-verify withdrawal": "chunkedVerifyWithdraw",
+    "V1 MPF pexcludes withdrawal": "pexcludesWithdraw",
+    "V1 fraud-proof double-spend step-01": "fraudProofDoubleSpend",
+    "V1 fraud-proof double-spend step-02": "fraudProofDoubleSpendStep02",
+    "V1 fraud-proof double-spend step-03": "fraudProofDoubleSpendStep03",
+    "V1 fraud-proof double-spend step-04": "fraudProofDoubleSpendStep04",
+    "V1 fraud-proof non-existent-input step-01": "fraudProofNonExistentInput",
+    "V1 fraud-proof non-existent-input step-02":
+      "fraudProofNonExistentInputStep02",
+    "V1 fraud-proof non-existent-input step-03":
+      "fraudProofNonExistentInputStep03",
+    "V1 fraud-proof non-existent-input step-04":
+      "fraudProofNonExistentInputStep04",
+    "V1 fraud-proof non-existent-input-no-index step-01":
+      "fraudProofNonExistentInputNoIndex",
+    "V1 fraud-proof non-existent-input-no-index step-02":
+      "fraudProofNonExistentInputNoIndexStep02",
+    "V1 fraud-proof non-existent-input-no-index step-03":
+      "fraudProofNonExistentInputNoIndexStep03",
+    "V1 fraud-proof non-existent-input-no-index step-04":
+      "fraudProofNonExistentInputNoIndexStep04",
+    "V1 fraud-proof invalid-range step-01": "fraudProofInvalidRange",
+    "V1 fraud-proof invalid-range step-02": "fraudProofInvalidRangeStep02",
+    "V1 fraud-proof zero-input step-01": "fraudProofZeroInput",
+    "V1 fraud-proof zero-input step-02": "fraudProofZeroInputStep02",
+    "V1 fraud-proof da-hash-preimage step-01": "fraudProofDaHashPreimage",
+    "V1 fraud-proof da-hash-preimage step-02": "fraudProofDaHashPreimageStep02",
+    "V1 fraud-proof no-reference-input step-01": "fraudProofNoReferenceInput",
+    "V1 fraud-proof no-reference-input step-02":
+      "fraudProofNoReferenceInputStep02",
+    "V1 fraud-proof no-reference-input step-03":
+      "fraudProofNoReferenceInputStep03",
+    "V1 fraud-proof no-reference-input step-04":
+      "fraudProofNoReferenceInputStep04",
+    "V1 fraud-proof reference-input-no-idx step-01":
+      "fraudProofReferenceInputNoIdx",
+    "V1 fraud-proof reference-input-no-idx step-02":
+      "fraudProofReferenceInputNoIdxStep02",
+    "V1 fraud-proof reference-input-no-idx step-03":
+      "fraudProofReferenceInputNoIdxStep03",
+    "V1 fraud-proof reference-input-no-idx step-04":
+      "fraudProofReferenceInputNoIdxStep04",
+    "V1 fraud-proof invalid-signature step-01": "fraudProofInvalidSignature",
+    "V1 fraud-proof invalid-signature step-02":
+      "fraudProofInvalidSignatureStep02",
+    "V1 fraud-proof missing-native-script-tx step-07":
+      "fraudProofMissingNativeScriptTxStep07",
+    "V1 fraud-proof missing-native-script-tx step-08":
+      "fraudProofMissingNativeScriptTxStep08",
+    "V1 fraud-proof missing-native-script-utxo step-01":
+      "fraudProofMissingNativeScriptUtxo",
+    "V1 fraud-proof missing-native-script-utxo step-02":
+      "fraudProofMissingNativeScriptUtxoStep02",
+    "V1 fraud-proof missing-native-script-utxo step-03":
+      "fraudProofMissingNativeScriptUtxoStep03",
+    "V1 fraud-proof missing-native-script-utxo step-04":
+      "fraudProofMissingNativeScriptUtxoStep04",
+    "V1 fraud-proof missing-native-script-utxo step-05":
+      "fraudProofMissingNativeScriptUtxoStep05",
+    "V1 fraud-proof native-script-invalid step-01":
+      "fraudProofNativeScriptInvalid",
+    "V1 fraud-proof native-script-invalid step-02":
+      "fraudProofNativeScriptInvalidStep02",
+    "V1 fraud-proof native-script-invalid step-03":
+      "fraudProofNativeScriptInvalidStep03",
+    "V1 fraud-proof min-ada step-01": "fraudProofMinAda",
+    "V1 fraud-proof min-ada step-02": "fraudProofMinAdaStep02",
+    "correction-lock spending": "correctionLockSpend",
+    "claim-registry spending": "claimRegistrySpend",
+    "V1 fraud-proof min-ada step-03": "fraudProofMinAdaStep03",
+    "V1 fraud-proof min-ada step-04": "fraudProofMinAdaStep04",
+    "V1 fraud-proof min-ada step-05": "fraudProofMinAdaStep05",
+    "availability-challenge spending": "availabilityChallengeSpend",
+    "availability-challenge minting": "availabilityChallengeMint",
   } as const);
 
 export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_ROLES = Object.freeze(
@@ -416,7 +543,7 @@ export type DeploymentManifestV1Value = {
   readonly consensusProfileDigest: string;
   readonly network: string;
   readonly cardanoProtocolParameters: {
-    readonly snapshot: DeploymentManifestV1JsonValue;
+    readonly snapshot: DeploymentManifestV1CardanoProtocolParameters;
     readonly digest: string;
   };
   readonly genesis: {
@@ -495,6 +622,9 @@ export type DeploymentManifestV1Value = {
     readonly maxBisectionRounds: number;
     readonly maturityMs: number;
   };
+  readonly l1Finality: DeploymentManifestV1L1Finality;
+  readonly economics: DeploymentManifestV1Economics;
+  readonly availabilityChallenge: DeploymentManifestV1AvailabilityChallenge;
 };
 
 export const computeDeploymentManifestV1DaCommitteeSignersHash = (
@@ -826,6 +956,10 @@ const validateFraudProofCatalogue = (
     valueNotPreserved: "fraudProofValueNotPreserved",
     inputSetUniqueness: "fraudProofInputSetUniqueness",
     mintAuthorization: "fraudProofMintAuthorization",
+    networkId: "fraudProofNetworkId",
+    missingNativeScriptUtxo: "fraudProofMissingNativeScriptUtxo",
+    nativeScriptInvalid: "fraudProofNativeScriptInvalid",
+    minAda: "fraudProofMinAda",
   } as const;
   const parsedCategories = {} as Record<
     DeploymentManifestV1FraudProofCatalogueCategory,
@@ -1323,6 +1457,23 @@ const parseDeploymentManifestCommon = (
   validateValidationDispute(
     requireObject(candidate.validationDispute, "validationDispute"),
   );
+  const l1Finality = requireObject(candidate.l1Finality, "l1Finality");
+  requireExactKeys(
+    l1Finality,
+    ["confirmationDepth", "automaticRecoveryMaxDepth", "deepRollbackPolicy"],
+    [],
+    "l1Finality",
+  );
+  for (const [key, expected] of Object.entries(
+    DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
+  )) {
+    if (l1Finality[key] !== expected) {
+      throw new Error(
+        `Deployment manifest l1Finality.${key} must equal ${String(expected)}`,
+      );
+    }
+  }
+  parseDeploymentManifestV1Economics(candidate.economics);
   const manifestId = requireNonEmptyString(candidate.manifestId, "manifestId");
   if (!/^[0-9a-f]{64}$/.test(manifestId)) {
     throw new Error(
@@ -1365,6 +1516,9 @@ export const parseDeploymentManifestV1Value = (
       "proofEvidence",
       "steps",
       "validationDispute",
+      "l1Finality",
+      "economics",
+      "availabilityChallenge",
     ],
     [],
     "value",

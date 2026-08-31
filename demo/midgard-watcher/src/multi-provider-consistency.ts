@@ -1002,7 +1002,20 @@ export const evaluateWatcherMultiProviderConsistencyV1 = (
           } else if (
             query.chainPoint.pointDigest === authority.chainPoint.pointDigest
           ) {
-            if (query.blockContentDigest === authority.blockContentDigest) {
+            /*
+             * Kupo's authenticated surface is its exact checkpoint, not a
+             * Cardano block-body API. A Kupo observation is therefore
+             * intentionally point-only (zero claimed transactions). The
+             * paired Ogmios observation must still reproduce the native
+             * chain-sync block content exactly. Treating Ogmios bytes as if
+             * Kupo supplied them would manufacture cross-source agreement.
+             */
+            if (configured.kind === "kupo" && query.transactions.length === 0) {
+              observationStatus = "aligned";
+            } else if (
+              configured.kind !== "kupo" &&
+              query.blockContentDigest === authority.blockContentDigest
+            ) {
               observationStatus = "aligned";
             } else {
               observationStatus = "content_mismatch";

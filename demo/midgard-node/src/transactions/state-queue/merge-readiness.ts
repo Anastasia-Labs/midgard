@@ -1,4 +1,5 @@
 import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 
 import {
@@ -336,8 +337,7 @@ export const mergeSubmitValidityEvidence = ({
 
 export type OldestQueuedBlockReadinessInput = {
   readonly headerHash: string;
-  readonly currentDaAttestation: string;
-  readonly requiredDaAttestation: string;
+  readonly currentDaAvailability: SDK.DaAvailabilityStateQueueStatusV1;
   readonly readyAfterUnixTime: number;
   readonly nowUnixTime: number;
 };
@@ -363,8 +363,7 @@ export type OldestQueuedBlockReadiness =
 export type MergeCandidateIdentityInput = {
   readonly firstBlockOutRef: string;
   readonly headerHash: string;
-  readonly currentDaAttestation: string;
-  readonly requiredDaAttestation: string;
+  readonly currentDaAvailability: SDK.DaAvailabilityStateQueueStatusV1;
   readonly readyAfterUnixTime: number;
 };
 
@@ -374,8 +373,7 @@ export const mergeCandidateIdentity = (
   [
     input.firstBlockOutRef,
     input.headerHash,
-    input.currentDaAttestation,
-    input.requiredDaAttestation,
+    SDK.daAvailabilityStateQueueStatusIdentityV1(input.currentDaAvailability),
     input.readyAfterUnixTime.toString(),
   ].join("|");
 
@@ -388,19 +386,22 @@ export type OldestQueuedBlockCandidateReadinessInput =
 export type OldestQueuedBlockCandidateReadiness = OldestQueuedBlockReadiness & {
   readonly firstBlockOutRef: string;
   readonly candidateIdentity: string;
-  readonly currentDaAttestation: string;
-  readonly requiredDaAttestation: string;
+  readonly currentDaAvailability: SDK.DaAvailabilityStateQueueStatusV1;
   readonly validFromUnixTime: number;
 };
 
 export const classifyOldestQueuedBlockReadiness = (
   input: OldestQueuedBlockReadinessInput,
 ): OldestQueuedBlockReadiness => {
-  if (input.currentDaAttestation !== input.requiredDaAttestation) {
+  if (
+    !SDK.daAvailabilityStateQueueStatusPermitsMergeV1(
+      input.currentDaAvailability,
+    )
+  ) {
     return {
       status: "skipped_oldest_block_unattested",
       headerHash: input.headerHash,
-      reason: `header=${input.headerHash},current_da_attestation=${input.currentDaAttestation},required_da_attestation=${input.requiredDaAttestation}`,
+      reason: `header=${input.headerHash},current_da_availability=${SDK.daAvailabilityStateQueueStatusIdentityV1(input.currentDaAvailability)},required_da_availability=Attested|Published`,
       readyAfterUnixTime: input.readyAfterUnixTime,
       nowUnixTime: input.nowUnixTime,
     };
@@ -431,8 +432,7 @@ export const classifyOldestQueuedBlockCandidateReadiness = (
     ...readiness,
     firstBlockOutRef: input.firstBlockOutRef,
     candidateIdentity: mergeCandidateIdentity(input),
-    currentDaAttestation: input.currentDaAttestation,
-    requiredDaAttestation: input.requiredDaAttestation,
+    currentDaAvailability: input.currentDaAvailability,
     validFromUnixTime: input.validFromUnixTime,
   };
 };

@@ -975,6 +975,7 @@ const observationFor = (
     | "attach_da"
     | "merge"
     | "remove_fraudulent"
+    | "remove_unattested_timeout"
     | "rollback",
   predecessor: string | null,
   _lower: string | null,
@@ -1381,7 +1382,7 @@ const recoveryAppendBundle = (
   const nodeDatum = linkedNode(
     {
       header: Data.from(header.headerCborHex, HeaderV1),
-      da_attestation: "",
+      da_attestation: "Unattested",
     },
     StateQueueNodeV1,
     null,
@@ -1479,6 +1480,8 @@ const recoveryAppendBundle = (
               scheduler_ref_input_index: 0n,
               active_operators_input_index: 1n,
               active_operators_redeemer_index: 1n,
+              m_confirmed_state_ref_input_index: null,
+              m_head_state_queue_node_ref_input_index: null,
             },
           },
           StateQueueRedeemer,
@@ -1750,8 +1753,34 @@ const attachDaBundle = (input: {
     Data.to(
       {
         header_hash: input.header.headerHash,
+        availability_commitment: {
+          version: 1n,
+          deployment_identity: h28("ac"),
+          header_hash: input.header.headerHash,
+          payload_byte_length: 1n,
+          response_geometry: {
+            chunk_byte_length: 1n,
+            tranche_byte_length: 1n,
+            max_tranche_count: 1n,
+          },
+          tranche_descriptors: [
+            {
+              tranche_index: 0n,
+              start_offset: 0n,
+              byte_length: 1n,
+              chunk_count: 1n,
+              chunk_commitment: h32("af"),
+              terminal_accumulator: h32("ad"),
+            },
+          ],
+          bond_owner: h28("ae"),
+        },
         da_threshold: 1n,
         committee_signers_hash: DA_SIGNERS_HASH,
+        rescue_beneficiary: {
+          paymentCredential: { PublicKeyCredential: [h28("dc")] },
+          stakeCredential: null,
+        },
         attested_signers: `${"01"}${"00".repeat(31)}`,
         attestation_count: 1n,
       },
@@ -1803,7 +1832,9 @@ const attachDaBundle = (input: {
   const attachedNodeDatum = linkedNode(
     {
       header: Data.from(input.header.headerCborHex, HeaderV1),
-      da_attestation: policy.daAttestationPolicyId,
+      da_attestation: {
+        Attested: { da_bond_asset_name: h32("ab") },
+      },
     },
     StateQueueNodeV1,
     null,
@@ -1880,6 +1911,7 @@ const attachDaBundle = (input: {
             da_params_ref_input_index: 0n,
             state_queue_output_index: input.applyOutputIndex ?? 0n,
             state_queue_mint_ref_script_input_index: 0n,
+            availability_mint_redeemer_index: 1n,
           },
         },
         DaAttestationMintRedeemer,
@@ -2757,7 +2789,7 @@ describe("authenticated state-queue indexer", () => {
     );
     const nodeData: StateQueueNodeV1 = {
       header: Data.from(headerBase.headerCborHex, HeaderV1),
-      da_attestation: "",
+      da_attestation: "Unattested",
     };
     const nodeDatum = linkedNode(nodeData, StateQueueNodeV1, null);
     const activeDatum = linkedNode(
@@ -2852,6 +2884,8 @@ describe("authenticated state-queue indexer", () => {
               scheduler_ref_input_index: 0n,
               active_operators_input_index: 1n,
               active_operators_redeemer_index: 1n,
+              m_confirmed_state_ref_input_index: null,
+              m_head_state_queue_node_ref_input_index: null,
             },
           },
           StateQueueRedeemer,
@@ -3893,7 +3927,7 @@ describe("authenticated state-queue indexer", () => {
     const firstDatum = linkedNode(
       {
         header: Data.from(first.headerCborHex, HeaderV1),
-        da_attestation: "",
+        da_attestation: "Unattested",
       },
       StateQueueNodeV1,
       second.headerHash,
@@ -3901,7 +3935,7 @@ describe("authenticated state-queue indexer", () => {
     const secondDatum = linkedNode(
       {
         header: Data.from(second.headerCborHex, HeaderV1),
-        da_attestation: "",
+        da_attestation: "Unattested",
       },
       StateQueueNodeV1,
       null,
@@ -4105,7 +4139,7 @@ describe("authenticated state-queue indexer", () => {
     const continuedFirstDatum = linkedNode(
       {
         header: Data.from(first.headerCborHex, HeaderV1),
-        da_attestation: "",
+        da_attestation: "Unattested",
       },
       StateQueueNodeV1,
       null,
@@ -4247,6 +4281,105 @@ describe("authenticated state-queue indexer", () => {
     expect(parseWatcherStateQueueIndexerStateV1(removed.state, policy)).toEqual(
       removed.state,
     );
+    expect(removed.state?.history.at(-1)?.correctionTransition).toBeNull();
+
+    const timeoutBlock = l1Block(
+      removalBody,
+      removalOutputs,
+      [
+        {
+          purpose: "spend",
+          index: "0",
+          bytesHex: Data.to("LinkedListMutation", StateQueueSpendRedeemer),
+        },
+        {
+          purpose: "spend",
+          index: "1",
+          bytesHex: Data.to("LinkedListMutation", StateQueueSpendRedeemer),
+        },
+        {
+          purpose: "mint",
+          index: "0",
+          bytesHex: Data.to(
+            {
+              RemoveUnattestedBlockAfterTimeout: {
+                timed_out_header_hash: first.headerHash,
+                removal_approach: {
+                  PruneTimedOutBlockDescendant: {
+                    confirmed_state_ref_input_index: 0n,
+                    timed_out_node_input_outref: {
+                      transactionId: bootstrapBlock.txHash,
+                      outputIndex: 1n,
+                    },
+                    timed_out_node_output_index: 0n,
+                  },
+                },
+              },
+            },
+            StateQueueRedeemer,
+          ),
+        },
+      ],
+      bootstrapBlock.normalized.chainPoint.blockHash,
+    );
+    const timeoutStore = storeFor(
+      timeoutBlock,
+      [
+        ...bootstrapStore.protocolUtxos.filter(
+          ({ outRef }) => outRef !== firstOutRef && outRef !== secondOutRef,
+        ),
+        ...protocolRecords(timeoutBlock, removalOutputs),
+      ],
+      bootstrapStore,
+    );
+    const timeoutObservation = observationFor(
+      timeoutBlock,
+      timeoutStore,
+      removalSnapshot,
+      "remove_unattested_timeout",
+      boot.stateDigest,
+      null,
+      null,
+    );
+    const timedOut = evaluateWatcherStateQueueIndexerV1(
+      policy,
+      boot,
+      timeoutObservation,
+      contextFor(timeoutBlock, timeoutStore),
+    );
+    expect(timedOut.action, JSON.stringify(timedOut)).toBe("accept");
+    expect(timedOut.reasonCodes).toEqual(["timeout_correction_authenticated"]);
+    expect(timedOut.state?.history.at(-1)?.correctionTransition).toMatchObject({
+      transactionHash: timeoutBlock.txHash,
+      deploymentIdentityDigest: policy.deploymentMarker.manifestId,
+      removalApproach: "PruneTimedOutBlockDescendant",
+      timedOutHeaderHash: first.headerHash,
+      removedHeaderHashes: [second.headerHash],
+      consumedQueueOutRefs: [firstOutRef, secondOutRef].sort(),
+    });
+    expect(
+      parseWatcherStateQueueIndexerStateV1(timedOut.state, policy),
+    ).toEqual(timedOut.state);
+    const timeoutMislabeledAsFraud = observationFor(
+      timeoutBlock,
+      timeoutStore,
+      removalSnapshot,
+      "remove_fraudulent",
+      boot.stateDigest,
+      null,
+      null,
+    );
+    expect(
+      evaluateWatcherStateQueueIndexerV1(
+        policy,
+        boot,
+        timeoutMislabeledAsFraud,
+        contextFor(timeoutBlock, timeoutStore),
+      ),
+    ).toMatchObject({
+      action: "reject",
+      reasonCodes: ["removal_mismatch"],
+    });
 
     const crossForkBlock = l1Block(
       removalBody,

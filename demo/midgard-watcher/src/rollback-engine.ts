@@ -7,7 +7,9 @@ import {
 } from "../../midgard-core/src/deployment-manifest-identity-v1.js";
 import {
   compareAndSwapWatcherDurableAtomicSnapshotV1,
+  decodeWatcherDurableStoreV1,
   encodeWatcherDurableStoreV1,
+  makeWatcherDurablePayloadV1,
   makeWatcherDurableStoreV1,
   parseWatcherDurableStoreV1,
   readWatcherDurableAtomicSnapshotV1,
@@ -21,6 +23,7 @@ import {
 } from "./durable-store.js";
 import {
   evaluateWatcherFinalityV1,
+  makeWatcherFinalityBootstrapStateV1,
   parseWatcherFinalityPolicyV1,
   parseWatcherFinalityStateV1,
   WATCHER_FINALITY_RESULT_V1_SCHEMA_VERSION,
@@ -35,6 +38,7 @@ import {
 } from "./finality-engine.js";
 import {
   encodeWatcherNormalizedL1BlockV1,
+  isWatcherL1BlockAttestedByV1,
   type WatcherL1TransportAttestationContextV1,
   type WatcherNormalizedL1BlockV1,
 } from "./l1-adapter.js";
@@ -361,6 +365,12 @@ export type WatcherRollbackDurableAuthorityStatusV1 = Readonly<{
   incidentDigest: string | null;
 }>;
 
+export type WatcherRollbackDurableAuthorityReadV1 = Readonly<{
+  currentStore: WatcherDurableStoreV1;
+  currentFinalityState: WatcherFinalityStateV1;
+  authenticatedConsistencyHistory: readonly WatcherMultiProviderConsistencyV1[];
+}>;
+
 /**
  * This head must be stored by a monotonic, non-rollbackable authority that is
  * independent of the snapshot backend. An ordinary row in the same database,
@@ -417,6 +427,23 @@ export type WatcherRollbackDurableRecoveryResultV1 =
     }>
   | WatcherRollbackDurablePersistenceConflictV1;
 
+export type WatcherRollbackDurableCanonicalProgressResultV1 =
+  | Readonly<{
+      persistence: "committed" | "unchanged";
+      authority: WatcherRollbackDurableAuthorityV1;
+      trustedHead: WatcherRollbackDurableTrustedHeadV1;
+      finalityResult: WatcherFinalityResultV1;
+    }>
+  | WatcherRollbackDurablePersistenceConflictV1;
+
+export type WatcherRollbackDurableObservationResultV1 =
+  | Readonly<{
+      persistence: "committed" | "unchanged";
+      authority: WatcherRollbackDurableAuthorityV1;
+      trustedHead: WatcherRollbackDurableTrustedHeadV1;
+    }>
+  | WatcherRollbackDurablePersistenceConflictV1;
+
 type WatcherRollbackDurableAuthoritySnapshotV1 = Readonly<{
   schemaVersion: typeof WATCHER_ROLLBACK_DURABLE_AUTHORITY_V1_SCHEMA_VERSION;
   revision: string;
@@ -424,6 +451,7 @@ type WatcherRollbackDurableAuthoritySnapshotV1 = Readonly<{
   policyDigest: string;
   deploymentMarker: DeploymentMarkerV1;
   currentStore: WatcherDurableStoreV1;
+  consistencyHistory: readonly WatcherMultiProviderConsistencyV1[];
   rollbackState: WatcherRollbackStateV1;
   rollbackBootstrapState: WatcherRollbackStateV1;
   trustedCheckpointStateDigest: string;
@@ -3035,6 +3063,9 @@ const verifyPostFinalityPath = (
   value: unknown,
   persistedIndex: PersistedObservationIndex,
   transportAttestationsInput: unknown,
+  authenticatedSnapshotEvidence:
+    | typeof AUTHENTICATED_ROLLBACK_SNAPSHOT_EVIDENCE
+    | null = null,
 ): VerifiedPostFinalityPath | WatcherPostFinalityRecoveryReasonCodeV1 => {
   const inputs = exactArray(value);
   if (inputs === null || inputs.length < 2) {
@@ -3084,6 +3115,7 @@ const verifyPostFinalityPath = (
       input as WatcherMultiProviderConsistencyV1,
       transportAttestationsInput,
       persistedIndex,
+      authenticatedSnapshotEvidence,
     );
     const consistency = persisted?.consistency;
     if (
@@ -3543,12 +3575,28 @@ const evaluateWatcherPostFinalityRecoveryInternalV1 = (
     );
   }
   const persistedIndex = indexPersistedObservations(sourceStore);
+  const authenticatedSnapshotEvidence = (() => {
+    if (
+      typeof input.trustedCheckpointAuthority !== "object" ||
+      input.trustedCheckpointAuthority === null
+    ) {
+      return null;
+    }
+    const runtime = rollbackDurableAuthorityRuntime.get(
+      input.trustedCheckpointAuthority as WatcherRollbackDurableAuthorityV1,
+    );
+    return runtime !== undefined &&
+      watcherSameCanonicalJsonV1(runtime.snapshot.currentStore, sourceStore)
+      ? AUTHENTICATED_ROLLBACK_SNAPSHOT_EVIDENCE
+      : null;
+  })();
   const previousPath = verifyPostFinalityPath(
     policy,
     sourceStore,
     input.previousCanonicalPath,
     persistedIndex,
     input.transportAttestations,
+    authenticatedSnapshotEvidence,
   );
   if (typeof previousPath === "string") {
     return rejectPostFinalityRecovery(previousPath);
@@ -3559,6 +3607,7 @@ const evaluateWatcherPostFinalityRecoveryInternalV1 = (
     input.replacementCanonicalPath,
     persistedIndex,
     input.transportAttestations,
+    authenticatedSnapshotEvidence,
   );
   if (typeof replacementPath === "string") {
     return rejectPostFinalityRecovery(replacementPath);
@@ -3843,6 +3892,7 @@ const rollbackAuthorityCanonical = (
   policyDigest: value.policyDigest,
   deploymentMarker: value.deploymentMarker,
   currentStore: value.currentStore,
+  consistencyHistory: value.consistencyHistory,
   rollbackState: value.rollbackState,
   rollbackBootstrapState: value.rollbackBootstrapState,
   trustedCheckpointStateDigest: value.trustedCheckpointStateDigest,
@@ -3898,6 +3948,7 @@ const decodeRollbackDurableAuthoritySnapshot = (
       "policyDigest",
       "deploymentMarker",
       "currentStore",
+      "consistencyHistory",
       "rollbackState",
       "rollbackBootstrapState",
       "trustedCheckpointStateDigest",
@@ -3934,6 +3985,8 @@ const decodeRollbackDurableAuthoritySnapshot = (
       policyDigest: record.policyDigest as string,
       deploymentMarker: record.deploymentMarker as DeploymentMarkerV1,
       currentStore: record.currentStore as WatcherDurableStoreV1,
+      consistencyHistory:
+        record.consistencyHistory as readonly WatcherMultiProviderConsistencyV1[],
       rollbackState: record.rollbackState as WatcherRollbackStateV1,
       rollbackBootstrapState:
         record.rollbackBootstrapState as WatcherRollbackStateV1,
@@ -3964,6 +4017,31 @@ const decodeRollbackDurableAuthoritySnapshot = (
     const rollbackState = decodeWatcherRollbackStateV1Structural(
       record.rollbackState,
     );
+    const consistencyInputs = exactArray(record.consistencyHistory);
+    if (consistencyInputs === null || consistencyInputs.length > 6_483) {
+      return null;
+    }
+    const consistencyHistory =
+      consistencyInputs as readonly WatcherMultiProviderConsistencyV1[];
+    const persistedIndex = indexPersistedObservations(currentStore);
+    if (
+      consistencyHistory.some(
+        (consistency) =>
+          verifyPersistedConsistencyEvidence(
+            policy,
+            currentStore,
+            consistency,
+            [],
+            persistedIndex,
+            AUTHENTICATED_ROLLBACK_SNAPSHOT_EVIDENCE,
+          ) === null,
+      ) ||
+      new Set(
+        consistencyHistory.map(({ consistencyDigest }) => consistencyDigest),
+      ).size !== consistencyHistory.length
+    ) {
+      return null;
+    }
     const rollbackBootstrapState = parseRollbackBootstrapStateWithTrustedDigest(
       policy,
       record.rollbackBootstrapState,
@@ -3993,6 +4071,7 @@ const decodeRollbackDurableAuthoritySnapshot = (
       policyDigest: policy.policyDigest,
       deploymentMarker,
       currentStore,
+      consistencyHistory,
       rollbackState,
       rollbackBootstrapState,
       trustedCheckpointStateDigest:
@@ -4018,6 +4097,7 @@ const makeRollbackDurableAuthoritySnapshot = (
   revision: string,
   priorSnapshotSha256: string | null,
   currentStore: WatcherDurableStoreV1,
+  consistencyHistory: readonly WatcherMultiProviderConsistencyV1[],
   rollbackState: WatcherRollbackStateV1,
   rollbackBootstrapState: WatcherRollbackStateV1,
   trustedCheckpointStateDigest: string,
@@ -4036,6 +4116,7 @@ const makeRollbackDurableAuthoritySnapshot = (
     policyDigest: policy.policyDigest,
     deploymentMarker: policy.deploymentMarker,
     currentStore,
+    consistencyHistory,
     rollbackState,
     rollbackBootstrapState,
     trustedCheckpointStateDigest,
@@ -4182,6 +4263,33 @@ const parseRollbackDurableTrustedHead = (
     ...canonical,
     headMac: record.headMac,
   }) as WatcherRollbackDurableTrustedHeadV1;
+};
+
+/**
+ * Strict public admission used by the independently persisted trusted-head
+ * authority. It authenticates the exact release policy, deployment marker and
+ * rollback-authority key; a structurally plausible caller-authored head is not
+ * authority.
+ */
+export const admitWatcherRollbackDurableTrustedHeadV1 = (input: {
+  readonly head: unknown;
+  readonly policy: unknown;
+  readonly authenticationKey: Uint8Array;
+}): WatcherRollbackDurableTrustedHeadV1 | null => {
+  try {
+    const policy = parseWatcherFinalityPolicyV1(input.policy);
+    if (policy === null) return null;
+    const authenticationKey = parseRollbackAuthorityAuthenticationKey(
+      input.authenticationKey,
+    );
+    return parseRollbackDurableTrustedHead(
+      input.head,
+      policy,
+      authenticationKey,
+    );
+  } catch {
+    return null;
+  }
 };
 
 const assertRollbackDurableTrustedHeadMatches = (
@@ -4440,6 +4548,7 @@ export const initializeWatcherRollbackDurableAuthorityV1 = async (input: {
     "0",
     null,
     bootstrapStore,
+    Object.freeze([]),
     bootstrapState,
     bootstrapState,
     bootstrapState.stateDigest,
@@ -4496,22 +4605,70 @@ export const watcherRollbackDurableAuthorityStatusV1 = (
   });
 };
 
+/**
+ * Returns detached, re-parsed protocol state from an opaque durable authority.
+ * Mutating the returned projection cannot mutate or authorize the underlying
+ * CAS snapshot; every subsequent transition still requires the WeakMap-backed
+ * authority handle.
+ */
+export const readWatcherRollbackDurableAuthorityV1 = (
+  authority: WatcherRollbackDurableAuthorityV1,
+): WatcherRollbackDurableAuthorityReadV1 => {
+  const runtime = runtimeForRollbackDurableAuthority(authority);
+  const store = decodeWatcherDurableStoreV1(
+    encodeWatcherDurableStoreV1(runtime.snapshot.currentStore),
+  );
+  const lastTransition = runtime.snapshot.rollbackState.transitions.at(-1);
+  const currentInput =
+    lastTransition?.finalityResult.state ??
+    runtime.snapshot.rollbackState.bootstrapFinalityState;
+  const currentFinalityState = parseWatcherFinalityStateV1(
+    JSON.parse(watcherCanonicalJsonV1(currentInput)) as unknown,
+    runtime.policy,
+  );
+  if (currentFinalityState === null) {
+    throw new Error("watcher rollback durable current finality state invalid");
+  }
+  return Object.freeze({
+    currentStore: store,
+    currentFinalityState,
+    authenticatedConsistencyHistory: Object.freeze(
+      JSON.parse(
+        watcherCanonicalJsonV1(runtime.snapshot.consistencyHistory),
+      ) as WatcherMultiProviderConsistencyV1[],
+    ),
+  });
+};
+
 const commitRollbackDurableAuthority = async (
   authority: WatcherRollbackDurableAuthorityV1,
   currentStore: WatcherDurableStoreV1,
   rollbackState: WatcherRollbackStateV1,
   rollbackBootstrapState: WatcherRollbackStateV1,
   trustedCheckpointStateDigest: string,
+  consistencyHistory?: readonly WatcherMultiProviderConsistencyV1[],
 ): Promise<Readonly<{
   authority: WatcherRollbackDurableAuthorityV1;
   trustedHead: WatcherRollbackDurableTrustedHeadV1;
 }> | null> => {
   const runtime = runtimeForRollbackDurableAuthority(authority);
+  const observationIds = new Set(
+    currentStore.l1Observations.map(({ observationId }) => observationId),
+  );
+  const retainedConsistencyHistory = Object.freeze(
+    (consistencyHistory ?? runtime.snapshot.consistencyHistory).filter(
+      ({ observationEvidenceDigests }) =>
+        observationEvidenceDigests.every((digest) =>
+          observationIds.has(digest),
+        ),
+    ),
+  );
   const { snapshot, encoded } = makeRollbackDurableAuthoritySnapshot(
     runtime.policy,
     (BigInt(runtime.snapshot.revision) + 1n).toString(),
     runtime.snapshotSha256,
     currentStore,
+    retainedConsistencyHistory,
     rollbackState,
     rollbackBootstrapState,
     trustedCheckpointStateDigest,
@@ -4543,6 +4700,322 @@ const commitRollbackDurableAuthority = async (
       runtime.authenticationKey,
     ),
   });
+};
+
+const currentRollbackFinalityState = (
+  runtime: WatcherRollbackDurableAuthorityRuntimeV1,
+): WatcherFinalityStateV1 => {
+  const input =
+    runtime.snapshot.rollbackState.transitions.at(-1)?.finalityResult.state ??
+    runtime.snapshot.rollbackState.bootstrapFinalityState;
+  const parsed = parseWatcherFinalityStateV1(input, runtime.policy);
+  if (parsed === null) {
+    throw new Error("watcher rollback durable current finality state invalid");
+  }
+  return parsed;
+};
+
+const storeWithAuthenticatedObservations = (
+  source: WatcherDurableStoreV1,
+  blocks: readonly WatcherNormalizedL1BlockV1[],
+): WatcherDurableStoreV1 => {
+  const chainPoints = blocks.map((block) =>
+    Object.freeze({
+      chainPointId: block.chainPoint.chainPointId,
+      providerId: block.provider.providerId,
+      blockHash: block.chainPoint.blockHash,
+      slot: block.chainPoint.slot,
+      blockNo: block.chainPoint.blockNo,
+      depth: block.chainPoint.depth,
+    }),
+  );
+  const observations = blocks.map((block) =>
+    Object.freeze({
+      observationId: block.observationDigest,
+      providerId: block.provider.providerId,
+      chainPointId: block.chainPoint.chainPointId,
+      payload: makeWatcherDurablePayloadV1(
+        encodeWatcherNormalizedL1BlockV1(block).toString("hex"),
+      ),
+    }),
+  );
+  const observationIds = new Set(
+    observations.map(({ observationId }) => observationId),
+  );
+  const chainPointIds = new Set(
+    chainPoints.map(({ chainPointId }) => chainPointId),
+  );
+  return makeWatcherDurableStoreV1({
+    deploymentMarker: source.deploymentMarker,
+    revision: (BigInt(source.revision) + 1n).toString(),
+    records: {
+      l1Observations: [
+        ...source.l1Observations.filter(
+          ({ observationId }) => !observationIds.has(observationId),
+        ),
+        ...observations,
+      ],
+      chainPoints: [
+        ...source.chainPoints.filter(
+          ({ chainPointId }) => !chainPointIds.has(chainPointId),
+        ),
+        ...chainPoints,
+      ],
+      protocolUtxos: source.protocolUtxos,
+      spentProtocolUtxos: source.spentProtocolUtxos,
+      daProofInputs: source.daProofInputs,
+      reconstructedStates: source.reconstructedStates,
+      decisions: source.decisions,
+      faults: source.faults,
+      submissions: source.submissions,
+      confirmations: source.confirmations,
+      retries: source.retries,
+      deadlines: source.deadlines,
+      correctionResults: source.correctionResults,
+    },
+  });
+};
+
+const authenticatesCanonicalBlock = (input: {
+  readonly block: WatcherNormalizedL1BlockV1;
+  readonly observations: readonly WatcherNormalizedL1BlockV1[];
+  readonly consistency: WatcherMultiProviderConsistencyV1;
+  readonly transportAttestations: readonly WatcherL1TransportAttestationContextV1[];
+}): boolean =>
+  input.observations.length === input.consistency.observationCount &&
+  input.observations.some(
+    ({ observationDigest }) =>
+      observationDigest === input.block.observationDigest,
+  ) &&
+  input.observations.every((observation) =>
+    input.transportAttestations.some((context) =>
+      isWatcherL1BlockAttestedByV1(observation, context),
+    ),
+  ) &&
+  sameStrings(
+    sorted(
+      input.observations.map(({ observationDigest }) => observationDigest),
+    ),
+    input.consistency.observationEvidenceDigests,
+  ) &&
+  input.consistency.status === "agreed" &&
+  input.consistency.protocolDecision === "allowed" &&
+  input.consistency.chainAuthorityObservationDigest ===
+    input.block.observationDigest &&
+  input.consistency.agreement?.pointDigest ===
+    input.block.chainPoint.pointDigest &&
+  input.consistency.agreement.blockContentDigest ===
+    input.block.blockContentDigest;
+
+/**
+ * Journals authenticated replacement evidence before a rewind/incident is
+ * evaluated. This operation changes no finality or rollback decision and its
+ * emitted head still requires external CAS publication before use.
+ */
+export const persistWatcherRollbackDurableObservationV1 = async (input: {
+  readonly authority: WatcherRollbackDurableAuthorityV1;
+  readonly block: WatcherNormalizedL1BlockV1;
+  readonly observations: readonly WatcherNormalizedL1BlockV1[];
+  readonly consistency: WatcherMultiProviderConsistencyV1;
+  readonly transportAttestations: readonly WatcherL1TransportAttestationContextV1[];
+}): Promise<WatcherRollbackDurableObservationResultV1> => {
+  const runtime = runtimeForRollbackDurableAuthority(input.authority);
+  if (!authenticatesCanonicalBlock(input)) {
+    throw new Error(
+      "watcher durable observation lacks authenticated local-node agreement",
+    );
+  }
+  const existingById = new Map(
+    runtime.snapshot.currentStore.l1Observations.map((observation) => [
+      observation.observationId,
+      observation,
+    ]),
+  );
+  const alreadyStored = input.observations.every((observation) => {
+    const existing = existingById.get(observation.observationDigest);
+    return (
+      existing !== undefined &&
+      existing.providerId === observation.provider.providerId &&
+      existing.chainPointId === observation.chainPoint.chainPointId &&
+      existing.payload.cborHex ===
+        encodeWatcherNormalizedL1BlockV1(observation).toString("hex")
+    );
+  });
+  if (
+    alreadyStored &&
+    runtime.snapshot.consistencyHistory.some(
+      ({ consistencyDigest }) =>
+        consistencyDigest === input.consistency.consistencyDigest,
+    )
+  ) {
+    return Object.freeze({
+      persistence: "unchanged",
+      authority: input.authority,
+      trustedHead: makeRollbackDurableTrustedHead(
+        runtime.policy,
+        runtime.snapshot,
+        runtime.snapshotSha256,
+        runtime.authenticationKey,
+      ),
+    });
+  }
+  if (
+    input.observations.some((observation) => {
+      const existing = existingById.get(observation.observationDigest);
+      return (
+        existing !== undefined &&
+        (existing.providerId !== observation.provider.providerId ||
+          existing.chainPointId !== observation.chainPoint.chainPointId ||
+          existing.payload.cborHex !==
+            encodeWatcherNormalizedL1BlockV1(observation).toString("hex"))
+      );
+    })
+  ) {
+    throw new Error("watcher durable observation identity was substituted");
+  }
+  const nextStore = storeWithAuthenticatedObservations(
+    runtime.snapshot.currentStore,
+    input.observations,
+  );
+  const nextHistory = Object.freeze([
+    ...runtime.snapshot.consistencyHistory.filter(
+      ({ consistencyDigest }) =>
+        consistencyDigest !== input.consistency.consistencyDigest,
+    ),
+    input.consistency,
+  ]);
+  if (nextHistory.length > 6_483) {
+    throw new Error(
+      "watcher authenticated consistency history exceeds its bound",
+    );
+  }
+  const committed = await commitRollbackDurableAuthority(
+    input.authority,
+    nextStore,
+    runtime.snapshot.rollbackState,
+    runtime.snapshot.rollbackBootstrapState,
+    runtime.snapshot.trustedCheckpointStateDigest,
+    nextHistory,
+  );
+  return committed === null
+    ? Object.freeze({ persistence: "conflict" })
+    : Object.freeze({
+        persistence: "committed",
+        authority: committed.authority,
+        trustedHead: committed.trustedHead,
+      });
+};
+
+/**
+ * Atomically journals the exact native chain-authority observation before any
+ * finality/rollback decision is acted upon. The observation must be the one
+ * admitted by the live chain-sync transport and selected by the independently
+ * reconciled local Kupo/Ogmios consistency result.
+ */
+export const persistWatcherRollbackDurableCanonicalProgressV1 = async (input: {
+  readonly authority: WatcherRollbackDurableAuthorityV1;
+  readonly block: WatcherNormalizedL1BlockV1;
+  readonly observations: readonly WatcherNormalizedL1BlockV1[];
+  readonly consistency: WatcherMultiProviderConsistencyV1;
+  readonly transportAttestations: readonly WatcherL1TransportAttestationContextV1[];
+}): Promise<WatcherRollbackDurableCanonicalProgressResultV1> => {
+  const runtime = runtimeForRollbackDurableAuthority(input.authority);
+  if (!authenticatesCanonicalBlock(input)) {
+    throw new Error(
+      "watcher canonical progress lacks authenticated local-node agreement",
+    );
+  }
+  const previousFinalityState = currentRollbackFinalityState(runtime);
+  let evaluationState = previousFinalityState;
+  if (
+    previousFinalityState.phase === "finalized" &&
+    previousFinalityState.finalized?.pointDigest !==
+      input.block.chainPoint.pointDigest
+  ) {
+    const finalized = previousFinalityState.finalized;
+    if (
+      finalized === null ||
+      input.block.chainPoint.parentBlockHash !== finalized.blockHash ||
+      BigInt(input.block.chainPoint.blockNo) !==
+        BigInt(finalized.blockNo) + 1n ||
+      BigInt(input.block.chainPoint.slot) <= BigInt(finalized.slot)
+    ) {
+      throw new Error(
+        "watcher canonical progress is not the direct child of the finalized block",
+      );
+    }
+    evaluationState =
+      makeWatcherFinalityBootstrapStateV1(runtime.policy) ??
+      (() => {
+        throw new Error("watcher canonical progress bootstrap is invalid");
+      })();
+  }
+  const finalityResult = evaluateWatcherFinalityV1(
+    runtime.policy,
+    evaluationState,
+    input.consistency,
+  );
+  if (
+    finalityResult.state === null ||
+    ["reject", "rewind_pending", "quarantine_incident"].includes(
+      finalityResult.action,
+    )
+  ) {
+    throw new Error(
+      "watcher canonical progress is not a forward finality transition",
+    );
+  }
+  if (finalityResult.action === "duplicate") {
+    return Object.freeze({
+      persistence: "unchanged",
+      authority: input.authority,
+      trustedHead: makeRollbackDurableTrustedHead(
+        runtime.policy,
+        runtime.snapshot,
+        runtime.snapshotSha256,
+        runtime.authenticationKey,
+      ),
+      finalityResult,
+    });
+  }
+  const nextStore = storeWithAuthenticatedObservations(
+    runtime.snapshot.currentStore,
+    input.observations,
+  );
+  const nextHistory = Object.freeze([
+    ...runtime.snapshot.consistencyHistory.filter(
+      ({ consistencyDigest }) =>
+        consistencyDigest !== input.consistency.consistencyDigest,
+    ),
+    input.consistency,
+  ]);
+  if (nextHistory.length > 6_483) {
+    throw new Error(
+      "watcher authenticated consistency history exceeds its bound",
+    );
+  }
+  const nextRollbackState = makeEpochBootstrapState(
+    runtime.policy,
+    runtime.snapshot.rollbackState,
+    nextStore,
+    finalityResult.state,
+  );
+  const committed = await commitRollbackDurableAuthority(
+    input.authority,
+    nextStore,
+    nextRollbackState,
+    nextRollbackState,
+    nextRollbackState.stateDigest,
+    nextHistory,
+  );
+  return committed === null
+    ? Object.freeze({ persistence: "conflict" })
+    : Object.freeze({
+        persistence: "committed",
+        authority: committed.authority,
+        trustedHead: committed.trustedHead,
+        finalityResult,
+      });
 };
 
 /**

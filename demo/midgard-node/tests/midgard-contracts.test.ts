@@ -7,6 +7,7 @@ import {
   DA_TRANSPORT_LIMITS_V1,
   DA_TRANSPORT_V1_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
+import { DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { REFERENCE_SCRIPT_AUTH_TOKEN_NAMES } from "@al-ft/midgard-sdk";
 import { it } from "@effect/vitest";
 import {
@@ -29,6 +30,7 @@ import {
 } from "@/deployment-manifest-v1.js";
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 import {
+  assertDeploymentManifestMatchesConfig,
   buildRealTxOrderContracts,
   readRuntimeDeploymentManifestFile,
   REAL_ACTIVE_OPERATORS_SCRIPT_TITLES,
@@ -49,16 +51,23 @@ import {
   fraudProofsToIndexedValidators,
 } from "@/transactions/initialization.js";
 
+import {
+  TEST_AVAILABILITY_CHALLENGE_V1,
+  TEST_AVAILABILITY_PARAMETERS_V1,
+} from "./helpers/availability-challenge-v1.js";
+import { TEST_CARDANO_PROTOCOL_PARAMETERS_V1 } from "./helpers/cardano-protocol-parameters-v1.js";
+
 describe("midgard contracts registry", () => {
   const oneShotOutRef = {
     txHash: "00".repeat(32),
     outputIndex: 0,
   } as const;
-  const cardanoSnapshot = normalizeDeploymentManifestV1JsonValue({
-    maxTxSize: 16_384,
-  });
+  const cardanoSnapshot = TEST_CARDANO_PROTOCOL_PARAMETERS_V1;
   const daVkey = "11".repeat(32);
   const manifestIdentityContext: DeploymentManifestV1IdentityContext = {
+    availabilityChallenge: TEST_AVAILABILITY_CHALLENGE_V1,
+    economics:
+      DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
     cardanoProtocolParameters: {
       snapshot: cardanoSnapshot,
       digest: computeDeploymentManifestV1JsonDigest(cardanoSnapshot),
@@ -97,7 +106,10 @@ describe("midgard contracts registry", () => {
         "Preprod",
         placeholderContracts,
         { ...oneShotOutRef },
-        { referenceScriptAuth: placeholderContracts.referenceScriptAuth },
+        {
+          referenceScriptAuth: placeholderContracts.referenceScriptAuth,
+          availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS_V1,
+        },
       );
 
       expect(REAL_HUB_ORACLE_SCRIPT_TITLES.mint).toBe("hub_oracle.mint.mint");
@@ -208,9 +220,12 @@ describe("midgard contracts registry", () => {
       expect(resolved.fraudProofContracts.missingSignature.steps).toHaveLength(
         4,
       );
+      // Eight, matching the eight `V1 fraud-proof missing-native-script-tx
+      // step-0N` roles the canonical manifest role map declares (step-07 and
+      // step-08 are the later additions this pin had not caught up with).
       expect(
         resolved.fraudProofContracts.missingNativeScriptTx.steps,
-      ).toHaveLength(6);
+      ).toHaveLength(8);
       expect(resolved.fraudProofContracts.withdrawalMistag.steps).toHaveLength(
         5,
       );
@@ -271,7 +286,10 @@ describe("midgard contracts registry", () => {
             txHash: "zz",
             outputIndex: -1,
           },
-          { referenceScriptAuth: placeholderContracts.referenceScriptAuth },
+          {
+            referenceScriptAuth: placeholderContracts.referenceScriptAuth,
+            availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS_V1,
+          },
         ),
       );
       expect(result._tag).toEqual("Left");
@@ -337,25 +355,64 @@ describe("midgard contracts registry", () => {
             fraudProofsToIndexedValidators(contracts.fraudProofs),
           ),
         );
-        const manifest = buildDeploymentManifestV1(
-          buildContractDeploymentInfoFromContracts(
-            contracts,
-            authPolicy,
-            referenceScriptOutRefs,
-            fraudProofCatalogue,
-          ),
-          {
-            network: "Preprod",
-            ...manifestIdentityContext,
-            referenceScriptDeployAddress: "addr_test1reference",
-            hubOracleOneShotTxHash: "ab".repeat(32),
-            hubOracleOneShotOutputIndex: 0,
-            hubOracleOneShotStatus: "consumed_by_init",
-            now: new Date("2026-07-24T00:00:00.000Z"),
-            steps: {
-              initProtocol: { status: "complete" },
-            },
+        const deploymentInfo = buildContractDeploymentInfoFromContracts(
+          contracts,
+          authPolicy,
+          referenceScriptOutRefs,
+          fraudProofCatalogue,
+        );
+        const manifest = buildDeploymentManifestV1(deploymentInfo, {
+          network: "Preprod",
+          ...manifestIdentityContext,
+          referenceScriptDeployAddress: "addr_test1reference",
+          hubOracleOneShotTxHash: "ab".repeat(32),
+          hubOracleOneShotOutputIndex: 0,
+          hubOracleOneShotStatus: "consumed_by_init",
+          now: new Date("2026-07-24T00:00:00.000Z"),
+          steps: {
+            initProtocol: { status: "complete" },
           },
+        });
+        const commonConfig = {
+          NETWORK: "Preprod" as const,
+          L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS: "addr_test1reference",
+          HUB_ORACLE_ONE_SHOT_TX_HASH: "ab".repeat(32),
+          HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX: 0,
+        };
+        expect(() =>
+          assertDeploymentManifestMatchesConfig(manifest, tamperedPath, {
+            ...commonConfig,
+            MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE: "public-preprod-launch-v1",
+            OPERATOR_REQUIRED_BOND_LOVELACE: 100_000_000_000n,
+            OPERATOR_SLASHING_PENALTY_LOVELACE: 25_000_000_000n,
+          }),
+        ).toThrow(
+          /economics\.profile manifest=bounded-acceptance-v1 config=public-preprod-launch-v1; economics\.requiredBondLovelace manifest=900000000 config=100000000000; economics\.slashingPenaltyLovelace manifest=500000000 config=25000000000/u,
+        );
+
+        const publicManifest = buildDeploymentManifestV1(deploymentInfo, {
+          network: "Preprod",
+          ...manifestIdentityContext,
+          economics:
+            DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE[
+              "public-preprod-launch-v1"
+            ],
+          referenceScriptDeployAddress: "addr_test1reference",
+          hubOracleOneShotTxHash: "ab".repeat(32),
+          hubOracleOneShotOutputIndex: 0,
+          hubOracleOneShotStatus: "consumed_by_init",
+          now: new Date("2026-07-24T00:00:00.000Z"),
+          steps: { initProtocol: { status: "complete" } },
+        });
+        expect(() =>
+          assertDeploymentManifestMatchesConfig(publicManifest, tamperedPath, {
+            ...commonConfig,
+            MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE: "bounded-acceptance-v1",
+            OPERATOR_REQUIRED_BOND_LOVELACE: 900_000_000n,
+            OPERATOR_SLASHING_PENALTY_LOVELACE: 500_000_000n,
+          }),
+        ).toThrow(
+          /economics\.profile manifest=public-preprod-launch-v1 config=bounded-acceptance-v1; economics\.requiredBondLovelace manifest=100000000000 config=900000000; economics\.slashingPenaltyLovelace manifest=25000000000 config=500000000/u,
         );
         await writeFile(
           tamperedPath,

@@ -4,6 +4,8 @@ import { type Server } from "node:net";
 import { join } from "node:path";
 
 import {
+  availabilityResponseGeometryV1,
+  buildDaAvailabilityCommitmentV1,
   DA_ATTESTATION_ASSET_NAME_PREFIX,
   DaAttestationDatum,
   FraudProofComputationThreadRedeemer,
@@ -4234,8 +4236,23 @@ describe("W17 public proof/computation-thread indexer", () => {
     const daDatum = Data.to(
       {
         header_hash: headerHash,
+        availability_commitment: buildDaAvailabilityCommitmentV1({
+          deploymentIdentity: h28("de"),
+          headerHash,
+          payload: Uint8Array.of(1),
+          bondOwner: h28("df"),
+          responseGeometry: availabilityResponseGeometryV1({
+            chunkByteLength: 14_020,
+            trancheByteLength: 4_194_304,
+            maxTrancheCount: 16,
+          }),
+        }),
         da_threshold: 1n,
         committee_signers_hash: h32("db"),
+        rescue_beneficiary: {
+          paymentCredential: { PublicKeyCredential: [h28("dc")] },
+          stakeCredential: null,
+        },
         attested_signers: `${"01"}${"00".repeat(31)}`,
         attestation_count: 1n,
       },

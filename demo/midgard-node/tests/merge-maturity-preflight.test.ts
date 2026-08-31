@@ -1,5 +1,6 @@
 import "./utils.js";
 
+import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -133,16 +134,15 @@ const makeCandidate = (
     status === "skipped_oldest_block_not_mature"
       ? readyAfterUnixTime - 1_000
       : readyAfterUnixTime;
-  const currentDaAttestation =
+  const currentDaAvailability: SDK.DaAvailabilityStateQueueStatusV1 =
     status === "skipped_oldest_block_unattested"
-      ? "11".repeat(28)
-      : "22".repeat(28);
+      ? SDK.NO_DA_ATTESTATION
+      : { Published: { terminal_commitment: "22".repeat(32) } };
   const firstBlockOutRef = `${identitySuffix.repeat(64).slice(0, 64)}#0`;
   const candidateIdentity = [
     firstBlockOutRef,
     headerHash,
-    currentDaAttestation,
-    "22".repeat(28),
+    SDK.daAvailabilityStateQueueStatusIdentityV1(currentDaAvailability),
     readyAfterUnixTime.toString(),
   ].join("|");
   return {
@@ -158,12 +158,11 @@ const makeCandidate = (
         status === "ready"
           ? `header=${headerHash}`
           : status === "skipped_oldest_block_unattested"
-            ? `header=${headerHash},current_da_attestation=${currentDaAttestation},required_da_attestation=${"22".repeat(28)}`
+            ? `header=${headerHash},current_da_availability=Unattested,required_da_availability=Attested|Published`
             : `header=${headerHash},ready_after=${readyAfterUnixTime.toString()},now=${nowUnixTime.toString()}`,
       firstBlockOutRef,
       candidateIdentity,
-      currentDaAttestation,
-      requiredDaAttestation: "22".repeat(28),
+      currentDaAvailability,
       validFromUnixTime: readyAfterUnixTime - 20_000,
       readyAfterUnixTime,
       nowUnixTime,
@@ -281,7 +280,12 @@ describe("merge maturity semantic preflight", () => {
 
     expect(result).toMatchObject({
       status: "skipped_oldest_block_unattested",
-      reason: expect.stringContaining("current_da_attestation="),
+      // The state-queue node's `da_attestation` is the
+      // `DaAvailabilityStateQueueStatusV1` enum now, so
+      // `classifyOldestQueuedBlockReadiness` reports the decoded availability
+      // kind under `current_da_availability=` (see `makeCandidate` above,
+      // which already builds the wave-current reason string).
+      reason: expect.stringContaining("current_da_availability="),
     });
     expect(tryWithLeaseMock).not.toHaveBeenCalled();
     expect(buildAndSubmitMergeTxMock).not.toHaveBeenCalled();

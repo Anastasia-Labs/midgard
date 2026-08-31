@@ -5,6 +5,10 @@ import {
   MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT_V1,
 } from "@al-ft/midgard-core/cek-proof";
 import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import {
+  DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE,
+  type DeploymentManifestV1EconomicsProfile,
+} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS,
@@ -148,7 +152,7 @@ export type NodeConfigDep = {
   REFERENCE_SCRIPT_AUTH_TIMELOCK_MS: number;
   REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS: number;
   NETWORK: Network;
-  PROTOCOL_PARAMETERS: SDK.ProtocolParameters;
+  MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE: DeploymentManifestV1EconomicsProfile;
   PORT: number;
   WAIT_BETWEEN_BLOCK_COMMITMENT: number;
   WAIT_BETWEEN_BLOCK_CONFIRMATION: number;
@@ -202,6 +206,7 @@ export type NodeConfigDep = {
   STATE_QUEUE_MUTATION_LEASE_TTL_MS: number;
   STATE_QUEUE_MUTATION_LEASE_RENEW_INTERVAL_MS: number;
   STATE_QUEUE_MUTATION_LEASE_STALE_GRACE_MS: number;
+  STATE_QUEUE_CORRECTION_FINALITY_DEPTH: number;
   RETENTION_DAYS: number;
   WAIT_BETWEEN_RETENTION_SWEEPS: number;
   HUB_ORACLE_ONE_SHOT_TX_HASH: string;
@@ -300,6 +305,23 @@ const makeConfig = Effect.gen(function* () {
     "Preview",
     "Custom",
   )("NETWORK");
+  const deploymentEconomicsProfile = yield* Config.string(
+    "MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE",
+  ).pipe(
+    Config.mapAttempt((value): DeploymentManifestV1EconomicsProfile => {
+      if (
+        value !== "public-preprod-launch-v1" &&
+        value !== "bounded-acceptance-v1"
+      ) {
+        throw new Error(
+          "MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE must explicitly equal public-preprod-launch-v1 or bounded-acceptance-v1",
+        );
+      }
+      return value;
+    }),
+  );
+  const deploymentEconomics =
+    DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE[deploymentEconomicsProfile];
   const l1ProviderPreflightTimeoutMs = yield* Config.integer(
     "L1_PROVIDER_PREFLIGHT_TIMEOUT_MS",
   ).pipe(
@@ -713,6 +735,19 @@ const makeConfig = Effect.gen(function* () {
       return value;
     }),
   );
+  const stateQueueCorrectionFinalityDepth = yield* Config.integer(
+    "STATE_QUEUE_CORRECTION_FINALITY_DEPTH",
+  ).pipe(
+    Config.withDefault(30),
+    Config.mapAttempt((value) => {
+      if (value !== 30) {
+        throw new Error(
+          "STATE_QUEUE_CORRECTION_FINALITY_DEPTH must equal the F04 public/testnet release depth of 30 blocks",
+        );
+      }
+      return value;
+    }),
+  );
   const retentionDays = yield* Config.integer("RETENTION_DAYS").pipe(
     Config.withDefault(0),
     Config.mapAttempt(validateRetentionDays),
@@ -733,14 +768,32 @@ const makeConfig = Effect.gen(function* () {
   const operatorRequiredBondLovelace = yield* Config.string(
     "OPERATOR_REQUIRED_BOND_LOVELACE",
   ).pipe(
-    Config.withDefault("5000000"),
-    Config.mapAttempt((value) => BigInt(value)),
+    Config.withDefault(deploymentEconomics.requiredBondLovelace.toString()),
+    Config.mapAttempt((value) => {
+      const parsed = BigInt(value);
+      const expected = BigInt(deploymentEconomics.requiredBondLovelace);
+      if (parsed !== expected) {
+        throw new Error(
+          `OPERATOR_REQUIRED_BOND_LOVELACE must equal ${deploymentEconomicsProfile} profile economics ${expected.toString()}`,
+        );
+      }
+      return parsed;
+    }),
   );
   const operatorSlashingPenaltyLovelace = yield* Config.string(
     "OPERATOR_SLASHING_PENALTY_LOVELACE",
   ).pipe(
-    Config.withDefault("200000"),
-    Config.mapAttempt((value) => BigInt(value)),
+    Config.withDefault(deploymentEconomics.slashingPenaltyLovelace.toString()),
+    Config.mapAttempt((value) => {
+      const parsed = BigInt(value);
+      const expected = BigInt(deploymentEconomics.slashingPenaltyLovelace);
+      if (parsed !== expected) {
+        throw new Error(
+          `OPERATOR_SLASHING_PENALTY_LOVELACE must equal ${deploymentEconomicsProfile} profile economics ${expected.toString()}`,
+        );
+      }
+      return parsed;
+    }),
   );
   // Q63 (F04 §4) governed floors are enforced in `deriveOperatorDaParams`, not
   // here — see `validateDaKeySetEncoding`. Config load only rejects values that
@@ -1289,7 +1342,7 @@ const makeConfig = Effect.gen(function* () {
     REFERENCE_SCRIPT_AUTH_TIMELOCK_MS: referenceScriptAuthTimelockMs,
     REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS: referenceScriptAuthMinRemainingMs,
     NETWORK: network,
-    PROTOCOL_PARAMETERS: SDK.getProtocolParameters(network),
+    MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE: deploymentEconomicsProfile,
     PORT: port,
     WAIT_BETWEEN_BLOCK_COMMITMENT: waitBetweenBlockCommitment,
     WAIT_BETWEEN_BLOCK_CONFIRMATION: waitBetweenBlockConfirmation,
@@ -1349,6 +1402,7 @@ const makeConfig = Effect.gen(function* () {
       stateQueueMutationLeaseRenewIntervalMs,
     STATE_QUEUE_MUTATION_LEASE_STALE_GRACE_MS:
       stateQueueMutationLeaseStaleGraceMs,
+    STATE_QUEUE_CORRECTION_FINALITY_DEPTH: stateQueueCorrectionFinalityDepth,
     RETENTION_DAYS: retentionDays,
     WAIT_BETWEEN_RETENTION_SWEEPS: waitBetweenRetentionSweeps,
     HUB_ORACLE_ONE_SHOT_TX_HASH: hubOracleOneShotTxHash,

@@ -404,7 +404,7 @@ const isEmptyConfirmedStateLinkError = (error: unknown): boolean =>
 export const fetchCanonicalMergeCandidateReadiness = (
   lucid: LucidEvolution,
   fetchConfig: SDK.StateQueueFetchConfig,
-  contracts: SDK.MidgardValidators,
+  _contracts: SDK.MidgardValidators,
   nowUnixTime: number = Date.now(),
 ): Effect.Effect<
   CanonicalMergeCandidateReadiness,
@@ -470,8 +470,7 @@ export const fetchCanonicalMergeCandidateReadiness = (
       readiness: classifyOldestQueuedBlockCandidateReadiness({
         firstBlockOutRef: firstBlockOutRef(firstBlockUTxO),
         headerHash: recomputedHeaderHash,
-        currentDaAttestation: firstBlockNode.da_attestation,
-        requiredDaAttestation: contracts.daAttestation.policyId,
+        currentDaAvailability: firstBlockNode.da_attestation,
         validFromUnixTime: mergeMaturity.validFromUnixTime,
         readyAfterUnixTime: mergeMaturity.readyAfterUnixTime,
         nowUnixTime,
@@ -1052,6 +1051,22 @@ export const buildAndSubmitMergeTx = (
         );
       }
       const hubOracleRefInput = hubOracleWitnessUtxos[0];
+      const correctionLockRefInput = yield* SDK.fetchCorrectionLockUTxOProgram(
+        lucid,
+        {
+          correctionLockAddress: contracts.correctionLock.spendingScriptAddress,
+          hubOraclePolicyId: contracts.hubOracle.policyId,
+        },
+      ).pipe(
+        Effect.mapError(
+          (cause) =>
+            new SDK.StateQueueError({
+              message:
+                "Failed to fetch authenticated correction-lock witness for merge transaction",
+              cause,
+            }),
+        ),
+      );
 
       const resolvedReferenceScripts =
         options?.referenceScriptsAddress === undefined
@@ -1119,6 +1134,7 @@ export const buildAndSubmitMergeTx = (
           validFrom: mergeMaturity.validFromUnixTime,
           presetWalletInputs,
           hubOracleRefInput,
+          correctionLockRefInput,
           referenceScripts,
         }).pipe(Effect.tapError(() => Metric.increment(mergeFailureCounter)));
       const txBuilder = builtMerge.tx;

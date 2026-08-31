@@ -1133,6 +1133,8 @@ describe("SDK canonical ABI fixtures", () => {
             scheduler_ref_input_index: 0n,
             active_operators_input_index: 1n,
             active_operators_redeemer_index: 1n,
+            m_confirmed_state_ref_input_index: null,
+            m_head_state_queue_node_ref_input_index: null,
           },
         },
         SDK.StateQueueRedeemer,

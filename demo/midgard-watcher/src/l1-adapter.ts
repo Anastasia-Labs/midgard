@@ -9,6 +9,10 @@ import {
 import { CML } from "@lucid-evolution/lucid";
 
 import { computeHash32 } from "../../midgard-core/src/codec/hash.js";
+import {
+  watcherNativeChainSyncAuthorityDetailsV1,
+  type WatcherNativeChainSyncAuthorityV1,
+} from "./native-chain-sync-v1.js";
 
 export const WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION =
   "midgard-watcher-authenticated-l1-provider-v1" as const;
@@ -271,11 +275,13 @@ const normalizationSessionStates = new WeakMap<
   WatcherL1NormalizationSessionV1,
   WatcherL1NormalizationSessionStateV1
 >();
-type WatcherL1TransportAttestationStateV1 = Readonly<{
+type WatcherL1TransportAttestationStateV1 = {
   details: WatcherL1TransportAttestationDetailsV1;
   transports: readonly (Socket | TLSSocket)[];
   ownedTransports: readonly (Socket | TLSSocket)[];
-}>;
+  upstreamIsLive: () => boolean;
+  active: boolean;
+};
 
 const transportAttestationStates = new WeakMap<
   WatcherL1TransportAttestationContextV1,
@@ -336,7 +342,8 @@ export const watcherL1TransportAttestationDetailsV1 = (
     context as WatcherL1TransportAttestationContextV1,
   );
   return state !== undefined &&
-    state.transports.length > 0 &&
+    state.active &&
+    state.upstreamIsLive() &&
     state.transports.every(
       (transport) =>
         !transport.destroyed &&
@@ -362,12 +369,11 @@ export const isWatcherL1BlockAttestedByV1 = (
 export const closeWatcherL1TransportAttestationContextV1 = (
   context: WatcherL1TransportAttestationContextV1,
 ): void => {
-  const state = transportAttestationStates.get(context);
-  if (state === undefined) {
+  const state =
+    transportAttestationStates.get(context) ??
     fail("invalid_field", "$.transportAttestationContext");
-  }
-  for (const transport of (state as WatcherL1TransportAttestationStateV1)
-    .ownedTransports) {
+  state.active = false;
+  for (const transport of state.ownedTransports) {
     transport.destroy();
   }
 };
@@ -1439,6 +1445,7 @@ const makeTransportAttestationContext = (
   details: WatcherL1TransportAttestationDetailsV1,
   transports: readonly (Socket | TLSSocket)[],
   ownedTransports: readonly (Socket | TLSSocket)[] = transports,
+  upstreamIsLive: () => boolean = () => true,
 ): WatcherL1TransportAttestationContextV1 => {
   const attestationDigest = digestCanonicalJson({
     provider: providerJson(details.provider),
@@ -1453,6 +1460,8 @@ const makeTransportAttestationContext = (
     details: Object.freeze(details),
     transports: Object.freeze([...transports]),
     ownedTransports: Object.freeze([...ownedTransports]),
+    upstreamIsLive,
+    active: true,
   });
   return context;
 };
@@ -1699,6 +1708,43 @@ const establishTlsSocket = async (
   return Object.freeze({ socket: trustedSocket, identitySha256 });
 };
 
+/**
+ * Mints the local chain-sync transport authority only from the opaque runtime
+ * produced after the pinned native NtC helper completed its Unix-socket
+ * handshake and returned the exact W01 startup identity.
+ */
+export const establishWatcherLocalNodeAuthorityTransportV1 = (
+  nativeAuthority: WatcherNativeChainSyncAuthorityV1,
+): WatcherL1TransportAttestationContextV1 => {
+  const details =
+    watcherNativeChainSyncAuthorityDetailsV1(nativeAuthority) ??
+    fail("invalid_field", "$.nativeChainSyncAuthority");
+  const provider = parseAuthenticatedProvider({
+    schemaVersion: WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
+    network: details.network,
+    providerId: details.authorityNodeId,
+    source: {
+      sourceMode: "local_node",
+      authorityNodeId: details.authorityNodeId,
+      surface: "chain_sync",
+    },
+    authentication: {
+      kind: "cardano_node_genesis_v1",
+      publicIdentitySha256: details.genesisIdentitySha256,
+    },
+  });
+  return makeTransportAttestationContext(
+    {
+      provider,
+      authorityBindingSha256: details.startupDigest,
+      transportEndpoint: details.socketPath,
+    },
+    [],
+    [],
+    () => watcherNativeChainSyncAuthorityDetailsV1(nativeAuthority) !== null,
+  );
+};
+
 export const establishWatcherLocalNodeQueryTransportV1 = async (
   authorityContext: WatcherL1TransportAttestationContextV1,
   input: WatcherLocalNodeQueryTransportV1,
@@ -1816,6 +1862,8 @@ export const establishWatcherLocalNodeQueryTransportV1 = async (
     },
     [...trustedAuthorityState.transports, established.socket],
     [established.socket],
+    () =>
+      trustedAuthorityState.active && trustedAuthorityState.upstreamIsLive(),
   );
 };
 
@@ -2091,4 +2139,66 @@ export const normalizeWatcherL1BlockV1 = (
     transportAttestationContext as WatcherL1TransportAttestationContextV1,
   );
   return normalized;
+};
+
+/**
+ * Builds the exact normalized observation from canonical full transaction
+ * bytes read by a watcher-owned transport adapter. All derived transaction
+ * fields are reconstructed locally and then passed back through the ordinary
+ * strict normalizer; callers cannot supply hashes, witnesses, outputs,
+ * datums, scripts or redeemers independently of the transaction bytes.
+ */
+export const normalizeWatcherL1BlockFromTransactionCborsV1 = (
+  transportAttestationContext: WatcherL1TransportAttestationContextV1,
+  input: Readonly<{
+    network: WatcherL1NetworkV1;
+    chainPoint: Readonly<{
+      blockHash: string;
+      parentBlockHash: string | null;
+      slot: string;
+      blockNo: string;
+      depth: string;
+    }>;
+    transactionCbors: readonly string[];
+  }>,
+  normalizationSession?: WatcherL1NormalizationSessionV1,
+): WatcherNormalizedL1BlockV1 => {
+  const attestation = watcherL1TransportAttestationDetailsV1(
+    transportAttestationContext,
+  );
+  if (attestation === null) {
+    fail("invalid_field", "$.transportAttestationContext");
+  }
+  const providerId = (attestation as WatcherL1TransportAttestationDetailsV1)
+    .provider.providerId;
+  const transactions = input.transactionCbors.map((cborHex, index) => {
+    const fullTransaction = publicBytesFromCanonicalCbor(cborHex);
+    const derived = deriveCanonicalTransaction(
+      fullTransaction,
+      `$.transactionCbors[${index.toString()}]`,
+      undefined,
+    );
+    return Object.freeze({
+      txHash: derived.txHash,
+      transactionIndex: index.toString(),
+      fullTransaction: derived.fullTransaction,
+      body: derived.body,
+      witnessSet: derived.witnessSet,
+      utxos: derived.utxos,
+      scripts: derived.scripts,
+      datums: derived.datums,
+      redeemers: derived.redeemers,
+    });
+  });
+  return normalizeWatcherL1BlockV1(
+    transportAttestationContext,
+    {
+      schemaVersion: WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
+      network: input.network,
+      providerId,
+      chainPoint: input.chainPoint,
+      transactions,
+    },
+    normalizationSession,
+  );
 };

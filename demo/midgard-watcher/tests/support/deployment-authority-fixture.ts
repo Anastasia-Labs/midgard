@@ -37,6 +37,8 @@ import {
   computeDeploymentManifestV1Id,
   computeDeploymentManifestV1JsonDigest,
   DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES,
+  DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE,
+  DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
   DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES,
   DEPLOYMENT_MANIFEST_V1_STEP_NAMES,
@@ -76,6 +78,16 @@ export const WATCHER_AUTHORITY_PROGRAM_COMMITMENTS_V1 = {
 
 type MutableRecord = Record<string, any>;
 
+const deepFreezeFixtureV1 = <T>(value: T): T => {
+  if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const nested of Object.values(value)) {
+      deepFreezeFixtureV1(nested);
+    }
+  }
+  return value;
+};
+
 export type AuthorityContractFixtureV1 = Readonly<{
   refScriptUTxO: Readonly<{ txHash: string; outputIndex: number }> | null;
   contract: Readonly<{ type: string; cborHex: string }>;
@@ -106,66 +118,75 @@ export type WatcherAuthorityContractSetV1 = Readonly<{
  * category script hashes — it has to see the contracts before it can say what
  * the manifest commits to.
  */
-export const makeWatcherAuthorityContractsV1 =
-  (): WatcherAuthorityContractSetV1 => {
-    const referenceOutRefByContract = new Map<
-      string,
-      { txHash: string; outputIndex: number }
-    >(
-      Object.values(
-        DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-      ).map((contractName, outputIndex) => [
+const buildWatcherAuthorityContractsV1 = (): WatcherAuthorityContractSetV1 => {
+  const referenceOutRefByContract = new Map<
+    string,
+    { txHash: string; outputIndex: number }
+  >(
+    Object.values(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).map(
+      (contractName, outputIndex) => [
         contractName,
         { txHash: h32("12"), outputIndex },
-      ]),
+      ],
+    ),
+  );
+  const contracts = Object.fromEntries(
+    DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES.map((contractName, index) => {
+      const native = contractName === "referenceScriptAuthMint";
+      const script = native
+        ? NATIVE_SCRIPT_CBOR
+        : (index + 1).toString(16).padStart(2, "0");
+      return [
+        contractName,
+        {
+          refScriptUTxO: referenceOutRefByContract.get(contractName) ?? null,
+          contract: { type: native ? "Native" : "PlutusV3", cborHex: script },
+          scriptHash: native
+            ? NATIVE_SCRIPT_HASH
+            : validatorToScriptHash({ type: "PlutusV3", script }),
+        },
+      ];
+    }),
+  ) as Record<string, AuthorityContractFixtureV1>;
+  const fraudProofCatalogue = canonicalFraudProofCatalogueFixture(contracts);
+  const catalogueContract = contracts.fraudProofCatalogueMint;
+  if (catalogueContract === undefined) {
+    throw new Error("authority catalogue contract is missing");
+  }
+  catalogueContract.fraudProofCatalogue = fraudProofCatalogue;
+  const referenceScripts = Object.fromEntries(
+    Object.entries(
+      DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
+    ).map(([role, contractName]) => {
+      const outRef = referenceOutRefByContract.get(contractName)!;
+      const tokenName =
+        DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES[
+          role as keyof typeof DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES
+        ];
+      return [
+        role,
+        {
+          status: "confirmed",
+          roleUnit:
+            NATIVE_SCRIPT_HASH + Buffer.from(tokenName, "utf8").toString("hex"),
+          scriptHash: contracts[contractName].scriptHash,
+          outRef: `${outRef.txHash}#${outRef.outputIndex.toString()}`,
+        },
+      ];
+    }),
+  ) as Record<string, AuthorityReferenceScriptFixtureV1>;
+  return { contracts, fraudProofCatalogue, referenceScripts };
+};
+
+let cachedWatcherAuthorityContractsV1: WatcherAuthorityContractSetV1 | null =
+  null;
+
+export const makeWatcherAuthorityContractsV1 =
+  (): WatcherAuthorityContractSetV1 => {
+    cachedWatcherAuthorityContractsV1 ??= deepFreezeFixtureV1(
+      buildWatcherAuthorityContractsV1(),
     );
-    const contracts = Object.fromEntries(
-      DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES.map((contractName, index) => {
-        const native = contractName === "referenceScriptAuthMint";
-        const script = native
-          ? NATIVE_SCRIPT_CBOR
-          : (index + 1).toString(16).padStart(2, "0");
-        return [
-          contractName,
-          {
-            refScriptUTxO: referenceOutRefByContract.get(contractName) ?? null,
-            contract: { type: native ? "Native" : "PlutusV3", cborHex: script },
-            scriptHash: native
-              ? NATIVE_SCRIPT_HASH
-              : validatorToScriptHash({ type: "PlutusV3", script }),
-          },
-        ];
-      }),
-    ) as Record<string, AuthorityContractFixtureV1>;
-    const fraudProofCatalogue = canonicalFraudProofCatalogueFixture(contracts);
-    const catalogueContract = contracts.fraudProofCatalogueMint;
-    if (catalogueContract === undefined) {
-      throw new Error("authority catalogue contract is missing");
-    }
-    catalogueContract.fraudProofCatalogue = fraudProofCatalogue;
-    const referenceScripts = Object.fromEntries(
-      Object.entries(
-        DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
-      ).map(([role, contractName]) => {
-        const outRef = referenceOutRefByContract.get(contractName)!;
-        const tokenName =
-          DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES[
-            role as keyof typeof DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES
-          ];
-        return [
-          role,
-          {
-            status: "confirmed",
-            roleUnit:
-              NATIVE_SCRIPT_HASH +
-              Buffer.from(tokenName, "utf8").toString("hex"),
-            scriptHash: contracts[contractName].scriptHash,
-            outRef: `${outRef.txHash}#${outRef.outputIndex.toString()}`,
-          },
-        ];
-      }),
-    ) as Record<string, AuthorityReferenceScriptFixtureV1>;
-    return { contracts, fraudProofCatalogue, referenceScripts };
+    return structuredClone(cachedWatcherAuthorityContractsV1);
   };
 
 export type WatcherDeploymentAuthorityFixtureOptionsV1 = Readonly<{
@@ -178,7 +199,29 @@ export type WatcherDeploymentAuthorityFixtureOptionsV1 = Readonly<{
   programCommitments?: Readonly<Record<string, string>>;
 }>;
 
-export const makeWatcherDeploymentAuthorityFixtureV1 = (
+export const WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS_V1 = Object.freeze({
+  minFeeA: "44",
+  minFeeB: "155381",
+  priceMemory: Object.freeze({ numerator: "577", denominator: "10000" }),
+  priceSteps: Object.freeze({ numerator: "721", denominator: "10000000" }),
+  coinsPerUtxoByte: "4310",
+  collateralPercentage: "150",
+  maxCollateralInputs: "3",
+  maxTxSize: "16384",
+  maxValueSize: "5000",
+  maxTxExUnits: Object.freeze({
+    memory: "16500000",
+    steps: "10000000000",
+  }),
+  referenceScriptFee: Object.freeze({
+    base: Object.freeze({ numerator: "15", denominator: "1" }),
+    range: "25600",
+    multiplier: Object.freeze({ numerator: "6", denominator: "5" }),
+    maximumSizeBytes: "204800",
+  }),
+});
+
+const buildWatcherDeploymentAuthorityFixtureV1 = (
   options: WatcherDeploymentAuthorityFixtureOptionsV1 = {},
 ) => {
   const releaseDigest =
@@ -191,11 +234,7 @@ export const makeWatcherDeploymentAuthorityFixtureV1 = (
     options.programCommitments ?? WATCHER_AUTHORITY_PROGRAM_COMMITMENTS_V1;
   const { contracts, fraudProofCatalogue, referenceScripts } =
     options.contractSet ?? makeWatcherAuthorityContractsV1();
-  const parameters = {
-    maxTxSize: 16_384,
-    maxValueSize: 5_000,
-    maxTxExUnits: { memory: "16500000", steps: "10000000000" },
-  };
+  const parameters = WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS_V1;
   const hubOracleOneShot = {
     txHash: h32("11"),
     outputIndex: 0,
@@ -274,6 +313,30 @@ export const makeWatcherDeploymentAuthorityFixtureV1 = (
       maxBisectionRounds:
         MIDGARD_CONSENSUS_PROFILE_V1.limits.maxValidationBisectionRounds,
       maturityMs: MIDGARD_CONSENSUS_PROFILE_V1.limits.blockMaturityMs,
+    },
+    economics:
+      DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
+    l1Finality: DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
+    availabilityChallenge: {
+      responseClasses: {
+        smallPayloadMaxBytes: 65_536,
+        smallResponseWindowMs: 3_600_000,
+        fullPayloadMaxBytes: 67_108_864,
+        fullResponseWindowMs: 172_800_000,
+      },
+      responseGeometry: {
+        chunkByteLength: 14_020,
+        trancheByteLength: 4_194_304,
+        maxTrancheCount: 16,
+      },
+      daBondLovelace: 10_000_000_000,
+      challengerBondLovelace: 10_000_000_000,
+      maxOpenFeeLovelace: 500_000,
+      maxPublicationFeeLovelace: 500_000,
+      maxSettlementFeeLovelace: 500_000,
+      maxCloseFeeLovelace: 1_000_000,
+      maxTimeoutFeeLovelace: 1_200_000,
+      bondOwnerCredential: h28("77"),
     },
   };
   const manifestId = computeDeploymentManifestV1Id(identity);
@@ -384,6 +447,45 @@ export const makeWatcherDeploymentAuthorityFixtureV1 = (
     marker,
     contracts,
   };
+};
+
+type WatcherDeploymentAuthorityFixtureV1 = ReturnType<
+  typeof buildWatcherDeploymentAuthorityFixtureV1
+>;
+
+let cachedDefaultWatcherDeploymentAuthorityFixtureV1: WatcherDeploymentAuthorityFixtureV1 | null =
+  null;
+
+const cloneDefaultWatcherDeploymentAuthorityFixtureV1 = (
+  fixture: WatcherDeploymentAuthorityFixtureV1,
+): WatcherDeploymentAuthorityFixtureV1 => {
+  const mutable = structuredClone({
+    signedIdentity: fixture.signedIdentity,
+    policy: fixture.policy,
+    trustRoots: fixture.trustRoots,
+    marker: fixture.marker,
+    contracts: fixture.contracts,
+  });
+  return {
+    ...mutable,
+    // The verifier result is deliberately shared: it is frozen and its live
+    // authority is module-admitted, so a structural clone would be invalid.
+    result: fixture.result,
+  };
+};
+
+export const makeWatcherDeploymentAuthorityFixtureV1 = (
+  options: WatcherDeploymentAuthorityFixtureOptionsV1 = {},
+): WatcherDeploymentAuthorityFixtureV1 => {
+  if (Object.keys(options).length !== 0) {
+    return buildWatcherDeploymentAuthorityFixtureV1(options);
+  }
+  cachedDefaultWatcherDeploymentAuthorityFixtureV1 ??= deepFreezeFixtureV1(
+    buildWatcherDeploymentAuthorityFixtureV1(),
+  );
+  return cloneDefaultWatcherDeploymentAuthorityFixtureV1(
+    cachedDefaultWatcherDeploymentAuthorityFixtureV1,
+  );
 };
 
 /** The default-parameter authority the settlement, state-queue and user-event

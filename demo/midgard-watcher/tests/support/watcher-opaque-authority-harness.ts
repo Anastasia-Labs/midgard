@@ -23,6 +23,8 @@ import {
   computeDeploymentManifestV1Id,
   computeDeploymentManifestV1JsonDigest,
   DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES,
+  DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE,
+  DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
   DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES,
   DEPLOYMENT_MANIFEST_V1_STEP_NAMES,
@@ -214,9 +216,22 @@ const createWatcherAuthorityDeploymentFixtureV1 = () => {
     }),
   ) as Record<string, AuthorityReferenceScriptFixtureV1>;
   const parameters = {
-    maxTxSize: 16_384,
-    maxValueSize: 5_000,
+    minFeeA: "44",
+    minFeeB: "155381",
+    priceMemory: { numerator: "577", denominator: "10000" },
+    priceSteps: { numerator: "721", denominator: "10000000" },
+    coinsPerUtxoByte: "4310",
+    collateralPercentage: "150",
+    maxCollateralInputs: "3",
+    maxTxSize: "16384",
+    maxValueSize: "5000",
     maxTxExUnits: { memory: "16500000", steps: "10000000000" },
+    referenceScriptFee: {
+      base: { numerator: "15", denominator: "1" },
+      range: "25600",
+      multiplier: { numerator: "6", denominator: "5" },
+      maximumSizeBytes: "204800",
+    },
   };
   const hubOracleOneShot = {
     txHash: h32("11"),
@@ -293,6 +308,30 @@ const createWatcherAuthorityDeploymentFixtureV1 = () => {
       maxBisectionRounds:
         MIDGARD_CONSENSUS_PROFILE_V1.limits.maxValidationBisectionRounds,
       maturityMs: MIDGARD_CONSENSUS_PROFILE_V1.limits.blockMaturityMs,
+    },
+    economics:
+      DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
+    l1Finality: DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
+    availabilityChallenge: {
+      responseClasses: {
+        smallPayloadMaxBytes: 65_536,
+        smallResponseWindowMs: 3_600_000,
+        fullPayloadMaxBytes: 67_108_864,
+        fullResponseWindowMs: 172_800_000,
+      },
+      responseGeometry: {
+        chunkByteLength: 14_020,
+        trancheByteLength: 4_194_304,
+        maxTrancheCount: 16,
+      },
+      daBondLovelace: 10_000_000_000,
+      challengerBondLovelace: 10_000_000_000,
+      maxOpenFeeLovelace: 500_000,
+      maxPublicationFeeLovelace: 500_000,
+      maxSettlementFeeLovelace: 500_000,
+      maxCloseFeeLovelace: 1_000_000,
+      maxTimeoutFeeLovelace: 1_200_000,
+      bondOwnerCredential: h28("77"),
     },
   };
   const manifestId = computeDeploymentManifestV1Id(identity);

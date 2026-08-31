@@ -2,6 +2,7 @@ import { MIDGARD_CONSENSUS_PROFILE_V1_ID } from "@al-ft/midgard-core/consensus-p
 import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 
+import { admitDaPayloadRetentionReleaseAuthorityV1 } from "@/database/daPayloadTerminalOutcomes.js";
 import { computeChallengeableCutoff } from "@/database/retention-policy.js";
 import {
   clearTable,
@@ -246,15 +247,25 @@ export const retrieveByHeaderHash = (
  *   - its local `created_at` is strictly older than the wall-clock retention
  *     cutoff derived from the deployed RETENTION_DAYS.
  *
- * A NULL `block_end_time` is never prunable: an unknown challengeability
- * horizon fails closed. `challengeableCutoff` defaults to the derived value so
- * a caller cannot accidentally fall back to a created_at-only predicate.
+ * A NULL `block_end_time` is never prunable. Time alone is never sufficient:
+ * deletion also requires an exact finalized state-queue terminal transition
+ * recorded under the authenticated deployment manifest. Missing, foreign,
+ * malformed, or Q58-capable/unknown release authority retains every row.
  */
 export const pruneOlderThan = (
   cutoff: Date,
   challengeableCutoff: Date = computeChallengeableCutoff(new Date()),
+  deploymentManifest?: unknown,
 ): Effect.Effect<number, DatabaseError, Database> =>
   Effect.gen(function* () {
+    const authority =
+      admitDaPayloadRetentionReleaseAuthorityV1(deploymentManifest);
+    if (
+      authority === null ||
+      authority.availabilityChallengeCapability !== "deployed_inactive"
+    ) {
+      return 0;
+    }
     const sql = yield* SqlClient.SqlClient;
     const rows = yield* sql<{ readonly deleted_count: string }>`
       WITH deleted AS (
@@ -262,6 +273,14 @@ export const pruneOlderThan = (
         WHERE ${sql(Columns.BLOCK_END_TIME)} IS NOT NULL
           AND ${sql(Columns.BLOCK_END_TIME)} < ${challengeableCutoff}
           AND ${sql(Columns.CREATED_AT)} < ${cutoff}
+          AND EXISTS (
+            SELECT 1
+            FROM da_payload_terminal_outcomes AS terminal
+            WHERE terminal.header_hash = ${sql(tableName)}.${sql(Columns.HEADER_HASH)}
+              AND terminal.deployment_identity_digest = ${authority.deploymentIdentityDigest}
+              AND terminal.state_queue_policy_id = ${authority.stateQueuePolicyId}
+              AND terminal.finality_depth >= ${authority.minimumFinalityDepth.toString()}
+          )
         RETURNING 1
       )
       SELECT COUNT(*)::text AS deleted_count FROM deleted`;

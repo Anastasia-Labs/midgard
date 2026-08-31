@@ -76,6 +76,7 @@ services:
       - /ipc/node.socket
       - --node-config
       - /config/config.json
+      - --include-transaction-cbor
     volumes:
       - node-ipc:/ipc
       - ${DATA_DIR}/cardano-node:/config

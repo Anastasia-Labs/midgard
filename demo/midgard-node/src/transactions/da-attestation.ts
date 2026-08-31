@@ -6,11 +6,20 @@ import {
   type TxSignBuilder,
   type UTxO,
 } from "@lucid-evolution/lucid";
-import { Effect, Schedule } from "effect";
+import { Effect, Option, Schedule } from "effect";
 
 import { committeeSignerIndex, daLocalSigners } from "@/da/local-signers.js";
+import { DaPayloadsDB } from "@/database/index.js";
+import { DatabaseError } from "@/database/utils/common.js";
 import { NodeConfig } from "@/services/config.js";
-import { Lucid, MidgardContracts } from "@/services/index.js";
+import {
+  availabilityParametersFromExplicitEnvironment,
+  availabilityParametersFromManifestV1,
+  ContractDeploymentIdentity,
+  Database,
+  Lucid,
+  MidgardContracts,
+} from "@/services/index.js";
 import {
   fetchReferenceScriptUtxosProgram,
   referenceScriptByName,
@@ -23,7 +32,6 @@ import {
 } from "@/transactions/utils.js";
 import { outRefLabel } from "@/tx-context.js";
 
-const DA_ATTESTATION_OUTPUT_LOVELACE = 5_000_000n;
 const UTXO_VISIBILITY_RETRY_DELAY = "2 seconds";
 const UTXO_VISIBILITY_RETRY_COUNT = 12;
 
@@ -276,6 +284,10 @@ const fetchDaAttestationReferenceScripts = (
         name: "state-queue spending",
         script: contracts.stateQueue.spendingScript,
       },
+      {
+        name: "availability-challenge minting",
+        script: contracts.availabilityChallenge.mintingScript,
+      },
     ],
     contracts.referenceScriptAuth,
   ).pipe(
@@ -292,6 +304,10 @@ const fetchDaAttestationReferenceScripts = (
       stateQueueSpending: referenceScriptByName(
         resolved,
         "state-queue spending",
+      ),
+      availabilityChallengeMinting: referenceScriptByName(
+        resolved,
+        "availability-challenge minting",
       ),
     })),
   );
@@ -374,11 +390,13 @@ const fetchUnattestedHeaders = (
  * indexed, and the attestation validator would reject them.
  */
 const localDaSignatureWitnesses = (
-  headerHash: string,
+  availabilityCommitment: SDK.DaAvailabilityCommitmentV1,
   nodeConfig: OperatorDaConfig,
   committeeHex: string,
 ): readonly SDK.DaAttestationSignatureWitness[] => {
-  const message = SDK.daAttestationMessage(headerHash);
+  const message = Buffer.from(
+    SDK.daAvailabilityAttestationMessageV1(availabilityCommitment),
+  );
   return daLocalSigners(nodeConfig)
     .flatMap((signer) => {
       const signerIndex = committeeSignerIndex(
@@ -400,6 +418,9 @@ const attestHeader = ({
   daParamsDatum,
   target,
   referenceScripts,
+  availabilityCommitment,
+  availabilityParameters,
+  hubOracleRefInput,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: SDK.MidgardValidators;
@@ -408,6 +429,9 @@ const attestHeader = ({
   readonly daParamsDatum: SDK.DaParamsDatum;
   readonly target: SDK.DaAttestationStateQueueTarget;
   readonly referenceScripts: SDK.DaAttestationReferenceScripts;
+  readonly availabilityCommitment: SDK.DaAvailabilityCommitmentV1;
+  readonly availabilityParameters: SDK.DaAvailabilityParametersV1;
+  readonly hubOracleRefInput: UTxO;
 }): Effect.Effect<
   AttestStateQueueHeaderResult,
   | SDK.LucidError
@@ -426,6 +450,25 @@ const attestHeader = ({
       target.headerHash,
     );
     if (candidates.length === 0) {
+      const rescueBeneficiaryAddress = yield* Effect.tryPromise({
+        try: () => lucid.wallet().address(),
+        catch: (cause) =>
+          new SDK.LucidError({
+            message: "Failed to resolve DA attestation rescue beneficiary",
+            cause,
+          }),
+      });
+      const rescueBeneficiary = yield* SDK.addressDataFromBech32(
+        rescueBeneficiaryAddress,
+      ).pipe(
+        Effect.mapError(
+          (cause) =>
+            new SDK.LucidError({
+              message: "Failed to encode DA attestation rescue beneficiary",
+              cause,
+            }),
+        ),
+      );
       const initTx = yield* SDK.incompleteInitDaAttestationTxProgram(
         lucid,
         contracts,
@@ -434,7 +477,9 @@ const attestHeader = ({
           daParamsDatum,
           target,
           referenceScripts,
-          attestationOutputLovelace: DA_ATTESTATION_OUTPUT_LOVELACE,
+          attestationOutputLovelace: availabilityParameters.da_bond_lovelace,
+          rescueBeneficiary,
+          availabilityCommitment,
         },
       );
       initTxHash = yield* submitCompletedTx(
@@ -452,15 +497,15 @@ const attestHeader = ({
       );
     }
 
-    const localWitnesses = localDaSignatureWitnesses(
-      target.headerHash,
-      nodeConfig,
-      daParamsDatum.committee,
-    );
     const initializedAttestation = yield* selectDaAttestationCandidate(
       candidates,
       daParamsDatum,
       "initialized",
+    );
+    const localWitnesses = localDaSignatureWitnesses(
+      initializedAttestation.datum.availability_commitment,
+      nodeConfig,
+      daParamsDatum.committee,
     );
 
     if (!daAttestationReachedThreshold(initializedAttestation)) {
@@ -530,6 +575,7 @@ const attestHeader = ({
         lucid,
         contracts,
         {
+          hubOracleRefInput,
           daParamsUtxo,
           daParamsDatum,
           target,
@@ -560,19 +606,32 @@ export const attestStateQueueOnceProgram = (
   | SDK.LinkedListError
   | SDK.LucidError
   | SDK.DaAttestationBuildError
+  | SDK.HubOracleError
   | SDK.StateQueueError
+  | DatabaseError
   | TxConfirmError
   | TxSignError
   | TxSubmitError,
-  Lucid | MidgardContracts | NodeConfig
+  Lucid | MidgardContracts | NodeConfig | Database | ContractDeploymentIdentity
 > =>
   Effect.gen(function* () {
     const lucidService = yield* Lucid;
     const contracts = yield* MidgardContracts;
     const nodeConfig = yield* NodeConfig;
+    const deploymentIdentity = yield* ContractDeploymentIdentity;
     yield* lucidService.switchToOperatorsMainWallet;
     const lucid = lucidService.api;
     const daParams = yield* fetchDaParamsUtxo(lucid, contracts);
+    const availabilityParameters =
+      deploymentIdentity.manifest === undefined
+        ? availabilityParametersFromExplicitEnvironment()
+        : availabilityParametersFromManifestV1(
+            deploymentIdentity.manifest.availabilityChallenge,
+          );
+    const hubOracle = yield* SDK.fetchHubOracleUTxOProgram(lucid, {
+      hubOracleAddress: contracts.hubOracle.spendingScriptAddress,
+      hubOraclePolicyId: contracts.hubOracle.policyId,
+    });
     const referenceScripts = yield* fetchDaAttestationReferenceScripts(
       lucid,
       lucidService.referenceScriptsAddress,
@@ -588,6 +647,86 @@ export const attestStateQueueOnceProgram = (
     );
     const results: AttestStateQueueHeaderResult[] = [];
     for (const target of targets) {
+      const payloadRow = yield* DaPayloadsDB.retrieveByHeaderHash(
+        Buffer.from(target.headerHash, "hex"),
+      );
+      if (Option.isNone(payloadRow)) {
+        return yield* Effect.fail(
+          new SDK.StateQueueError({
+            message:
+              "Refusing to attest a state-queue header without its canonical retained DA payload",
+            cause: `header=${target.headerHash}`,
+          }),
+        );
+      }
+      const payloadCbor = payloadRow.value[DaPayloadsDB.Columns.PAYLOAD_CBOR];
+      const payloadHash = SDK.daPayloadHashHex(payloadCbor);
+      const storedPayloadHash =
+        payloadRow.value[DaPayloadsDB.Columns.PAYLOAD_SHA256].toString("hex");
+      let payload: SDK.DaPayloadV1;
+      try {
+        payload = SDK.decodeDaPayloadV1(payloadCbor);
+      } catch (cause) {
+        return yield* Effect.fail(
+          new SDK.StateQueueError({
+            message: "Retained DA payload is not canonical V1 CBOR",
+            cause,
+          }),
+        );
+      }
+      const payloadHeaderHash = yield* SDK.hashBlockHeaderV1(
+        payload.block_body.header,
+      );
+      if (
+        payloadHash !== storedPayloadHash ||
+        payload.block_body.header_hash !== target.headerHash ||
+        payloadHeaderHash !== target.headerHash ||
+        Data.to(payload.block_body.header, SDK.HeaderV1) !==
+          Data.to(target.stateQueueNode.header, SDK.HeaderV1)
+      ) {
+        return yield* Effect.fail(
+          new SDK.StateQueueError({
+            message:
+              "Refusing to attest stale or mismatched retained DA payload bytes",
+            cause: `header=${target.headerHash},stored_payload_hash=${storedPayloadHash},computed_payload_hash=${payloadHash},payload_header_hash=${payloadHeaderHash}`,
+          }),
+        );
+      }
+      const walletAddress = yield* Effect.tryPromise({
+        try: () => lucid.wallet().address(),
+        catch: (cause) =>
+          new SDK.LucidError({
+            message: "Failed to resolve DA bond owner wallet address",
+            cause,
+          }),
+      });
+      const walletAddressData = yield* SDK.addressDataFromBech32(
+        walletAddress,
+      ).pipe(
+        Effect.mapError(
+          (cause) =>
+            new SDK.LucidError({
+              message: "Failed to decode DA bond owner wallet address",
+              cause,
+            }),
+        ),
+      );
+      const paymentCredential = walletAddressData.paymentCredential;
+      if (!("PublicKeyCredential" in paymentCredential)) {
+        return yield* Effect.fail(
+          new SDK.StateQueueError({
+            message: "DA bond owner must be a public-key wallet credential",
+            cause: `address=${walletAddress}`,
+          }),
+        );
+      }
+      const availabilityCommitment = SDK.buildDaAvailabilityCommitmentV1({
+        deploymentIdentity: contracts.hubOracle.policyId,
+        headerHash: target.headerHash,
+        payload: payloadCbor,
+        bondOwner: paymentCredential.PublicKeyCredential[0],
+        responseGeometry: availabilityParameters.response_geometry,
+      });
       const result = yield* attestHeader({
         lucid,
         contracts,
@@ -596,6 +735,9 @@ export const attestStateQueueOnceProgram = (
         daParamsDatum: daParams.datum,
         target,
         referenceScripts,
+        availabilityCommitment,
+        availabilityParameters,
+        hubOracleRefInput: hubOracle.utxo,
       });
       results.push(result);
     }

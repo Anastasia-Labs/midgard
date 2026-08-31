@@ -86,6 +86,8 @@ const validLocalNodeConfig = () => {
         chainSync: {
           kind: "cardano_node_socket",
           socketPath: "/run/cardano/node.socket",
+          nodeConfigPath: "/etc/cardano/node-config.json",
+          genesisConfigPath: "/etc/cardano/shelley-genesis.json",
           genesisIdentitySha256: GENESIS_ID,
         },
         queryServices: [
@@ -159,6 +161,7 @@ describe("strict watcher configuration", () => {
         },
       },
     });
+    expect(parseWatcherConfig(parsed)).toBe(parsed);
     expect(parsed.l1.source.sourceMode).toBe("external_providers");
     if (parsed.l1.source.sourceMode !== "external_providers") {
       throw new Error("Expected external provider configuration");
@@ -266,23 +269,31 @@ describe("strict watcher configuration", () => {
     );
   });
 
-  it("rejects local-node configuration before inspecting socket-path fields", () => {
+  it("admits the exact local-node/Kupmios topology and snapshots it", () => {
     const input = validLocalNodeConfig();
-    let socketPathRead = false;
-    Object.defineProperty(input.l1.source.chainSync, "socketPath", {
-      enumerable: true,
-      get: () => {
-        socketPathRead = true;
-        throw new Error("local-node socket path must not be inspected");
-      },
-    });
+    const parsed = parseWatcherConfig(input);
+    expect(parsed.l1.source).toEqual(input.l1.source);
+    expect(Object.isFrozen(parsed.l1.source)).toBe(true);
+    if (parsed.l1.source.sourceMode !== "local_node") {
+      throw new Error("expected admitted local-node source");
+    }
+    expect(Object.isFrozen(parsed.l1.source.queryServices)).toBe(true);
+  });
 
-    rejected(
-      () => parseWatcherConfig(input),
-      "invalid_value",
-      "$.l1.source.sourceMode",
+  it("admits local Kupmios without requiring db-sync", () => {
+    const input = validLocalNodeConfig();
+    input.l1.source.queryServices = input.l1.source.queryServices.filter(
+      (service) => service.kind !== "db_sync",
     );
-    expect(socketPathRead).toBe(false);
+
+    const parsed = parseWatcherConfig(input);
+    expect(parsed.l1.source.sourceMode).toBe("local_node");
+    if (parsed.l1.source.sourceMode !== "local_node") {
+      throw new Error("expected admitted local-node source");
+    }
+    expect(
+      parsed.l1.source.queryServices.map((service) => service.kind),
+    ).toEqual(["ogmios", "kupo"]);
   });
 
   it("accepts every adjacent numeric boundary", () => {
@@ -586,20 +597,20 @@ describe("strict watcher configuration", () => {
     });
     rejected(
       () => parseWatcherConfig(mixedLocal),
-      "invalid_value",
-      "$.l1.source.sourceMode",
+      "unknown_field",
+      "$.l1.source",
     );
 
     const missingChainSync = validLocalNodeConfig();
     delete (missingChainSync.l1.source as Record<string, unknown>).chainSync;
     rejected(
       () => parseWatcherConfig(missingChainSync),
-      "invalid_value",
-      "$.l1.source.sourceMode",
+      "missing_required_field",
+      "$.l1.source.chainSync",
     );
   });
 
-  it("rejects every local-node field mutation before socket-path validation", () => {
+  it("rejects every hostile local-node authority mutation", () => {
     const inputs = [
       validLocalNodeConfig(),
       validLocalNodeConfig(),
@@ -608,13 +619,21 @@ describe("strict watcher configuration", () => {
     inputs[0]!.l1.source.authorityNodeId = "Watcher Node";
     inputs[1]!.l1.source.chainSync.socketPath = "/tmp/node.socket";
     inputs[2]!.l1.source.queryServices[0]!.endpoint = "http://ogmios.example";
-    for (const input of inputs) {
-      rejected(
-        () => parseWatcherConfig(input),
-        "invalid_value",
-        "$.l1.source.sourceMode",
-      );
-    }
+    rejected(
+      () => parseWatcherConfig(inputs[0]),
+      "invalid_value",
+      "$.l1.source.authorityNodeId",
+    );
+    rejected(
+      () => parseWatcherConfig(inputs[1]),
+      "unsafe_path",
+      "$.l1.source.chainSync.socketPath",
+    );
+    rejected(
+      () => parseWatcherConfig(inputs[2]),
+      "invalid_endpoint",
+      "$.l1.source.queryServices[0].endpoint",
+    );
   });
 
   it("requires bounded, distinct public DA peer multiaddresses", () => {

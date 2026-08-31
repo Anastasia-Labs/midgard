@@ -1,0 +1,69 @@
+name: Midgard Watcher CI
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "demo/midgard-watcher/**"
+      - "demo/midgard-fault-proofs/**"
+      - "demo/midgard-sdk/**"
+      - "demo/midgard-core/**"
+      - "demo/midgard-validation/**"
+      - "demo/package.json"
+      - "demo/pnpm-lock.yaml"
+      - "demo/pnpm-workspace.yaml"
+      - "demo/.nvmrc"
+      - ".github/workflows/midgard-watcher-ci.yml"
+  pull_request:
+    paths:
+      - "demo/midgard-watcher/**"
+      - "demo/midgard-fault-proofs/**"
+      - "demo/midgard-sdk/**"
+      - "demo/midgard-core/**"
+      - "demo/midgard-validation/**"
+      - "demo/package.json"
+      - "demo/pnpm-lock.yaml"
+      - "demo/pnpm-workspace.yaml"
+      - "demo/.nvmrc"
+      - ".github/workflows/midgard-watcher-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  watcher:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25.7"
+          cache-dependency-path: demo/midgard-watcher/native-chain-sync/go.sum
+      - name: Assert and test pinned native chain-sync helper
+        working-directory: demo/midgard-watcher/native-chain-sync
+        run: |
+          set -euo pipefail
+          test "$(go version | awk '{print $3}')" = "go1.25.7"
+          go mod verify
+          go test ./...
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -buildid=" -o /tmp/midgard-chain-sync .
+          test -x /tmp/midgard-chain-sync
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: demo/.nvmrc
+          cache: pnpm
+          cache-dependency-path: demo/pnpm-lock.yaml
+      - name: Install workspace
+        run: pnpm --dir demo install --frozen-lockfile
+      - name: Watcher static and focused gates
+        run: |
+          pnpm --dir demo --filter midgard-watcher typecheck
+          pnpm --dir demo --filter midgard-watcher lint
+          pnpm --dir demo --filter midgard-watcher test
+          pnpm --dir demo --filter midgard-watcher build
+      - name: Build watcher production image
+        working-directory: demo
+        run: docker build --file midgard-watcher/Dockerfile --tag midgard-watcher:ci .

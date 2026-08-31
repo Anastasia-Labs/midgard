@@ -185,6 +185,58 @@ CREATE TABLE public.da_payloads (
 
 
 --
+-- Name: da_payload_terminal_outcomes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.da_payload_terminal_outcomes (
+    header_hash bytea NOT NULL,
+    terminal_outcome text NOT NULL,
+    transition_kind text NOT NULL,
+    deployment_identity_digest bytea NOT NULL,
+    state_queue_policy_id bytea NOT NULL,
+    transaction_hash bytea NOT NULL,
+    block_hash bytea NOT NULL,
+    slot numeric(20,0) NOT NULL,
+    block_no numeric(20,0) NOT NULL,
+    transaction_index integer NOT NULL,
+    chain_point_id bytea NOT NULL,
+    finality_depth numeric(20,0) NOT NULL,
+    transition_digest bytea NOT NULL,
+    transition_record jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT da_payload_terminal_outcomes_header_hash_check CHECK ((octet_length(header_hash) = 28)),
+    CONSTRAINT da_payload_terminal_outcomes_outcome_check CHECK ((terminal_outcome = ANY (ARRAY['merged'::text, 'removed'::text]))),
+    CONSTRAINT da_payload_terminal_outcomes_kind_check CHECK ((transition_kind = ANY (ARRAY['merge'::text, 'fraud_removal'::text, 'timeout_correction'::text]))),
+    CONSTRAINT da_payload_terminal_outcomes_deployment_check CHECK ((octet_length(deployment_identity_digest) = 32)),
+    CONSTRAINT da_payload_terminal_outcomes_policy_check CHECK ((octet_length(state_queue_policy_id) = 28)),
+    CONSTRAINT da_payload_terminal_outcomes_transaction_hash_check CHECK ((octet_length(transaction_hash) = 32)),
+    CONSTRAINT da_payload_terminal_outcomes_block_hash_check CHECK ((octet_length(block_hash) = 32)),
+    CONSTRAINT da_payload_terminal_outcomes_slot_check CHECK ((slot >= 0)),
+    CONSTRAINT da_payload_terminal_outcomes_block_no_check CHECK ((block_no >= 0)),
+    CONSTRAINT da_payload_terminal_outcomes_transaction_index_check CHECK ((transaction_index >= 0)),
+    CONSTRAINT da_payload_terminal_outcomes_chain_point_check CHECK ((octet_length(chain_point_id) = 32)),
+    CONSTRAINT da_payload_terminal_outcomes_finality_check CHECK ((finality_depth > 0)),
+    CONSTRAINT da_payload_terminal_outcomes_digest_check CHECK ((octet_length(transition_digest) = 32))
+);
+
+
+--
+-- Name: state_queue_terminal_observer_states; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.state_queue_terminal_observer_states (
+    deployment_identity_digest bytea NOT NULL,
+    state_queue_policy_id bytea NOT NULL,
+    state_digest bytea NOT NULL,
+    state_record jsonb NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT state_queue_terminal_observer_states_deployment_check CHECK ((octet_length(deployment_identity_digest) = 32)),
+    CONSTRAINT state_queue_terminal_observer_states_policy_check CHECK ((octet_length(state_queue_policy_id) = 28)),
+    CONSTRAINT state_queue_terminal_observer_states_digest_check CHECK ((octet_length(state_digest) = 32))
+);
+
+
+--
 -- Name: deposit_submission_attempts; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -891,6 +943,22 @@ ALTER TABLE ONLY public.da_payloads
 
 
 --
+-- Name: da_payload_terminal_outcomes da_payload_terminal_outcomes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.da_payload_terminal_outcomes
+    ADD CONSTRAINT da_payload_terminal_outcomes_pkey PRIMARY KEY (deployment_identity_digest, header_hash);
+
+
+ALTER TABLE ONLY public.da_payload_terminal_outcomes
+    ADD CONSTRAINT da_payload_terminal_outcomes_transition_digest_key UNIQUE (deployment_identity_digest, transition_digest);
+
+
+ALTER TABLE ONLY public.state_queue_terminal_observer_states
+    ADD CONSTRAINT state_queue_terminal_observer_states_pkey PRIMARY KEY (deployment_identity_digest);
+
+
+--
 -- Name: deposit_submission_attempts deposit_submission_attempts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1184,6 +1252,13 @@ CREATE INDEX idx_da_payload_publications_retry ON public.da_payload_publications
 --
 
 CREATE INDEX idx_da_payloads_created_at ON public.da_payloads USING btree (created_at);
+
+
+--
+-- Name: idx_da_payload_terminal_outcomes_authority; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_da_payload_terminal_outcomes_authority ON public.da_payload_terminal_outcomes USING btree (deployment_identity_digest, state_queue_policy_id, finality_depth, header_hash);
 
 
 --

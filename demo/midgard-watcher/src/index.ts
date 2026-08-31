@@ -1,4 +1,9 @@
 export {
+  deriveWatcherAttestationTimeoutObservationV1,
+  type WatcherAttestationTimeoutObservationV1,
+} from "./attestation-timeout-observation-v1.js";
+export {
+  assertWatcherFullBlockReplayResultV1,
   type EvaluateWatcherBlockReplayCandidatesInputV1,
   evaluateWatcherBlockReplayCandidatesV1,
   type EvaluateWatcherBlockReplayInputV1,
@@ -95,6 +100,7 @@ export {
 export {
   parseWatcherConfig,
   parseWatcherConfigJson,
+  parseWatcherStrictJsonValueV1,
   WATCHER_CARDANO_SECURITY_PARAMETER_K,
   WATCHER_CONFIG_BOUNDS,
   WATCHER_CONFIG_SCHEMA_VERSION,
@@ -114,10 +120,13 @@ export {
   type WatcherWalletKeySource,
 } from "./config.js";
 export {
+  assertWatcherDeploymentProtocolParameterAuthorityV1,
+  assertWatcherDeploymentProtocolScriptAuthorityV1,
   makeWatcherDeploymentIdentitySignaturePayloadV1,
   type VerifiedWatcherDeploymentIdentityV1,
   verifyWatcherDeploymentIdentityV1,
   WATCHER_DEPLOYMENT_IDENTITY_SIGNATURE_DOMAIN,
+  WATCHER_DEPLOYMENT_PROTOCOL_SCRIPT_AUTHORITY_V1_SCHEMA_VERSION,
   WATCHER_DEPLOYMENT_RELEASE_BINDINGS_V1_SCHEMA_VERSION,
   WATCHER_SIGNED_DEPLOYMENT_IDENTITY_V1_SCHEMA_VERSION,
   type WatcherDeploymentIdentityDiagnostic,
@@ -125,6 +134,12 @@ export {
   WatcherDeploymentIdentityError,
   type WatcherDeploymentIdentityErrorCode,
   type WatcherDeploymentIdentityPolicyV1,
+  type WatcherDeploymentProtocolParameterAuthorityV1,
+  watcherDeploymentProtocolParameterAuthorityV1,
+  type WatcherDeploymentProtocolScriptAuthorityV1,
+  watcherDeploymentProtocolScriptAuthorityV1,
+  watcherDeploymentReleaseEconomicsAuthorityV1,
+  watcherDeploymentReleaseFinalityAuthorityV1,
   type WatcherDeploymentTrustRootV1,
   type WatcherFraudProofCatalogueIdentityV1,
   type WatcherReferenceScriptIdentityV1,
@@ -189,6 +204,7 @@ export {
 } from "./event-classification-verifier.js";
 export {
   evaluateWatcherFinalityV1,
+  makeWatcherFinalityBootstrapStateV1,
   makeWatcherFinalityPolicyV1,
   parseWatcherFinalityPolicyV1,
   parseWatcherFinalityStateV1,
@@ -232,10 +248,12 @@ export {
   closeWatcherL1TransportAttestationContextV1,
   encodeWatcherNormalizedL1BlockV1,
   establishWatcherExternalProviderTransportV1,
+  establishWatcherLocalNodeAuthorityTransportV1,
   establishWatcherLocalNodeQueryTransportV1,
   isWatcherL1BlockAttestedByV1,
   makeWatcherL1NormalizationSessionV1,
   makeWatcherL1PublicBytesV1,
+  normalizeWatcherL1BlockFromTransactionCborsV1,
   normalizeWatcherL1BlockV1,
   WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
   WATCHER_L1_ADAPTER_V1_BOUNDS,
@@ -275,6 +293,13 @@ export {
   type WatcherL1ChainPointV1 as WatcherNormalizedL1ChainPointV1,
 } from "./l1-adapter.js";
 export {
+  assertWatcherLocalKupmiosNativeObservationV1,
+  createWatcherLocalKupmiosNativeObservationRuntimeV1,
+  WATCHER_LOCAL_KUPMIOS_NATIVE_OBSERVATION_V1_SCHEMA_VERSION,
+  type WatcherLocalKupmiosNativeObservationRuntimeV1,
+  type WatcherLocalKupmiosNativeObservationV1,
+} from "./local-kupmios-native-observation-v1.js";
+export {
   detectAndJournalMissingSignatureFindingsV1,
   detectMissingSignatureFindingV1,
   recoverMissingSignatureVkeyV1,
@@ -298,6 +323,24 @@ export {
   type WatcherMultiProviderConsistencyV1,
   type WatcherMultiProviderReasonCodeV1,
 } from "./multi-provider-consistency.js";
+export {
+  admitWatcherNativeRollForwardBlockV1,
+  WATCHER_NATIVE_BLOCK_ADMISSION_V1_SCHEMA_VERSION,
+  type WatcherNativeBlockAdmissionV1,
+} from "./native-block-admission-v1.js";
+export {
+  parseWatcherNativeChainSyncEventV1,
+  startWatcherNativeChainSyncV1,
+  startWatcherNativeChainSyncWithRetryV1,
+  WATCHER_NATIVE_CHAIN_SYNC_V1_SCHEMA_VERSION,
+  type WatcherNativeChainSyncAuthorityDetailsV1,
+  watcherNativeChainSyncAuthorityDetailsV1,
+  type WatcherNativeChainSyncAuthorityV1,
+  type WatcherNativeChainSyncEventV1,
+  type WatcherNativeChainSyncRollBackwardV1,
+  type WatcherNativeChainSyncRollForwardV1,
+  type WatcherNativeChainSyncRuntimeV1,
+} from "./native-chain-sync-v1.js";
 export {
   type EvaluateWatcherPhaseABlockInputV1,
   evaluateWatcherPhaseABlockV1,
@@ -325,6 +368,196 @@ export {
   WatcherPhaseAVerifierError,
   type WatcherPhaseAVerifierReasonCodeV1,
 } from "./phase-a-verifier.js";
+export {
+  assertWatcherProductionAuthenticatedReplayTranscriptV1,
+  createWatcherProductionAuthenticatedReplayTranscriptV1,
+  replayWatcherProductionAuthenticatedReplayTranscriptV1,
+  WATCHER_PRODUCTION_AUTHENTICATED_REPLAY_TRANSCRIPT_V1,
+  watcherProductionAuthenticatedReplayTranscriptCborHexV1,
+  type WatcherProductionAuthenticatedReplayTranscriptV1,
+  type WatcherProductionReplayCoordinateV1,
+  watcherProductionReplayRawRecordCborHexV1,
+} from "./production-authenticated-replay-transcript-v1.js";
+export {
+  createWatcherProductionChainCoordinatorV1,
+  unsafeCreateWatcherProductionChainCoordinatorForTestV1,
+  WATCHER_PRODUCTION_CHAIN_COORDINATOR_V1_SCHEMA_VERSION,
+  type WatcherProductionChainCoordinatorV1,
+} from "./production-chain-coordinator-v1.js";
+export { loadWatcherVerifiedDeploymentAuthorityV1 } from "./production-deployment-authority-v1.js";
+export {
+  createWatcherProductionDurableRuntimeV1,
+  WATCHER_PRODUCTION_DURABLE_RUNTIME_V1_SCHEMA_VERSION,
+  type WatcherProductionDurableRuntimeV1,
+} from "./production-durable-runtime-v1.js";
+export {
+  createWatcherProductionFaultDecisionBridgeV1,
+  unsafeCreateWatcherProductionFaultDecisionBridgeForTestV1,
+  WATCHER_PRODUCTION_FAULT_DECISION_BRIDGE_V1_SCHEMA_VERSION,
+  type WatcherProductionFaultDecisionBridgeResultV1,
+  type WatcherProductionFaultDecisionBridgeV1,
+  type WatcherProductionFaultDecisionTargetV1,
+} from "./production-fault-decision-bridge-v1.js";
+export {
+  openWatcherProductionFaultDecisionJournalV1,
+  unsafeOpenWatcherProductionFaultDecisionJournalForTestV1,
+  type UnsafeWatcherProductionFaultDecisionJournalForTestV1,
+  WATCHER_PRODUCTION_FAULT_DECISION_JOURNAL_V1_SCHEMA_VERSION,
+  WATCHER_PRODUCTION_FAULT_DECISION_RECORD_V1_SCHEMA_VERSION,
+  type WatcherPersistedProductionFaultDecisionRecordV1,
+  type WatcherProductionFaultDecisionJournalV1,
+} from "./production-fault-decision-journal-v1.js";
+export {
+  createWatcherFaultProofProductionApplicationV1,
+  unsafeCreateWatcherFaultProofProductionApplicationForTestV1,
+  WATCHER_FAULT_PROOF_PRODUCTION_APPLICATION_V1,
+  WATCHER_FAULT_PROOF_STARTUP_READINESS_V1,
+  WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1,
+  type WatcherFaultProofApplicationDependenciesV1,
+  type WatcherFaultProofHeaderClassificationInputV1,
+  type WatcherFaultProofInfrastructureAuthorityV1,
+  type WatcherFaultProofProductionApplicationOptionsV1,
+  type WatcherFaultProofProductionApplicationV1,
+  type WatcherFaultProofStartupReadinessV1,
+  type WatcherInstalledProductionWorkflowCategoryV1,
+} from "./production-fault-proof-application-v1.js";
+export {
+  createWatcherProductionFaultProofSupervisorV1,
+  enqueueWatcherProductionFaultDecisionV1,
+  unsafeCreateWatcherProductionFaultProofSupervisorForTestV1,
+  type UnsafeWatcherProductionFaultProofSupervisorForTestV1,
+  WATCHER_PRODUCTION_FAULT_PROOF_SUPERVISOR_V1_SCHEMA_VERSION,
+  type WatcherProductionFaultProofDeadlineV1,
+  watcherProductionFaultProofDeadlineV1,
+  type WatcherProductionFaultProofJobV1,
+  type WatcherProductionFaultProofSupervisorStatusV1,
+  type WatcherProductionFaultProofSupervisorV1,
+} from "./production-fault-proof-supervisor-v1.js";
+export {
+  startWatcherProductionOperationsHttpServerV1,
+  WATCHER_PRODUCTION_OPERATIONS_HTTP_V1,
+  type WatcherProductionOperationsHttpServerV1,
+} from "./production-operations-http-v1.js";
+export {
+  createWatcherProductionOperationsObservabilityV1,
+  WATCHER_PRODUCTION_ALERT_CODES_V1,
+  WATCHER_PRODUCTION_OPERATIONS_OBSERVABILITY_V1,
+  WATCHER_PRODUCTION_PROOF_STAGE_KINDS_V1,
+  type WatcherProductionAlertCodeV1,
+  type WatcherProductionAlertDiagnosticV1,
+  type WatcherProductionDaFetchDiagnosticV1,
+  type WatcherProductionEventDiagnosticV1,
+  type WatcherProductionL1SourceDiagnosticV1,
+  type WatcherProductionOperationsApiV1,
+  type WatcherProductionOperationsDiagnosticKindV1,
+  type WatcherProductionOperationsDiagnosticV1,
+  type WatcherProductionOperationsMetricsV1,
+  type WatcherProductionOperationsObservabilityV1,
+  type WatcherProductionOperationsPageV1,
+  type WatcherProductionOperationsSinkV1,
+  type WatcherProductionOperationsStatusV1,
+  type WatcherProductionProofStageKindV1,
+  type WatcherProductionProofStepDiagnosticV1,
+  type WatcherProductionVerificationDiagnosticV1,
+} from "./production-operations-observability-v1.js";
+export {
+  decodeWatcherAuthenticationKey32V1,
+  decodeWatcherHttpBearerSecretV1,
+  loadWatcherProductionProcessConfigFileV1,
+  loadWatcherSecretTextV1,
+  loadWatcherTrustedHeadAuthorityProcessConfigFileV1,
+  parseWatcherProductionProcessConfigV1,
+  parseWatcherTrustedHeadAuthorityProcessConfigV1,
+  WATCHER_PRODUCTION_PROCESS_CONFIG_V1_SCHEMA_VERSION,
+  WATCHER_TRUSTED_HEAD_AUTHORITY_PROCESS_CONFIG_V1_SCHEMA_VERSION,
+  type WatcherProductionProcessConfigV1,
+  watcherSecretSourceIdentityV1,
+  type WatcherTrustedHeadAuthorityProcessConfigV1,
+} from "./production-process-config-v1.js";
+export {
+  assertWatcherProductionProverFundingAuthorityFactoryV1,
+  createWatcherProductionProverFundingAuthorityFactoryV1,
+  createWatcherProductionProverFundingAuthorityV1,
+  WATCHER_PRODUCTION_PROVER_FUNDING_AUTHORITY_V1,
+  type WatcherProductionProverFundingAuthorityFactoryV1,
+  type WatcherProductionProverFundingAuthorityV1,
+} from "./production-prover-funding-authority-v1.js";
+export {
+  aggregateWatcherProductionProverFundingSweepV1,
+  assertWatcherProductionProverFundingCalculationV1,
+  assertWatcherProductionProverFundingSweepV1,
+  calculateWatcherProductionProverFundingV1,
+  WATCHER_PRODUCTION_PROVER_FUNDING_CALCULATION_V1,
+  WATCHER_PRODUCTION_PROVER_FUNDING_SWEEP_V1,
+  type WatcherProductionProverFundingActionCalculationV1,
+  type WatcherProductionProverFundingCalculationV1,
+  type WatcherProductionProverFundingSweepV1,
+} from "./production-prover-funding-calculation-v1.js";
+export {
+  assertWatcherProductionProverFundingReservationPlanV1,
+  makeWatcherProductionProverFundingReservationRecordV1,
+  parseWatcherProductionProverFundingReservationRecordV1,
+  planWatcherProductionProverFundingReservationV1,
+  WATCHER_PRODUCTION_PROVER_FUNDING_RESERVATION_PLAN_V1,
+  type WatcherProductionProverFundingReservationInputV1,
+  type WatcherProductionProverFundingReservationPlanV1,
+  type WatcherProductionProverFundingReservationRecordV1,
+  type WatcherProductionProverFundingReservationStoreV1,
+  type WatcherProductionProverFundingReservationTransitionV1,
+} from "./production-prover-funding-reservation-v1.js";
+export {
+  assertWatcherProductionProtocolParameterRuntimeAuthorityV1,
+  createWatcherProductionProtocolParameterRuntimeAuthorityV1,
+  WATCHER_PRODUCTION_PROTOCOL_PARAMETER_RUNTIME_AUTHORITY_V1,
+  type WatcherProductionProtocolParameterRuntimeAuthorityV1,
+} from "./production-prover-funding-v1.js";
+export {
+  createWatcherProductionRetainedDaRuntimeV1,
+  createWatcherProductionWorkflowRuntimeLoaderV1,
+  WATCHER_PRODUCTION_RETAINED_DA_RUNTIME_V1,
+  type WatcherProductionRetainedDaRuntimeOptionsV1,
+  type WatcherProductionRetainedDaRuntimeV1,
+  type WatcherProductionWorkflowInfrastructureBuilderV1,
+} from "./production-retained-da-runtime-v1.js";
+export {
+  assertWatcherProductionStateQueueObservationV1,
+  createWatcherProductionStateQueueObservationSourceV1,
+  type WatcherProductionCorrectionLockObservationV1,
+  type WatcherProductionStateQueueHeaderObservationV1,
+  type WatcherProductionStateQueueObservationSourceV1,
+  type WatcherProductionStateQueueObservationV1,
+  type WatcherProductionStateQueueRecoveryV1,
+} from "./production-state-queue-observation-v1.js";
+export {
+  createWatcherProductionStateQueueRuntimeV1,
+  WATCHER_PRODUCTION_STATE_QUEUE_RUNTIME_V1_SCHEMA_VERSION,
+  type WatcherProductionStateQueueRuntimeV1,
+} from "./production-state-queue-runtime-v1.js";
+export {
+  createWatcherProductionTrustedHeadClientRuntimeV1,
+  startWatcherTrustedHeadAuthorityProcessV1,
+  type WatcherProductionTrustedHeadClientRuntimeV1,
+  type WatcherTrustedHeadAuthorityProcessRuntimeV1,
+} from "./production-trusted-head-runtime-v1.js";
+export {
+  createWatcherProductionRuntimeV1,
+  mintWatcherProductionProverFundingReservationPermitV1,
+  WATCHER_PRODUCTION_RUNTIME_V1_SCHEMA_VERSION,
+  type WatcherProductionRuntimeV1,
+  type WatcherProverFundingUtxoProviderV1,
+} from "./production-watcher-runtime-v1.js";
+export {
+  assertWatcherProductionWorkflowFundingProfileOverlayV1,
+  createWatcherProductionWorkflowFundingReleaseEvidenceV1,
+  loadWatcherProductionWorkflowFundingProfileOverlayV1,
+  productionWorkflowFundingProfileFromOverlayV1,
+  WATCHER_PRODUCTION_WORKFLOW_FUNDING_PROFILE_BUNDLE_V1,
+  WATCHER_PRODUCTION_WORKFLOW_FUNDING_PROFILE_OVERLAY_V1,
+  WATCHER_PRODUCTION_WORKFLOW_FUNDING_RELEASE_EVIDENCE_V1,
+  type WatcherProductionWorkflowFundingProfileBodyV1,
+  type WatcherProductionWorkflowFundingProfileOverlayV1,
+  type WatcherProductionWorkflowFundingReleaseEvidenceV1,
+} from "./production-workflow-funding-profile-overlay-v1.js";
 export {
   evaluateWatcherProofThreadIndexerV1,
   makeWatcherProofThreadJournalV1,
@@ -399,7 +632,10 @@ export {
   parseWatcherPostFinalityRecoveryResultV1,
   parseWatcherRollbackResultV1,
   parseWatcherRollbackStateV1,
+  persistWatcherRollbackDurableCanonicalProgressV1,
+  persistWatcherRollbackDurableObservationV1,
   prepareWatcherRollbackDurableTrustedHeadReconciliationV1,
+  readWatcherRollbackDurableAuthorityV1,
   WATCHER_POST_FINALITY_RECOVERY_REASON_CODES_V1,
   WATCHER_POST_FINALITY_RECOVERY_RESULT_V1_SCHEMA_VERSION,
   WATCHER_POST_FINALITY_RECOVERY_STATE_V1_SCHEMA_VERSION,
@@ -422,10 +658,13 @@ export {
   type WatcherPostFinalityRecoveryStateV1,
   type WatcherRollbackAlertCodeV1,
   type WatcherRollbackDurableAuthorityOpenResultV1,
+  type WatcherRollbackDurableAuthorityReadV1,
   type WatcherRollbackDurableAuthorityStatusV1,
   watcherRollbackDurableAuthorityStatusV1,
   type WatcherRollbackDurableAuthorityV1,
+  type WatcherRollbackDurableCanonicalProgressResultV1,
   type WatcherRollbackDurableEvaluationResultV1,
+  type WatcherRollbackDurableObservationResultV1,
   type WatcherRollbackDurableRecoveryResultV1,
   type WatcherRollbackDurableTrustedHeadReconciliationV1,
   type WatcherRollbackDurableTrustedHeadV1,
@@ -460,13 +699,11 @@ export {
 } from "./rule-bundle-v1.js";
 export {
   runWatcherCommand,
-  WATCHER_FOUNDATION_STATUS,
-  WATCHER_FOUNDATION_VERSION,
-  WATCHER_NOT_READY_EXIT_CODE,
+  unsafeRunWatcherCommandForTestV1,
+  WATCHER_COMMAND_FAILURE_EXIT_CODE,
   WATCHER_PACKAGE_NAME,
   type WatcherCommand,
   type WatcherCommandIo,
-  type WatcherFoundationStatus,
 } from "./scaffold.js";
 export {
   encodeWatcherSettlementIndexerResultV1,
@@ -518,6 +755,18 @@ export {
   type WatcherSettlementTransitionV1,
 } from "./settlement-indexer.js";
 export {
+  openWatcherSqliteDurableBackendV1,
+  WATCHER_SQLITE_DURABLE_BACKEND_V1_SCHEMA_VERSION,
+  type WatcherSqliteDurableBackendV1,
+} from "./sqlite-durable-backend-v1.js";
+export {
+  isWatcherProductionProverFundingReservationConflictV1,
+  openWatcherSqliteProverFundingReservationStoreV1,
+  WATCHER_SQLITE_PROVER_FUNDING_RESERVATION_STORE_V1,
+  type WatcherProductionProverFundingReservationConflictV1,
+  type WatcherSqliteProverFundingReservationStoreRuntimeV1,
+} from "./sqlite-prover-funding-reservation-store-v1.js";
+export {
   evaluateWatcherStateQueueIndexerV1,
   makeWatcherStateQueueHeaderV1,
   makeWatcherStateQueueIndexerPolicyV1,
@@ -557,6 +806,16 @@ export {
   type WatcherStateQueueSnapshotV1,
   type WatcherStateQueueTransitionKindV1,
 } from "./state-queue-indexer.js";
+export {
+  createWatcherTrustedHeadAuthorityClientV1,
+  openWatcherTrustedHeadAuthorityStoreV1,
+  startWatcherTrustedHeadAuthorityServerV1,
+  WATCHER_TRUSTED_HEAD_AUTHORITY_RECORD_V1_SCHEMA_VERSION,
+  WATCHER_TRUSTED_HEAD_AUTHORITY_V1_SCHEMA_VERSION,
+  type WatcherTrustedHeadAuthorityClientV1,
+  type WatcherTrustedHeadAuthorityServerV1,
+  type WatcherTrustedHeadAuthorityStoreV1,
+} from "./trusted-head-authority-v1.js";
 export {
   deriveWatcherUserEventObservationV1,
   evaluateWatcherUserEventIndexerV1,

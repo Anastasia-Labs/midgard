@@ -324,6 +324,45 @@ export const WATCHER_PROOF_THREAD_FAMILY_AUTHORITY_V1 = Object.freeze({
       "fraudProofMintAuthorizationStep05",
     ],
   },
+  networkId: {
+    familyId: "network-id",
+    stepCount: 2,
+    deployedStepContractNames: [
+      "fraudProofNetworkId",
+      "fraudProofNetworkIdStep02",
+    ],
+  },
+  missingNativeScriptUtxo: {
+    familyId: "missing-native-script-utxo",
+    stepCount: 5,
+    deployedStepContractNames: [
+      "fraudProofMissingNativeScriptUtxo",
+      "fraudProofMissingNativeScriptUtxoStep02",
+      "fraudProofMissingNativeScriptUtxoStep03",
+      "fraudProofMissingNativeScriptUtxoStep04",
+      "fraudProofMissingNativeScriptUtxoStep05",
+    ],
+  },
+  nativeScriptInvalid: {
+    familyId: "native-script-invalid",
+    stepCount: 3,
+    deployedStepContractNames: [
+      "fraudProofNativeScriptInvalid",
+      "fraudProofNativeScriptInvalidStep02",
+      "fraudProofNativeScriptInvalidStep03",
+    ],
+  },
+  minAda: {
+    familyId: "min-ada",
+    stepCount: 5,
+    deployedStepContractNames: [
+      "fraudProofMinAda",
+      "fraudProofMinAdaStep02",
+      "fraudProofMinAdaStep03",
+      "fraudProofMinAdaStep04",
+      "fraudProofMinAdaStep05",
+    ],
+  },
 } as const satisfies Readonly<
   Record<
     DeploymentManifestV1FraudProofCatalogueCategory,

@@ -16,7 +16,11 @@ import {
   shouldPruneRetention,
 } from "@/database/retention-policy.js";
 import { DatabaseError } from "@/database/utils/common.js";
-import { Database, NodeConfig } from "@/services/index.js";
+import {
+  ContractDeploymentIdentity,
+  Database,
+  NodeConfig,
+} from "@/services/index.js";
 
 /**
  * Executable deadline signal (GOAL_SPEC 9.4 / Q54): milliseconds remaining
@@ -66,9 +70,10 @@ const publishDaPayloadRetentionDeadline = (
 export const retentionSweepAction: Effect.Effect<
   void,
   DatabaseError,
-  Database | NodeConfig
+  Database | NodeConfig | ContractDeploymentIdentity
 > = Effect.gen(function* () {
   const nodeConfig = yield* NodeConfig;
+  const deploymentIdentity = yield* ContractDeploymentIdentity;
   const sweptAt = new Date();
   const prunedOrphanDeltas = yield* MempoolTxDeltasDB.deleteOrphans;
   yield* publishDaPayloadRetentionDeadline(sweptAt);
@@ -93,7 +98,11 @@ export const retentionSweepAction: Effect.Effect<
     prunedWithdrawals,
   ] = yield* Effect.all(
     [
-      DaPayloadsDB.pruneOlderThan(cutoff, challengeableCutoff),
+      DaPayloadsDB.pruneOlderThan(
+        cutoff,
+        challengeableCutoff,
+        deploymentIdentity.manifest,
+      ),
       TxRejectionsDB.pruneOlderThan(cutoff),
       AddressHistoryDB.pruneOlderThan(cutoff),
       DepositsDB.pruneOlderThan(cutoff),
@@ -112,7 +121,11 @@ export const retentionSweepAction: Effect.Effect<
  */
 export const retentionSweeperFiber = (
   schedule: Schedule.Schedule<number>,
-): Effect.Effect<void, never, Database | NodeConfig> =>
+): Effect.Effect<
+  void,
+  never,
+  Database | NodeConfig | ContractDeploymentIdentity
+> =>
   Effect.gen(function* () {
     yield* Effect.logInfo("🧹 Retention sweeper fiber started.");
     yield* Effect.repeat(

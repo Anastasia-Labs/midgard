@@ -63,6 +63,7 @@ export type RealStateQueueWitnessContext = {
   readonly operatorKeyHash: string;
   readonly schedulerRefInput: UTxO;
   readonly hubOracleRefInput: UTxO;
+  readonly correctionLockRefInput: SDK.CorrectionLockUTxO;
   readonly activeOperatorInput: UTxO & { datum: string };
   readonly activeOperatorsSpendingScript: Script;
   readonly activeOperatorsSpendingScriptRef?: UTxO;
@@ -1554,6 +1555,22 @@ export const fetchRealStateQueueWitnessContext = (
       );
     }
     const hubOracleRefInput = hubOracleWitnessUtxos[0];
+    const correctionLockRefInput = yield* SDK.fetchCorrectionLockUTxOProgram(
+      lucid,
+      {
+        correctionLockAddress: contracts.correctionLock.spendingScriptAddress,
+        hubOraclePolicyId: contracts.hubOracle.policyId,
+      },
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new SDK.StateQueueError({
+            message:
+              "Failed to fetch authenticated correction-lock witness for state_queue commit",
+            cause,
+          }),
+      ),
+    );
 
     const activeOperatorInput = yield* fetchFreshActiveOperatorInputForCommit(
       lucid,
@@ -1566,6 +1583,7 @@ export const fetchRealStateQueueWitnessContext = (
       operatorKeyHash,
       schedulerRefInput: schedulerRefInput.schedulerRefInput,
       hubOracleRefInput,
+      correctionLockRefInput,
       activeOperatorInput,
       activeOperatorsSpendingScript: contracts.activeOperators.spendingScript,
       activeOperatorsSpendingScriptRef,

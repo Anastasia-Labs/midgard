@@ -111,7 +111,7 @@ const configureCandidate = ({
   daAttestation,
   endTime,
 }: {
-  readonly daAttestation: string;
+  readonly daAttestation: SDK.DaAvailabilityStateQueueStatusV1;
   readonly endTime: bigint;
 }) => {
   const blockHeader = {
@@ -166,7 +166,11 @@ describe("merge builder maturity preflight", () => {
     fakeLucidUtxosAt.mockReset();
 
     configureCandidate({
-      daAttestation: "22".repeat(28),
+      // A state-queue node's `da_attestation` is the
+      // `DaAvailabilityStateQueueStatusV1` enum, not a raw policy-id string;
+      // `Attested` is one of the two merge-permitting kinds, so the maturity
+      // window (not availability) is what this default exercises.
+      daAttestation: { Attested: { da_bond_asset_name: "22".repeat(32) } },
       endTime: 500_000n,
     });
     fetchFirstBlockTxsMock.mockImplementation(() =>
@@ -209,7 +213,7 @@ describe("merge builder maturity preflight", () => {
 
   it("returns DA-unattested before BlocksDB lookup or decode", async () => {
     configureCandidate({
-      daAttestation: "11".repeat(28),
+      daAttestation: SDK.NO_DA_ATTESTATION,
       endTime: 500_000n,
     });
     vi.setSystemTime(605_330_000);
@@ -219,7 +223,7 @@ describe("merge builder maturity preflight", () => {
     expect(result).toMatchObject({
       status: "skipped_oldest_block_unattested",
       headerHash,
-      reason: expect.stringContaining("current_da_attestation="),
+      reason: expect.stringContaining("current_da_availability=Unattested"),
     });
     expect(fetchFirstBlockTxsMock).not.toHaveBeenCalled();
     expect(breakDownTxMock).not.toHaveBeenCalled();

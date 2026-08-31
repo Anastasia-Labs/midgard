@@ -35,6 +35,15 @@ const EMULATOR_PROTOCOL_PARAMETERS = {
 // Keep fragmented UTxOs large enough so Lucid's default collateral selector
 // can satisfy collateral + collateral-return constraints within max inputs (3).
 const MIN_COLLATERAL_SAFE_FRAGMENT_LOVELACE = 2_300_000n;
+// Wave-current on-chain bond. `operator-directory/registered-operators.ak` now
+// enforces `registered_node_lovelace == env.required_bond` (it used to accept
+// `>=`), and `env/testnet.ak` — the env this blueprint is built with, matching
+// `.github/workflows/midgard-node-ci.yml` — sets
+// `required_bond = slashing_penalty (500_000_000) + fraud_prover_reward
+// (400_000_000)`. `SDK.getProtocolParameters` carries the same 900_000_000n for
+// every non-mainnet profile. Any other value now makes the registration mint
+// crash, so this constant is derived from the contract, not chosen.
+const EMULATOR_REQUIRED_BOND_LOVELACE = 900_000_000n;
 const EMPTY_FRAUD_PROOF_CATALOGUE_ROOT = "00".repeat(32);
 const EMULATOR_REFERENCE_SCRIPT_AUTH_TIMELOCK_MS = 24 * 60 * 60 * 1000;
 
@@ -382,7 +391,7 @@ describe("operator lifecycle emulator", () => {
       registerOperatorProgram(
         lucid,
         contracts,
-        5_000_000n,
+        EMULATOR_REQUIRED_BOND_LOVELACE,
         referenceScriptsLucid,
       ),
     );
@@ -405,7 +414,7 @@ describe("operator lifecycle emulator", () => {
       activateOperatorProgram(
         lucid,
         contracts,
-        5_000_000n,
+        EMULATOR_REQUIRED_BOND_LOVELACE,
         referenceScriptsLucid,
       ),
     );
@@ -433,7 +442,7 @@ describe("operator lifecycle emulator", () => {
       registerOperatorProgram(
         lucid,
         contracts,
-        5_000_000n,
+        EMULATOR_REQUIRED_BOND_LOVELACE,
         referenceScriptsLucid,
       ),
     );
@@ -450,7 +459,7 @@ describe("operator lifecycle emulator", () => {
       registerAndActivateOperatorProgram(
         lucid,
         contracts,
-        5_000_000n,
+        EMULATOR_REQUIRED_BOND_LOVELACE,
         referenceScriptsLucid,
       ),
     );
@@ -473,7 +482,7 @@ describe("operator lifecycle emulator", () => {
       registerOperatorProgram(
         lucid,
         contracts,
-        5_000_000n,
+        EMULATOR_REQUIRED_BOND_LOVELACE,
         referenceScriptsLucid,
       ),
     );
@@ -489,7 +498,7 @@ describe("operator lifecycle emulator", () => {
       deregisterOperatorProgram(
         lucid,
         contracts,
-        5_000_000n,
+        EMULATOR_REQUIRED_BOND_LOVELACE,
         referenceScriptsLucid,
       ),
     );
@@ -509,7 +518,7 @@ describe("operator lifecycle emulator", () => {
         activateOperatorProgram(
           lucid,
           contracts,
-          5_000_000n,
+          EMULATOR_REQUIRED_BOND_LOVELACE,
           referenceScriptsLucid,
         ),
       ),
@@ -537,7 +546,7 @@ describe("operator lifecycle emulator", () => {
       registerOperatorProgram(
         lucid,
         contracts,
-        5_000_000n,
+        EMULATOR_REQUIRED_BOND_LOVELACE,
         referenceScriptsLucid,
       ),
     );
@@ -555,7 +564,7 @@ describe("operator lifecycle emulator", () => {
       activateOperatorProgram(
         lucid,
         contracts,
-        5_000_000n,
+        EMULATOR_REQUIRED_BOND_LOVELACE,
         referenceScriptsLucid,
       ),
     );
@@ -590,7 +599,7 @@ describe("operator lifecycle emulator", () => {
       registerOperatorProgram(
         lucid,
         contracts,
-        5_000_000n,
+        EMULATOR_REQUIRED_BOND_LOVELACE,
         referenceScriptsLucid,
       ),
     );
@@ -600,7 +609,7 @@ describe("operator lifecycle emulator", () => {
       activateOperatorProgram(
         lucid,
         contracts,
-        5_000_000n,
+        EMULATOR_REQUIRED_BOND_LOVELACE,
         referenceScriptsLucid,
       ),
     );
@@ -614,6 +623,9 @@ describe("operator lifecycle emulator", () => {
     });
   }, 240_000);
 
+  // 900s: each protocol bring-up publishes the wave-grown 152-target
+  // reference-script roster (38 batches, ~200s measured), and this test
+  // needs two to three bring-ups.
   it("runs register-only then activate-only across varied fragmentation profiles", async () => {
     const profiles = [
       {
@@ -659,7 +671,7 @@ describe("operator lifecycle emulator", () => {
         registerOperatorProgram(
           lucid,
           contracts,
-          5_000_000n,
+          EMULATOR_REQUIRED_BOND_LOVELACE,
           referenceScriptsLucid,
         ),
       );
@@ -679,7 +691,7 @@ describe("operator lifecycle emulator", () => {
         activateOperatorProgram(
           lucid,
           contracts,
-          5_000_000n,
+          EMULATOR_REQUIRED_BOND_LOVELACE,
           referenceScriptsLucid,
         ),
       );
@@ -692,8 +704,11 @@ describe("operator lifecycle emulator", () => {
         operatorKeyHash,
       });
     }
-  }, 360_000);
+  }, 900_000);
 
+  // 900s: each protocol bring-up publishes the wave-grown 152-target
+  // reference-script roster (38 batches, ~200s measured), and this test
+  // needs two to three bring-ups.
   it("runs repeated onboarding with aggressive UTxO churn to stress auto coin selection", async () => {
     const churnProfiles = [
       { outputs: 14, lovelacePerOutput: 2_100_000n },
@@ -728,7 +743,7 @@ describe("operator lifecycle emulator", () => {
         registerOperatorProgram(
           lucid,
           contracts,
-          5_000_000n,
+          EMULATOR_REQUIRED_BOND_LOVELACE,
           referenceScriptsLucid,
         ),
       );
@@ -738,7 +753,7 @@ describe("operator lifecycle emulator", () => {
         activateOperatorProgram(
           lucid,
           contracts,
-          5_000_000n,
+          EMULATOR_REQUIRED_BOND_LOVELACE,
           referenceScriptsLucid,
         ),
       );
@@ -751,7 +766,7 @@ describe("operator lifecycle emulator", () => {
         operatorKeyHash,
       });
     }
-  }, 360_000);
+  }, 900_000);
 
   it("runs register-only then activate-only after deterministic wallet churn to stress auto coin selection index drift", async () => {
     const {
@@ -769,7 +784,7 @@ describe("operator lifecycle emulator", () => {
       registerOperatorProgram(
         lucid,
         contracts,
-        5_000_000n,
+        EMULATOR_REQUIRED_BOND_LOVELACE,
         referenceScriptsLucid,
       ),
     );
@@ -782,7 +797,7 @@ describe("operator lifecycle emulator", () => {
       activateOperatorProgram(
         lucid,
         contracts,
-        5_000_000n,
+        EMULATOR_REQUIRED_BOND_LOVELACE,
         referenceScriptsLucid,
       ),
     );
@@ -796,6 +811,9 @@ describe("operator lifecycle emulator", () => {
     });
   }, 420_000);
 
+  // 900s: each protocol bring-up publishes the wave-grown 152-target
+  // reference-script roster (38 batches, ~200s measured), and this test
+  // needs two to three bring-ups.
   it("runs register-only then activate-only across deterministic churn profiles to reproduce coin-selection drift", async () => {
     const churnProfiles = [
       { seed: 0x101, rounds: 2 },
@@ -822,7 +840,7 @@ describe("operator lifecycle emulator", () => {
         registerOperatorProgram(
           lucid,
           contracts,
-          5_000_000n,
+          EMULATOR_REQUIRED_BOND_LOVELACE,
           referenceScriptsLucid,
         ),
       );
@@ -832,7 +850,7 @@ describe("operator lifecycle emulator", () => {
         activateOperatorProgram(
           lucid,
           contracts,
-          5_000_000n,
+          EMULATOR_REQUIRED_BOND_LOVELACE,
           referenceScriptsLucid,
         ),
       );
@@ -845,5 +863,5 @@ describe("operator lifecycle emulator", () => {
         operatorKeyHash,
       });
     }
-  }, 420_000);
+  }, 900_000);
 });

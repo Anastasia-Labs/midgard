@@ -526,6 +526,72 @@ export const fetchHubOracleWitness = (
     return utxos[0] ?? null;
   });
 
+/** Fetches and authenticates the deployment correction-lock singleton. */
+export const fetchCorrectionLockWitness = (
+  lucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+): Effect.Effect<SDK.CorrectionLockUTxO | null, SDK.LucidError> =>
+  Effect.gen(function* () {
+    const utxos = yield* Effect.tryPromise({
+      try: () =>
+        lucid.utxosAtWithUnit(
+          contracts.correctionLock.spendingScriptAddress,
+          SDK.correctionLockUnit(contracts.hubOracle.policyId),
+        ),
+      catch: (cause) =>
+        new SDK.LucidError({
+          message: "Failed to fetch correction-lock witness UTxO(s)",
+          cause,
+        }),
+    });
+    const authentic = yield* SDK.utxosToCorrectionLockUTxOs(
+      utxos,
+      contracts.hubOracle.policyId,
+    );
+    if (authentic.length > 1) {
+      return yield* Effect.fail(
+        new SDK.LucidError({
+          message: "Expected at most one authentic correction-lock UTxO",
+          cause: authentic.map(({ utxo }) => outRefLabel(utxo)).join(","),
+        }),
+      );
+    }
+    return authentic[0] ?? null;
+  });
+
+/** Fetches and authenticates the deployment claim-registry singleton. */
+export const fetchClaimRegistryWitness = (
+  lucid: LucidEvolution,
+  contracts: SDK.MidgardValidators,
+): Effect.Effect<SDK.ClaimRegistryUTxO | null, SDK.LucidError> =>
+  Effect.gen(function* () {
+    const utxos = yield* Effect.tryPromise({
+      try: () =>
+        lucid.utxosAtWithUnit(
+          contracts.claimRegistry.spendingScriptAddress,
+          SDK.claimRegistryUnit(contracts.hubOracle.policyId),
+        ),
+      catch: (cause) =>
+        new SDK.LucidError({
+          message: "Failed to fetch claim-registry witness UTxO(s)",
+          cause,
+        }),
+    });
+    const authentic = yield* SDK.utxosToClaimRegistryUTxOs(
+      utxos,
+      contracts.hubOracle.policyId,
+    );
+    if (authentic.length > 1) {
+      return yield* Effect.fail(
+        new SDK.LucidError({
+          message: "Expected at most one authentic claim-registry UTxO",
+          cause: authentic.map(({ utxo }) => outRefLabel(utxo)).join(","),
+        }),
+      );
+    }
+    return authentic[0] ?? null;
+  });
+
 /**
  * Returns whether a node-set validator already has at least one initialized
  * on-chain UTxO.
@@ -725,6 +791,8 @@ const makePartialProtocolDeploymentError = (
 
 export type ProtocolDeploymentStatus = {
   readonly hubOracleWitness: UTxO | null;
+  readonly correctionLockWitness: SDK.CorrectionLockUTxO | null;
+  readonly claimRegistryWitness: SDK.ClaimRegistryUTxO | null;
   readonly stateQueueTopology: StateQueueTopology;
   readonly daParamsInitialized: boolean;
   readonly schedulerInitialized: boolean;
@@ -748,6 +816,14 @@ export const fetchProtocolDeploymentStatus = (
 ): Effect.Effect<ProtocolDeploymentStatus, SDK.LucidError> =>
   Effect.gen(function* () {
     const hubOracleWitness = yield* fetchHubOracleWitness(lucid, contracts);
+    const correctionLockWitness = yield* fetchCorrectionLockWitness(
+      lucid,
+      contracts,
+    );
+    const claimRegistryWitness = yield* fetchClaimRegistryWitness(
+      lucid,
+      contracts,
+    );
     const stateQueueTopology = yield* fetchStateQueueTopologyProgram(
       lucid,
       contracts.stateQueue,
@@ -793,6 +869,8 @@ export const fetchProtocolDeploymentStatus = (
     );
     const missingComponents = [
       ...(hubOracleWitness === null ? ["hub-oracle"] : []),
+      ...(correctionLockWitness === null ? ["correction-lock"] : []),
+      ...(claimRegistryWitness === null ? ["claim-registry"] : []),
       ...(!daParamsInitialized ? ["da-params"] : []),
       ...(!stateQueueTopology.initialized ? ["state-queue"] : []),
       ...(!schedulerInitialized ? ["scheduler"] : []),
@@ -803,6 +881,8 @@ export const fetchProtocolDeploymentStatus = (
     ] as const;
     const complete =
       hubOracleWitness !== null &&
+      correctionLockWitness !== null &&
+      claimRegistryWitness !== null &&
       daParamsInitialized &&
       stateQueueTopology.initialized &&
       stateQueueTopology.healthy &&
@@ -813,6 +893,8 @@ export const fetchProtocolDeploymentStatus = (
       fraudProofCatalogueInitialized;
     const empty =
       hubOracleWitness === null &&
+      correctionLockWitness === null &&
+      claimRegistryWitness === null &&
       !daParamsInitialized &&
       !stateQueueTopology.initialized &&
       !schedulerInitialized &&
@@ -823,6 +905,8 @@ export const fetchProtocolDeploymentStatus = (
 
     return {
       hubOracleWitness,
+      correctionLockWitness,
+      claimRegistryWitness,
       stateQueueTopology,
       daParamsInitialized,
       schedulerInitialized,

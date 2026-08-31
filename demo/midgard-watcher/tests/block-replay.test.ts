@@ -48,6 +48,7 @@ import {
   plutusV3ScriptWitness,
 } from "../../midgard-validation/tests/validation-fixtures.js";
 import {
+  assertWatcherFullBlockReplayResultV1,
   evaluateWatcherBlockReplayCandidatesV1,
   makeWatcherPhaseBConfigV1,
   WATCHER_BLOCK_REPLAY_CANONICAL_REJECT_CODES_V1,
@@ -2107,6 +2108,10 @@ describe("W25 roots and deterministic replay", () => {
     });
 
     const result = await evaluateWatcherBlockReplayV1(publicInput(fixture));
+    expect(() => assertWatcherFullBlockReplayResultV1(result)).not.toThrow();
+    expect(() => assertWatcherFullBlockReplayResultV1({ ...result })).toThrow(
+      "watcher full block-replay result is not admitted",
+    );
     expect(result).toMatchObject({
       action: "accept",
       reasonCodes: [],

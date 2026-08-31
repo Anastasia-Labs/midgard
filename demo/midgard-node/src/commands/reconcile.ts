@@ -863,7 +863,7 @@ export const reconcileTxCommittedProgram = ({
 export type CanonicalDaAttestationObservation = {
   readonly datumHeaderHash: string;
   readonly computedHeaderHash: string;
-  readonly daAttestation: string;
+  readonly daAvailability: SDK.DaAvailabilityStateQueueStatusV1;
   readonly outRef: string;
 };
 
@@ -875,19 +875,16 @@ export type CanonicalDaAttestationDecision = {
     | "canonical_header_absent"
     | "canonical_header_not_unique"
     | "header_hash_mismatch"
-    | "local_payload_missing"
-    | "unexpected_attestation_marker";
+    | "local_payload_missing";
   readonly nextAction: string | null;
 };
 
 export const classifyCanonicalDaAttestation = ({
   headerHash,
-  expectedDaAttestationPolicyId,
   localPayloadPresent,
   observations,
 }: {
   readonly headerHash: string;
-  readonly expectedDaAttestationPolicyId: string;
   readonly localPayloadPresent: boolean;
   readonly observations: readonly CanonicalDaAttestationObservation[];
 }): CanonicalDaAttestationDecision => {
@@ -920,19 +917,11 @@ export const classifyCanonicalDaAttestation = ({
         "The canonical state-queue datum key does not match its recomputed HeaderV1 hash; quarantine this observation and reconcile the L1 source.",
     };
   }
-  if (matched.daAttestation === expectedDaAttestationPolicyId) {
+  if (matched.daAvailability !== SDK.NO_DA_ATTESTATION) {
     return {
       status: "satisfied",
       reason: "attestation_applied",
       nextAction: null,
-    };
-  }
-  if (matched.daAttestation !== SDK.NO_DA_ATTESTATION) {
-    return {
-      status: "blocked",
-      reason: "unexpected_attestation_marker",
-      nextAction:
-        "The canonical state-queue node contains an unexpected DA-attestation policy marker; quarantine it until the deployment/source mismatch is resolved.",
     };
   }
   if (!localPayloadPresent) {
@@ -961,7 +950,7 @@ const fetchCanonicalDaAttestationObservations = Effect.gen(function* () {
     observations.push({
       datumHeaderHash: canonicalHeader.headerHash,
       computedHeaderHash: yield* SDK.hashBlockHeaderV1(node.header),
-      daAttestation: node.da_attestation,
+      daAvailability: node.da_attestation,
       outRef: canonicalHeader.outRef,
     });
   }
@@ -1030,7 +1019,7 @@ export const reconcileDaAttestedProgram = (options: {
         evidence("canonical_l1_da_attestation_query_error", {
           stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
           stateQueuePolicyId: contracts.stateQueue.policyId,
-          expectedDaAttestationPolicyId: contracts.daAttestation.policyId,
+          availabilityPolicyId: contracts.availabilityChallenge.policyId,
           error: formatUnknownError(canonicalAttempt.left, {
             includeCause: true,
           }),
@@ -1049,7 +1038,6 @@ export const reconcileDaAttestedProgram = (options: {
 
     const decision = classifyCanonicalDaAttestation({
       headerHash: headerHashHex,
-      expectedDaAttestationPolicyId: contracts.daAttestation.policyId,
       localPayloadPresent: Option.isSome(localPayload),
       observations: canonicalAttempt.right,
     });
@@ -1058,7 +1046,7 @@ export const reconcileDaAttestedProgram = (options: {
         source: "configured_cardano_l1_query",
         stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
         stateQueuePolicyId: contracts.stateQueue.policyId,
-        expectedDaAttestationPolicyId: contracts.daAttestation.policyId,
+        availabilityPolicyId: contracts.availabilityChallenge.policyId,
         targetHeaderHash: headerHashHex,
         decisionReason: decision.reason,
         observations: canonicalAttempt.right,

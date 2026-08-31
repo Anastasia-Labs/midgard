@@ -21,19 +21,29 @@ import {
   computeDeploymentManifestV1Id,
   computeDeploymentManifestV1JsonDigest,
   DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES,
+  DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE,
+  DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
   DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES,
   DEPLOYMENT_MANIFEST_V1_STEP_NAMES,
   makeDeploymentMarkerV1,
 } from "../../midgard-core/src/deployment-manifest-identity-v1.js";
 import {
+  assertWatcherDeploymentAvailabilityChallengeAuthorityV1,
+  assertWatcherDeploymentProtocolParameterAuthorityV1,
+  assertWatcherDeploymentProtocolScriptAuthorityV1,
   makeWatcherDeploymentIdentitySignaturePayloadV1,
   verifyWatcherDeploymentIdentityV1,
   WATCHER_DEPLOYMENT_RELEASE_BINDINGS_V1_SCHEMA_VERSION,
   WATCHER_SIGNED_DEPLOYMENT_IDENTITY_V1_SCHEMA_VERSION,
+  watcherDeploymentAvailabilityChallengeAuthorityV1,
   watcherDeploymentIdentityDiagnostic,
   WatcherDeploymentIdentityError,
   type WatcherDeploymentIdentityPolicyV1,
+  watcherDeploymentProtocolParameterAuthorityV1,
+  watcherDeploymentProtocolScriptAuthorityV1,
+  watcherDeploymentReleaseEconomicsAuthorityV1,
+  watcherDeploymentReleaseFinalityAuthorityV1,
 } from "../src/deployment-identity.js";
 import { canonicalFraudProofCatalogueFixture } from "./canonical-fraud-proof-catalogue.js";
 
@@ -117,9 +127,22 @@ const canonicalIdentity = (): MutableRecord => {
     }),
   );
   const parameters = {
-    maxTxSize: 16_384,
-    maxValueSize: 5_000,
+    minFeeA: "44",
+    minFeeB: "155381",
+    priceMemory: { numerator: "577", denominator: "10000" },
+    priceSteps: { numerator: "721", denominator: "10000000" },
+    coinsPerUtxoByte: "4310",
+    collateralPercentage: "150",
+    maxCollateralInputs: "3",
+    maxTxSize: "16384",
+    maxValueSize: "5000",
     maxTxExUnits: { memory: "16500000", steps: "10000000000" },
+    referenceScriptFee: {
+      base: { numerator: "15", denominator: "1" },
+      range: "25600",
+      multiplier: { numerator: "6", denominator: "5" },
+      maximumSizeBytes: "204800",
+    },
   };
   return {
     schemaVersion: "midgard-deployment-manifest-v1",
@@ -197,6 +220,30 @@ const canonicalIdentity = (): MutableRecord => {
       maxBisectionRounds:
         MIDGARD_CONSENSUS_PROFILE_V1.limits.maxValidationBisectionRounds,
       maturityMs: MIDGARD_CONSENSUS_PROFILE_V1.limits.blockMaturityMs,
+    },
+    economics:
+      DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
+    l1Finality: DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
+    availabilityChallenge: {
+      responseClasses: {
+        smallPayloadMaxBytes: 65_536,
+        smallResponseWindowMs: 3_600_000,
+        fullPayloadMaxBytes: 67_108_864,
+        fullResponseWindowMs: 172_800_000,
+      },
+      responseGeometry: {
+        chunkByteLength: 14_020,
+        trancheByteLength: 4_194_304,
+        maxTrancheCount: 16,
+      },
+      daBondLovelace: 10_000_000_000,
+      challengerBondLovelace: 10_000_000_000,
+      maxOpenFeeLovelace: 500_000,
+      maxPublicationFeeLovelace: 500_000,
+      maxSettlementFeeLovelace: 500_000,
+      maxCloseFeeLovelace: 1_000_000,
+      maxTimeoutFeeLovelace: 1_200_000,
+      bondOwnerCredential: "77".repeat(28),
     },
   };
 };
@@ -375,7 +422,201 @@ describe("watcher deployment identity", () => {
     });
   });
 
-  it("binds the complete registered catalogue through category 1b to deployed contracts", () => {
+  it("mints an opaque deployment-bound state-queue and CorrectionLock script authority", () => {
+    const fixture = makeFixture();
+    const identity = verifyWatcherDeploymentIdentityV1({
+      signedIdentity: fixture.signedIdentity,
+      policy: fixture.policy,
+      trustRoots: [fixture.trustRoot],
+      durableMarker: fixture.durableMarker,
+    });
+    const authority = watcherDeploymentProtocolScriptAuthorityV1(identity);
+
+    expect(authority).toMatchObject({
+      deploymentFingerprint: identity.manifestId,
+      network: "Preprod",
+      hubOracleOneShotOutRef: fixture.policy.hubOracleOneShotOutRef,
+      protocolScriptHashes: {
+        hubOracleMint: fixture.policy.appliedScriptHashes.hubOracleMint,
+        stateQueueSpend: fixture.policy.appliedScriptHashes.stateQueueSpend,
+        stateQueueMint: fixture.policy.appliedScriptHashes.stateQueueMint,
+        correctionLockSpend:
+          fixture.policy.appliedScriptHashes.correctionLockSpend,
+      },
+      referenceScripts: fixture.policy.referenceScripts,
+      authorityDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
+    });
+    expect(Object.isFrozen(authority)).toBe(true);
+    expect(Object.isFrozen(authority.protocolScriptHashes)).toBe(true);
+    expect(Object.isFrozen(authority.referenceScripts)).toBe(true);
+    expect(() =>
+      assertWatcherDeploymentProtocolScriptAuthorityV1(authority),
+    ).not.toThrow();
+    expect(() =>
+      assertWatcherDeploymentProtocolScriptAuthorityV1({
+        ...authority,
+      }),
+    ).toThrow("invalid_field");
+    expect(() =>
+      watcherDeploymentProtocolScriptAuthorityV1({ ...identity }),
+    ).toThrow("invalid_field");
+  });
+
+  it("mints exact protocol parameters only from the signed deployment identity", () => {
+    const fixture = makeFixture();
+    const identity = verifyWatcherDeploymentIdentityV1({
+      signedIdentity: fixture.signedIdentity,
+      policy: fixture.policy,
+      trustRoots: [fixture.trustRoot],
+      durableMarker: fixture.durableMarker,
+    });
+    const authority = watcherDeploymentProtocolParameterAuthorityV1(identity);
+
+    expect(authority).toEqual({
+      schemaVersion:
+        "midgard-watcher-deployment-protocol-parameter-authority-v1",
+      deploymentFingerprint: identity.manifestId,
+      snapshot:
+        fixture.signedIdentity.manifest.cardanoProtocolParameters.snapshot,
+      snapshotDigest:
+        fixture.signedIdentity.manifest.cardanoProtocolParameters.digest,
+      authorityDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
+    });
+    expect(Object.isFrozen(authority)).toBe(true);
+    expect(Object.isFrozen(authority.snapshot)).toBe(true);
+    expect(() =>
+      assertWatcherDeploymentProtocolParameterAuthorityV1(authority),
+    ).not.toThrow();
+    expect(() =>
+      assertWatcherDeploymentProtocolParameterAuthorityV1({ ...authority }),
+    ).toThrow("invalid_field");
+    expect(() =>
+      watcherDeploymentProtocolParameterAuthorityV1({ ...identity }),
+    ).toThrow("invalid_field");
+  });
+
+  it("mints exact Q58 availability parameters only from the signed deployment identity", () => {
+    const fixture = makeFixture();
+    const identity = verifyWatcherDeploymentIdentityV1({
+      signedIdentity: fixture.signedIdentity,
+      policy: fixture.policy,
+      trustRoots: [fixture.trustRoot],
+      durableMarker: fixture.durableMarker,
+    });
+    const authority =
+      watcherDeploymentAvailabilityChallengeAuthorityV1(identity);
+
+    expect(authority).toEqual({
+      schemaVersion:
+        "midgard-watcher-deployment-availability-challenge-authority-v1",
+      deploymentFingerprint: identity.manifestId,
+      parameters: fixture.signedIdentity.manifest.availabilityChallenge,
+      parametersDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
+      authorityDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
+    });
+    expect(authority.parameters).toMatchObject({
+      responseGeometry: {
+        chunkByteLength: 14_020,
+        trancheByteLength: 4_194_304,
+        maxTrancheCount: 16,
+      },
+      daBondLovelace: 10_000_000_000,
+      challengerBondLovelace: 10_000_000_000,
+      maxOpenFeeLovelace: 500_000,
+      maxPublicationFeeLovelace: 500_000,
+      maxSettlementFeeLovelace: 500_000,
+      maxCloseFeeLovelace: 1_000_000,
+      maxTimeoutFeeLovelace: 1_200_000,
+    });
+    expect(Object.isFrozen(authority)).toBe(true);
+    expect(Object.isFrozen(authority.parameters)).toBe(true);
+    expect(() =>
+      assertWatcherDeploymentAvailabilityChallengeAuthorityV1(authority),
+    ).not.toThrow();
+    expect(() =>
+      assertWatcherDeploymentAvailabilityChallengeAuthorityV1({
+        ...authority,
+      }),
+    ).toThrow("invalid_field");
+    expect(() =>
+      watcherDeploymentAvailabilityChallengeAuthorityV1({ ...identity }),
+    ).toThrow("invalid_field");
+  });
+
+  it("mints release finality only from the exact signed deployment identity", async () => {
+    const fixture = makeFixture();
+    const identity = verifyWatcherDeploymentIdentityV1({
+      signedIdentity: fixture.signedIdentity,
+      policy: fixture.policy,
+      trustRoots: [fixture.trustRoot],
+      durableMarker: fixture.durableMarker,
+    });
+    const authority = watcherDeploymentReleaseFinalityAuthorityV1(identity);
+
+    await expect(
+      authority.verifyForWorkflow({
+        deploymentFingerprint: identity.manifestId,
+      }),
+    ).resolves.toMatchObject({
+      deploymentIdentityDigest: identity.manifestId,
+      releaseIdentityDigest: RELEASE_DIGEST,
+      policy: DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
+      policyDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
+    });
+    await expect(
+      authority.verifyForWorkflow({
+        deploymentFingerprint: "aa".repeat(32),
+      }),
+    ).rejects.toThrow("mismatched_identity");
+
+    const clone = { ...authority };
+    await expect(
+      clone.verifyForWorkflow({ deploymentFingerprint: identity.manifestId }),
+    ).rejects.toThrow("invalid_field");
+    expect(() =>
+      watcherDeploymentReleaseFinalityAuthorityV1({ ...identity }),
+    ).toThrow("invalid_field");
+  });
+
+  it("mints exact release economics only from the signed deployment identity", async () => {
+    const fixture = makeFixture();
+    const identity = verifyWatcherDeploymentIdentityV1({
+      signedIdentity: fixture.signedIdentity,
+      policy: fixture.policy,
+      trustRoots: [fixture.trustRoot],
+      durableMarker: fixture.durableMarker,
+    });
+    const authority = watcherDeploymentReleaseEconomicsAuthorityV1(identity);
+
+    await expect(
+      authority.verifyForWorkflow({
+        deploymentFingerprint: identity.manifestId,
+      }),
+    ).resolves.toMatchObject({
+      deploymentIdentityDigest: identity.manifestId,
+      releaseIdentityDigest: RELEASE_DIGEST,
+      policy: {
+        profile: "bounded-acceptance-v1",
+        proverCollateralFloorLovelace: "5000000",
+      },
+      policyDigest: expect.stringMatching(/^[0-9a-f]{64}$/u),
+    });
+    await expect(
+      authority.verifyForWorkflow({
+        deploymentFingerprint: "aa".repeat(32),
+      }),
+    ).rejects.toThrow("mismatched_identity");
+
+    const clone = { ...authority };
+    await expect(
+      clone.verifyForWorkflow({ deploymentFingerprint: identity.manifestId }),
+    ).rejects.toThrow("invalid_field");
+    expect(() =>
+      watcherDeploymentReleaseEconomicsAuthorityV1({ ...identity }),
+    ).toThrow("invalid_field");
+  });
+
+  it("binds the complete registered catalogue through category 1f to deployed contracts", () => {
     const fixture = makeFixture();
     const categories = fixture.policy.fraudProofCatalogue.categories;
 
@@ -410,7 +651,25 @@ describe("watcher deployment identity", () => {
       scriptHash:
         fixture.policy.appliedScriptHashes.fraudProofMintAuthorization,
     });
-    expect(Object.keys(categories)).toHaveLength(28);
+    expect(categories.networkId).toEqual({
+      categoryId: "0000001c",
+      scriptHash: fixture.policy.appliedScriptHashes.fraudProofNetworkId,
+    });
+    expect(categories.missingNativeScriptUtxo).toEqual({
+      categoryId: "0000001d",
+      scriptHash:
+        fixture.policy.appliedScriptHashes.fraudProofMissingNativeScriptUtxo,
+    });
+    expect(categories.nativeScriptInvalid).toEqual({
+      categoryId: "0000001e",
+      scriptHash:
+        fixture.policy.appliedScriptHashes.fraudProofNativeScriptInvalid,
+    });
+    expect(categories.minAda).toEqual({
+      categoryId: "0000001f",
+      scriptHash: fixture.policy.appliedScriptHashes.fraudProofMinAda,
+    });
+    expect(Object.keys(categories)).toHaveLength(32);
 
     fixture.policy = {
       ...fixture.policy,

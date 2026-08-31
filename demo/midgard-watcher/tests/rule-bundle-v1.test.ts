@@ -18,6 +18,8 @@ import {
   computeDeploymentManifestV1Id,
   computeDeploymentManifestV1JsonDigest,
   DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES,
+  DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE,
+  DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
   DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES,
   DEPLOYMENT_MANIFEST_V1_STEP_NAMES,
@@ -47,6 +49,7 @@ import {
   type WatcherRuleBundleV1ErrorCode,
 } from "../src/rule-bundle-v1.js";
 import { canonicalFraudProofCatalogueFixture } from "./canonical-fraud-proof-catalogue.js";
+import { WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS_V1 } from "./support/deployment-authority-fixture.js";
 
 const h32 = (byte: string): string => byte.repeat(64);
 
@@ -150,8 +153,10 @@ const canonicalManifestIdentity = (): MutableRecord => {
     consensusProfileDigest: MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
     network: "Preprod",
     cardanoProtocolParameters: {
-      snapshot: TARGET_PARAMETERS,
-      digest: computeDeploymentManifestV1JsonDigest(TARGET_PARAMETERS),
+      snapshot: WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS_V1,
+      digest: computeDeploymentManifestV1JsonDigest(
+        WATCHER_TEST_CARDANO_PROTOCOL_PARAMETERS_V1,
+      ),
     },
     genesis: {
       headerHash: "00".repeat(28),
@@ -220,6 +225,30 @@ const canonicalManifestIdentity = (): MutableRecord => {
       maxBisectionRounds:
         MIDGARD_CONSENSUS_PROFILE_V1.limits.maxValidationBisectionRounds,
       maturityMs: MIDGARD_CONSENSUS_PROFILE_V1.limits.blockMaturityMs,
+    },
+    economics:
+      DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
+    l1Finality: DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
+    availabilityChallenge: {
+      responseClasses: {
+        smallPayloadMaxBytes: 65_536,
+        smallResponseWindowMs: 3_600_000,
+        fullPayloadMaxBytes: 67_108_864,
+        fullResponseWindowMs: 172_800_000,
+      },
+      responseGeometry: {
+        chunkByteLength: 14_020,
+        trancheByteLength: 4_194_304,
+        maxTrancheCount: 16,
+      },
+      daBondLovelace: 10_000_000_000,
+      challengerBondLovelace: 10_000_000_000,
+      maxOpenFeeLovelace: 500_000,
+      maxPublicationFeeLovelace: 500_000,
+      maxSettlementFeeLovelace: 500_000,
+      maxCloseFeeLovelace: 1_000_000,
+      maxTimeoutFeeLovelace: 1_200_000,
+      bondOwnerCredential: "77".repeat(28),
     },
   };
 };

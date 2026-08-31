@@ -4,6 +4,8 @@ import { Effect } from "effect";
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 import { withRealStateQueueAndOperatorContracts } from "@/services/midgard-contracts.js";
 
+import { TEST_AVAILABILITY_PARAMETERS_V1 } from "./availability-challenge-v1.js";
+
 export type TestOneShotOutRef = {
   readonly txHash: string;
   readonly outputIndex: number;
@@ -23,6 +25,7 @@ export const loadRealMidgardContractsForTest = (
         {
           referenceScriptAuth:
             referenceScriptAuth ?? placeholder.referenceScriptAuth,
+          availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS_V1,
         },
       );
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),

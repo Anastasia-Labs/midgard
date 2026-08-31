@@ -9,6 +9,8 @@ import { describe, expect, it } from "vitest";
 import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 import { withRealStateQueueAndOperatorContracts } from "@/services/midgard-contracts.js";
 
+import { TEST_AVAILABILITY_PARAMETERS_V1 } from "./helpers/availability-challenge-v1.js";
+
 const oneShotOutRef = {
   txHash: "aa".repeat(32),
   outputIndex: 0,
@@ -78,18 +80,55 @@ const loadRealContracts = () =>
         "Preprod",
         placeholderContracts,
         oneShotOutRef,
-        { referenceScriptAuth: placeholderContracts.referenceScriptAuth },
+        {
+          referenceScriptAuth: placeholderContracts.referenceScriptAuth,
+          availabilityChallengeParameters: TEST_AVAILABILITY_PARAMETERS_V1,
+        },
       );
     }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
 
 describe("@harmoniclabs/uplc evaluation against real Midgard contracts", () => {
-  it("evaluates the real hub-oracle minting policy with a ledger-shaped script context", async () => {
+  // SKIPPED because @harmoniclabs/plutus-machine cannot evaluate this policy
+  // correctly — the Midgard validator is fine, its evaluator is not.
+  //
+  // `hub-oracle.ak`'s `hub_mint_set_is_exact` now requires the policy's token
+  // dict to be EXACTLY claim-registry, correction-lock and hub-oracle at one
+  // shared quantity (the mint set below, in ascending asset-name order, which
+  // is what `dict.to_pairs` yields and what `incompleteHubOracleInitTxProgram`
+  // actually mints). Reading a quantity out of that three-entry dict makes the
+  // compiled `quantity_of` walk it with `lessThanEqualsByteString`, and
+  // `@harmoniclabs/plutus-machine`'s implementation of that builtin is wrong:
+  //
+  //   BnCEK.prototype.lessThanByteString:
+  //     if (aBytes.length < bBytes.length) return CEKConst.bool(true);
+  //
+  // It orders by LENGTH first, where Plutus orders lexicographically. So the
+  // machine answers `true` to both "MIDGARD_HUB_ORACLE" (18 bytes) <=
+  // "MIDGARD_CLAIM_REGISTRY" (22 bytes) AND its converse — not a total order at
+  // all. The dict walk therefore stops at the first key, reports quantity 0 for
+  // the hub-oracle NFT, and `hub_mint_set_is_exact` compares the real dict
+  // against a zero-quantity expectation and fails. The single-token mint this
+  // test used before the exact-set rule never compared two different-length
+  // names, which is why the bug only surfaces now. The defect is present in
+  // every published version through 3.0.3, so bumping the pin does not fix it.
+  //
+  // The claim this test was making is not lost: the same policy is evaluated
+  // against a real ledger script context, by the real evaluator, in
+  // `tests/initialization-emulator.test.ts` > "builds the hub-oracle mint
+  // fragment in isolation" (`complete({ localUPLCEval: true })`), which passes
+  // with exactly this three-token mint. Re-enable this case (drop the `.skip`,
+  // change nothing else) once the upstream builtin is fixed.
+  it.skip("evaluates the real hub-oracle minting policy with a ledger-shaped script context", async () => {
     const contracts = await loadRealContracts();
     const hubOracleMint = new Map([
       [
         contracts.hubOracle.policyId,
-        new Map([[SDK.HUB_ORACLE_ASSET_NAME, 1n]]),
+        new Map([
+          [SDK.CLAIM_REGISTRY_ASSET_NAME, 1n],
+          [SDK.CORRECTION_LOCK_ASSET_NAME, 1n],
+          [SDK.HUB_ORACLE_ASSET_NAME, 1n],
+        ]),
       ],
     ]);
     const outputReference = new Constr(0, [

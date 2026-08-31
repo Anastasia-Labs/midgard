@@ -8,6 +8,7 @@ export const WATCHER_CARDANO_SECURITY_PARAMETER_K = 2_160 as const;
 export const WATCHER_CONFIG_BOUNDS = {
   configJsonBytes: { min: 2, max: 262_144 },
   externalProviders: { min: 2, max: 4 },
+  localNodeQueryServices: { min: 2, max: 3 },
   daPeers: { min: 1, max: 32 },
   requestTimeoutMs: { min: 100, max: 120_000 },
   concurrency: { min: 1, max: 64 },
@@ -30,17 +31,29 @@ export type WatcherL1ProviderConfig = Readonly<{
   endpoint: string;
 }>;
 
-/**
- * The prelaunch wire configuration has one selectable source shape. The
- * local-node discriminator remains a pure state-machine vocabulary in the
- * adapter and indexing modules, but no public wire config can carry a socket
- * path or query-service authority until a peer-authenticated native adapter
- * exists.
- */
-export type WatcherL1SourceConfig = Readonly<{
-  sourceMode: "external_providers";
-  providers: readonly WatcherL1ProviderConfig[];
+export type WatcherLocalNodeQueryServiceConfig = Readonly<{
+  kind: "ogmios" | "kupo" | "db_sync";
+  identity: string;
+  endpoint: string;
 }>;
+
+export type WatcherL1SourceConfig =
+  | Readonly<{
+      sourceMode: "local_node";
+      authorityNodeId: string;
+      chainSync: Readonly<{
+        kind: "cardano_node_socket";
+        socketPath: string;
+        nodeConfigPath: string;
+        genesisConfigPath: string;
+        genesisIdentitySha256: string;
+      }>;
+      queryServices: readonly WatcherLocalNodeQueryServiceConfig[];
+    }>
+  | Readonly<{
+      sourceMode: "external_providers";
+      providers: readonly WatcherL1ProviderConfig[];
+    }>;
 
 export type WatcherL1Config = Readonly<{
   source: WatcherL1SourceConfig;
@@ -129,6 +142,8 @@ export class WatcherConfigError extends Error {
     this.path = path;
   }
 }
+
+const admittedWatcherConfigsV1 = new WeakSet<object>();
 
 function fail(code: WatcherConfigErrorCode, path: string): never {
   throw new WatcherConfigError(code, path);
@@ -440,6 +455,84 @@ const parseProviders = (
   );
 };
 
+const parseLocalNodeEndpoint = (
+  value: unknown,
+  path: string,
+  kind: WatcherLocalNodeQueryServiceConfig["kind"],
+): string => {
+  const endpoint = exactString(value, path, { maxLength: 2_048 });
+  let url: URL;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    fail("invalid_endpoint", path);
+  }
+  const protocols =
+    kind === "ogmios"
+      ? ["http:", "ws:"]
+      : kind === "kupo"
+        ? ["http:"]
+        : ["postgresql:"];
+  const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/gu, "");
+  if (
+    !protocols.includes(url.protocol) ||
+    !["127.0.0.1", "localhost", "::1"].includes(hostname) ||
+    url.username.length > 0 ||
+    url.password.length > 0 ||
+    url.search.length > 0 ||
+    url.hash.length > 0
+  ) {
+    fail("invalid_endpoint", path);
+  }
+  return endpoint;
+};
+
+const parseLocalNodeQueryServices = (
+  value: unknown,
+): readonly WatcherLocalNodeQueryServiceConfig[] => {
+  const services = boundedArray(
+    value,
+    "$.l1.source.queryServices",
+    WATCHER_CONFIG_BOUNDS.localNodeQueryServices,
+  );
+  const identities = new Set<string>();
+  const kinds = new Set<string>();
+  const endpoints = new Set<string>();
+  const parsed = services.map((entry, index) => {
+    const path = `$.l1.source.queryServices[${index.toString()}]`;
+    const service = exactRecord(entry, path, ["kind", "identity", "endpoint"]);
+    const kind = enumValue(service.kind, `${path}.kind`, [
+      "ogmios",
+      "kupo",
+      "db_sync",
+    ] as const);
+    const identity = exactString(service.identity, `${path}.identity`, {
+      maxLength: 32,
+      pattern: IDENTITY_PATTERN,
+    });
+    const endpoint = parseLocalNodeEndpoint(
+      service.endpoint,
+      `${path}.endpoint`,
+      kind,
+    );
+    if (
+      identities.has(identity) ||
+      kinds.has(kind) ||
+      endpoints.has(endpoint)
+    ) {
+      fail("provider_alias", path);
+    }
+    identities.add(identity);
+    kinds.add(kind);
+    endpoints.add(endpoint);
+    return Object.freeze({ kind, identity, endpoint });
+  });
+  if (!["ogmios", "kupo"].every((kind) => kinds.has(kind))) {
+    fail("missing_required_field", "$.l1.source.queryServices");
+  }
+  return Object.freeze(parsed);
+};
+
 const parseDaPeers = (value: unknown): readonly WatcherDaPeerConfig[] => {
   const values = boundedArray(
     value,
@@ -539,7 +632,54 @@ const parseL1Source = (
 ): WatcherL1SourceConfig => {
   const preliminary = plainRecord(value, "$.l1.source");
   if (preliminary.sourceMode === "local_node") {
-    fail("invalid_value", "$.l1.source.sourceMode");
+    const source = exactRecord(value, "$.l1.source", [
+      "sourceMode",
+      "authorityNodeId",
+      "chainSync",
+      "queryServices",
+    ]);
+    const chainSync = exactRecord(source.chainSync, "$.l1.source.chainSync", [
+      "kind",
+      "socketPath",
+      "nodeConfigPath",
+      "genesisConfigPath",
+      "genesisIdentitySha256",
+    ]);
+    if (chainSync.kind !== "cardano_node_socket") {
+      fail("invalid_value", "$.l1.source.chainSync.kind");
+    }
+    return Object.freeze({
+      sourceMode: "local_node",
+      authorityNodeId: exactString(
+        source.authorityNodeId,
+        "$.l1.source.authorityNodeId",
+        { maxLength: 32, pattern: IDENTITY_PATTERN },
+      ),
+      chainSync: Object.freeze({
+        kind: "cardano_node_socket",
+        socketPath: requireAbsoluteFilePath(
+          chainSync.socketPath,
+          "$.l1.source.chainSync.socketPath",
+          false,
+        ),
+        nodeConfigPath: requireAbsoluteFilePath(
+          chainSync.nodeConfigPath,
+          "$.l1.source.chainSync.nodeConfigPath",
+          false,
+        ),
+        genesisConfigPath: requireAbsoluteFilePath(
+          chainSync.genesisConfigPath,
+          "$.l1.source.chainSync.genesisConfigPath",
+          false,
+        ),
+        genesisIdentitySha256: exactString(
+          chainSync.genesisIdentitySha256,
+          "$.l1.source.chainSync.genesisIdentitySha256",
+          { maxLength: 64, pattern: HEX_32_PATTERN },
+        ),
+      }),
+      queryServices: parseLocalNodeQueryServices(source.queryServices),
+    });
   }
   if (preliminary.sourceMode === "external_providers") {
     const source = exactRecord(value, "$.l1.source", [
@@ -555,6 +695,13 @@ const parseL1Source = (
 };
 
 export const parseWatcherConfig = (value: unknown): WatcherConfig => {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    admittedWatcherConfigsV1.has(value)
+  ) {
+    return value as WatcherConfig;
+  }
   const root = exactRecord(value, "$", [
     "schemaVersion",
     "mode",
@@ -700,7 +847,7 @@ export const parseWatcherConfig = (value: unknown): WatcherConfig => {
     fail("secret_source_alias", "$.storage.rollbackAuthorityKeySource");
   }
 
-  return Object.freeze({
+  const admitted = Object.freeze({
     schemaVersion: WATCHER_CONFIG_SCHEMA_VERSION,
     mode,
     targetNetwork,
@@ -754,6 +901,8 @@ export const parseWatcherConfig = (value: unknown): WatcherConfig => {
       proofSubmitMs,
     }),
   });
+  admittedWatcherConfigsV1.add(admitted);
+  return admitted;
 };
 
 class StrictJsonReader {
@@ -944,3 +1093,7 @@ export const parseWatcherConfigJson = (source: string): WatcherConfig => {
   }
   return parseWatcherConfig(new StrictJsonReader(source).parse());
 };
+
+/** Duplicate-key rejecting JSON admission shared by production identity files. */
+export const parseWatcherStrictJsonValueV1 = (source: string): unknown =>
+  new StrictJsonReader(source).parse();

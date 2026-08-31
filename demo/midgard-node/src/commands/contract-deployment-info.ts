@@ -24,7 +24,18 @@ import {
   DA_TRANSPORT_LIMITS_V1,
   DA_TRANSPORT_V1_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
-import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import {
+  DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE,
+  DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
+  type DeploymentManifestV1AvailabilityChallenge,
+  type DeploymentManifestV1CanonicalRational,
+  type DeploymentManifestV1CardanoProtocolParameters,
+  type DeploymentManifestV1Economics,
+  type DeploymentManifestV1EconomicsProfile,
+  deriveDeploymentManifestV1CardanoProtocolParametersFromOgmios,
+  makeDeploymentMarkerV1,
+  parseDeploymentManifestV1AvailabilityChallenge,
+} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   GENESIS_HEADER_HASH,
@@ -58,6 +69,7 @@ import {
   sha256File,
 } from "@/e2e/run-state.js";
 import { writeJsonFileAtomic } from "@/files/atomic-write.js";
+import { normalizeOgmiosHttpUrl } from "@/local-ledger-slot.js";
 import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
 import {
   loadRealBlueprintSha256,
@@ -155,6 +167,9 @@ export type DeploymentManifestV1 = ContractDeploymentInfo & {
     readonly maxBisectionRounds: number;
     readonly maturityMs: number;
   };
+  readonly l1Finality: DeploymentManifestV1Value["l1Finality"];
+  readonly economics: DeploymentManifestV1Value["economics"];
+  readonly availabilityChallenge: DeploymentManifestV1Value["availabilityChallenge"];
 };
 
 export type DeploymentManifestVerificationReport = {
@@ -234,6 +249,10 @@ const REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES = [
   "valueNotPreserved",
   "inputSetUniqueness",
   "mintAuthorization",
+  "networkId",
+  "missingNativeScriptUtxo",
+  "nativeScriptInvalid",
+  "minAda",
 ] as const satisfies readonly (keyof SDK.FaultProofContracts)[];
 
 const upperFirst = (value: string): string =>
@@ -242,10 +261,28 @@ const upperFirst = (value: string): string =>
 const faultProofStepContractName = (
   category: (typeof REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES)[number],
   stepIndex: number,
-): string =>
-  `fraudProof${upperFirst(category)}${
+): string => {
+  if (category === "nativeScriptDecoding") {
+    const names = [
+      "fraudProofNativeScriptDecoding",
+      "fraudProofNativeScriptDecodingStep02",
+      "fraudProofNativeScriptDecodingStep03OpenSubject",
+      "fraudProofNativeScriptDecodingStep03BindDescriptor",
+      "fraudProofNativeScriptDecodingStep03AdvanceOrClose",
+      "fraudProofNativeScriptDecodingStep04",
+    ] as const;
+    const name = names[stepIndex];
+    if (name === undefined) {
+      throw new Error(
+        `native-script-decoding exposes an unexpected step index ${stepIndex.toString()}`,
+      );
+    }
+    return name;
+  }
+  return `fraudProof${upperFirst(category)}${
     stepIndex === 0 ? "" : `Step${(stepIndex + 1).toString().padStart(2, "0")}`
   }`;
+};
 
 const referenceScriptTargetForContract = (
   contractName: string,
@@ -339,20 +376,67 @@ const TRANSITION_TRACE_FINAL_CONTRACT_NAMES = [
   "fraudProofTransitionTraceDuplicate",
 ] as const;
 
+/**
+ * The prefix of a compiled fault-proof chain that the canonical deployment ABI
+ * actually registers.
+ *
+ * `midgard-core`'s `DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES` names five
+ * `missingNativeScriptUtxo` steps and three `nativeScriptInvalid` steps, while
+ * `onchain/aiken` compiles seven and five and `midgard-fault-proofs`'s runtime
+ * submits against `fraudProofMissingNativeScriptUtxoStep06`/`Step07` and
+ * `fraudProofNativeScriptInvalidStep04`/`Step05`. `validateContracts` takes an
+ * EXACT key set, so a manifest carrying those four surplus steps is rejected
+ * outright and one omitting the five/three is rejected too — this builder can
+ * only emit what the ABI names. Extending the ABI moves the manifest identity
+ * for `midgard-core`, `midgard-watcher`, `da-committee-node` and this package,
+ * so it is not a change this module can make on its own.
+ *
+ * This is a BOUND, not a filter. It only ever drops a TAIL of unregistered
+ * steps: an unregistered step with a registered step after it, or a chain whose
+ * very first step is unregistered, still fails closed here.
+ */
+const abiRegisteredChainSteps = <T>(
+  category: (typeof REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES)[number],
+  steps: readonly T[],
+): readonly T[] => {
+  const registered = steps.map(
+    (_, stepIndex) =>
+      REFERENCE_SCRIPT_TARGET_BY_CONTRACT_NAME[
+        faultProofStepContractName(category, stepIndex)
+      ] !== undefined,
+  );
+  const firstUnregistered = registered.indexOf(false);
+  if (firstUnregistered === -1) {
+    return steps;
+  }
+  if (firstUnregistered === 0) {
+    throw new Error(
+      `Fault-proof category ${category} has no canonical reference-script role for its first step`,
+    );
+  }
+  if (registered.lastIndexOf(true) > firstUnregistered) {
+    throw new Error(
+      `Fault-proof category ${category} registers a step after unregistered step ${(firstUnregistered + 1).toString()}`,
+    );
+  }
+  return steps.slice(0, firstUnregistered);
+};
+
 const registeredFaultProofScriptDescriptors = (
   contracts: SDK.MidgardValidators,
 ): readonly ScriptDescriptor[] => [
   ...REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES.flatMap((category) =>
-    contracts.fraudProofContracts[category].steps.map(
-      (validator, stepIndex) => {
-        const contractName = faultProofStepContractName(category, stepIndex);
-        return spendDescriptor(
-          contractName,
-          validator,
-          referenceScriptTargetForContract(contractName),
-        );
-      },
-    ),
+    abiRegisteredChainSteps(
+      category,
+      contracts.fraudProofContracts[category].steps,
+    ).map((validator, stepIndex) => {
+      const contractName = faultProofStepContractName(category, stepIndex);
+      return spendDescriptor(
+        contractName,
+        validator,
+        referenceScriptTargetForContract(contractName),
+      );
+    }),
   ),
   spendDescriptor(
     "fraudProofTransitionTrace",
@@ -370,6 +454,49 @@ const registeredFaultProofScriptDescriptors = (
     },
   ),
 ];
+
+const legacyFaultProofMissingStepDescriptors = (
+  contracts: SDK.MidgardValidators,
+): readonly ScriptDescriptor[] => {
+  const families = [
+    ["fraudProofDoubleSpend", contracts.fraudProofContracts.doubleSpend],
+    [
+      "fraudProofNonExistentInput",
+      contracts.fraudProofContracts.nonExistentInput,
+    ],
+    [
+      "fraudProofNonExistentInputNoIndex",
+      contracts.fraudProofContracts.nonExistentInputNoIndex,
+    ],
+    ["fraudProofInvalidRange", contracts.fraudProofContracts.invalidRange],
+    ["fraudProofZeroInput", contracts.fraudProofContracts.zeroInput],
+    ["fraudProofDaHashPreimage", contracts.fraudProofContracts.daHashPreimage],
+    [
+      "fraudProofNoReferenceInput",
+      contracts.fraudProofContracts.noReferenceInput,
+    ],
+    [
+      "fraudProofReferenceInputNoIdx",
+      contracts.fraudProofContracts.referenceInputNoIdx,
+    ],
+    [
+      "fraudProofInvalidSignature",
+      contracts.fraudProofContracts.invalidSignature,
+    ],
+  ] as const;
+  return families.flatMap(([firstStepContractName, chain]) =>
+    chain.steps.slice(1).map((validator, index) => {
+      const contractName = `${firstStepContractName}Step${(index + 2)
+        .toString()
+        .padStart(2, "0")}`;
+      return spendDescriptor(
+        contractName,
+        validator,
+        referenceScriptTargetForContract(contractName),
+      );
+    }),
+  );
+};
 
 const fetchLiveReferenceScriptUtxos = (): Effect.Effect<
   readonly UTxO[],
@@ -400,7 +527,6 @@ export const buildReferenceScriptOutRefMap = (
   descriptors: readonly ScriptDescriptor[],
   authPolicy: ReferenceScriptAuthPolicyRef,
 ): ReadonlyMap<string, ContractDeploymentInfoRefScriptUTxO> => {
-  const sorted = [...utxos].sort(compareOutRefs).reverse();
   const byDescriptorName = new Map<
     string,
     ContractDeploymentInfoRefScriptUTxO
@@ -413,22 +539,47 @@ export const buildReferenceScriptOutRefMap = (
       authPolicy.policyId,
       descriptor.referenceScriptTargetName,
     );
-    for (const utxo of sorted) {
-      if (utxo.scriptRef == null) {
-        continue;
-      }
-      if (utxo.assets[roleUnit] !== 1n) {
-        continue;
-      }
-      if (validatorToScriptHash(utxo.scriptRef) !== descriptor.scriptHash) {
-        continue;
-      }
-      byDescriptorName.set(descriptor.name, {
-        txHash: utxo.txHash,
-        outputIndex: utxo.outputIndex,
-      });
-      break;
+    const candidates = utxos.filter(
+      (utxo) => (utxo.assets[roleUnit] ?? 0n) !== 0n,
+    );
+    if (candidates.length === 0) {
+      continue;
     }
+    if (candidates.length !== 1) {
+      throw new Error(
+        `Reference-script role ${descriptor.referenceScriptTargetName} is ambiguous: expected exactly one live ${roleUnit} UTxO, found ${candidates.length.toString()}`,
+      );
+    }
+    const candidate = candidates[0]!;
+    if (candidate.assets[roleUnit] !== 1n) {
+      throw new Error(
+        `Reference-script role ${descriptor.referenceScriptTargetName} must carry exactly one ${roleUnit} token`,
+      );
+    }
+    const authPolicyUnits = Object.entries(candidate.assets).filter(
+      ([unit, quantity]) =>
+        unit.startsWith(authPolicy.policyId) && quantity !== 0n,
+    );
+    if (authPolicyUnits.length !== 1 || authPolicyUnits[0]?.[0] !== roleUnit) {
+      throw new Error(
+        `Reference-script role ${descriptor.referenceScriptTargetName} UTxO must carry no other ${authPolicy.policyId} role token`,
+      );
+    }
+    if (candidate.scriptRef == null) {
+      throw new Error(
+        `Reference-script role ${descriptor.referenceScriptTargetName} token is not attached to a reference script`,
+      );
+    }
+    const observedScriptHash = validatorToScriptHash(candidate.scriptRef);
+    if (observedScriptHash !== descriptor.scriptHash) {
+      throw new Error(
+        `Reference-script role ${descriptor.referenceScriptTargetName} script hash mismatch: expected ${descriptor.scriptHash}, found ${observedScriptHash}`,
+      );
+    }
+    byDescriptorName.set(descriptor.name, {
+      txHash: candidate.txHash,
+      outputIndex: candidate.outputIndex,
+    });
   }
   return byDescriptorName;
 };
@@ -519,7 +670,11 @@ const collectScriptDescriptors = (
     "fraud-proof-catalogue minting",
   ),
   spendDescriptor("fraudProofSpend", contracts.fraudProof),
-  mintDescriptor("fraudProofMint", contracts.fraudProof),
+  mintDescriptor(
+    "fraudProofMint",
+    contracts.fraudProof,
+    "V1 fraud-proof token minting",
+  ),
   spendDescriptor("depositSpend", contracts.deposit, "deposit spending"),
   mintDescriptor("depositMint", contracts.deposit, "deposit minting"),
   spendDescriptor(
@@ -556,32 +711,50 @@ const collectScriptDescriptors = (
     "reserve observer",
   ),
   phasMembershipDescriptor("membership proof withdrawal"),
-  spendDescriptor("fraudProofDoubleSpend", contracts.fraudProofs.doubleSpend),
+  spendDescriptor(
+    "fraudProofDoubleSpend",
+    contracts.fraudProofs.doubleSpend,
+    "V1 fraud-proof double-spend step-01",
+  ),
   spendDescriptor(
     "fraudProofNonExistentInput",
     contracts.fraudProofs.nonExistentInput,
+    "V1 fraud-proof non-existent-input step-01",
   ),
   spendDescriptor(
     "fraudProofNonExistentInputNoIndex",
     contracts.fraudProofs.nonExistentInputNoIndex,
+    "V1 fraud-proof non-existent-input-no-index step-01",
   ),
-  spendDescriptor("fraudProofInvalidRange", contracts.fraudProofs.invalidRange),
-  spendDescriptor("fraudProofZeroInput", contracts.fraudProofs.zeroInput),
+  spendDescriptor(
+    "fraudProofInvalidRange",
+    contracts.fraudProofs.invalidRange,
+    "V1 fraud-proof invalid-range step-01",
+  ),
+  spendDescriptor(
+    "fraudProofZeroInput",
+    contracts.fraudProofs.zeroInput,
+    "V1 fraud-proof zero-input step-01",
+  ),
   spendDescriptor(
     "fraudProofDaHashPreimage",
     contracts.fraudProofs.daHashPreimage,
+    "V1 fraud-proof da-hash-preimage step-01",
   ),
   spendDescriptor(
     "fraudProofNoReferenceInput",
     contracts.fraudProofs.noReferenceInput,
+    "V1 fraud-proof no-reference-input step-01",
   ),
   spendDescriptor(
     "fraudProofReferenceInputNoIdx",
     contracts.fraudProofs.referenceInputNoIdx,
+    "V1 fraud-proof reference-input-no-idx step-01",
   ),
   spendDescriptor(
     "fraudProofInvalidSignature",
     contracts.fraudProofs.invalidSignature,
+    "V1 fraud-proof invalid-signature step-01",
   ),
   spendDescriptor(
     "validationTraceDispute",
@@ -614,6 +787,42 @@ const collectScriptDescriptors = (
     "V1 validation-trace award",
   ),
   ...registeredFaultProofScriptDescriptors(contracts),
+  mintDescriptor(
+    "computationThreadMint",
+    contracts.computationThread,
+    "V1 fraud-proof computation-thread minting",
+  ),
+  withdrawalDescriptor(
+    "chunkedVerifyWithdraw",
+    contracts.chunkedVerify,
+    "V1 MPF chunked-verify withdrawal",
+  ),
+  withdrawalDescriptor(
+    "pexcludesWithdraw",
+    contracts.pexcludes,
+    "V1 MPF pexcludes withdrawal",
+  ),
+  ...legacyFaultProofMissingStepDescriptors(contracts),
+  spendDescriptor(
+    "correctionLockSpend",
+    contracts.correctionLock,
+    "correction-lock spending",
+  ),
+  spendDescriptor(
+    "claimRegistrySpend",
+    contracts.claimRegistry,
+    "claim-registry spending",
+  ),
+  spendDescriptor(
+    "availabilityChallengeSpend",
+    contracts.availabilityChallenge,
+    "availability-challenge spending",
+  ),
+  mintDescriptor(
+    "availabilityChallengeMint",
+    contracts.availabilityChallenge,
+    "availability-challenge minting",
+  ),
 ];
 
 const defaultSteps = (): DeploymentManifestV1["steps"] => ({
@@ -667,6 +876,8 @@ export type DeploymentManifestBuildContext = {
   readonly genesis: DeploymentManifestV1Value["genesis"];
   readonly da: DeploymentManifestV1Value["da"];
   readonly proofEvidence: DeploymentManifestV1Value["proofEvidence"];
+  readonly economics: DeploymentManifestV1Economics;
+  readonly availabilityChallenge: DeploymentManifestV1AvailabilityChallenge;
   readonly referenceScriptDeployAddress: string;
   readonly hubOracleOneShotTxHash: string;
   readonly hubOracleOneShotOutputIndex: number;
@@ -678,22 +889,296 @@ export type DeploymentManifestBuildContext = {
 
 export type DeploymentManifestV1IdentityContext = Pick<
   DeploymentManifestBuildContext,
-  "cardanoProtocolParameters" | "genesis" | "da" | "proofEvidence"
+  | "cardanoProtocolParameters"
+  | "genesis"
+  | "da"
+  | "proofEvidence"
+  | "economics"
+  | "availabilityChallenge"
 >;
 
-export const cardanoProtocolParametersIdentityV1FromProvider =
-  async (provider: {
-    readonly getProtocolParameters: () => Promise<unknown>;
-  }): Promise<DeploymentManifestV1Value["cardanoProtocolParameters"]> => {
-    const snapshot = normalizeDeploymentManifestV1JsonValue(
-      await provider.getProtocolParameters(),
-      "cardanoProtocolParameters.snapshot",
+const configuredDeploymentEconomics = (): DeploymentManifestV1Economics => {
+  const profile = process.env.MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE?.trim();
+  if (
+    profile !== "public-preprod-launch-v1" &&
+    profile !== "bounded-acceptance-v1"
+  ) {
+    throw new Error(
+      "MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE must explicitly equal public-preprod-launch-v1 or bounded-acceptance-v1",
     );
-    return {
-      snapshot,
-      digest: computeDeploymentManifestV1JsonDigest(snapshot),
+  }
+  return DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE[
+    profile as DeploymentManifestV1EconomicsProfile
+  ];
+};
+
+const configuredAvailabilityChallenge =
+  (): DeploymentManifestV1AvailabilityChallenge => {
+    const requiredInteger = (name: string): number => {
+      const raw = process.env[name]?.trim();
+      if (raw === undefined || !/^[1-9][0-9]*$/u.test(raw)) {
+        throw new Error(`${name} must be an explicit positive decimal integer`);
+      }
+      const value = Number(raw);
+      if (!Number.isSafeInteger(value)) {
+        throw new Error(`${name} must fit a JavaScript safe integer`);
+      }
+      return value;
     };
+    return parseDeploymentManifestV1AvailabilityChallenge({
+      responseClasses: {
+        smallPayloadMaxBytes: 65_536,
+        smallResponseWindowMs: 3_600_000,
+        fullPayloadMaxBytes: 67_108_864,
+        fullResponseWindowMs: 172_800_000,
+      },
+      responseGeometry: {
+        chunkByteLength: requiredInteger(
+          "MIDGARD_DA_AVAILABILITY_CHUNK_BYTE_LENGTH",
+        ),
+        trancheByteLength: requiredInteger(
+          "MIDGARD_DA_AVAILABILITY_TRANCHE_BYTE_LENGTH",
+        ),
+        maxTrancheCount: requiredInteger(
+          "MIDGARD_DA_AVAILABILITY_MAX_TRANCHE_COUNT",
+        ),
+      },
+      daBondLovelace: requiredInteger("MIDGARD_DA_AVAILABILITY_BOND_LOVELACE"),
+      challengerBondLovelace: requiredInteger(
+        "MIDGARD_DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE",
+      ),
+      maxOpenFeeLovelace: requiredInteger(
+        "MIDGARD_DA_AVAILABILITY_MAX_OPEN_FEE_LOVELACE",
+      ),
+      maxPublicationFeeLovelace: requiredInteger(
+        "MIDGARD_DA_AVAILABILITY_MAX_PUBLICATION_FEE_LOVELACE",
+      ),
+      maxSettlementFeeLovelace: requiredInteger(
+        "MIDGARD_DA_AVAILABILITY_MAX_SETTLEMENT_FEE_LOVELACE",
+      ),
+      maxCloseFeeLovelace: requiredInteger(
+        "MIDGARD_DA_AVAILABILITY_MAX_CLOSE_FEE_LOVELACE",
+      ),
+      maxTimeoutFeeLovelace: requiredInteger(
+        "MIDGARD_DA_AVAILABILITY_MAX_TIMEOUT_FEE_LOVELACE",
+      ),
+      bondOwnerCredential: (() => {
+        const value =
+          process.env.MIDGARD_DA_AVAILABILITY_BOND_OWNER_CREDENTIAL?.trim();
+        if (value === undefined || !/^[0-9a-f]{56}$/u.test(value)) {
+          throw new Error(
+            "MIDGARD_DA_AVAILABILITY_BOND_OWNER_CREDENTIAL must be exactly 28 lowercase hex bytes",
+          );
+        }
+        return value;
+      })(),
+    });
   };
+
+const protocolRecord = (
+  value: unknown,
+  field: string,
+): Record<string, unknown> => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${field} must be an object`);
+  }
+  return value as Record<string, unknown>;
+};
+
+const protocolNatural = (value: unknown, field: string): string => {
+  if (typeof value === "bigint" && value >= 0n) return value.toString(10);
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
+    return value.toString(10);
+  }
+  if (typeof value === "string" && /^(?:0|[1-9][0-9]*)$/u.test(value)) {
+    return value;
+  }
+  throw new Error(`${field} must be a canonical natural`);
+};
+
+const protocolGcd = (left: bigint, right: bigint): bigint => {
+  let a = left < 0n ? -left : left;
+  let b = right < 0n ? -right : right;
+  while (b !== 0n) {
+    const remainder = a % b;
+    a = b;
+    b = remainder;
+  }
+  return a;
+};
+
+const protocolRational = (
+  value: unknown,
+  field: string,
+): DeploymentManifestV1CanonicalRational => {
+  let numerator: bigint;
+  let denominator: bigint;
+  if (typeof value === "string" && /^[0-9]+\/[1-9][0-9]*$/u.test(value)) {
+    const [rawNumerator, rawDenominator] = value.split("/") as [string, string];
+    numerator = BigInt(rawNumerator);
+    denominator = BigInt(rawDenominator);
+  } else if (
+    (typeof value === "number" && Number.isFinite(value) && value >= 0) ||
+    (typeof value === "string" &&
+      /^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/u.test(value))
+  ) {
+    const decimal = typeof value === "number" ? value.toString() : value;
+    if (/e/i.test(decimal)) {
+      throw new Error(`${field} must not use exponent notation`);
+    }
+    const [whole, fractional = ""] = decimal.split(".") as [string, string?];
+    denominator = 10n ** BigInt(fractional.length);
+    numerator = BigInt(`${whole}${fractional}`);
+  } else {
+    throw new Error(`${field} must be a nonnegative exact rational`);
+  }
+  if (denominator <= 0n)
+    throw new Error(`${field} denominator must be positive`);
+  const divisor = protocolGcd(numerator, denominator);
+  return Object.freeze({
+    numerator: (numerator / divisor).toString(10),
+    denominator: (denominator / divisor).toString(10),
+  });
+};
+
+const sameRational = (
+  left: DeploymentManifestV1CanonicalRational,
+  right: DeploymentManifestV1CanonicalRational,
+): boolean =>
+  left.numerator === right.numerator && left.denominator === right.denominator;
+
+const exactProtocolParameterSnapshotV1 = (
+  providerValue: unknown,
+  rawOgmiosValue: unknown,
+): DeploymentManifestV1CardanoProtocolParameters => {
+  const provider = protocolRecord(providerValue, "Lucid protocol parameters");
+  const snapshot =
+    deriveDeploymentManifestV1CardanoProtocolParametersFromOgmios(
+      rawOgmiosValue,
+    );
+  const providerChecks: readonly [string, string][] = Object.freeze([
+    [protocolNatural(provider.minFeeA, "provider.minFeeA"), snapshot.minFeeA],
+    [protocolNatural(provider.minFeeB, "provider.minFeeB"), snapshot.minFeeB],
+    [
+      protocolNatural(provider.maxTxSize, "provider.maxTxSize"),
+      snapshot.maxTxSize,
+    ],
+    [
+      protocolNatural(provider.maxValSize, "provider.maxValSize"),
+      snapshot.maxValueSize,
+    ],
+    [
+      protocolNatural(provider.maxTxExMem, "provider.maxTxExMem"),
+      snapshot.maxTxExUnits.memory,
+    ],
+    [
+      protocolNatural(provider.maxTxExSteps, "provider.maxTxExSteps"),
+      snapshot.maxTxExUnits.steps,
+    ],
+    [
+      protocolNatural(provider.coinsPerUtxoByte, "provider.coinsPerUtxoByte"),
+      snapshot.coinsPerUtxoByte,
+    ],
+    [
+      protocolNatural(
+        provider.collateralPercentage,
+        "provider.collateralPercentage",
+      ),
+      snapshot.collateralPercentage,
+    ],
+    [
+      protocolNatural(
+        provider.maxCollateralInputs,
+        "provider.maxCollateralInputs",
+      ),
+      snapshot.maxCollateralInputs,
+    ],
+  ]);
+  if (providerChecks.some(([observed, expected]) => observed !== expected)) {
+    throw new Error("Lucid and raw Ogmios protocol parameters disagree");
+  }
+  if (
+    !sameRational(
+      protocolRational(provider.priceMem, "provider.priceMem"),
+      snapshot.priceMemory,
+    ) ||
+    !sameRational(
+      protocolRational(provider.priceStep, "provider.priceStep"),
+      snapshot.priceSteps,
+    ) ||
+    !sameRational(
+      protocolRational(
+        provider.minFeeRefScriptCostPerByte,
+        "provider.minFeeRefScriptCostPerByte",
+      ),
+      snapshot.referenceScriptFee.base,
+    )
+  ) {
+    throw new Error(
+      "Lucid and raw Ogmios rational protocol parameters disagree",
+    );
+  }
+  return snapshot;
+};
+
+export const cardanoProtocolParametersIdentityV1FromProvider = async (
+  provider: {
+    readonly getProtocolParameters: () => Promise<unknown>;
+  },
+  rawOgmiosProtocolParameters: unknown,
+): Promise<DeploymentManifestV1Value["cardanoProtocolParameters"]> => {
+  const snapshot = exactProtocolParameterSnapshotV1(
+    await provider.getProtocolParameters(),
+    rawOgmiosProtocolParameters,
+  );
+  return {
+    snapshot,
+    digest: computeDeploymentManifestV1JsonDigest(snapshot),
+  };
+};
+
+export const queryLocalOgmiosProtocolParametersV1 = async (
+  ogmiosUrl: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<unknown> => {
+  const response = await fetchImpl(normalizeOgmiosHttpUrl(ogmiosUrl), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      method: "queryLedgerState/protocolParameters",
+      id: "midgard-deployment-protocol-parameters-v1",
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      `Ogmios protocol-parameter query failed with HTTP ${response.status.toString()}`,
+    );
+  }
+  let payload: unknown;
+  try {
+    payload = JSON.parse(body) as unknown;
+  } catch (cause) {
+    throw new Error("Ogmios protocol-parameter response is not JSON", {
+      cause,
+    });
+  }
+  const envelope = protocolRecord(
+    payload,
+    "Ogmios protocol parameters response",
+  );
+  if (
+    envelope.jsonrpc !== "2.0" ||
+    envelope.id !== "midgard-deployment-protocol-parameters-v1" ||
+    Object.prototype.hasOwnProperty.call(envelope, "error") ||
+    !Object.prototype.hasOwnProperty.call(envelope, "result")
+  ) {
+    throw new Error("Ogmios protocol-parameter response identity is invalid");
+  }
+  return payload;
+};
 
 const genesisUtxoIdentitySnapshot = (
   utxos: readonly UTxO[],
@@ -734,7 +1219,12 @@ export const buildDeploymentManifestV1IdentityContextProgram: Effect.Effect<
       if (provider === undefined) {
         throw new Error("Lucid has no configured Cardano provider");
       }
-      return cardanoProtocolParametersIdentityV1FromProvider(provider);
+      const rawOgmiosProtocolParameters =
+        await queryLocalOgmiosProtocolParametersV1(nodeConfig.L1_OGMIOS_KEY);
+      return cardanoProtocolParametersIdentityV1FromProvider(
+        provider,
+        rawOgmiosProtocolParameters,
+      );
     },
     catch: (cause) =>
       new Error(
@@ -766,6 +1256,8 @@ export const buildDeploymentManifestV1IdentityContextProgram: Effect.Effect<
   const blueprintHash = yield* loadRealBlueprintSha256();
   const genesisSnapshot = genesisUtxoIdentitySnapshot(nodeConfig.GENESIS_UTXOS);
   return {
+    economics: configuredDeploymentEconomics(),
+    availabilityChallenge: configuredAvailabilityChallenge(),
     cardanoProtocolParameters,
     genesis: {
       headerHash: GENESIS_HEADER_HASH,
@@ -871,6 +1363,9 @@ export const buildDeploymentManifestV1 = (
         MIDGARD_CONSENSUS_PROFILE_V1.limits.maxValidationBisectionRounds,
       maturityMs: MIDGARD_CONSENSUS_PROFILE_V1.limits.blockMaturityMs,
     },
+    l1Finality: DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
+    economics: context.economics,
+    availabilityChallenge: context.availabilityChallenge,
   }) as DeploymentManifestV1;
   return parseDeploymentManifestV1Value(manifest) as DeploymentManifestV1;
 };
@@ -912,6 +1407,7 @@ export const verifyDeploymentManifestAgainstConfig = (
     readonly referenceScriptDeployAddress: string;
     readonly hubOracleOneShotTxHash: string;
     readonly hubOracleOneShotOutputIndex: number;
+    readonly economicsProfile: DeploymentManifestV1EconomicsProfile;
     readonly path?: string;
   },
 ): DeploymentManifestVerificationReport => {
@@ -945,6 +1441,11 @@ export const verifyDeploymentManifestAgainstConfig = (
       `hubOracleOneShot.outputIndex manifest=${manifest.hubOracleOneShot.outputIndex.toString()} config=${context.hubOracleOneShotOutputIndex.toString()}`,
     );
   }
+  if (manifest.economics.profile !== context.economicsProfile) {
+    mismatches.push(
+      `economics.profile manifest=${manifest.economics.profile} config=${context.economicsProfile}`,
+    );
+  }
   return {
     ok: mismatches.length === 0,
     manifestId: manifest.manifestId,
@@ -955,7 +1456,7 @@ export const verifyDeploymentManifestAgainstConfig = (
   };
 };
 
-const configuredContractDeploymentInfoPath = (): string => {
+export const configuredContractDeploymentInfoPath = (): string => {
   const configuredPath =
     process.env.MIDGARD_CONTRACT_DEPLOYMENT_INFO_PATH?.trim();
   return configuredPath === undefined || configuredPath.length === 0
@@ -982,6 +1483,7 @@ export const verifyConfiguredDeploymentManifestProgram: Effect.Effect<
     referenceScriptDeployAddress: nodeConfig.L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS,
     hubOracleOneShotTxHash: nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH,
     hubOracleOneShotOutputIndex: nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX,
+    economicsProfile: nodeConfig.MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE,
     path,
   });
 });
@@ -1220,6 +1722,7 @@ const buildLiveDeploymentManifestProgram = (
         hubOracleOneShotTxHash: nodeConfig.HUB_ORACLE_ONE_SHOT_TX_HASH,
         hubOracleOneShotOutputIndex:
           nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX,
+        economicsProfile: nodeConfig.MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE,
         path: outputPath,
       },
     );

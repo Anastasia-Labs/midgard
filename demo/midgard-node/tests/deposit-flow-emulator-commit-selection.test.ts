@@ -69,6 +69,9 @@ import {
 } from "./deposit-flow-emulator-shared.js";
 
 describe.sequential("deposit flow emulator", () => {
+  // 900s: each protocol bring-up publishes the wave-grown 152-target
+  // reference-script roster (38 batches, ~200s measured), which alone
+  // exceeded this test's previous budget.
   it("hydrates periodic and off commit candidates when stateful work is selected", async () => {
     await configureEmulatorDaRuntimeManifest();
 
@@ -464,8 +467,11 @@ describe.sequential("deposit flow emulator", () => {
     for (const payloadRootCheck of ["periodic", "off"] as const) {
       await runCase(payloadRootCheck);
     }
-  }, 360_000);
+  }, 900_000);
 
+  // 900s: each protocol bring-up publishes the wave-grown 152-target
+  // reference-script roster (38 batches, ~200s measured), which alone
+  // exceeded this test's previous budget.
   it("commits the globally oldest transactions from a backlog deeper than three retrieval pages and anchors max endTime", async () => {
     const previousPageSize = process.env.MEMPOOL_RETRIEVE_PAGE_SIZE;
     process.env.MEMPOOL_RETRIEVE_PAGE_SIZE = "2";
@@ -674,7 +680,7 @@ describe.sequential("deposit flow emulator", () => {
         process.env.MEMPOOL_RETRIEVE_PAGE_SIZE = previousPageSize;
       }
     }
-  }, 180_000);
+  }, 900_000);
 
   it("builds N+1 before N confirmation and submits the exact ready candidate on the direct wake path", async () => {
     const previousMpfEngine = process.env.MPF_ENGINE;

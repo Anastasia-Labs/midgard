@@ -114,6 +114,9 @@ describe.sequential("deposit flow emulator", () => {
     );
   });
 
+  // 900s: each protocol bring-up publishes the wave-grown 152-target
+  // reference-script roster (38 batches, ~200s measured), which alone
+  // exceeded this test's previous budget.
   it("commits a realistic deposit-only block through the live worker core and real scheduler refresh path", async () => {
     await resetActiveRuntimePaths();
     await initializeNodeRuntime();
@@ -427,5 +430,5 @@ describe.sequential("deposit flow emulator", () => {
           ? schedulerAfterCommit.ActiveOperator.operator
           : undefined,
     ).toEqual(fixture.operatorKeyHash);
-  }, 180_000);
+  }, 900_000);
 });

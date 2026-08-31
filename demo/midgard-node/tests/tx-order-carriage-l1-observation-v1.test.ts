@@ -242,8 +242,11 @@ const publishCarriage = async (
           harness.contracts.fieldPreimageCertificate.policyId,
         certificateAddress:
           harness.contracts.fieldPreimageCertificate.spendingScriptAddress,
-        certificateScript:
-          harness.contracts.fieldPreimageCertificate.mintingScript,
+        certificateWitness: {
+          kind: "inline_emulator_only",
+          certificateScript:
+            harness.contracts.fieldPreimageCertificate.mintingScript,
+        },
         chunkUtxos,
         compactCbor: "",
         witnessSetCompactCbor: "",

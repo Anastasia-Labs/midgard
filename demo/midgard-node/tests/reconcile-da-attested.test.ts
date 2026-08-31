@@ -25,13 +25,21 @@ vi.mock("@al-ft/midgard-sdk", async () => {
 
 const HEADER_HASH = "11".repeat(28);
 const DA_ATTESTATION_POLICY_ID = "22".repeat(28);
+// The state-correction wave made the availability-challenge policy part of the
+// contract set, and `reconcileDaAttestedProgram` now records its policy id in
+// the `canonical_l1_da_attestation` evidence entry. The stub below has to carry
+// it for the same reason the real contract set does.
+const AVAILABILITY_CHALLENGE_POLICY_ID = "33".repeat(28);
+const ATTESTED = {
+  Attested: { da_bond_asset_name: "44".repeat(32) },
+} satisfies SDK.DaAvailabilityStateQueueStatusV1;
 
 const observation = (
   override: Partial<CanonicalDaAttestationObservation> = {},
 ): CanonicalDaAttestationObservation => ({
   datumHeaderHash: HEADER_HASH,
   computedHeaderHash: HEADER_HASH,
-  daAttestation: DA_ATTESTATION_POLICY_ID,
+  daAvailability: ATTESTED,
   outRef: `${"33".repeat(32)}#0`,
   ...override,
 });
@@ -45,7 +53,6 @@ const classify = ({
 } = {}) =>
   classifyCanonicalDaAttestation({
     headerHash: HEADER_HASH,
-    expectedDaAttestationPolicyId: DA_ATTESTATION_POLICY_ID,
     localPayloadPresent,
     observations,
   });
@@ -66,7 +73,7 @@ describe("DA-attested reconciliation", () => {
   it("reports a canonical unattested header with its payload as pending", () => {
     expect(
       classify({
-        observations: [observation({ daAttestation: "" })],
+        observations: [observation({ daAvailability: SDK.NO_DA_ATTESTATION })],
       }),
     ).toMatchObject({
       status: "pending",
@@ -78,7 +85,7 @@ describe("DA-attested reconciliation", () => {
     expect(
       classify({
         localPayloadPresent: false,
-        observations: [observation({ daAttestation: "" })],
+        observations: [observation({ daAvailability: SDK.NO_DA_ATTESTATION })],
       }),
     ).toMatchObject({
       status: "blocked",
@@ -86,18 +93,23 @@ describe("DA-attested reconciliation", () => {
     });
   });
 
-  it("fails closed on a foreign DA-attestation policy marker", () => {
+  it("accepts a challenged status as proof that threshold attestation applied", () => {
     expect(
       classify({
         observations: [
           observation({
-            daAttestation: "44".repeat(28),
+            daAvailability: {
+              Challenged: {
+                da_bond_asset_name: "44".repeat(32),
+                challenge_asset_name: "55".repeat(32),
+              },
+            },
           }),
         ],
       }),
     ).toMatchObject({
-      status: "blocked",
-      reason: "unexpected_attestation_marker",
+      status: "satisfied",
+      reason: "attestation_applied",
     });
   });
 
@@ -161,6 +173,7 @@ describe("DA-attested reconciliation", () => {
         policyId: "aa".repeat(28),
       },
       daAttestation: { policyId: DA_ATTESTATION_POLICY_ID },
+      availabilityChallenge: { policyId: AVAILABILITY_CHALLENGE_POLICY_ID },
     } as unknown as MidgardContracts;
     const canonicalDatum = {
       key: { Key: { key: HEADER_HASH } },
@@ -183,7 +196,7 @@ describe("DA-attested reconciliation", () => {
     getNode.mockReturnValue(
       Effect.succeed({
         header: { canonical: true },
-        da_attestation: DA_ATTESTATION_POLICY_ID,
+        da_attestation: ATTESTED,
       } as never),
     );
     hashHeader.mockReturnValue(Effect.succeed(HEADER_HASH) as never);
@@ -211,6 +224,8 @@ describe("DA-attested reconciliation", () => {
         detail: expect.objectContaining({
           source: "configured_cardano_l1_query",
           decisionReason: "attestation_applied",
+          stateQueuePolicyId: "aa".repeat(28),
+          availabilityPolicyId: AVAILABILITY_CHALLENGE_POLICY_ID,
         }),
       }),
     );

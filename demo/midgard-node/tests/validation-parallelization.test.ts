@@ -175,6 +175,7 @@ const makeCandidate = ({
   const submittedTx = decodeMidgardSubmittedTxFromCanonicalCbor(txCbor);
   return buildPhaseAValidatedTx({
     ledgerTx: submittedTx.ledgerTx,
+    expectedNetworkId: 0n,
     txCbor: submittedTx.txCbor,
     arrivalSeq,
     createdAt: new Date(0),

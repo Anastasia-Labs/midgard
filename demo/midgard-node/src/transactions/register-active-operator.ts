@@ -25,7 +25,12 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { Lucid, MidgardContracts, NodeConfig } from "@/services/index.js";
+import {
+  configuredContractDeploymentInfoPath,
+  readFinalizedDeploymentIdentity,
+  verifyConfiguredDeploymentManifestProgram,
+} from "@/commands/contract-deployment-info.js";
+import { Lucid, MidgardContracts } from "@/services/index.js";
 import {
   referenceScriptTargetsByCommand,
   resolveReferenceScriptTargetsProgram,
@@ -1351,15 +1356,35 @@ export const deregisterOperatorProgram = (
     })),
   );
 
+const configuredReleaseRequiredBondProgram = Effect.gen(function* () {
+  const verification = yield* verifyConfiguredDeploymentManifestProgram;
+  if (!verification.ok) {
+    return yield* Effect.fail(
+      new Error(
+        `Operator lifecycle refused deployment manifest drift: ${verification.mismatches.join("; ")}`,
+      ),
+    );
+  }
+  const identity = yield* Effect.try({
+    try: () =>
+      readFinalizedDeploymentIdentity(configuredContractDeploymentInfoPath()),
+    catch: (cause) =>
+      new Error(
+        `Failed to load finalized deployment economics: ${String(cause)}`,
+      ),
+  });
+  return BigInt(identity.manifest.economics.requiredBondLovelace);
+});
+
 export const program = Effect.gen(function* () {
   const lucidService = yield* Lucid;
   const contracts = yield* MidgardContracts;
-  const nodeConfig = yield* NodeConfig;
+  const requiredBondLovelace = yield* configuredReleaseRequiredBondProgram;
   yield* lucidService.switchToOperatorsMainWallet;
   return yield* registerAndActivateOperatorProgram(
     lucidService.api,
     contracts,
-    nodeConfig.OPERATOR_REQUIRED_BOND_LOVELACE,
+    requiredBondLovelace,
     lucidService.referenceScriptsApi,
     lucidService.referenceScriptsAddress,
   );
@@ -1368,12 +1393,12 @@ export const program = Effect.gen(function* () {
 export const activateProgram = Effect.gen(function* () {
   const lucidService = yield* Lucid;
   const contracts = yield* MidgardContracts;
-  const nodeConfig = yield* NodeConfig;
+  const requiredBondLovelace = yield* configuredReleaseRequiredBondProgram;
   yield* lucidService.switchToOperatorsMainWallet;
   return yield* activateOperatorProgram(
     lucidService.api,
     contracts,
-    nodeConfig.OPERATOR_REQUIRED_BOND_LOVELACE,
+    requiredBondLovelace,
     lucidService.referenceScriptsApi,
     lucidService.referenceScriptsAddress,
   );

@@ -218,8 +218,11 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     );
     const scheduler = yield* mkAuthVal("scheduler");
     const stateQueue = yield* mkAuthVal("state_queue");
+    const correctionLock = stateQueue;
+    const claimRegistry = stateQueue;
     const daParamsGovernor = stateQueue;
     const daAttestation = stateQueue;
+    const availabilityChallenge = stateQueue;
     const registeredOperators = yield* mkAuthVal("registered_operators");
     const activeOperators = yield* mkAuthVal("active_operators");
     const retiredOperators = yield* mkAuthVal("retired_operators");
@@ -387,9 +390,9 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       invalidSignature: repeatedFaultProofChain(invalidSignature, 2),
       fabricatedDeposit: repeatedFaultProofChain(zeroInput, 4),
       fabricatedWithdrawal: repeatedFaultProofChain(zeroInput, 4),
-      nativeScriptDecoding: repeatedFaultProofChain(zeroInput, 4),
+      nativeScriptDecoding: repeatedFaultProofChain(zeroInput, 6),
       missingSignature: repeatedFaultProofChain(invalidSignature, 4),
-      missingNativeScriptTx: repeatedFaultProofChain(zeroInput, 6),
+      missingNativeScriptTx: repeatedFaultProofChain(zeroInput, 8),
       withdrawnReferenceInput: repeatedFaultProofChain(referenceInputNoIdx, 3),
       canonicalDecodability: repeatedFaultProofChain(zeroInput, 2),
       committedFieldShape: repeatedFaultProofChain(zeroInput, 2),
@@ -402,6 +405,10 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       valueNotPreserved: repeatedFaultProofChain(zeroInput, 4),
       inputSetUniqueness: repeatedFaultProofChain(doubleSpend, 2),
       mintAuthorization: repeatedFaultProofChain(zeroInput, 5),
+      networkId: repeatedFaultProofChain(invalidRange, 2),
+      missingNativeScriptUtxo: repeatedFaultProofChain(zeroInput, 5),
+      nativeScriptInvalid: repeatedFaultProofChain(zeroInput, 3),
+      minAda: repeatedFaultProofChain(invalidRange, 5),
     };
     const fraudProofs =
       SDK.fraudProofContractsToFirstSteps(fraudProofContracts);
@@ -411,6 +418,9 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       hubOracle,
       daParamsGovernor,
       daAttestation,
+      availabilityChallenge,
+      correctionLock,
+      claimRegistry,
       stateQueue,
       scheduler,
       registeredOperators,
@@ -418,7 +428,10 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       retiredOperators,
       escapeHatch,
       fraudProofCatalogue,
+      computationThread: fraudProof,
       fraudProof,
+      chunkedVerify: reserveWithdawalValidator,
+      pexcludes: reserveWithdawalValidator,
       deposit,
       withdrawal,
       txOrder,

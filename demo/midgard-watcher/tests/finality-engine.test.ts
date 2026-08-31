@@ -643,6 +643,63 @@ describe("canonical release-bound watcher finality", () => {
     ).toBeNull();
   });
 
+  it("derives the local-node finality authority and Kupmios bindings from W01 config", () => {
+    const base = config();
+    const value = makeWatcherFinalityPolicyV1(
+      {
+        ...base,
+        l1: {
+          ...base.l1,
+          source: {
+            sourceMode: "local_node",
+            authorityNodeId: "watcher-node",
+            chainSync: {
+              kind: "cardano_node_socket",
+              socketPath: "/run/cardano/node.socket",
+              nodeConfigPath: "/etc/cardano/node-config.json",
+              genesisConfigPath: "/etc/cardano/shelley-genesis.json",
+              genesisIdentitySha256: hex32("66"),
+            },
+            queryServices: [
+              {
+                kind: "ogmios",
+                identity: "local-ogmios",
+                endpoint: "ws://127.0.0.1:1337",
+              },
+              {
+                kind: "kupo",
+                identity: "local-kupo",
+                endpoint: "http://127.0.0.1:1442",
+              },
+            ],
+          },
+        },
+      },
+      deploymentIdentity(),
+    );
+
+    expect(value).toMatchObject({
+      sourceMode: "local_node",
+      authorityNodeId: "watcher-node",
+      authorityGenesisIdentitySha256: hex32("66"),
+      authorityChainSyncSocketPath: "/run/cardano/node.socket",
+      externalProviders: null,
+      localQueryServices: [
+        {
+          kind: "kupo",
+          providerId: "local-kupo",
+          endpoint: "http://127.0.0.1:1442",
+        },
+        {
+          kind: "ogmios",
+          providerId: "local-ogmios",
+          endpoint: "ws://127.0.0.1:1337",
+        },
+      ],
+    });
+    expect(parseWatcherFinalityPolicyV1(value)).toEqual(value);
+  });
+
   it("rejects configuration/deployment mismatches without emitting values", () => {
     const wrongNetwork = makeWatcherFinalityPolicyV1(
       config(),

@@ -15,9 +15,11 @@ import {
   closeWatcherL1TransportAttestationContextV1,
   encodeWatcherNormalizedL1BlockV1,
   establishWatcherExternalProviderTransportV1,
+  establishWatcherLocalNodeAuthorityTransportV1,
   establishWatcherLocalNodeQueryTransportV1,
   makeWatcherL1NormalizationSessionV1,
   makeWatcherL1PublicBytesV1,
+  normalizeWatcherL1BlockFromTransactionCborsV1,
   normalizeWatcherL1BlockV1,
   WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
   WATCHER_L1_ADAPTER_V1_BOUNDS,
@@ -453,6 +455,35 @@ describe("provider-neutral authenticated L1 adapter", () => {
     expect(Object.isFrozen(normalized.transactions[0]?.utxos)).toBe(true);
   });
 
+  it("derives the complete claimed transaction projection from transport-read canonical transaction CBOR", () => {
+    const expectedInput = observation();
+    expectedInput.transactions = expectedInput.transactions.map(
+      (entry: MutableRecord, index: number) => ({
+        ...entry,
+        transactionIndex: index.toString(),
+      }),
+    );
+    const expected = normalizeWatcherL1BlockV1(provider(), expectedInput);
+    const actual = normalizeWatcherL1BlockFromTransactionCborsV1(provider(), {
+      network: "Preprod",
+      chainPoint: expectedInput.chainPoint,
+      transactionCbors: expectedInput.transactions.map(
+        (entry: MutableRecord) => entry.fullTransaction.bytesHex,
+      ),
+    });
+    expect(actual).toEqual(expected);
+
+    expect(() =>
+      normalizeWatcherL1BlockFromTransactionCborsV1(provider(), {
+        network: "Preprod",
+        chainPoint: expectedInput.chainPoint,
+        transactionCbors: [
+          `${expectedInput.transactions[0].fullTransaction.bytesHex.slice(0, -2)}00`,
+        ],
+      }),
+    ).toThrow();
+  });
+
   it("derives deterministic redeemer pointers from Conway map witnesses", () => {
     const input = observation();
     input.transactions[0] = transaction("a20081825820", "10", "map");
@@ -578,16 +609,25 @@ describe("provider-neutral authenticated L1 adapter", () => {
     expect(second.observationDigest).not.toBe(first.observationDigest);
   });
 
-  it("retires the pathname authority from both public module surfaces", async () => {
+  it("exports local authority admission but rejects a forged native helper token", async () => {
     const publicModule = await import("../src/index.js");
     const adapterModule = await import("../src/l1-adapter.js");
 
     expect(
       "establishWatcherLocalNodeAuthorityTransportV1" in publicModule,
-    ).toBe(false);
+    ).toBe(true);
     expect(
       "establishWatcherLocalNodeAuthorityTransportV1" in adapterModule,
-    ).toBe(false);
+    ).toBe(true);
+    rejected(
+      () =>
+        establishWatcherLocalNodeAuthorityTransportV1({
+          schemaVersion: "midgard-watcher-native-chain-sync-authority-v1",
+          authorityDigest: "00".repeat(32),
+        }),
+      "invalid_field",
+      "$.nativeChainSyncAuthority",
+    );
   });
 
   it("rejects forged local query authority before opening a socket", async () => {

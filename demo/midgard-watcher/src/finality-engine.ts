@@ -705,24 +705,45 @@ export const makeWatcherFinalityPolicyV1 = (
       return null;
     }
     const source = config.l1.source;
+    const sourceAuthority =
+      source.sourceMode === "local_node"
+        ? {
+            authorityNodeId: source.authorityNodeId,
+            authorityGenesisIdentitySha256:
+              source.chainSync.genesisIdentitySha256,
+            authorityChainSyncSocketPath: source.chainSync.socketPath,
+            localQueryServices: Object.freeze(
+              source.queryServices.map((service) =>
+                Object.freeze({
+                  kind: service.kind,
+                  providerId: service.identity,
+                  endpoint: service.endpoint,
+                }),
+              ),
+            ),
+            externalProviders: null,
+          }
+        : {
+            authorityNodeId: null,
+            authorityGenesisIdentitySha256: null,
+            authorityChainSyncSocketPath: null,
+            localQueryServices: Object.freeze([]),
+            externalProviders: Object.freeze(
+              source.providers.map((provider) =>
+                Object.freeze({
+                  providerId: provider.identity,
+                  operatorIdentitySha256: provider.operatorIdentitySha256,
+                  endpoint: provider.endpoint,
+                  authenticationKind: "https_tls_identity_v1" as const,
+                }),
+              ),
+            ),
+          };
     return makePolicy({
       schemaVersion: WATCHER_FINALITY_POLICY_V1_SCHEMA_VERSION,
       network: config.targetNetwork,
       sourceMode: source.sourceMode,
-      authorityNodeId: null,
-      authorityGenesisIdentitySha256: null,
-      authorityChainSyncSocketPath: null,
-      localQueryServices: [],
-      externalProviders: Object.freeze(
-        source.providers.map((provider) =>
-          Object.freeze({
-            providerId: provider.identity,
-            operatorIdentitySha256: provider.operatorIdentitySha256,
-            endpoint: provider.endpoint,
-            authenticationKind: "https_tls_identity_v1" as const,
-          }),
-        ),
-      ),
+      ...sourceAuthority,
       confirmationDepth: config.l1.finality.depth.toString(),
       maximumPreFinalityRollbackDepth:
         config.l1.finality.rollback.maxDepth.toString(),
@@ -971,6 +992,13 @@ const initialState = (
     finalized: null,
     incident: null,
   });
+
+export const makeWatcherFinalityBootstrapStateV1 = (
+  policyInput: unknown,
+): WatcherFinalityStateV1 | null => {
+  const policy = parseWatcherFinalityPolicyV1(policyInput);
+  return policy === null ? null : initialState(policy);
+};
 
 const parseStringArray = (
   value: unknown,

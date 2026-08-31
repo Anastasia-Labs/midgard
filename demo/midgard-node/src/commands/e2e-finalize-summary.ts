@@ -6,6 +6,21 @@ import { Effect } from "effect";
 
 import { defaultMidgardNodeEndpoint } from "@/commands/command-utils.js";
 import {
+  type E2EStateCorrectionAcceptanceV1,
+  parseE2EStateCorrectionAcceptanceV1,
+  stateCorrectionAcceptanceEvidence,
+  stateCorrectionLocalReadinessEvidenceV1,
+} from "@/commands/e2e-state-correction-acceptance.js";
+import {
+  createLocalKupmiosStateCorrectionAuthorityV1,
+  loadLocalAuthorityDeploymentV1,
+} from "@/commands/e2e-state-correction-local-authority.js";
+import {
+  reconcileStateCorrectionIndependentEvidenceV1,
+  type StateCorrectionIndependentAuthorityV1,
+  type StateCorrectionIndependentSourcePathsV1,
+} from "@/commands/e2e-state-correction-reconciliation.js";
+import {
   type E2EL2StressSummary,
   type E2EL2StressTransaction,
   parseE2EL2StressSummaryV1,
@@ -41,6 +56,15 @@ export type FinalizeSummaryOptions = {
   readonly stepSummaryPaths?: readonly string[];
   readonly transactions?: readonly TransactionEvidence[];
   readonly stressSummaryPath?: string;
+  readonly stateCorrectionEvidencePath?: string;
+  readonly stateCorrectionIndependentSourcePaths?: StateCorrectionIndependentSourcePathsV1;
+  readonly stateCorrectionIndependentAuthority?: StateCorrectionIndependentAuthorityV1;
+  readonly stateCorrectionLocalAuthorityConfig?: {
+    readonly provider: string | undefined;
+    readonly providerFailover: string | undefined;
+    readonly kupoUrl: string;
+    readonly ogmiosUrl: string;
+  };
 };
 
 export type FinalizeSummaryResult = {
@@ -167,6 +191,13 @@ export const loadStressSummary = async (
   path: string,
 ): Promise<E2EL2StressSummary> =>
   parseE2EL2StressSummaryV1(
+    JSON.parse(await readFile(path, "utf8")) as unknown,
+  );
+
+export const loadStateCorrectionAcceptance = async (
+  path: string,
+): Promise<E2EStateCorrectionAcceptanceV1> =>
+  parseE2EStateCorrectionAcceptanceV1(
     JSON.parse(await readFile(path, "utf8")) as unknown,
   );
 
@@ -732,6 +763,7 @@ export const finalizeE2ESummaryProgram = (
   options: FinalizeSummaryOptions,
 ): Effect.Effect<FinalizeSummaryResult, never, Database> =>
   Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
     const startedAt = new Date().toISOString();
     const runId = options.runId ?? `e2e-run-${timestampForPath()}`;
     const outDir = options.outDir ?? join("logs", runId);
@@ -747,24 +779,32 @@ export const finalizeE2ESummaryProgram = (
         ? {}
         : { "x-midgard-admin-key": options.adminApiKey };
     const stressSummaryPath = options.stressSummaryPath;
+    const stateCorrectionEvidencePath = options.stateCorrectionEvidencePath;
 
-    const [readyz, stateQueue, counts, stepSummaries, stressSummary] =
-      yield* Effect.all(
-        [
-          Effect.promise(() => fetchJson(`${nodeUrl}/readyz`)),
-          Effect.promise(() =>
-            fetchJson(`${nodeUrl}/stateQueue`, adminHeaders),
-          ),
-          collectDbCounts(),
-          Effect.promise(() =>
-            loadStepSummaries(options.stepSummaryPaths ?? []),
-          ),
-          stressSummaryPath === undefined
-            ? Effect.succeed(undefined)
-            : Effect.promise(() => loadStressSummary(stressSummaryPath)),
-        ],
-        { concurrency: "unbounded" },
-      );
+    const [
+      readyz,
+      stateQueue,
+      counts,
+      stepSummaries,
+      stressSummary,
+      stateCorrectionAcceptance,
+    ] = yield* Effect.all(
+      [
+        Effect.promise(() => fetchJson(`${nodeUrl}/readyz`)),
+        Effect.promise(() => fetchJson(`${nodeUrl}/stateQueue`, adminHeaders)),
+        collectDbCounts(),
+        Effect.promise(() => loadStepSummaries(options.stepSummaryPaths ?? [])),
+        stressSummaryPath === undefined
+          ? Effect.succeed(undefined)
+          : Effect.promise(() => loadStressSummary(stressSummaryPath)),
+        stateCorrectionEvidencePath === undefined
+          ? Effect.succeed(undefined)
+          : Effect.promise(() =>
+              loadStateCorrectionAcceptance(stateCorrectionEvidencePath),
+            ),
+      ],
+      { concurrency: "unbounded" },
+    );
     const finishedAt = new Date().toISOString();
 
     const pendingUnfinished =
@@ -788,9 +828,89 @@ export const finalizeE2ESummaryProgram = (
       ...(stressSummary === undefined ? {} : { stressSummary }),
       ...(stressSummaryPath === undefined ? {} : { stressSummaryPath }),
     });
+    const stateCorrectionIndependentSourcePaths =
+      options.stateCorrectionIndependentSourcePaths;
+    const stateCorrectionIndependentAuthority =
+      options.stateCorrectionIndependentAuthority;
+    const stateCorrectionLocalAuthorityConfig =
+      options.stateCorrectionLocalAuthorityConfig;
+    const stateCorrectionDeployment =
+      stateCorrectionIndependentSourcePaths === undefined
+        ? undefined
+        : yield* Effect.promise(() =>
+            loadLocalAuthorityDeploymentV1(
+              stateCorrectionIndependentSourcePaths.deploymentManifestPath,
+            ),
+          );
+    const effectiveStateCorrectionAuthority =
+      stateCorrectionIndependentAuthority ??
+      (stateCorrectionIndependentSourcePaths === undefined ||
+      stateCorrectionLocalAuthorityConfig === undefined ||
+      stateCorrectionDeployment === undefined
+        ? undefined
+        : yield* Effect.promise(async () => {
+            return createLocalKupmiosStateCorrectionAuthorityV1({
+              ...stateCorrectionLocalAuthorityConfig,
+              ...stateCorrectionDeployment,
+              observeDatabase: async () => {
+                const [row] = await Effect.runPromise(sql<{
+                  readonly unfinished_mutation_jobs: number | bigint | string;
+                  readonly pending_finalizations: number | bigint | string;
+                }>`
+                  SELECT
+                    (SELECT COUNT(*) FROM local_mutation_jobs
+                      WHERE status <> 'completed') AS unfinished_mutation_jobs,
+                    (SELECT COUNT(*) FROM pending_block_finalizations
+                      WHERE status <> 'finalized') AS pending_finalizations
+                `);
+                if (row === undefined) {
+                  throw new Error(
+                    "live Q57 database observation returned no row",
+                  );
+                }
+                return {
+                  unfinishedMutationJobs: Number(
+                    countValue(row.unfinished_mutation_jobs),
+                  ),
+                  pendingFinalizations: Number(
+                    countValue(row.pending_finalizations),
+                  ),
+                };
+              },
+            });
+          }));
+    const stateCorrectionIndependentEvidence =
+      stateCorrectionAcceptance === undefined ||
+      stateCorrectionIndependentSourcePaths === undefined ||
+      effectiveStateCorrectionAuthority === undefined
+        ? undefined
+        : yield* Effect.promise(() =>
+            reconcileStateCorrectionIndependentEvidenceV1({
+              expectedRunId: runId,
+              claim: stateCorrectionAcceptance,
+              paths: stateCorrectionIndependentSourcePaths,
+              authority: effectiveStateCorrectionAuthority,
+            }),
+          );
+    const stateCorrectionEvidence =
+      stateCorrectionIndependentEvidence ??
+      stateCorrectionAcceptanceEvidence({
+        expectedRunId: runId,
+        ...(stateCorrectionAcceptance === undefined
+          ? {}
+          : { evidence: stateCorrectionAcceptance }),
+        ...(stateCorrectionEvidencePath === undefined
+          ? {}
+          : { evidencePath: stateCorrectionEvidencePath }),
+      });
+    const stateCorrectionReadiness = stateCorrectionLocalReadinessEvidenceV1({
+      availabilityChallengeCapability:
+        stateCorrectionDeployment?.availabilityChallengeCapability ?? "missing",
+    });
     const transactions = [
       ...(options.transactions ?? []),
       ...stressEvidence.transactions,
+      ...stateCorrectionEvidence.transactions,
     ];
     const expectedL2Count =
       stressSummary === undefined
@@ -927,6 +1047,8 @@ export const finalizeE2ESummaryProgram = (
             },
           },
           ...stressEvidence.db,
+          ...stateCorrectionEvidence.db,
+          ...stateCorrectionReadiness,
         ],
         cleanRunGates: [
           ...requiredFresh.cleanRunGates,
@@ -937,10 +1059,12 @@ export const finalizeE2ESummaryProgram = (
             ? []
             : [{ label: "node-log", path: options.nodeLogPath }]),
           ...stressEvidence.rawEvidence,
+          ...stateCorrectionEvidence.rawEvidence,
         ],
         notes: [
           "Generated by e2e-finalize-summary from live endpoints and database counts.",
           ...stressEvidence.notes,
+          ...stateCorrectionEvidence.notes,
         ],
       },
       new Date(finishedAt),

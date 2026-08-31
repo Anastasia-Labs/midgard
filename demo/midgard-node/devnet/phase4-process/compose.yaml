@@ -50,6 +50,7 @@ services:
       - "1337"
       - --node-config
       - /config/config.json
+      - --include-transaction-cbor
       - --node-socket
       - /ipc/node.socket
     depends_on:

@@ -32,6 +32,7 @@ import {
 import {
   getLatestBlockDatumEndTime,
   hashBlockHeaderV1Local,
+  resolveCommitAppendFenceReferencesLocal,
   updateLatestBlocksDatumAndGetTheNewHeaderV1Local,
 } from "./state-queue.js";
 
@@ -77,6 +78,7 @@ export const buildUnsignedCommitTx = (
   | SDK.HeaderTransitionCommitmentsError
   | SDK.HashingError
   | SDK.LucidError
+  | SDK.LinkedListError
   | TxSignError
   | TxSubmitError,
   Lucid | NodeConfig
@@ -188,7 +190,16 @@ export const buildUnsignedCommitTx = (
       if (isCommitTimingDueWork(witnessResult)) {
         return witnessResult;
       }
-      witnessContext = witnessResult;
+      const appendFenceReferences =
+        yield* resolveCommitAppendFenceReferencesLocal(
+          lucid.api,
+          {
+            stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
+            stateQueuePolicyId: contracts.stateQueue.policyId,
+          },
+          latestBlock,
+        );
+      witnessContext = { ...witnessResult, ...appendFenceReferences };
       const preBuildBudget = commitTimingBudget({
         checkpoint: "pre_build",
         resolvedEndTimeMs: witnessEndTime,

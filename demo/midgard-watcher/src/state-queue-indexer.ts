@@ -8,11 +8,13 @@ import {
   ConfirmedState,
   DA_ATTESTATION_ASSET_NAME_PREFIX,
   DaAttestationDatum,
+  deriveStateQueueCorrectionTransitionV1,
   FraudProofTokenDatum,
   HeaderV1,
   HUB_ORACLE_ASSET_NAME,
   HubOracleDatum,
   LinkedListDatum,
+  parseStateQueueCorrectionTransitionV1,
   RETIRED_OPERATOR_NODE_ASSET_NAME_PREFIX,
   RETIRED_OPERATORS_ROOT_ASSET_NAME,
   RetiredOperatorDatum,
@@ -20,7 +22,9 @@ import {
   SchedulerDatum,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
   STATE_QUEUE_ROOT_ASSET_NAME,
+  type StateQueueCorrectionTransitionV1,
   StateQueueNodeV1,
+  type StateQueueTransitionNodeV1,
 } from "@al-ft/midgard-sdk";
 import { CML, Data, valueToAssets } from "@lucid-evolution/lucid";
 
@@ -116,6 +120,7 @@ export const WATCHER_STATE_QUEUE_INDEXER_REASON_CODES_V1 = [
   "da_attestation_authenticated",
   "merge_authenticated",
   "removal_authenticated",
+  "timeout_correction_authenticated",
   "rollback_authenticated",
   "duplicate_observation",
   "malformed_policy",
@@ -154,6 +159,7 @@ export type WatcherStateQueueTransitionKindV1 =
   | "attach_da"
   | "merge"
   | "remove_fraudulent"
+  | "remove_unattested_timeout"
   | "rollback";
 
 export type WatcherStateQueueIndexerPolicyV1 = Readonly<{
@@ -351,6 +357,7 @@ export type WatcherStateQueueHistoryEntryV1 = Readonly<{
   transactionIndex: string | null;
   publicInputDigest: string;
   transitionKind: WatcherStateQueueTransitionKindV1;
+  correctionTransition: StateQueueCorrectionTransitionV1 | null;
   snapshot: WatcherStateQueueSnapshotV1;
   observation: WatcherStateQueueObservationV1;
   publicContext: WatcherStateQueuePublicContextV1;
@@ -1410,6 +1417,7 @@ export const parseWatcherStateQueueObservationV1 = (
     "attach_da",
     "merge",
     "remove_fraudulent",
+    "remove_unattested_timeout",
     "rollback",
   ];
   if (
@@ -3047,19 +3055,11 @@ const reconstructTopology = (
       Object.freeze({
         ...headerView(decoded.header, node.next, node.datumSha256),
         daAttestationPolicyId:
-          decoded.da_attestation.length === 0
+          decoded.da_attestation === "Unattested"
             ? null
-            : isHex28(decoded.da_attestation)
-              ? decoded.da_attestation
-              : null,
+            : policy.daAttestationPolicyId,
       }),
     );
-    if (
-      decoded.da_attestation.length !== 0 &&
-      !isHex28(decoded.da_attestation)
-    ) {
-      return null;
-    }
   }
   const activeViews: WatcherIndexedActiveOperatorV1[] = [];
   for (const node of activeOrdered) {
@@ -3236,6 +3236,88 @@ const bodyInputs = (body: CML.TransactionBody): readonly string[] => {
   return Object.freeze(values);
 };
 
+const bodyMintPolicyIds = (body: CML.TransactionBody): readonly string[] => {
+  const mint = body.mint();
+  if (mint === undefined) {
+    return Object.freeze([]);
+  }
+  const keys = mint.keys();
+  const policyIds: string[] = [];
+  for (let index = 0; index < keys.len(); index += 1) {
+    policyIds.push(keys.get(index).to_hex());
+  }
+  return Object.freeze(policyIds.sort());
+};
+
+const queueTransitionNodes = (
+  topology: DecodedTopology,
+): readonly StateQueueTransitionNodeV1[] | null => {
+  const rootOutRef = topology.outRefs.get("queue:root");
+  if (rootOutRef === undefined) {
+    return null;
+  }
+  const nodes: StateQueueTransitionNodeV1[] = [
+    { headerHash: null, outRef: rootOutRef },
+  ];
+  for (const header of topology.snapshot.queue) {
+    const outRef = topology.outRefs.get(`queue:${header.headerHash}`);
+    if (outRef === undefined) {
+      return null;
+    }
+    nodes.push({ headerHash: header.headerHash, outRef });
+  }
+  return Object.freeze(nodes);
+};
+
+const deriveAuthenticatedTimeoutCorrectionTransition = (
+  policy: WatcherStateQueueIndexerPolicyV1,
+  verified: VerifiedContext,
+  previous: DecodedTopology,
+  next: DecodedTopology,
+): StateQueueCorrectionTransitionV1 | null => {
+  if (verified.transaction === null || verified.finalityResult === null) {
+    return null;
+  }
+  const previousQueue = queueTransitionNodes(previous);
+  const nextQueue = queueTransitionNodes(next);
+  const finalized = verified.finalityResult.state?.finalized;
+  if (
+    previousQueue === null ||
+    nextQueue === null ||
+    finalized === null ||
+    finalized === undefined
+  ) {
+    return null;
+  }
+  let body: CML.TransactionBody;
+  try {
+    body = CML.TransactionBody.from_cbor_hex(
+      verified.transaction.body.bytesHex,
+    );
+  } catch {
+    return null;
+  }
+  return deriveStateQueueCorrectionTransitionV1({
+    deploymentIdentityDigest: policy.deploymentMarker.manifestId,
+    stateQueuePolicyId: policy.stateQueuePolicyId,
+    transactionHash: verified.transaction.txHash,
+    blockHash: verified.block.chainPoint.blockHash,
+    slot: verified.block.chainPoint.slot,
+    blockNo: verified.block.chainPoint.blockNo,
+    chainPointId: verified.block.chainPoint.chainPointId,
+    finalityDepth: finalized.currentDepth,
+    mintPolicyIds: bodyMintPolicyIds(body),
+    redeemers: verified.transaction.redeemers.map((redeemer) => ({
+      purpose: redeemer.purpose,
+      index: redeemer.index,
+      cborHex: redeemer.bytes.bytesHex,
+    })),
+    spentInputOutRefs: bodyInputs(body),
+    previousQueue,
+    nextQueue,
+  });
+};
+
 const entryWithoutDigest = (
   value: Omit<WatcherStateQueueHistoryEntryV1, "entryDigest">,
 ) => ({ ...value });
@@ -3256,6 +3338,7 @@ const makeEntry = (
   observation: WatcherStateQueueObservationV1,
   verified: VerifiedContext,
   snapshot: WatcherStateQueueSnapshotV1,
+  correctionTransition: StateQueueCorrectionTransitionV1 | null,
   rollbackResult: WatcherStateQueueRollbackResultV1 | null,
   priorActiveEntryDigest: string | null,
 ): WatcherStateQueueHistoryEntryV1 => {
@@ -3268,6 +3351,7 @@ const makeEntry = (
     transactionIndex: observation.transactionIndex,
     publicInputDigest: observation.publicInputDigest,
     transitionKind: observation.transitionKind,
+    correctionTransition,
     snapshot,
     observation,
     publicContext: verified.context,
@@ -3704,6 +3788,7 @@ const parseEntryStructural = (
     "transactionIndex",
     "publicInputDigest",
     "transitionKind",
+    "correctionTransition",
     "snapshot",
     "observation",
     "publicContext",
@@ -3714,6 +3799,10 @@ const parseEntryStructural = (
     record === null
       ? null
       : parseWatcherStateQueueObservationV1(record.observation);
+  const correctionTransition =
+    record?.correctionTransition === null
+      ? null
+      : parseStateQueueCorrectionTransitionV1(record?.correctionTransition);
   if (
     record === null ||
     observation === null ||
@@ -3731,6 +3820,9 @@ const parseEntryStructural = (
     !(record.transactionIndex === null || isNatural(record.transactionIndex)) ||
     !isHex32(record.publicInputDigest) ||
     record.transitionKind !== observation.transitionKind ||
+    (record.correctionTransition !== null && correctionTransition === null) ||
+    (observation.transitionKind === "remove_unattested_timeout") !==
+      (correctionTransition !== null) ||
     !isHex32(record.entryDigest)
   ) {
     return null;
@@ -3755,6 +3847,7 @@ const parseEntryStructural = (
     transactionIndex: record.transactionIndex,
     publicInputDigest: record.publicInputDigest,
     transitionKind: observation.transitionKind,
+    correctionTransition,
     snapshot,
     observation,
     publicContext: record.publicContext as WatcherStateQueuePublicContextV1,
@@ -3913,6 +4006,25 @@ const verifyEntries = (
     const priorTopology = topologies.get(prior.entryDigest);
     const topology = topologies.get(entry.entryDigest);
     const context = verified[index]!;
+    const topologyTransition =
+      priorTopology === undefined || topology === undefined
+        ? null
+        : classifyObservedTransition(prior.snapshot, topology.snapshot);
+    const correctionTransition =
+      topologyTransition === "remove_fraudulent" &&
+      priorTopology !== undefined &&
+      topology !== undefined
+        ? deriveAuthenticatedTimeoutCorrectionTransition(
+            policy,
+            context,
+            priorTopology,
+            topology,
+          )
+        : null;
+    const derivedTransition =
+      correctionTransition === null
+        ? topologyTransition
+        : "remove_unattested_timeout";
     if (
       entry.priorActiveEntryDigest !== prior.entryDigest ||
       priorTopology === undefined ||
@@ -3933,8 +4045,8 @@ const verifyEntries = (
                 transactionHash !== null &&
                 transactionHash === entry.transactionHash,
             ))) ||
-      classifyObservedTransition(prior.snapshot, topology.snapshot) !==
-        entry.transitionKind
+      derivedTransition !== entry.transitionKind ||
+      !same(correctionTransition, entry.correctionTransition)
     ) {
       return null;
     }
@@ -4451,6 +4563,7 @@ export const evaluateWatcherStateQueueIndexerV1 = (
       nextTopology.snapshot,
       null,
       null,
+      null,
     );
     const state = makeState(policy, observation, [entry], []);
     return makeResult({
@@ -4654,6 +4767,7 @@ export const evaluateWatcherStateQueueIndexerV1 = (
       observation,
       verified,
       nextTopology.snapshot,
+      null,
       rollbackResult,
       previousState.history.at(-1)!.entryDigest,
     );
@@ -4678,10 +4792,23 @@ export const evaluateWatcherStateQueueIndexerV1 = (
   if (verified.transaction === null) {
     return rejected("public_evidence_mismatch");
   }
-  const observedTransition = classifyObservedTransition(
+  const topologyTransition = classifyObservedTransition(
     previousTopology.snapshot,
     nextTopology.snapshot,
   );
+  const correctionTransition =
+    topologyTransition === "remove_fraudulent"
+      ? deriveAuthenticatedTimeoutCorrectionTransition(
+          policy,
+          verified,
+          previousTopology,
+          nextTopology,
+        )
+      : null;
+  const observedTransition =
+    correctionTransition === null
+      ? topologyTransition
+      : "remove_unattested_timeout";
   if (observedTransition !== observation.transitionKind) {
     return rejected(
       observedTransition === null
@@ -4702,6 +4829,7 @@ export const evaluateWatcherStateQueueIndexerV1 = (
     observation,
     verified,
     nextTopology.snapshot,
+    correctionTransition,
     null,
     previousState.history.at(-1)!.entryDigest,
   );
@@ -4718,7 +4846,9 @@ export const evaluateWatcherStateQueueIndexerV1 = (
         ? "da_attestation_authenticated"
         : observation.transitionKind === "merge"
           ? "merge_authenticated"
-          : "removal_authenticated";
+          : observation.transitionKind === "remove_unattested_timeout"
+            ? "timeout_correction_authenticated"
+            : "removal_authenticated";
   return makeResult({
     action: "accept",
     protocolDecision: "indexed",

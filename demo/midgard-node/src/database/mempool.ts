@@ -21,6 +21,16 @@ import * as MempoolTxDeltasDB from "./mempoolTxDeltas.js";
 
 export const tableName = "mempool";
 
+/**
+ * Restores already-validated journal payloads after their state-queue block is
+ * removed. Ledger effects are deliberately not applied twice: they remained
+ * in the speculative mempool ledger across local block finalization.
+ */
+export const restoreJournalEntries = (
+  entries: readonly Tx.EntryWithTimeStamp[],
+): Effect.Effect<void, DatabaseError, Database> =>
+  Tx.insertEntries(tableName, [...entries]);
+
 const mempoolPersistTxRowsDurationTimer = Metric.timer(
   "mempool_persist_tx_rows_duration",
   "Duration of accepted transaction row inserts into mempool",

@@ -10,6 +10,8 @@ import {
 import {
   computeDeploymentManifestV1JsonDigest as computeSharedDeploymentManifestV1JsonDigest,
   DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES as SHARED_DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES,
+  DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE,
+  DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
   DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE as SHARED_DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   normalizeDeploymentManifestV1JsonValue as normalizeSharedDeploymentManifestV1JsonValue,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
@@ -41,6 +43,8 @@ import {
   uint32ToFraudProofID,
 } from "@/transactions/initialization.js";
 
+import { TEST_AVAILABILITY_CHALLENGE_V1 } from "./helpers/availability-challenge-v1.js";
+
 const NATIVE_SCRIPT_CBOR = `8200581c${"00".repeat(28)}`;
 const NATIVE_SCRIPT_HASH = validatorToScriptHash({
   type: "Native",
@@ -67,11 +71,24 @@ beforeAll(async () => {
   );
 });
 const DA_VKEY = "44".repeat(32);
-const CARDANO_PARAMETERS = normalizeDeploymentManifestV1JsonValue({
-  maxTxSize: 16_384,
-  maxValueSize: 5_000,
+const CARDANO_PARAMETERS = {
+  minFeeA: "44",
+  minFeeB: "155381",
+  priceMemory: { numerator: "577", denominator: "10000" },
+  priceSteps: { numerator: "721", denominator: "10000000" },
+  coinsPerUtxoByte: "4310",
+  collateralPercentage: "150",
+  maxCollateralInputs: "3",
+  maxTxSize: "16384",
+  maxValueSize: "5000",
   maxTxExUnits: { memory: "16500000", steps: "10000000000" },
-});
+  referenceScriptFee: {
+    base: { numerator: "15", denominator: "1" },
+    range: "25600",
+    multiplier: { numerator: "6", denominator: "5" },
+    maximumSizeBytes: "204800",
+  },
+} as const;
 
 const canonicalIdentity = (): Omit<DeploymentManifestV1Value, "manifestId"> => {
   const referenceOutRefByContract = new Map<
@@ -215,6 +232,10 @@ const canonicalIdentity = (): Omit<DeploymentManifestV1Value, "manifestId"> => {
         MIDGARD_CONSENSUS_PROFILE_V1.limits.maxValidationBisectionRounds,
       maturityMs: MIDGARD_CONSENSUS_PROFILE_V1.limits.blockMaturityMs,
     },
+    l1Finality: DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
+    economics:
+      DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
+    availabilityChallenge: TEST_AVAILABILITY_CHALLENGE_V1,
     steps,
   };
 };
@@ -243,10 +264,19 @@ describe("V1 deployment manifest", () => {
     expect(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).toEqual(
       SHARED_DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
     );
-    expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toHaveLength(120);
-    expect(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_ROLES).toHaveLength(103);
-    expect(Object.keys(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES)).toHaveLength(104);
-    expect(FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER).toHaveLength(28);
+    // Re-derived from the wave-current `midgard-core` roster.
+    // `midgard-core/tests/deployment-manifest-identity-v1.test.ts` pins the
+    // same three numbers (163 contracts, 156 reference-script roles, 157 auth
+    // token names) and is green, and the two assertions above make this
+    // package's copies fail closed against it. The state-correction wave is
+    // what moved them: `correctionLockSpend`, `claimRegistrySpend`,
+    // `availabilityChallengeSpend` and `availabilityChallengeMint` joined the
+    // contract vector, and `availability-challenge spending`/`minting` joined
+    // the role and token vocabularies.
+    expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toHaveLength(163);
+    expect(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_ROLES).toHaveLength(156);
+    expect(Object.keys(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES)).toHaveLength(157);
+    expect(FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER).toHaveLength(32);
   });
 
   // The golden manifest ID is `sha256` over the canonical stable JSON of the
@@ -367,9 +397,36 @@ describe("V1 deployment manifest", () => {
   //     open-subject, bind-descriptor, and advance-or-close identities: two
   //     net-new compiled contracts and authenticated reference-script roles.
   //     `acc508eb...` -> `c598ec8e...`.
+  // 13. Q35 appended `networkId` as category `0000001c`, its two compiled
+  //     step validators, and their authenticated reference-script roles.
+  //     The catalogue root/proofs and manifest identity move while
+  //     every previously assigned category and contract position is retained.
+  //     `c598ec8e...` -> `4eaa7ee8...`.
+  // 14. Q57 made the source-neutral L1 finality/recovery policy an
+  //     authenticated manifest root field. `4eaa7ee8...` -> `c6250e32...`.
+  // 15. Q50 appended the shared fraud-proof verifier scripts and every missing
+  //     legacy family step, and made each one an authenticated reference-script
+  //     role. Existing contract positions remain unchanged.
+  //     `c6250e32...` -> `a210f82f...`.
+  // 16. Release economics is now an exact authenticated root block whose
+  //     profile distinguishes public Preprod launch from bounded acceptance.
+  //     `a210f82f...` -> `88503dda...`.
+  // 17. The state-correction wave registered four new compiled contracts —
+  //     `correctionLockSpend` and `claimRegistrySpend` (slotted after
+  //     `fraudProofMinAdaStep02`), and `availabilityChallengeSpend` /
+  //     `availabilityChallengeMint` (appended) — taking `contracts` from 159 to
+  //     163, and gave the availability challenge a reference-script role and
+  //     auth token (roles 154 -> 156, token names 155 -> 157). The same wave
+  //     appended `missingNativeScriptUtxo`, `nativeScriptInvalid` and `minAda`
+  //     to `FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER` (29 -> 32), which moves the
+  //     derived catalogue root and every membership proof. All of that is
+  //     already pinned independently by
+  //     `midgard-core/tests/deployment-manifest-identity-v1.test.ts`, which is
+  //     green; this row was red only because this package's mirrors lagged it.
+  //     `88503dda...` -> `919b2d39...`.
   it("accepts the sole exact authenticated V1 manifest", () => {
     expect(canonicalManifest().manifestId).toBe(
-      "c598ec8ef851c31624ad8d07ac69d784a4d4d17749c81876366666a24c8abce1",
+      "919b2d3948dca2737e1e8ed51a54ba973fb8fe0f593e1a4c9a5f6613354c3bee",
     );
     expect(parseDeploymentManifestV1Value(canonicalManifest())).toEqual(
       canonicalManifest(),
@@ -552,6 +609,50 @@ describe("V1 deployment manifest", () => {
         }),
       ),
     ).toThrow(/canonical V1 maturity/u);
+  });
+
+  it("rejects noncanonical release finality even with a recomputed identity", () => {
+    const { manifestId: _manifestId, ...identity } = canonicalManifest();
+    for (const l1Finality of [
+      { ...identity.l1Finality, confirmationDepth: 29 },
+      { ...identity.l1Finality, automaticRecoveryMaxDepth: 2159 },
+      { ...identity.l1Finality, deepRollbackPolicy: "manual-v1" },
+    ]) {
+      const tampered = { ...identity, l1Finality };
+      expect(() =>
+        parseDeploymentManifestV1Value({
+          ...tampered,
+          manifestId: computeDeploymentManifestId(
+            tampered as Omit<DeploymentManifestV1Value, "manifestId">,
+          ),
+        }),
+      ).toThrow(/l1Finality/u);
+    }
+  });
+
+  it("rejects mutated or cross-profile economics with a recomputed identity", () => {
+    const { manifestId: _manifestId, ...identity } = canonicalManifest();
+    for (const economics of [
+      {
+        ...identity.economics,
+        fraudProverRewardLovelace:
+          identity.economics.fraudProverRewardLovelace + 1,
+      },
+      {
+        ...identity.economics,
+        profile: "public-preprod-launch-v1",
+      },
+    ]) {
+      const tampered = { ...identity, economics };
+      expect(() =>
+        parseDeploymentManifestV1Value({
+          ...tampered,
+          manifestId: computeDeploymentManifestId(
+            tampered as Omit<DeploymentManifestV1Value, "manifestId">,
+          ),
+        }),
+      ).toThrow(/economics/u);
+    }
   });
 
   it("rejects an unsupported profile and tuple digest", () => {

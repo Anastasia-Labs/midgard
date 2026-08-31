@@ -1354,6 +1354,7 @@ export const commitExplicitBlockHeaderProgram = (
   | SDK.DataCoercionError
   | SDK.HeaderTransitionCommitmentsError
   | SDK.LucidError
+  | SDK.LinkedListError
   | SDK.HashingError
   | TxSignError
   | TxSubmitError,

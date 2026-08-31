@@ -10,8 +10,10 @@ import {
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
   assertDeploymentMarkerV1Matches,
+  type DeploymentManifestV1L1Finality,
   type DeploymentMarkerV1,
   makeDeploymentMarkerV1,
+  parseDeploymentManifestV1AvailabilityChallenge,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { normalizeOutRef } from "@al-ft/midgard-core/out-ref";
@@ -87,12 +89,94 @@ export type ContractDeploymentIdentityValue = {
   readonly deploymentMarker?: DeploymentMarkerV1;
   readonly path?: string;
   readonly consensusProfile: MidgardConsensusProfileV1;
+  readonly l1Finality?: DeploymentManifestV1L1Finality;
+  /** Exact parser-admitted manifest; absent for derived/dev contract bundles. */
+  readonly manifest?: DeploymentManifestV1Value;
 };
 
 type MidgardContractRuntimeValue = {
   readonly contracts: SDK.MidgardValidators;
   readonly identity: ContractDeploymentIdentityValue;
 };
+
+export const availabilityParametersFromManifestV1 = (
+  value: unknown,
+): SDK.DaAvailabilityParametersV1 => {
+  const parsed = parseDeploymentManifestV1AvailabilityChallenge(value);
+  return SDK.daAvailabilityParametersV1({
+    responseGeometry: SDK.availabilityResponseGeometryV1(
+      parsed.responseGeometry,
+    ),
+    daBondLovelace: BigInt(parsed.daBondLovelace),
+    challengerBondLovelace: BigInt(parsed.challengerBondLovelace),
+    maxOpenFeeLovelace: BigInt(parsed.maxOpenFeeLovelace),
+    maxPublicationFeeLovelace: BigInt(parsed.maxPublicationFeeLovelace),
+    maxSettlementFeeLovelace: BigInt(parsed.maxSettlementFeeLovelace),
+    maxCloseFeeLovelace: BigInt(parsed.maxCloseFeeLovelace),
+    maxTimeoutFeeLovelace: BigInt(parsed.maxTimeoutFeeLovelace),
+  });
+};
+
+export const availabilityParametersFromExplicitEnvironment =
+  (): SDK.DaAvailabilityParametersV1 => {
+    const integer = (name: string): number => {
+      const raw = process.env[name]?.trim();
+      if (raw === undefined || !/^[1-9][0-9]*$/u.test(raw)) {
+        throw new Error(
+          `${name} must be set to an explicit positive integer before deriving Q58 scripts without a finalized manifest`,
+        );
+      }
+      const parsed = Number(raw);
+      if (!Number.isSafeInteger(parsed)) {
+        throw new Error(`${name} must fit a JavaScript safe integer`);
+      }
+      return parsed;
+    };
+    return availabilityParametersFromManifestV1({
+      responseClasses: {
+        smallPayloadMaxBytes: 65_536,
+        smallResponseWindowMs: 3_600_000,
+        fullPayloadMaxBytes: 67_108_864,
+        fullResponseWindowMs: 172_800_000,
+      },
+      responseGeometry: {
+        chunkByteLength: integer("MIDGARD_DA_AVAILABILITY_CHUNK_BYTE_LENGTH"),
+        trancheByteLength: integer(
+          "MIDGARD_DA_AVAILABILITY_TRANCHE_BYTE_LENGTH",
+        ),
+        maxTrancheCount: integer("MIDGARD_DA_AVAILABILITY_MAX_TRANCHE_COUNT"),
+      },
+      daBondLovelace: integer("MIDGARD_DA_AVAILABILITY_BOND_LOVELACE"),
+      challengerBondLovelace: integer(
+        "MIDGARD_DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE",
+      ),
+      maxOpenFeeLovelace: integer(
+        "MIDGARD_DA_AVAILABILITY_MAX_OPEN_FEE_LOVELACE",
+      ),
+      maxPublicationFeeLovelace: integer(
+        "MIDGARD_DA_AVAILABILITY_MAX_PUBLICATION_FEE_LOVELACE",
+      ),
+      maxSettlementFeeLovelace: integer(
+        "MIDGARD_DA_AVAILABILITY_MAX_SETTLEMENT_FEE_LOVELACE",
+      ),
+      maxCloseFeeLovelace: integer(
+        "MIDGARD_DA_AVAILABILITY_MAX_CLOSE_FEE_LOVELACE",
+      ),
+      maxTimeoutFeeLovelace: integer(
+        "MIDGARD_DA_AVAILABILITY_MAX_TIMEOUT_FEE_LOVELACE",
+      ),
+      bondOwnerCredential: (() => {
+        const value =
+          process.env.MIDGARD_DA_AVAILABILITY_BOND_OWNER_CREDENTIAL?.trim();
+        if (value === undefined || !/^[0-9a-f]{56}$/u.test(value)) {
+          throw new Error(
+            "MIDGARD_DA_AVAILABILITY_BOND_OWNER_CREDENTIAL must be exactly 28 lowercase hex bytes",
+          );
+        }
+        return value;
+      })(),
+    });
+  };
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_REAL_BLUEPRINT_CANDIDATES = [
@@ -325,10 +409,19 @@ const requireManifestScriptType = (
   );
 };
 
-const assertDeploymentManifestMatchesConfig = (
+export const assertDeploymentManifestMatchesConfig = (
   manifest: DeploymentManifestCandidate,
   sourcePath: string,
-  nodeConfig: NodeConfigDep,
+  nodeConfig: Pick<
+    NodeConfigDep,
+    | "NETWORK"
+    | "L1_REFERENCE_SCRIPT_DEPLOY_ADDRESS"
+    | "HUB_ORACLE_ONE_SHOT_TX_HASH"
+    | "HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX"
+    | "MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE"
+    | "OPERATOR_REQUIRED_BOND_LOVELACE"
+    | "OPERATOR_SLASHING_PENALTY_LOVELACE"
+  >,
 ): void => {
   const mismatches: string[] = [];
   const manifestNetwork = requireManifestString(
@@ -375,6 +468,30 @@ const assertDeploymentManifestMatchesConfig = (
   ) {
     mismatches.push(
       `hubOracleOneShot.outputIndex manifest=${manifestOneShotOutputIndex.toString()} config=${nodeConfig.HUB_ORACLE_ONE_SHOT_OUTPUT_INDEX.toString()}`,
+    );
+  }
+  if (
+    manifest.economics.profile !==
+    nodeConfig.MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE
+  ) {
+    mismatches.push(
+      `economics.profile manifest=${manifest.economics.profile} config=${nodeConfig.MIDGARD_DEPLOYMENT_ECONOMICS_PROFILE}`,
+    );
+  }
+  if (
+    BigInt(manifest.economics.requiredBondLovelace) !==
+    nodeConfig.OPERATOR_REQUIRED_BOND_LOVELACE
+  ) {
+    mismatches.push(
+      `economics.requiredBondLovelace manifest=${manifest.economics.requiredBondLovelace.toString()} config=${nodeConfig.OPERATOR_REQUIRED_BOND_LOVELACE.toString()}`,
+    );
+  }
+  if (
+    BigInt(manifest.economics.slashingPenaltyLovelace) !==
+    nodeConfig.OPERATOR_SLASHING_PENALTY_LOVELACE
+  ) {
+    mismatches.push(
+      `economics.slashingPenaltyLovelace manifest=${manifest.economics.slashingPenaltyLovelace.toString()} config=${nodeConfig.OPERATOR_SLASHING_PENALTY_LOVELACE.toString()}`,
     );
   }
   if (mismatches.length > 0) {
@@ -533,6 +650,10 @@ const REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES = [
   "valueNotPreserved",
   "inputSetUniqueness",
   "mintAuthorization",
+  "networkId",
+  "missingNativeScriptUtxo",
+  "nativeScriptInvalid",
+  "minAda",
 ] as const satisfies readonly (keyof SDK.FaultProofContractChains)[];
 
 type RegisteredLinearFaultProofCategory =
@@ -544,10 +665,28 @@ const upperFirst = (value: string): string =>
 const faultProofStepContractName = (
   category: RegisteredLinearFaultProofCategory,
   stepIndex: number,
-): string =>
-  `fraudProof${upperFirst(category)}${
+): string => {
+  if (category === "nativeScriptDecoding") {
+    const names = [
+      "fraudProofNativeScriptDecoding",
+      "fraudProofNativeScriptDecodingStep02",
+      "fraudProofNativeScriptDecodingStep03OpenSubject",
+      "fraudProofNativeScriptDecodingStep03BindDescriptor",
+      "fraudProofNativeScriptDecodingStep03AdvanceOrClose",
+      "fraudProofNativeScriptDecodingStep04",
+    ] as const;
+    const name = names[stepIndex];
+    if (name === undefined) {
+      throw new Error(
+        `native-script-decoding exposes an unexpected step index ${stepIndex.toString()}`,
+      );
+    }
+    return name;
+  }
+  return `fraudProof${upperFirst(category)}${
     stepIndex === 0 ? "" : `Step${(stepIndex + 1).toString().padStart(2, "0")}`
   }`;
+};
 
 const linearFaultProofChainFromManifest = <
   Category extends RegisteredLinearFaultProofCategory,
@@ -584,16 +723,26 @@ const legacyFaultProofChainFromManifest = <Chain extends SDK.FraudProofChain>(
   baseChain: Chain,
   firstStepContractName: string,
 ): Chain => {
-  const firstStep = spendingValidatorFromManifest(
-    network,
-    manifest,
-    sourcePath,
-    firstStepContractName,
+  const steps = baseChain.steps.map((_validator, stepIndex) =>
+    spendingValidatorFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      stepIndex === 0
+        ? firstStepContractName
+        : `${firstStepContractName}Step${(stepIndex + 1)
+            .toString()
+            .padStart(2, "0")}`,
+    ),
   );
+  const firstStep = steps[0];
+  if (firstStep === undefined) {
+    throw new Error(`Legacy fault-proof chain has no first step`);
+  }
   return {
     ...baseChain,
     firstStep,
-    steps: [firstStep, ...baseChain.steps.slice(1)],
+    steps,
   } as unknown as Chain;
 };
 
@@ -928,6 +1077,34 @@ export const midgardContractsFromDeploymentManifest = (
       baseContracts,
       "mintAuthorization",
     ),
+    networkId: linearFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts,
+      "networkId",
+    ),
+    missingNativeScriptUtxo: linearFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts,
+      "missingNativeScriptUtxo",
+    ),
+    nativeScriptInvalid: linearFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts,
+      "nativeScriptInvalid",
+    ),
+    minAda: linearFaultProofChainFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      baseContracts,
+      "minAda",
+    ),
   };
   const fraudProofs = SDK.fraudProofContractsToFirstSteps(fraudProofContracts);
 
@@ -947,6 +1124,25 @@ export const midgardContractsFromDeploymentManifest = (
       sourcePath,
       "daAttestationSpend",
       "daAttestationMint",
+    ),
+    availabilityChallenge: authenticatedValidatorFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      "availabilityChallengeSpend",
+      "availabilityChallengeMint",
+    ),
+    correctionLock: spendingValidatorFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      "correctionLockSpend",
+    ),
+    claimRegistry: spendingValidatorFromManifest(
+      network,
+      manifest,
+      sourcePath,
+      "claimRegistrySpend",
     ),
     stateQueue: authenticatedValidatorFromManifest(
       network,
@@ -997,12 +1193,27 @@ export const midgardContractsFromDeploymentManifest = (
       "fraudProofCatalogueSpend",
       "fraudProofCatalogueMint",
     ),
+    computationThread: mintingValidatorFromManifest(
+      manifest,
+      sourcePath,
+      "computationThreadMint",
+    ),
     fraudProof: authenticatedValidatorFromManifest(
       network,
       manifest,
       sourcePath,
       "fraudProofSpend",
       "fraudProofMint",
+    ),
+    chunkedVerify: withdrawalValidatorFromManifest(
+      manifest,
+      sourcePath,
+      "chunkedVerifyWithdraw",
+    ),
+    pexcludes: withdrawalValidatorFromManifest(
+      manifest,
+      sourcePath,
+      "pexcludesWithdraw",
     ),
     deposit: authenticatedValidatorFromManifest(
       network,
@@ -1061,6 +1272,14 @@ export const REAL_STATE_QUEUE_SCRIPT_TITLES = {
   spend: "state_queue.spend.spend",
 } as const;
 
+export const REAL_CORRECTION_LOCK_SCRIPT_TITLES = {
+  spend: "correction_lock.spend.spend",
+} as const;
+
+export const REAL_CLAIM_REGISTRY_SCRIPT_TITLES = {
+  spend: "claim_registry.spend.spend",
+} as const;
+
 export const REAL_DA_PARAMS_GOVERNOR_SCRIPT_TITLES = {
   mint: "da_params_governor.da_params_governor.mint",
   spend: "da_params_governor.da_params_governor.spend",
@@ -1069,6 +1288,11 @@ export const REAL_DA_PARAMS_GOVERNOR_SCRIPT_TITLES = {
 export const REAL_DA_ATTESTATION_SCRIPT_TITLES = {
   mint: "da_attestation.da_attestation.mint",
   spend: "da_attestation.da_attestation.spend",
+} as const;
+
+export const REAL_AVAILABILITY_CHALLENGE_SCRIPT_TITLES = {
+  mint: "availability_challenge.availability_challenge.mint",
+  spend: "availability_challenge.availability_challenge.spend",
 } as const;
 
 /**
@@ -1192,6 +1416,7 @@ export type HubOracleOneShotOutRef = {
 
 export type RealContractDeploymentParameters = {
   readonly referenceScriptAuth: SDK.MintingValidator;
+  readonly availabilityChallengeParameters: SDK.DaAvailabilityParametersV1;
   readonly daParamsGovernorInitOutRef?: HubOracleOneShotOutRef;
   readonly daParamsMaxCommitteeSize?: number;
   readonly daParamsMaxOwnerCount?: number;
@@ -1452,6 +1677,7 @@ const buildRealComputationThreadValidator = (
       yield* applyBlueprintDeclaredParams(mintValidator, [
         contracts.fraudProofCatalogue.policyId,
         contracts.hubOracle.policyId,
+        contracts.claimRegistry.spendingScriptHash,
       ]),
     );
   });
@@ -1463,6 +1689,33 @@ const buildRealFraudProofValidator = (
   buildRealAuthenticatedValidator(network, REAL_FRAUD_PROOF_SCRIPT_TITLES, [
     computationThread.policyId,
   ]);
+
+const buildRealFraudProofSharedWithdrawalValidators = (): Effect.Effect<
+  Readonly<{
+    chunkedVerify: SDK.WithdrawalValidator;
+    pexcludes: SDK.WithdrawalValidator;
+  }>,
+  Error
+> =>
+  Effect.gen(function* () {
+    const blueprint = yield* loadRealBlueprint();
+    const chunkedVerify = yield* getBlueprintValidator(
+      blueprint,
+      SDK.MPF_CHUNKED_VERIFY_WITHDRAW_TITLE,
+    );
+    const pexcludes = yield* getBlueprintValidator(
+      blueprint,
+      SDK.PEXCLUDES_EXCLUSION_WITHDRAW_TITLE,
+    );
+    return {
+      chunkedVerify: makeWithdrawalValidator(
+        yield* unappliedBlueprintScript(chunkedVerify),
+      ),
+      pexcludes: makeWithdrawalValidator(
+        yield* unappliedBlueprintScript(pexcludes),
+      ),
+    };
+  });
 
 const outputReferenceParam = (outRef: HubOracleOneShotOutRef): Constr<Data> =>
   new Constr(0, [outRef.txHash, BigInt(outRef.outputIndex)]);
@@ -1492,12 +1745,45 @@ const buildRealDaAttestationValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
   referenceScriptAuthPolicyId: string,
+  availabilityParameters: SDK.DaAvailabilityParametersV1,
+): Effect.Effect<SDK.AuthenticatedValidator, Error> => {
+  const encodedParameters = Data.from(
+    SDK.encodeDaAvailabilityParametersV1(availabilityParameters),
+  );
+  return buildRealAuthenticatedValidator(
+    network,
+    REAL_DA_ATTESTATION_SCRIPT_TITLES,
+    [
+      contracts.daParamsGovernor.policyId,
+      referenceScriptAuthPolicyId,
+      contracts.availabilityChallenge.policyId,
+      encodedParameters,
+    ],
+    () => [
+      contracts.daParamsGovernor.policyId,
+      referenceScriptAuthPolicyId,
+      contracts.availabilityChallenge.policyId,
+      encodedParameters,
+    ],
+  );
+};
+
+const buildRealAvailabilityChallengeValidator = (
+  network: Network,
+  hubOraclePolicyId: string,
+  parameters: SDK.DaAvailabilityParametersV1,
 ): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
   buildRealAuthenticatedValidator(
     network,
-    REAL_DA_ATTESTATION_SCRIPT_TITLES,
-    [contracts.daParamsGovernor.policyId, referenceScriptAuthPolicyId],
-    () => [contracts.daParamsGovernor.policyId, referenceScriptAuthPolicyId],
+    REAL_AVAILABILITY_CHALLENGE_SCRIPT_TITLES,
+    [
+      hubOraclePolicyId,
+      Data.from(SDK.encodeDaAvailabilityParametersV1(parameters)),
+    ],
+    () => [
+      hubOraclePolicyId,
+      Data.from(SDK.encodeDaAvailabilityParametersV1(parameters)),
+    ],
   );
 
 const expectDerivedScriptHash = (
@@ -1895,6 +2181,9 @@ const buildRealStateQueueValidator = (
       REAL_STATE_QUEUE_SCRIPT_TITLES,
       [
         contracts.hubOracle.policyId,
+        contracts.correctionLock.spendingScriptHash,
+        contracts.claimRegistry.spendingScriptHash,
+        contracts.computationThread.policyId,
         contracts.activeOperators.policyId,
         activeOperatorsAddress,
         contracts.retiredOperators.policyId,
@@ -1902,8 +2191,49 @@ const buildRealStateQueueValidator = (
         contracts.fraudProof.policyId,
         contracts.settlement.policyId,
         contracts.daAttestation.policyId,
+        contracts.availabilityChallenge.policyId,
       ],
-      (policyId) => [policyId, contracts.daAttestation.policyId],
+      (policyId) => [
+        policyId,
+        contracts.daAttestation.policyId,
+        contracts.availabilityChallenge.policyId,
+      ],
+    );
+  });
+
+const buildRealCorrectionLockValidator = (
+  network: Network,
+  hubOraclePolicyId: string,
+  availabilityChallengePolicyId: string,
+): Effect.Effect<SDK.SpendingValidator, Error> =>
+  Effect.gen(function* () {
+    const blueprint = yield* loadRealBlueprint();
+    const spendValidator = yield* getBlueprintValidator(
+      blueprint,
+      REAL_CORRECTION_LOCK_SCRIPT_TITLES.spend,
+    );
+    return makeSpendingValidator(
+      network,
+      yield* applyBlueprintDeclaredParams(spendValidator, [
+        hubOraclePolicyId,
+        availabilityChallengePolicyId,
+      ]),
+    );
+  });
+
+const buildRealClaimRegistryValidator = (
+  network: Network,
+  hubOraclePolicyId: string,
+): Effect.Effect<SDK.SpendingValidator, Error> =>
+  Effect.gen(function* () {
+    const blueprint = yield* loadRealBlueprint();
+    const spendValidator = yield* getBlueprintValidator(
+      blueprint,
+      REAL_CLAIM_REGISTRY_SCRIPT_TITLES.spend,
+    );
+    return makeSpendingValidator(
+      network,
+      yield* applyBlueprintDeclaredParams(spendValidator, [hubOraclePolicyId]),
     );
   });
 
@@ -2187,10 +2517,30 @@ export const withRealStateQueueAndOperatorContracts = (
       baseContracts.hubOracle,
       normalizedOneShotOutRef,
     );
+    // The availability-challenge policy id is a `correction_lock.spend`
+    // parameter, so it has to exist before the correction lock is applied.
+    const realAvailabilityChallenge =
+      yield* buildRealAvailabilityChallengeValidator(
+        network,
+        realHubOracle.policyId,
+        deploymentParameters.availabilityChallengeParameters,
+      );
+    const realCorrectionLock = yield* buildRealCorrectionLockValidator(
+      network,
+      realHubOracle.policyId,
+      realAvailabilityChallenge.policyId,
+    );
+    const realClaimRegistry = yield* buildRealClaimRegistryValidator(
+      network,
+      realHubOracle.policyId,
+    );
     const withRealHubOracle: SDK.MidgardValidators = {
       ...baseContracts,
       referenceScriptAuth: deploymentParameters.referenceScriptAuth,
       hubOracle: realHubOracle,
+      correctionLock: realCorrectionLock,
+      claimRegistry: realClaimRegistry,
+      availabilityChallenge: realAvailabilityChallenge,
     };
 
     const realFraudProofCatalogue =
@@ -2207,6 +2557,8 @@ export const withRealStateQueueAndOperatorContracts = (
       network,
       realComputationThread,
     );
+    const realFraudProofSharedWithdrawals =
+      yield* buildRealFraudProofSharedWithdrawalValidators();
     const realFaultProofContracts = yield* buildRealFaultProofContracts(
       network,
       withRealFraudProofCatalogue,
@@ -2215,7 +2567,9 @@ export const withRealStateQueueAndOperatorContracts = (
     );
     const withRealFraudProof: SDK.MidgardValidators = {
       ...withRealFraudProofCatalogue,
+      computationThread: realComputationThread,
       fraudProof: realFraudProof,
+      ...realFraudProofSharedWithdrawals,
       fraudProofContracts: realFaultProofContracts,
       fraudProofs: SDK.fraudProofContractsToFirstSteps(realFaultProofContracts),
     };
@@ -2314,6 +2668,7 @@ export const withRealStateQueueAndOperatorContracts = (
       network,
       withRealDaParamsGovernor,
       deploymentParameters.referenceScriptAuth.policyId,
+      deploymentParameters.availabilityChallengeParameters,
     );
     const withRealDaAttestation: SDK.MidgardValidators = {
       ...withRealDaParamsGovernor,
@@ -2464,6 +2819,8 @@ const makeMidgardContractRuntime = Effect.gen(function* () {
         ),
         path: configuredManifest.path,
         consensusProfile: configuredManifest.manifest.consensusProfile,
+        l1Finality: configuredManifest.manifest.l1Finality,
+        manifest: configuredManifest.manifest,
       },
     };
     return runtime;
@@ -2479,6 +2836,8 @@ const makeMidgardContractRuntime = Effect.gen(function* () {
     oneShotOutRef,
     {
       referenceScriptAuth,
+      availabilityChallengeParameters:
+        availabilityParametersFromExplicitEnvironment(),
     },
   );
   yield* Effect.logInfo(

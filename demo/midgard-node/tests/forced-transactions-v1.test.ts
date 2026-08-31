@@ -43,6 +43,7 @@ import {
   classifyForcedTransactionsV1,
 } from "@/workers/utils/mpf.js";
 
+import { FUNDED_OUTPUT_LOVELACE_V1 } from "../../midgard-validation/tests/validation-fixtures.js";
 import { makeOutRefCbor } from "./midgard-output-helpers.js";
 
 const canonicalTransaction = (
@@ -620,7 +621,13 @@ describe("V1 forced transaction material", () => {
 
   it("executes sequential valid forced deltas and emits accepted validation traces", async () => {
     const initialInput = outputReferenceFromHash(Buffer.alloc(32, 0x31));
-    const output = makeOutput(10n);
+    // Phase B enforces MIN-ADA-TX on every produced output, so a 10-lovelace
+    // output is classified `TxIsInvalid` on `E_MIN_ADA` before the sequential
+    // forced-delta semantics under test are reached. `FUNDED_OUTPUT_LOVELACE_V1`
+    // is the shared fixture amount that clears the floor with headroom, and
+    // using it for both the pre-state entry and the produced output keeps this
+    // two-step chain value-conserving at fee 0.
+    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
     const firstTransaction = makeSignedEffectfulTransaction(
       initialInput,
       output,

@@ -2235,6 +2235,48 @@ export const markAbandoned = (
     ),
   );
 
+/**
+ * Terminal transition for a locally known block removed by authenticated
+ * state-queue correction. Idempotence is restricted to the resulting
+ * Abandoned state; every other missing/conflicting status fails closed.
+ */
+export const markCorrectedAfterStateQueueRemoval = (
+  headerHash: Buffer,
+): Effect.Effect<void, DatabaseError, Database> =>
+  Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const existing = yield* sql<Pick<Row, Columns.STATUS>>`SELECT ${sql(
+      Columns.STATUS,
+    )} FROM ${sql(tableName)} WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}`;
+    if (existing[0]?.[Columns.STATUS] === Status.Abandoned) return;
+    const rows = yield* sql<Row>`UPDATE ${sql(tableName)}
+      SET ${sql(Columns.STATUS)} = ${Status.Abandoned},
+          ${sql(Columns.UPDATED_AT)} = NOW()
+      WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}
+        AND ${sql(Columns.STATUS)} IN (
+          ${Status.SubmittedLocalFinalizationPending},
+          ${Status.SubmittedUnconfirmed},
+          ${Status.ObservedWaitingStability},
+          ${Status.Finalized}
+        )
+      RETURNING *`;
+    if (rows.length !== 1) {
+      return yield* Effect.fail(
+        new DatabaseError({
+          table: tableName,
+          message: "Failed to mark state-queue-corrected block abandoned",
+          cause: `header_hash=${headerHash.toString("hex")},status=${existing[0]?.[Columns.STATUS] ?? "missing"}`,
+        }),
+      );
+    }
+  }).pipe(
+    Effect.withLogSpan(`markCorrectedAfterStateQueueRemoval ${tableName}`),
+    sqlErrorToDatabaseError(
+      tableName,
+      "Failed to mark state-queue-corrected journal",
+    ),
+  );
+
 export const markUnsubmittedAbandoned = (
   headerHash: Buffer,
 ): Effect.Effect<boolean, DatabaseError, Database> =>

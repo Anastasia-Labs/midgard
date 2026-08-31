@@ -905,8 +905,8 @@ describe("W22 payload-entry mutations", () => {
       envelope: await reencode(mutated),
     });
     expect(result.action).toBe("reject");
-    expect(result.reasonCodes).toStrictEqual(["malformed_payload"]);
-    expect(result.rootMismatches).toStrictEqual([]);
+    expect(result.reasonCodes).toStrictEqual(["root_mismatch"]);
+    expect(result.rootMismatches).toStrictEqual(["transactions_root"]);
   });
 });
 

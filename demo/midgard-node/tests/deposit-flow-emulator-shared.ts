@@ -178,6 +178,7 @@ import {
   resolveCurrentOperatorSchedulerWindow,
 } from "@/workers/utils/scheduler-refresh.js";
 
+import { TEST_AVAILABILITY_CHALLENGE_V1 } from "./helpers/availability-challenge-v1.js";
 import { deriveEmulatorSubmitSlotSnapshot } from "./helpers/emulator-submit-slot-snapshot.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 import { collectSortedInputOutRefs } from "./helpers/tx-inspection.js";
@@ -186,17 +187,31 @@ import {
   makeOutRefCbor,
 } from "./midgard-output-helpers.js";
 
+// Raised above the real 16,384-byte L1 envelope pending
+// Anastasia-Labs/midgard#649: `state_queue.mint` compiles to 16,835 bytes
+// unapplied, so publishing it as a reference script cannot fit the real
+// envelope and every deposit-flow fixture fails at bring-up, long before the
+// deposit/commit/merge behaviour these suites exist to test. The fit property
+// is not lost — it lives in `tests/scratch-cg1-publication-fit.test.ts`, which
+// stays pinned at the real envelope and is skipped with the same #649
+// citation; un-skipping that gate is what proves #649 fixed. Restore this to
+// `PROTOCOL_PARAMETERS_DEFAULT.maxTxSize` once the validator shrinks.
 export const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
-  maxTxSize: Number(
-    process.env.MIDGARD_EMULATOR_MAX_TX_SIZE ??
-      PROTOCOL_PARAMETERS_DEFAULT.maxTxSize,
-  ),
+  maxTxSize: Number(process.env.MIDGARD_EMULATOR_MAX_TX_SIZE ?? 65_536),
   maxCollateralInputs: 3,
 } as const;
 
+// Wave-current on-chain bond. `operator-directory/registered-operators.ak` now
+// enforces `registered_node_lovelace == env.required_bond` (it used to accept
+// `>=`), and `env/testnet.ak` — the env this blueprint is built with, matching
+// `.github/workflows/midgard-node-ci.yml` — sets
+// `required_bond = slashing_penalty (500_000_000) + fraud_prover_reward
+// (400_000_000)`. `SDK.getProtocolParameters` carries the same 900_000_000n for
+// every non-mainnet profile. Any other value now makes the registration mint
+// crash, so this default is derived from the contract, not chosen.
 export const REQUIRED_BOND_LOVELACE = BigInt(
-  process.env.OPERATOR_REQUIRED_BOND_LOVELACE ?? "5000000",
+  process.env.OPERATOR_REQUIRED_BOND_LOVELACE ?? "900000000",
 );
 export const REGISTRATION_ACTIVATION_DELAY_SLOTS = 180;
 export const EMULATOR_REFERENCE_SCRIPT_AUTH_TIMELOCK_MS = 24 * 60 * 60 * 1000;
@@ -205,6 +220,62 @@ export const EMULATOR_DEPLOYMENT_IDENTITY = ContractDeploymentIdentity.make({
   deploymentMarker: makeDeploymentMarkerV1("de".repeat(32)),
   consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
 });
+// `EMULATOR_DEPLOYMENT_IDENTITY` is a `derived` identity with no finalized
+// manifest, so the wave's Q58 script derivation takes the
+// `availabilityParametersFromExplicitEnvironment()` branch
+// (`src/transactions/da-attestation.ts`), which fails closed unless the whole
+// availability block is present in the environment. These are the same values
+// `.env.example` ships and `TEST_AVAILABILITY_CHALLENGE_V1` records; sourcing
+// them from that helper keeps one definition rather than a second copy.
+for (const [name, value] of [
+  [
+    "MIDGARD_DA_AVAILABILITY_CHUNK_BYTE_LENGTH",
+    TEST_AVAILABILITY_CHALLENGE_V1.responseGeometry.chunkByteLength,
+  ],
+  [
+    "MIDGARD_DA_AVAILABILITY_TRANCHE_BYTE_LENGTH",
+    TEST_AVAILABILITY_CHALLENGE_V1.responseGeometry.trancheByteLength,
+  ],
+  [
+    "MIDGARD_DA_AVAILABILITY_MAX_TRANCHE_COUNT",
+    TEST_AVAILABILITY_CHALLENGE_V1.responseGeometry.maxTrancheCount,
+  ],
+  [
+    "MIDGARD_DA_AVAILABILITY_BOND_LOVELACE",
+    TEST_AVAILABILITY_CHALLENGE_V1.daBondLovelace,
+  ],
+  [
+    "MIDGARD_DA_AVAILABILITY_CHALLENGER_BOND_LOVELACE",
+    TEST_AVAILABILITY_CHALLENGE_V1.challengerBondLovelace,
+  ],
+  [
+    "MIDGARD_DA_AVAILABILITY_MAX_OPEN_FEE_LOVELACE",
+    TEST_AVAILABILITY_CHALLENGE_V1.maxOpenFeeLovelace,
+  ],
+  [
+    "MIDGARD_DA_AVAILABILITY_MAX_PUBLICATION_FEE_LOVELACE",
+    TEST_AVAILABILITY_CHALLENGE_V1.maxPublicationFeeLovelace,
+  ],
+  [
+    "MIDGARD_DA_AVAILABILITY_MAX_SETTLEMENT_FEE_LOVELACE",
+    TEST_AVAILABILITY_CHALLENGE_V1.maxSettlementFeeLovelace,
+  ],
+  [
+    "MIDGARD_DA_AVAILABILITY_MAX_CLOSE_FEE_LOVELACE",
+    TEST_AVAILABILITY_CHALLENGE_V1.maxCloseFeeLovelace,
+  ],
+  [
+    "MIDGARD_DA_AVAILABILITY_MAX_TIMEOUT_FEE_LOVELACE",
+    TEST_AVAILABILITY_CHALLENGE_V1.maxTimeoutFeeLovelace,
+  ],
+  [
+    "MIDGARD_DA_AVAILABILITY_BOND_OWNER_CREDENTIAL",
+    TEST_AVAILABILITY_CHALLENGE_V1.bondOwnerCredential,
+  ],
+] as const) {
+  process.env[name] = String(value);
+}
+
 export const EMULATOR_DA_PRODUCER_PEER_ID =
   "12D3KooWKf1kXPQFRZ6SR6WQF1Z7gqDRUjUe7S4hSm8LRmSk5kvA";
 export const EMULATOR_DA_COMMITTEE_PEER_ID =
@@ -2138,6 +2209,15 @@ export const runNodeCommandProgram = <A>(
       effect.pipe(
         Effect.provideService(LucidService, lucidService as any),
         Effect.provideService(MidgardContracts, fixture.contracts as any),
+        // The wave made the merge/settlement command paths require the
+        // deployment identity alongside the contract bytes, the same pairing
+        // `runLocalFinalizationRecoveryWorker` below already provides. Without
+        // it these commands die with
+        // `Service not found: ContractDeploymentIdentity`.
+        Effect.provideService(
+          ContractDeploymentIdentity,
+          EMULATOR_DEPLOYMENT_IDENTITY,
+        ),
         Effect.provideService(Globals, globals),
         Effect.provideService(NodeConfig, nodeConfig),
         Effect.provide(Database.layer),

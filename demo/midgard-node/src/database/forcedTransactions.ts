@@ -642,6 +642,16 @@ export const clearProjectedHeaderAssignmentByEventIds = (
     projectedHeaderHash,
   );
 
+export const reopenAfterStateQueueCorrectionByEventIds = (
+  ids: readonly Buffer[],
+  removedHeaderHash: Buffer,
+) =>
+  ProjectedEvents.reopenAfterStateQueueCorrectionByEventIds(
+    projectedEventsTable,
+    ids,
+    removedHeaderHash,
+  );
+
 export const markFinalizedByEventIds = (
   ids: readonly Buffer[],
   projectedHeaderHash: Buffer,

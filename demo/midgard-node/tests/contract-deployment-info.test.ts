@@ -10,6 +10,7 @@ import {
   DA_TRANSPORT_LIMITS_V1,
   DA_TRANSPORT_V1_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
+import { DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import type {
   MidgardValidators,
   ReferenceScriptAuthPolicyDeploymentInfo,
@@ -31,6 +32,7 @@ import {
   buildContractDeploymentInfoFromContracts,
   buildContractDeploymentInfoProgram,
   buildDeploymentManifestV1,
+  buildReferenceScriptOutRefMap,
   cardanoProtocolParametersIdentityV1FromProvider,
   defaultContractDeploymentInfoOutputPath,
   DEPLOYMENT_MANIFEST_V1_SCHEMA_VERSION,
@@ -56,6 +58,8 @@ import {
   fraudProofsToIndexedValidators,
 } from "@/transactions/initialization.js";
 
+import { TEST_AVAILABILITY_CHALLENGE_V1 } from "./helpers/availability-challenge-v1.js";
+
 const testReferenceScriptAuthPolicy = (
   _policyId: string,
   _cborHex: string,
@@ -80,11 +84,28 @@ const testReferenceScriptAuthPolicy = (
 
 const ONE_SHOT_TX_HASH = "ab".repeat(32);
 const TEST_DA_VKEY = "11".repeat(32);
-const TEST_CARDANO_PARAMETERS = normalizeDeploymentManifestV1JsonValue({
-  maxTxSize: 16_384,
-  maxValueSize: 5_000,
-});
+const TEST_CARDANO_PARAMETERS = {
+  minFeeA: "44",
+  minFeeB: "155381",
+  priceMemory: { numerator: "577", denominator: "10000" },
+  priceSteps: { numerator: "721", denominator: "10000000" },
+  coinsPerUtxoByte: "4310",
+  collateralPercentage: "150",
+  maxCollateralInputs: "3",
+  maxTxSize: "16384",
+  maxValueSize: "5000",
+  maxTxExUnits: { memory: "16500000", steps: "10000000000" },
+  referenceScriptFee: {
+    base: { numerator: "15", denominator: "1" },
+    range: "25600",
+    multiplier: { numerator: "6", denominator: "5" },
+    maximumSizeBytes: "204800",
+  },
+} as const;
 const TEST_MANIFEST_IDENTITY_CONTEXT: DeploymentManifestV1IdentityContext = {
+  availabilityChallenge: TEST_AVAILABILITY_CHALLENGE_V1,
+  economics:
+    DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
   cardanoProtocolParameters: {
     snapshot: TEST_CARDANO_PARAMETERS,
     digest: computeDeploymentManifestV1JsonDigest(TEST_CARDANO_PARAMETERS),
@@ -156,20 +177,52 @@ const TEST_FINALIZED_MANIFEST_BUILD_CONTEXT = {
 describe("contract deployment info", () => {
   it("derives the exact Cardano parameter snapshot and digest from the configured provider", async () => {
     let calls = 0;
-    const identity = await cardanoProtocolParametersIdentityV1FromProvider({
-      getProtocolParameters: async () => {
-        calls += 1;
-        return {
-          maxTxSize: 16_384,
-          coinsPerUtxoByte: 4_310n,
-        };
+    const identity = await cardanoProtocolParametersIdentityV1FromProvider(
+      {
+        getProtocolParameters: async () => {
+          calls += 1;
+          return {
+            minFeeA: 44,
+            minFeeB: 155_381,
+            priceMem: 0.0577,
+            priceStep: 0.0000721,
+            coinsPerUtxoByte: 4_310n,
+            collateralPercentage: 150,
+            maxCollateralInputs: 3,
+            maxTxSize: 16_384,
+            maxValSize: 5_000,
+            maxTxExMem: 16_500_000n,
+            maxTxExSteps: 10_000_000_000n,
+            minFeeRefScriptCostPerByte: 15,
+          };
+        },
       },
-    });
+      {
+        jsonrpc: "2.0",
+        id: "fixture",
+        result: {
+          minFeeCoefficient: 44,
+          minFeeConstant: { ada: { lovelace: 155_381 } },
+          scriptExecutionPrices: {
+            memory: "577/10000",
+            cpu: "721/10000000",
+          },
+          minUtxoDepositCoefficient: 4_310,
+          collateralPercentage: 150,
+          maxCollateralInputs: 3,
+          maxTransactionSize: { bytes: 16_384 },
+          maxValueSize: { bytes: 5_000 },
+          maxExecutionUnitsPerTransaction: {
+            memory: 16_500_000,
+            cpu: 10_000_000_000,
+          },
+          minFeeReferenceScripts: { base: 15, range: 25_600, multiplier: 1.2 },
+          maxReferenceScriptsSizePerTransaction: { bytes: 204_800 },
+        },
+      },
+    );
     expect(calls).toBe(1);
-    expect(identity.snapshot).toEqual({
-      maxTxSize: 16_384,
-      coinsPerUtxoByte: "4310",
-    });
+    expect(identity.snapshot).toEqual(TEST_CARDANO_PARAMETERS);
     expect(identity.digest).toBe(
       computeDeploymentManifestV1JsonDigest(identity.snapshot),
     );
@@ -250,6 +303,18 @@ describe("contract deployment info", () => {
             .spendingScriptHash,
         );
         expect(
+          manifest.contracts.fraudProofMissingNativeScriptTxStep07.scriptHash,
+        ).toEqual(
+          contracts.fraudProofContracts.missingNativeScriptTx.steps[6]
+            .spendingScriptHash,
+        );
+        expect(
+          manifest.contracts.fraudProofMissingNativeScriptTxStep08.scriptHash,
+        ).toEqual(
+          contracts.fraudProofContracts.missingNativeScriptTx.steps[7]
+            .spendingScriptHash,
+        );
+        expect(
           manifest.contracts.fraudProofTransitionTraceDuplicate.scriptHash,
         ).toEqual(
           contracts.fraudProofContracts.transitionTrace.finals[7]
@@ -316,6 +381,216 @@ describe("contract deployment info", () => {
         });
         expect(manifest.contracts.daAttestationMint.refScriptUTxO).toBeNull();
       }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
+  );
+
+  it.effect("rejects duplicate live UTxOs for one reference-script role", () =>
+    Effect.gen(function* () {
+      const contracts = yield* AlwaysSucceedsContract;
+      const authPolicy = testReferenceScriptAuthPolicy(
+        contracts.referenceScriptAuth.policyId,
+        contracts.referenceScriptAuth.mintingScriptCBOR,
+      );
+      const roleUnit = toUnit(
+        authPolicy.policyId,
+        referenceScriptAuthTokenName("state-queue minting"),
+      );
+      const ref = (txByte: string): UTxO => ({
+        txHash: txByte.repeat(32),
+        outputIndex: 0,
+        address: "addr_test1reference",
+        assets: { lovelace: 4_000_000n, [roleUnit]: 1n },
+        scriptRef: contracts.stateQueue.mintingScript,
+      });
+      expect(() =>
+        buildReferenceScriptOutRefMap(
+          [ref("01"), ref("ff")],
+          [
+            {
+              name: "stateQueueMint",
+              script: contracts.stateQueue.mintingScript,
+              scriptHash: contracts.stateQueue.policyId,
+              contract: {
+                type: contracts.stateQueue.mintingScript.type,
+                cborHex: contracts.stateQueue.mintingScript.script,
+              },
+              referenceScriptTargetName: "state-queue minting",
+            },
+          ],
+          authPolicy,
+        ),
+      ).toThrow(/ambiguous.*exactly one live/u);
+    }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
+  );
+
+  it.effect("rejects a role token attached to the wrong reference script", () =>
+    Effect.gen(function* () {
+      const contracts = yield* AlwaysSucceedsContract;
+      const authPolicy = testReferenceScriptAuthPolicy(
+        contracts.referenceScriptAuth.policyId,
+        contracts.referenceScriptAuth.mintingScriptCBOR,
+      );
+      const roleUnit = toUnit(
+        authPolicy.policyId,
+        referenceScriptAuthTokenName("state-queue minting"),
+      );
+      expect(() =>
+        buildReferenceScriptOutRefMap(
+          [
+            {
+              txHash: "ff".repeat(32),
+              outputIndex: 0,
+              address: "addr_test1reference",
+              assets: { lovelace: 4_000_000n, [roleUnit]: 1n },
+              scriptRef: {
+                type: "Native",
+                script: `8200581c${"01".repeat(28)}`,
+              },
+            },
+          ],
+          [
+            {
+              name: "stateQueueMint",
+              script: contracts.stateQueue.mintingScript,
+              scriptHash: contracts.stateQueue.policyId,
+              contract: {
+                type: contracts.stateQueue.mintingScript.type,
+                cborHex: contracts.stateQueue.mintingScript.script,
+              },
+              referenceScriptTargetName: "state-queue minting",
+            },
+          ],
+          authPolicy,
+        ),
+      ).toThrow(/script hash mismatch/u);
+    }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
+  );
+
+  it.effect("rejects a non-unit reference-script role-token quantity", () =>
+    Effect.gen(function* () {
+      const contracts = yield* AlwaysSucceedsContract;
+      const authPolicy = testReferenceScriptAuthPolicy(
+        contracts.referenceScriptAuth.policyId,
+        contracts.referenceScriptAuth.mintingScriptCBOR,
+      );
+      const roleUnit = toUnit(
+        authPolicy.policyId,
+        referenceScriptAuthTokenName("state-queue minting"),
+      );
+      expect(() =>
+        buildReferenceScriptOutRefMap(
+          [
+            {
+              txHash: "02".repeat(32),
+              outputIndex: 0,
+              address: "addr_test1reference",
+              assets: { lovelace: 4_000_000n, [roleUnit]: 2n },
+              scriptRef: contracts.stateQueue.mintingScript,
+            },
+          ],
+          [
+            {
+              name: "stateQueueMint",
+              script: contracts.stateQueue.mintingScript,
+              scriptHash: contracts.stateQueue.policyId,
+              contract: {
+                type: contracts.stateQueue.mintingScript.type,
+                cborHex: contracts.stateQueue.mintingScript.script,
+              },
+              referenceScriptTargetName: "state-queue minting",
+            },
+          ],
+          authPolicy,
+        ),
+      ).toThrow(/must carry exactly one/u);
+    }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
+  );
+
+  it.effect("rejects a role token without an attached reference script", () =>
+    Effect.gen(function* () {
+      const contracts = yield* AlwaysSucceedsContract;
+      const authPolicy = testReferenceScriptAuthPolicy(
+        contracts.referenceScriptAuth.policyId,
+        contracts.referenceScriptAuth.mintingScriptCBOR,
+      );
+      const roleUnit = toUnit(
+        authPolicy.policyId,
+        referenceScriptAuthTokenName("state-queue minting"),
+      );
+      expect(() =>
+        buildReferenceScriptOutRefMap(
+          [
+            {
+              txHash: "03".repeat(32),
+              outputIndex: 0,
+              address: "addr_test1reference",
+              assets: { lovelace: 4_000_000n, [roleUnit]: 1n },
+              scriptRef: undefined,
+            },
+          ],
+          [
+            {
+              name: "stateQueueMint",
+              script: contracts.stateQueue.mintingScript,
+              scriptHash: contracts.stateQueue.policyId,
+              contract: {
+                type: contracts.stateQueue.mintingScript.type,
+                cborHex: contracts.stateQueue.mintingScript.script,
+              },
+              referenceScriptTargetName: "state-queue minting",
+            },
+          ],
+          authPolicy,
+        ),
+      ).toThrow(/not attached to a reference script/u);
+    }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
+  );
+
+  it.effect("rejects a reference UTxO bundling multiple auth-role tokens", () =>
+    Effect.gen(function* () {
+      const contracts = yield* AlwaysSucceedsContract;
+      const authPolicy = testReferenceScriptAuthPolicy(
+        contracts.referenceScriptAuth.policyId,
+        contracts.referenceScriptAuth.mintingScriptCBOR,
+      );
+      const roleUnit = toUnit(
+        authPolicy.policyId,
+        referenceScriptAuthTokenName("state-queue minting"),
+      );
+      const otherRoleUnit = toUnit(
+        authPolicy.policyId,
+        referenceScriptAuthTokenName("scheduler minting"),
+      );
+      expect(() =>
+        buildReferenceScriptOutRefMap(
+          [
+            {
+              txHash: "01".repeat(32),
+              outputIndex: 0,
+              address: "addr_test1reference",
+              assets: {
+                lovelace: 4_000_000n,
+                [roleUnit]: 1n,
+                [otherRoleUnit]: 1n,
+              },
+              scriptRef: contracts.stateQueue.mintingScript,
+            },
+          ],
+          [
+            {
+              name: "stateQueueMint",
+              script: contracts.stateQueue.mintingScript,
+              scriptHash: contracts.stateQueue.policyId,
+              contract: {
+                type: contracts.stateQueue.mintingScript.type,
+                cborHex: contracts.stateQueue.mintingScript.script,
+              },
+              referenceScriptTargetName: "state-queue minting",
+            },
+          ],
+          authPolicy,
+        ),
+      ).toThrow(/must carry no other/u);
+    }).pipe(Effect.provide(AlwaysSucceedsContract.Default)),
   );
 
   it("defaults init manifest output to the package-root deploymentInfo", () => {
@@ -458,6 +733,7 @@ describe("contract deployment info", () => {
         referenceScriptDeployAddress: "addr_test1other",
         hubOracleOneShotTxHash: "cd".repeat(32),
         hubOracleOneShotOutputIndex: 1,
+        economicsProfile: "public-preprod-launch-v1",
         path: "/tmp/contract-deployment-info.json",
       });
 
@@ -603,6 +879,8 @@ describe("contract deployment info", () => {
           manifest.contracts.fraudProofMissingNativeScriptTxStep04.scriptHash,
           manifest.contracts.fraudProofMissingNativeScriptTxStep05.scriptHash,
           manifest.contracts.fraudProofMissingNativeScriptTxStep06.scriptHash,
+          manifest.contracts.fraudProofMissingNativeScriptTxStep07.scriptHash,
+          manifest.contracts.fraudProofMissingNativeScriptTxStep08.scriptHash,
         ]);
         expect(
           reconstructed.fraudProofContracts.transitionTrace.finals.map(

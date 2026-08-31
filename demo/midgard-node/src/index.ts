@@ -2379,6 +2379,52 @@ program
     "--stress-summary <path>",
     "Optional e2e-stress-l2-throughput summary.json artifact to include as a functional gate",
   )
+  .option(
+    "--state-correction-evidence <path>",
+    "Launch-scope fault-proof aggregate claim; cannot satisfy acceptance without the independent source options",
+  )
+  .option(
+    "--state-correction-deployment-manifest <path>",
+    "Finalized Preprod deployment manifest independently loaded for state-correction acceptance",
+  )
+  .option(
+    "--state-correction-blueprint <path>",
+    "Aiken blueprint independently hashed for state-correction acceptance",
+  )
+  .option(
+    "--state-correction-catalogue <path>",
+    "Fraud-proof catalogue JSON independently matched to the deployment manifest",
+  )
+  .option(
+    "--state-correction-parameters <path>",
+    "Cardano protocol-parameter snapshot independently digested for state-correction acceptance",
+  )
+  .option(
+    "--state-correction-release-evidence <path>",
+    "Release-evidence artifact independently hashed for state-correction acceptance",
+  )
+  .option(
+    "--state-correction-workflow-journal <directory>",
+    "Immutable completed family workflow journal directory; repeat once per launch-scope family",
+    collectStringOption,
+    [],
+  )
+  .option(
+    "--state-correction-l1-observation <path>",
+    "Authenticated local Kupmios/Ogmios L1 transaction observation; repeat for every required transaction",
+    collectStringOption,
+    [],
+  )
+  .option(
+    "--state-correction-recovery-observation <path>",
+    "Raw structured recovery drill observation; repeat in canonical recovery-matrix order",
+    collectStringOption,
+    [],
+  )
+  .option(
+    "--state-correction-final-snapshot <path>",
+    "Authenticated final chain/queue/economic/withdrawal/classification snapshot",
+  )
   .action(async (_args, options) => {
     const opts = options.opts();
     const mode =
@@ -2392,6 +2438,48 @@ program
       typeof opts.adminApiKeyEnv === "string"
         ? process.env[opts.adminApiKeyEnv]
         : undefined;
+    const stateCorrectionWorkflowJournalDirectories = parseStringListOption(
+      opts.stateCorrectionWorkflowJournal,
+      "--state-correction-workflow-journal",
+    );
+    const stateCorrectionL1ObservationPaths = parseStringListOption(
+      opts.stateCorrectionL1Observation,
+      "--state-correction-l1-observation",
+    );
+    const stateCorrectionRecoveryObservationPaths = parseStringListOption(
+      opts.stateCorrectionRecoveryObservation,
+      "--state-correction-recovery-observation",
+    );
+    const stateCorrectionSingleSourceValues = [
+      opts.stateCorrectionDeploymentManifest,
+      opts.stateCorrectionBlueprint,
+      opts.stateCorrectionCatalogue,
+      opts.stateCorrectionParameters,
+      opts.stateCorrectionReleaseEvidence,
+      opts.stateCorrectionFinalSnapshot,
+    ];
+    const hasAnyStateCorrectionIndependentSource =
+      stateCorrectionSingleSourceValues.some(
+        (value) => typeof value === "string",
+      ) ||
+      stateCorrectionWorkflowJournalDirectories.length > 0 ||
+      stateCorrectionL1ObservationPaths.length > 0 ||
+      stateCorrectionRecoveryObservationPaths.length > 0;
+    const hasAllStateCorrectionIndependentSources =
+      stateCorrectionSingleSourceValues.every(
+        (value) => typeof value === "string",
+      ) &&
+      stateCorrectionWorkflowJournalDirectories.length > 0 &&
+      stateCorrectionL1ObservationPaths.length > 0 &&
+      stateCorrectionRecoveryObservationPaths.length > 0;
+    if (
+      hasAnyStateCorrectionIndependentSource &&
+      !hasAllStateCorrectionIndependentSources
+    ) {
+      throw new Error(
+        "State-correction independent reconciliation requires manifest, blueprint, catalogue, parameters, release evidence, at least one workflow journal, at least one authenticated L1 observation, at least one recovery observation, and the final snapshot together.",
+      );
+    }
     const mainEffect = provideDatabaseServices(
       E2EFinalizeSummaryCommand.finalizeE2ESummaryProgram({
         ...(typeof opts.outDir === "string" ? { outDir: opts.outDir } : {}),
@@ -2409,6 +2497,36 @@ program
         transactions: parseTxEvidenceOptions(opts.tx),
         ...(typeof opts.stressSummary === "string"
           ? { stressSummaryPath: opts.stressSummary }
+          : {}),
+        ...(typeof opts.stateCorrectionEvidence === "string"
+          ? {
+              stateCorrectionEvidencePath: opts.stateCorrectionEvidence,
+            }
+          : {}),
+        ...(hasAllStateCorrectionIndependentSources
+          ? {
+              stateCorrectionIndependentSourcePaths: {
+                deploymentManifestPath:
+                  opts.stateCorrectionDeploymentManifest as string,
+                blueprintPath: opts.stateCorrectionBlueprint as string,
+                cataloguePath: opts.stateCorrectionCatalogue as string,
+                parametersPath: opts.stateCorrectionParameters as string,
+                releaseEvidencePath:
+                  opts.stateCorrectionReleaseEvidence as string,
+                workflowJournalDirectories:
+                  stateCorrectionWorkflowJournalDirectories,
+                l1ObservationPaths: stateCorrectionL1ObservationPaths,
+                recoveryObservationPaths:
+                  stateCorrectionRecoveryObservationPaths,
+                finalSnapshotPath: opts.stateCorrectionFinalSnapshot as string,
+              },
+              stateCorrectionLocalAuthorityConfig: {
+                provider: process.env.L1_PROVIDER,
+                providerFailover: process.env.L1_PROVIDER_FAILOVER,
+                kupoUrl: process.env.L1_KUPO_KEY ?? "",
+                ogmiosUrl: process.env.L1_OGMIOS_KEY ?? "",
+              },
+            }
           : {}),
       }).pipe(tapJson()),
     );
@@ -3590,6 +3708,8 @@ for (const commandName of RegisterActiveOperator.REFERENCE_SCRIPT_COMMAND_NAMES)
               },
               {
                 referenceScriptAuth: authPolicy,
+                availabilityChallengeParameters:
+                  Services.availabilityParametersFromExplicitEnvironment(),
               },
             );
           yield* Effect.try({
@@ -3912,7 +4032,7 @@ program
       return;
     }
 
-    const mainEffect = provideTxServices(
+    const mainEffect = provideDatabaseTxServices(
       DaAttestation.attestStateQueueOnceProgram({ headerHash }).pipe(tapJson()),
     );
 

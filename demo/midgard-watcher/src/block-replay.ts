@@ -656,6 +656,28 @@ export type WatcherBlockReplayResultV1 = Readonly<{
   resultDigest: string;
 }>;
 
+const admittedFullBlockReplayResultsV1 = new WeakSet<object>();
+
+/**
+ * Production replay artifacts may consume only a result minted by the full
+ * W21/W22/W23/W24-bound entry point below. A digest-correct structural clone
+ * is durable evidence, not live replay authority.
+ */
+export const assertWatcherFullBlockReplayResultV1 = (
+  result: WatcherBlockReplayResultV1,
+): void => {
+  if (!admittedFullBlockReplayResultsV1.has(result)) {
+    throw new Error("watcher full block-replay result is not admitted");
+  }
+};
+
+const admitFullBlockReplayResultV1 = (
+  result: WatcherBlockReplayResultV1,
+): WatcherBlockReplayResultV1 => {
+  admittedFullBlockReplayResultsV1.add(result);
+  return result;
+};
+
 const digestResult = (
   result: Omit<
     WatcherBlockReplayResultV1,
@@ -2854,7 +2876,9 @@ export const evaluateWatcherBlockReplayV1 = async (
         : { minimumConfirmationDepth: input.minimumConfirmationDepth }),
     });
   } catch {
-    return errorResult(["canonical_reconstruction_failed"], null, 0);
+    return admitFullBlockReplayResultV1(
+      errorResult(["canonical_reconstruction_failed"], null, 0),
+    );
   }
 
   const context: WatcherBlockReplayContextV1 = Object.freeze({
@@ -2904,7 +2928,9 @@ export const evaluateWatcherBlockReplayV1 = async (
     });
     config = makeWatcherPhaseBConfigV1(evidence.header);
   } catch (error) {
-    return errorResult([reasonCodeOf(error)], context, transactionCount);
+    return admitFullBlockReplayResultV1(
+      errorResult([reasonCodeOf(error)], context, transactionCount),
+    );
   }
 
   try {
@@ -2917,16 +2943,20 @@ export const evaluateWatcherBlockReplayV1 = async (
       committedSteps,
       eventAuthorities: input.eventAuthorities ?? [],
     });
-    return finalizeResult({
-      core,
-      context,
-      transactionCount,
-      expectedPriorStateRoot: evidence.header.prevUtxosRoot,
-      expectedPostStateRoot: evidence.header.utxosRoot,
-      committedSteps,
-    });
+    return admitFullBlockReplayResultV1(
+      finalizeResult({
+        core,
+        context,
+        transactionCount,
+        expectedPriorStateRoot: evidence.header.prevUtxosRoot,
+        expectedPostStateRoot: evidence.header.utxosRoot,
+        committedSteps,
+      }),
+    );
   } catch (error) {
-    return errorResult([reasonCodeOf(error)], context, transactionCount);
+    return admitFullBlockReplayResultV1(
+      errorResult([reasonCodeOf(error)], context, transactionCount),
+    );
   }
 };
 

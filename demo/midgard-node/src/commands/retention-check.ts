@@ -1,6 +1,7 @@
 import {
   daRetentionPruneDecisionV1,
   MIDGARD_RETENTION_WINDOW_V1,
+  RETENTION_KNOWN_HEADER_STATUSES_V1,
   retentionDeadlineAlertV1,
   type RetentionPruneReasonCodeV1,
 } from "@al-ft/midgard-core";
@@ -92,6 +93,9 @@ export const evaluateRetentionCheck = (
         nowMs: input.nowMillis,
         retentionDays,
         headerStatus: record.headerStatus ?? undefined,
+        // The exact current deployment schema has no Q58 capability. When it
+        // lands this must be replaced by authenticated challenge state.
+        availabilityChallengeState: "not_deployed",
       },
     );
 
@@ -118,15 +122,42 @@ export const evaluateRetentionCheck = (
       continue;
     }
 
+    // Report malformed local evidence independently of the Q58 retention
+    // hold. The prune authority intentionally evaluates an unavailable
+    // availability-challenge capability first, but that must not mask a
+    // missing consensus timestamp or an unrecognised queue status from the
+    // operator-facing diagnostic.
+    const blockEndTimeMs = record.blockEndTimeMs;
+    const structuralReason: RetentionPruneReasonCodeV1 | undefined =
+      typeof blockEndTimeMs !== "number" ||
+      !Number.isSafeInteger(blockEndTimeMs) ||
+      blockEndTimeMs < 0
+        ? "missing_block_end_time"
+        : typeof record.headerStatus !== "string" ||
+            !(RETENTION_KNOWN_HEADER_STATUSES_V1 as readonly string[]).includes(
+              record.headerStatus,
+            )
+          ? "header_status_unknown"
+          : undefined;
+    if (structuralReason !== undefined) {
+      alerts.push({
+        headerHash: record.headerHash,
+        reasonCode: structuralReason,
+        remainingMs: null,
+        headroomMs: null,
+      });
+      reasons.push(`retention_indeterminate:${structuralReason}`);
+      continue;
+    }
+    if (typeof blockEndTimeMs !== "number") {
+      throw new Error("validated retention record lost its block end time");
+    }
+
     if (decision.decision !== "retain") {
       continue;
     }
 
-    if (
-      typeof record.blockEndTimeMs !== "number" ||
-      decision.reasonCode === "missing_block_end_time" ||
-      decision.reasonCode === "header_status_unknown"
-    ) {
+    if (decision.reasonCode === "missing_block_end_time") {
       // Retained for a fail-closed reason with no computable deadline: report
       // it so an operator sees the unresolvable record, but do not fabricate a
       // remaining-time number.
@@ -142,7 +173,7 @@ export const evaluateRetentionCheck = (
 
     const alert = retentionDeadlineAlertV1({
       nowMs: input.nowMillis,
-      blockEndTimeMs: record.blockEndTimeMs,
+      blockEndTimeMs,
       retentionDays,
       alertThresholdMs,
       headerHash: record.headerHash,

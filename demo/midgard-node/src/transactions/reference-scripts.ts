@@ -1140,6 +1140,10 @@ const REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES = [
   "valueNotPreserved",
   "inputSetUniqueness",
   "mintAuthorization",
+  "networkId",
+  "missingNativeScriptUtxo",
+  "nativeScriptInvalid",
+  "minAda",
 ] as const satisfies readonly (keyof SDK.FaultProofContracts)[];
 
 const TRANSITION_TRACE_FINAL_CONTRACT_NAMES = [
@@ -1166,10 +1170,28 @@ const upperFirst = (value: string): string =>
 const faultProofStepContractName = (
   category: (typeof REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES)[number],
   stepIndex: number,
-): string =>
-  `fraudProof${upperFirst(category)}${
+): string => {
+  if (category === "nativeScriptDecoding") {
+    const names = [
+      "fraudProofNativeScriptDecoding",
+      "fraudProofNativeScriptDecodingStep02",
+      "fraudProofNativeScriptDecodingStep03OpenSubject",
+      "fraudProofNativeScriptDecodingStep03BindDescriptor",
+      "fraudProofNativeScriptDecodingStep03AdvanceOrClose",
+      "fraudProofNativeScriptDecodingStep04",
+    ] as const;
+    const name = names[stepIndex];
+    if (name === undefined) {
+      throw new Error(
+        `native-script-decoding exposes an unexpected step index ${stepIndex.toString()}`,
+      );
+    }
+    return name;
+  }
+  return `fraudProof${upperFirst(category)}${
     stepIndex === 0 ? "" : `Step${(stepIndex + 1).toString().padStart(2, "0")}`
   }`;
+};
 
 const manifestReferenceScriptTarget = (
   contractName: string,
@@ -1185,11 +1207,60 @@ const manifestReferenceScriptTarget = (
   return { name, script };
 };
 
+/**
+ * The prefix of a compiled fault-proof chain that the canonical deployment ABI
+ * actually registers.
+ *
+ * `midgard-core`'s `DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES` names five
+ * `missingNativeScriptUtxo` steps and three `nativeScriptInvalid` steps, while
+ * `onchain/aiken` compiles seven and five and `midgard-fault-proofs`'s runtime
+ * submits against `fraudProofMissingNativeScriptUtxoStep06`/`Step07` and
+ * `fraudProofNativeScriptInvalidStep04`/`Step05`. `validateContracts` takes an
+ * EXACT key set, so a deployment carrying those four surplus steps is rejected
+ * outright and one omitting the five/three is rejected too — the node can only
+ * deploy what the ABI names. Extending the ABI moves the manifest identity for
+ * `midgard-core`, `midgard-watcher`, `da-committee-node` and this package, so
+ * it is not a change this module can make on its own.
+ *
+ * This is a BOUND, not a filter. It only ever drops a TAIL of unregistered
+ * steps: an unregistered step with a registered step after it, or a chain whose
+ * very first step is unregistered, still fails closed here, and every step it
+ * does return still goes through `manifestReferenceScriptTarget`.
+ */
+const abiRegisteredChainSteps = <T>(
+  category: (typeof REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES)[number],
+  steps: readonly T[],
+): readonly T[] => {
+  const registered = steps.map((_, stepIndex) =>
+    REFERENCE_SCRIPT_ROLE_BY_CONTRACT_NAME.has(
+      faultProofStepContractName(category, stepIndex),
+    ),
+  );
+  const firstUnregistered = registered.indexOf(false);
+  if (firstUnregistered === -1) {
+    return steps;
+  }
+  if (firstUnregistered === 0) {
+    throw new Error(
+      `Fault-proof category ${category} has no canonical reference-script role for its first step`,
+    );
+  }
+  if (registered.lastIndexOf(true) > firstUnregistered) {
+    throw new Error(
+      `Fault-proof category ${category} registers a step after unregistered step ${(firstUnregistered + 1).toString()}`,
+    );
+  }
+  return steps.slice(0, firstUnregistered);
+};
+
 const registeredFraudProofReferenceScriptTargets = (
   contracts: SDK.MidgardValidators,
 ): readonly ReferenceScriptTarget[] => [
   ...REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES.flatMap((category) =>
-    contracts.fraudProofContracts[category].steps.map((validator, stepIndex) =>
+    abiRegisteredChainSteps(
+      category,
+      contracts.fraudProofContracts[category].steps,
+    ).map((validator, stepIndex) =>
       manifestReferenceScriptTarget(
         faultProofStepContractName(category, stepIndex),
         validator.spendingScript,
@@ -1208,6 +1279,55 @@ const registeredFraudProofReferenceScriptTargets = (
       ),
   ),
 ];
+
+const legacyFraudProofReferenceScriptTargets = (
+  contracts: SDK.MidgardValidators,
+): readonly ReferenceScriptTarget[] => {
+  const families = [
+    ["fraudProofDoubleSpend", contracts.fraudProofContracts.doubleSpend],
+    [
+      "fraudProofNonExistentInput",
+      contracts.fraudProofContracts.nonExistentInput,
+    ],
+    [
+      "fraudProofNonExistentInputNoIndex",
+      contracts.fraudProofContracts.nonExistentInputNoIndex,
+    ],
+    ["fraudProofInvalidRange", contracts.fraudProofContracts.invalidRange],
+    ["fraudProofZeroInput", contracts.fraudProofContracts.zeroInput],
+    ["fraudProofDaHashPreimage", contracts.fraudProofContracts.daHashPreimage],
+    [
+      "fraudProofNoReferenceInput",
+      contracts.fraudProofContracts.noReferenceInput,
+    ],
+    [
+      "fraudProofReferenceInputNoIdx",
+      contracts.fraudProofContracts.referenceInputNoIdx,
+    ],
+    [
+      "fraudProofInvalidSignature",
+      contracts.fraudProofContracts.invalidSignature,
+    ],
+  ] as const;
+  // Step 01 is included: `chain.steps[0]` IS `chain.firstStep`, and
+  // `contract-deployment-info.ts` gives that script the
+  // `V1 fraud-proof <family> step-01` manifest role. Publishing from step 02
+  // onwards left those nine roles declared by the manifest but never deployed,
+  // and `validateReferenceScripts` requires a confirmed reference script for
+  // every role in `DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_ROLES`.
+  return families.flatMap(([firstStepContractName, chain]) =>
+    chain.steps.map((validator, stepIndex) =>
+      manifestReferenceScriptTarget(
+        stepIndex === 0
+          ? firstStepContractName
+          : `${firstStepContractName}Step${(stepIndex + 1)
+              .toString()
+              .padStart(2, "0")}`,
+        validator.spendingScript,
+      ),
+    ),
+  );
+};
 
 export const nodeRuntimeReferenceScriptTargets = (
   contracts: SDK.MidgardValidators,
@@ -1281,6 +1401,22 @@ export const nodeRuntimeReferenceScriptTargets = (
     script: contracts.fraudProofCatalogue.mintingScript,
   },
   {
+    name: "V1 fraud-proof computation-thread minting",
+    script: contracts.computationThread.mintingScript,
+  },
+  {
+    name: "V1 fraud-proof token minting",
+    script: contracts.fraudProof.mintingScript,
+  },
+  {
+    name: "V1 MPF chunked-verify withdrawal",
+    script: contracts.chunkedVerify.withdrawalScript,
+  },
+  {
+    name: "V1 MPF pexcludes withdrawal",
+    script: contracts.pexcludes.withdrawalScript,
+  },
+  {
     name: "deposit minting",
     script: contracts.deposit.mintingScript,
   },
@@ -1319,6 +1455,27 @@ export const nodeRuntimeReferenceScriptTargets = (
   {
     name: "payout minting",
     script: contracts.payout.mintingScript,
+  },
+  // The state-correction wave gave the availability challenge both a
+  // reference-script role and an auth token in the deployment manifest, and
+  // `fetchDaAttestationReferenceScripts` in `src/transactions/da-attestation.ts`
+  // resolves "availability-challenge minting" at runtime, but the publication
+  // command was never extended to match — the node-runtime plan reported 152
+  // targets against the manifest's declared roles and every DA-attestation
+  // settlement path failed with `Missing reference script`. These publish
+  // exactly the two roles the manifest declares, no more.
+  //
+  // Anastasia-Labs/midgard#649: `availability_challenge` compiles to 19,956
+  // bytes, so real-L1 publication of these two targets stays blocked until #649
+  // lands and the validator shrinks; the emulator suites raise their envelope
+  // and so do cover them.
+  {
+    name: "availability-challenge spending",
+    script: contracts.availabilityChallenge.spendingScript,
+  },
+  {
+    name: "availability-challenge minting",
+    script: contracts.availabilityChallenge.mintingScript,
   },
   // #579 removed all three "V1 transaction-field" reference scripts with their
   // contracts; the §8.6 certificate carries its own roles elsewhere in this
@@ -1370,7 +1527,16 @@ export const nodeRuntimeReferenceScriptTargets = (
             contracts.fraudProofs.validationTraceDispute.award.spendingScript,
         },
       ]),
+  ...legacyFraudProofReferenceScriptTargets(contracts),
   ...registeredFraudProofReferenceScriptTargets(contracts),
+  {
+    name: "correction-lock spending",
+    script: contracts.correctionLock.spendingScript,
+  },
+  {
+    name: "claim-registry spending",
+    script: contracts.claimRegistry.spendingScript,
+  },
 ];
 
 export const referenceScriptTargetsByCommand = (
@@ -1450,6 +1616,13 @@ export const referenceScriptTargetsByCommand = (
       name: "da-attestation minting",
       script: contracts.daAttestation.mintingScript,
     },
+    // `fetchDaAttestationReferenceScripts` resolves this alongside the
+    // da-attestation pair, so the `da` scope has to publish it too. Same
+    // Anastasia-Labs/midgard#649 caveat as the node-runtime entries above.
+    {
+      name: "availability-challenge minting",
+      script: contracts.availabilityChallenge.mintingScript,
+    },
   ],
   "state-queue": [
     {
@@ -1459,6 +1632,14 @@ export const referenceScriptTargetsByCommand = (
     {
       name: "state-queue minting",
       script: contracts.stateQueue.mintingScript,
+    },
+    {
+      name: "correction-lock spending",
+      script: contracts.correctionLock.spendingScript,
+    },
+    {
+      name: "claim-registry spending",
+      script: contracts.claimRegistry.spendingScript,
     },
   ],
   scheduler: [

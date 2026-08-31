@@ -52,6 +52,7 @@ import { DatabaseError } from "@/database/utils/common.js";
 import { assertPhase1AcceptCrashCheckpointConfiguration } from "@/e2e/phase1-accept-crash-checkpoint.js";
 import {
   admissionBacklogGaugeFiber,
+  attestationTimeoutCorrectionFiber,
   blockCommitmentFiber,
   blockConfirmationFiber,
   daPublicationReconcilerFiber,
@@ -591,6 +592,9 @@ export const runNode = (
           mkSchedule(nodeConfig.WAIT_BETWEEN_RETENTION_SWEEPS),
         ),
         mergeFiber(mkSchedule(nodeConfig.WAIT_BETWEEN_MERGE_TXS)),
+        attestationTimeoutCorrectionFiber(
+          mkSchedule(nodeConfig.WAIT_BETWEEN_MERGE_TXS),
+        ),
         mpfPayloadAuditFiber,
         withMonitoring ? monitorMempoolFiber(mkSchedule(1000)) : Effect.void,
         txQueueProcessorFiber(mkSchedule(nodeConfig.TX_QUEUE_POLL_INTERVAL_MS)),

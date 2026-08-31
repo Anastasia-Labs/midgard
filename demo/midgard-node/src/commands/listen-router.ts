@@ -2451,8 +2451,7 @@ const getStateQueueHandler = Effect.gen(function* () {
           );
           return classifyOldestQueuedBlockReadiness({
             headerHash,
-            currentDaAttestation: stateQueueNode.da_attestation,
-            requiredDaAttestation: contracts.daAttestation.policyId,
+            currentDaAvailability: stateQueueNode.da_attestation,
             readyAfterUnixTime: maturity.readyAfterUnixTime,
             nowUnixTime: Date.now(),
           });

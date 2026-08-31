@@ -107,12 +107,20 @@ export type TxOrderMaterialCarriageV1 = {
 /** One transaction, as much of it as sourcing a §8 carriage needs. */
 export type ObservedL1TransactionV1 = {
   readonly txHash: string;
+  /** Spending inputs in the ledger order presented by Ogmios. */
+  readonly spentInputs?: readonly OutRefLike[];
   /** Reference inputs in the order the observation presented them. */
   readonly referenceInputs: readonly OutRefLike[];
   /** Minting policy ids, ascending — the domain of a mint redeemer's index. */
   readonly mintPolicyIds: readonly string[];
   /** Redeemer payloads by `(purpose, index)`, base16 Plutus data. */
   readonly redeemers: readonly ObservedL1RedeemerV1[];
+};
+
+/** The canonical block which carried an observed transaction. */
+export type ObservedL1TransactionAtPointV1 = ObservedL1TransactionV1 & {
+  readonly blockPoint: L1ChainPointV1 & { readonly blockNo: number };
+  readonly transactionIndex: number;
 };
 
 export type ObservedL1RedeemerV1 = {
@@ -291,9 +299,74 @@ type KupoMatchV1 = {
   readonly transaction_id?: unknown;
   readonly output_index?: unknown;
   readonly created_at?: unknown;
+  readonly spent_at?: unknown;
   readonly datum_hash?: unknown;
   readonly datum_type?: unknown;
   readonly datum?: unknown;
+};
+
+export type KupoSpendV1 = Readonly<{
+  point: L1ChainPointV1;
+  transactionId: string;
+  inputIndex: number;
+  redeemer: string | null;
+}>;
+
+/**
+ * Reads the exact canonical spend attached by Kupo to an output match. A null
+ * result means the output is currently unspent on Kupo's selected chain; a
+ * malformed partial spend is refused rather than treated as absence.
+ */
+export const fetchKupoSpendV1 = async ({
+  kupoUrl,
+  outRef,
+  fetchImpl = fetch,
+  timeoutMs = DEFAULT_TX_ORDER_CARRIAGE_TIMEOUT_MS_V1,
+}: {
+  readonly kupoUrl: string;
+  readonly outRef: OutRefLike;
+  readonly fetchImpl?: FetchLike;
+  readonly timeoutMs?: number;
+}): Promise<KupoSpendV1 | null> => {
+  const match = await fetchKupoMatchV1({
+    kupoUrl,
+    outRef,
+    fetchImpl,
+    timeoutMs,
+  });
+  if (match.spent_at === null) return null;
+  if (typeof match.spent_at !== "object" || match.spent_at === undefined) {
+    throw new Error(
+      `Kupo match for ${outRef.txHash}#${outRef.outputIndex.toString()} omitted its required spent_at field`,
+    );
+  }
+  const spent = match.spent_at as {
+    transaction_id?: unknown;
+    input_index?: unknown;
+    redeemer?: unknown;
+  };
+  if (
+    typeof spent.transaction_id !== "string" ||
+    !HEX_32.test(spent.transaction_id)
+  ) {
+    throw new Error("Kupo spent_at.transaction_id is not a transaction id");
+  }
+  if (
+    typeof spent.input_index !== "number" ||
+    !Number.isSafeInteger(spent.input_index) ||
+    spent.input_index < 0
+  ) {
+    throw new Error("Kupo spent_at.input_index is not an input index");
+  }
+  if (spent.redeemer !== undefined && typeof spent.redeemer !== "string") {
+    throw new Error("Kupo spent_at.redeemer is not base16 data");
+  }
+  return Object.freeze({
+    point: exactPoint(match.spent_at, "kupo.match.spent_at"),
+    transactionId: spent.transaction_id,
+    inputIndex: spent.input_index,
+    redeemer: spent.redeemer ?? null,
+  });
 };
 
 const fetchKupoMatchV1 = async ({
@@ -554,6 +627,7 @@ const parseObservedTransactionV1 = (
 ): ObservedL1TransactionV1 => {
   const record = value as {
     id?: unknown;
+    inputs?: unknown;
     references?: unknown;
     mint?: unknown;
     redeemers?: unknown;
@@ -562,6 +636,16 @@ const parseObservedTransactionV1 = (
   if (typeof txHash !== "string" || !HEX_32.test(txHash)) {
     throw new Error(`${label}.id is not a transaction id`);
   }
+  const spentInputs =
+    record.inputs === undefined
+      ? []
+      : Array.isArray(record.inputs)
+        ? record.inputs.map((entry, index) =>
+            exactOutRef(entry, `${label}.inputs[${index.toString()}]`),
+          )
+        : (() => {
+            throw new Error(`${label}.inputs is not an array`);
+          })();
   const references =
     record.references === undefined
       ? []
@@ -618,7 +702,13 @@ const parseObservedTransactionV1 = (
         : (() => {
             throw new Error(`${label}.redeemers is not an array`);
           })();
-  return { txHash, referenceInputs: references, mintPolicyIds, redeemers };
+  return {
+    txHash,
+    spentInputs,
+    referenceInputs: references,
+    mintPolicyIds,
+    redeemers,
+  };
 };
 
 /**
@@ -651,7 +741,7 @@ export const readOgmiosBlockTransactionV1 = async ({
   readonly webSocketFactory?: WebSocketFactory;
   readonly timeoutMs?: number;
   readonly blockScanLimit?: number;
-}): Promise<ObservedL1TransactionV1> => {
+}): Promise<ObservedL1TransactionAtPointV1> => {
   const session = await openOgmiosSessionV1({
     url: normalizeOgmiosWebSocketUrl(ogmiosUrl),
     timeoutMs,
@@ -689,6 +779,7 @@ export const readOgmiosBlockTransactionV1 = async ({
       const block = next.block as {
         id?: unknown;
         slot?: unknown;
+        height?: unknown;
         transactions?: unknown;
       };
       const blockId = block.id;
@@ -715,10 +806,19 @@ export const readOgmiosBlockTransactionV1 = async ({
           `block ${blockPoint.headerHash} does not contain transaction ${txHash}`,
         );
       }
-      return parseObservedTransactionV1(
-        transactions[index],
-        `ogmios.block(${blockPoint.headerHash}).transactions[${index.toString()}]`,
-      );
+      const blockNo = exactSlot(block.height, "ogmios.block.height");
+      return {
+        ...parseObservedTransactionV1(
+          transactions[index],
+          `ogmios.block(${blockPoint.headerHash}).transactions[${index.toString()}]`,
+        ),
+        blockPoint: {
+          slot: exactSlot(block.slot, "ogmios.block.slot"),
+          headerHash: exactHeaderHash(block.id, "ogmios.block.id"),
+          blockNo,
+        },
+        transactionIndex: index,
+      };
     }
     throw new Error(
       `chain-sync did not reach block ${blockPoint.headerHash} within ` +

@@ -8,6 +8,7 @@ import {
   DA_TRANSPORT_LIMITS_V1,
   DA_TRANSPORT_V1_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
+import { DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import {
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   type ReferenceScriptAuthPolicyDeploymentInfo,
@@ -40,15 +41,19 @@ import {
   fraudProofsToIndexedValidators,
 } from "@/transactions/initialization.js";
 
+import { TEST_AVAILABILITY_CHALLENGE_V1 } from "./helpers/availability-challenge-v1.js";
+import { TEST_CARDANO_PROTOCOL_PARAMETERS_V1 } from "./helpers/cardano-protocol-parameters-v1.js";
+
 const PRODUCER_KEY = `seed:${"00".repeat(31)}01`;
 const WATCHER_KEY = `seed:${"00".repeat(31)}02`;
 const PUBLIC_RETAINED_DA_KEY = `seed:${"00".repeat(31)}03`;
 const DA_VKEY = "11".repeat(32);
 const PRODUCER_DA_VKEY = "22".repeat(32);
-const CARDANO_PARAMETERS = normalizeDeploymentManifestV1JsonValue({
-  maxTxSize: 16_384,
-});
+const CARDANO_PARAMETERS = TEST_CARDANO_PROTOCOL_PARAMETERS_V1;
 const MANIFEST_IDENTITY_CONTEXT: DeploymentManifestV1IdentityContext = {
+  availabilityChallenge: TEST_AVAILABILITY_CHALLENGE_V1,
+  economics:
+    DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE["bounded-acceptance-v1"],
   cardanoProtocolParameters: {
     snapshot: CARDANO_PARAMETERS,
     digest: computeDeploymentManifestV1JsonDigest(CARDANO_PARAMETERS),
