@@ -1,3 +1,5 @@
+import { unwrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   Data,
@@ -663,17 +665,26 @@ export const attestStateQueueOnceProgram = (
       const payloadHash = SDK.daPayloadHashHex(payloadCbor);
       const storedPayloadHash =
         payloadRow.value[DaPayloadsDB.Columns.PAYLOAD_SHA256].toString("hex");
-      let payload: SDK.DaPayloadV1;
-      try {
-        payload = SDK.decodeDaPayloadV1(payloadCbor);
-      } catch (cause) {
-        return yield* Effect.fail(
+      const payload = yield* Effect.tryPromise({
+        try: () =>
+          payloadRow.value[DaPayloadsDB.Columns.VERSION] !==
+          Number(SDK.DA_PAYLOAD_V1_VERSION)
+            ? Promise.reject(
+                new Error(
+                  "Stored DA payload schema version must equal canonical V1",
+                ),
+              )
+            : unwrapDaPayloadV1(payloadCbor, {
+                maxPayloadBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes,
+              }).then((unwrapped) =>
+                SDK.decodeDaPayloadV1(unwrapped.innerBytes),
+              ),
+        catch: (cause) =>
           new SDK.StateQueueError({
             message: "Retained DA payload is not canonical V1 CBOR",
             cause,
           }),
-        );
-      }
+      });
       const payloadHeaderHash = yield* SDK.hashBlockHeaderV1(
         payload.block_body.header,
       );
