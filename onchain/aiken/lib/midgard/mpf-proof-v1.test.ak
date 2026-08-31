@@ -2,10 +2,13 @@ use aiken/builtin
 use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use aiken/merkle_patricia_forestry as mpf
-use aiken/merkle_patricia_forestry/helpers.{combine, nibble, suffix}
-use aiken/merkle_patricia_forestry/merkling.{null_hash}
+use aiken/merkle_patricia_forestry/helpers.{combine, nibble, nibbles, suffix}
+use aiken/merkle_patricia_forestry/merkling.{
+  merkle_16, null_hash, sparse_merkle_16,
+}
 use aiken/primitive/bytearray
 use env
+use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/mpf_proof_v1
 
 const key = #"010203"
@@ -18,6 +21,152 @@ const absent_value = #"0a0b0c"
 
 fn singleton_root() -> ByteArray {
   combine(suffix(blake2b_256(key), 0), blake2b_256(value))
+}
+
+fn test_branch(
+  path: ByteArray,
+  cursor: Int,
+  next_cursor: Int,
+  root: ByteArray,
+  neighbors: ByteArray,
+) -> ByteArray {
+  combine(
+    nibbles(path, cursor, next_cursor - 1),
+    merkle_16(
+      nibble(path, next_cursor - 1),
+      root,
+      builtin.slice_bytearray(0, 32, neighbors),
+      builtin.slice_bytearray(32, 32, neighbors),
+      builtin.slice_bytearray(64, 32, neighbors),
+      builtin.slice_bytearray(96, 32, neighbors),
+    ),
+  )
+}
+
+fn test_fork(
+  path: ByteArray,
+  cursor: Int,
+  next_cursor: Int,
+  root: ByteArray,
+  neighbor: mpf.Neighbor,
+) -> ByteArray {
+  combine(
+    nibbles(path, cursor, next_cursor - 1),
+    sparse_merkle_16(
+      nibble(path, next_cursor - 1),
+      root,
+      neighbor.nibble,
+      combine(neighbor.prefix, neighbor.root),
+    ),
+  )
+}
+
+fn test_excluding_root(
+  path: ByteArray,
+  cursor: Int,
+  proof: mpf.Proof,
+) -> ByteArray {
+  when proof is {
+    [] -> null_hash
+    [mpf.Branch { skip, neighbors }, ..steps] -> {
+      let next_cursor = cursor + 1 + skip
+      test_branch(
+        path,
+        cursor,
+        next_cursor,
+        test_excluding_root(path, next_cursor, steps),
+        neighbors,
+      )
+    }
+    [mpf.Fork { neighbor, .. }] ->
+      combine(bytearray.push(neighbor.prefix, neighbor.nibble), neighbor.root)
+    [mpf.Fork { skip, neighbor }, ..steps] -> {
+      let next_cursor = cursor + 1 + skip
+      test_fork(
+        path,
+        cursor,
+        next_cursor,
+        test_excluding_root(path, next_cursor, steps),
+        neighbor,
+      )
+    }
+    [mpf.Leaf { key, value, .. }] -> combine(suffix(key, cursor), value)
+    [mpf.Leaf { skip, key, value }, ..steps] -> {
+      let next_cursor = cursor + 1 + skip
+      test_fork(
+        path,
+        cursor,
+        next_cursor,
+        test_excluding_root(path, next_cursor, steps),
+        mpf.Neighbor {
+          prefix: suffix(key, next_cursor),
+          nibble: nibble(key, cursor),
+          root: value,
+        },
+      )
+    }
+  }
+}
+
+fn test_including_root(
+  path: ByteArray,
+  value_hash: ByteArray,
+  cursor: Int,
+  proof: mpf.Proof,
+) -> ByteArray {
+  when proof is {
+    [] -> combine(suffix(path, cursor), value_hash)
+    [mpf.Branch { skip, neighbors }, ..steps] -> {
+      let next_cursor = cursor + 1 + skip
+      test_branch(
+        path,
+        cursor,
+        next_cursor,
+        test_including_root(path, value_hash, next_cursor, steps),
+        neighbors,
+      )
+    }
+    [mpf.Fork { skip, neighbor }, ..steps] -> {
+      let next_cursor = cursor + 1 + skip
+      test_fork(
+        path,
+        cursor,
+        next_cursor,
+        test_including_root(path, value_hash, next_cursor, steps),
+        neighbor,
+      )
+    }
+    [mpf.Leaf { skip, key, value }, ..steps] -> {
+      let next_cursor = cursor + 1 + skip
+      test_fork(
+        path,
+        cursor,
+        next_cursor,
+        test_including_root(path, value_hash, next_cursor, steps),
+        mpf.Neighbor {
+          prefix: suffix(key, next_cursor),
+          nibble: nibble(key, next_cursor - 1),
+          root: value,
+        },
+      )
+    }
+  }
+}
+
+fn different_nibble(value: Int) -> Int {
+  if value == 15 {
+    0
+  } else {
+    value + 1
+  }
+}
+
+fn fork_neighbor(path: ByteArray, cursor: Int, seed: ByteArray) -> mpf.Neighbor {
+  mpf.Neighbor {
+    nibble: different_nibble(nibble(path, cursor)),
+    prefix: #"",
+    root: blake2b_256(seed),
+  }
 }
 
 test mpf_proof_v1_matches_the_canonical_typescript_abi_vector() {
@@ -221,6 +370,243 @@ test mpf_proof_v1_total_root_mutations_do_not_call_partial_paths_first() {
       null_hash,
     ),
     mpf_proof_v1.delete_root(null_hash, key, value, []) == None,
+  }
+}
+
+test mpf_proof_v1_two_fold_mutations_match_the_existing_total_mutations() {
+  let updated_value = #"070809"
+  and {
+    mpf_proof_v1.insert_root_two_fold(null_hash, key, value, []) == mpf_proof_v1.insert_root(
+      null_hash,
+      key,
+      value,
+      [],
+    ),
+    mpf_proof_v1.update_root_two_fold(
+      singleton_root(),
+      key,
+      value,
+      updated_value,
+      [],
+    ) == mpf_proof_v1.update_root(
+      singleton_root(),
+      key,
+      value,
+      updated_value,
+      [],
+    ),
+    mpf_proof_v1.delete_root_two_fold(singleton_root(), key, value, []) == mpf_proof_v1.delete_root(
+      singleton_root(),
+      key,
+      value,
+      [],
+    ),
+  }
+}
+
+test mpf_proof_v1_two_fold_mutations_reject_wrong_predecessors() {
+  let updated_value = #"070809"
+  and {
+    mpf_proof_v1.insert_root_two_fold(singleton_root(), key, value, []) == None,
+    mpf_proof_v1.update_root_two_fold(null_hash, key, value, updated_value, []) == None,
+    mpf_proof_v1.delete_root_two_fold(null_hash, key, value, []) == None,
+  }
+}
+
+fn paired_fold_matches_two_fold(proof: mpf.Proof) -> Bool {
+  let path = blake2b_256(key)
+  let predecessor_without_key = test_excluding_root(path, 0, proof)
+  let predecessor_with_key = test_including_root(
+    path,
+    blake2b_256(value),
+    0,
+    proof,
+  )
+  let updated_value = #"0d0e0f"
+  and {
+    mpf_proof_v1.insert_root_paired_fold(
+      predecessor_without_key,
+      key,
+      value,
+      proof,
+    ) == mpf_proof_v1.insert_root_two_fold(
+      predecessor_without_key,
+      key,
+      value,
+      proof,
+    ),
+    mpf_proof_v1.update_root_paired_fold(
+      predecessor_with_key,
+      key,
+      value,
+      updated_value,
+      proof,
+    ) == mpf_proof_v1.update_root_two_fold(
+      predecessor_with_key,
+      key,
+      value,
+      updated_value,
+      proof,
+    ),
+    mpf_proof_v1.delete_root_paired_fold(
+      predecessor_with_key,
+      key,
+      value,
+      proof,
+    ) == mpf_proof_v1.delete_root_two_fold(
+      predecessor_with_key,
+      key,
+      value,
+      proof,
+    ),
+  }
+}
+
+test mpf_proof_v1_paired_fold_matches_all_admissible_proof_shapes() {
+  let path = blake2b_256(key)
+  let terminal_fork = [
+    mpf.Fork { skip: 0, neighbor: fork_neighbor(path, 0, #"01") },
+  ]
+  let nonterminal_fork = [
+    mpf.Fork { skip: 0, neighbor: fork_neighbor(path, 0, #"02") },
+    mpf.Fork { skip: 0, neighbor: fork_neighbor(path, 1, #"03") },
+  ]
+  let first_leaf_path = blake2b_256(absent_key)
+  let second_leaf_path = blake2b_256("leaf-two")
+  expect nibble(path, 0) != nibble(first_leaf_path, 0)
+  expect nibble(path, 1) != nibble(second_leaf_path, 1)
+  let terminal_leaf = [
+    mpf.Leaf { skip: 0, key: first_leaf_path, value: blake2b_256(absent_value) },
+  ]
+  let nonterminal_leaf = [
+    mpf.Leaf { skip: 0, key: first_leaf_path, value: blake2b_256(absent_value) },
+    mpf.Leaf {
+      skip: 0,
+      key: second_leaf_path,
+      value: blake2b_256("second-leaf-value"),
+    },
+  ]
+  and {
+    paired_fold_matches_two_fold([]),
+    paired_fold_matches_two_fold(fixture.adversarial_non_membership_steps(1)),
+    paired_fold_matches_two_fold(terminal_fork),
+    paired_fold_matches_two_fold(nonterminal_fork),
+    paired_fold_matches_two_fold(terminal_leaf),
+    paired_fold_matches_two_fold(nonterminal_leaf),
+  }
+}
+
+test mpf_proof_v1_paired_fold_rejects_malformed_cursor_and_neighbor_shapes() {
+  let path = blake2b_256(key)
+  let bad_skip = [
+    mpf.Fork { skip: 64, neighbor: fork_neighbor(path, 0, #"04") },
+  ]
+  let bad_neighbor_root = [
+    mpf.Fork {
+      skip: 0,
+      neighbor: mpf.Neighbor {
+        nibble: different_nibble(nibble(path, 0)),
+        prefix: #"",
+        root: #"00",
+      },
+    },
+  ]
+  let bad_neighbor_prefix = [
+    mpf.Fork {
+      skip: 0,
+      neighbor: mpf.Neighbor {
+        nibble: different_nibble(nibble(path, 0)),
+        prefix: #"000000000000000000000000000000000000000000000000000000000000000000",
+        root: blake2b_256("neighbor"),
+      },
+    },
+  ]
+  let bad_branch_width = [mpf.Branch { skip: 0, neighbors: #"00" }]
+  and {
+    mpf_proof_v1.insert_root_paired_fold(null_hash, key, value, bad_skip) == None,
+    mpf_proof_v1.insert_root_paired_fold(
+      null_hash,
+      key,
+      value,
+      bad_neighbor_root,
+    ) == None,
+    mpf_proof_v1.insert_root_paired_fold(
+      null_hash,
+      key,
+      value,
+      bad_neighbor_prefix,
+    ) == None,
+    mpf_proof_v1.insert_root_paired_fold(
+      null_hash,
+      key,
+      value,
+      bad_branch_width,
+    ) == None,
+  }
+}
+
+test mpf_proof_v1_paired_fold_rejects_wrong_predecessors_and_more_than_64_steps() {
+  let oversized = fixture.adversarial_non_membership_steps(64)
+  let oversized_absence_root = fixture.adversarial_non_membership_root(
+    key,
+    oversized,
+  )
+  let oversized_membership_root = fixture.adversarial_membership_root(
+    key,
+    value,
+    oversized,
+  )
+  and {
+    mpf_proof_v1.insert_root_paired_fold(singleton_root(), key, value, []) == None,
+    mpf_proof_v1.update_root_paired_fold(
+      null_hash,
+      key,
+      value,
+      absent_value,
+      [],
+    ) == None,
+    mpf_proof_v1.delete_root_paired_fold(null_hash, key, value, []) == None,
+    mpf_proof_v1.insert_root_paired_fold(
+      oversized_absence_root,
+      key,
+      value,
+      oversized,
+    ) == None,
+    mpf_proof_v1.update_root_paired_fold(
+      oversized_membership_root,
+      key,
+      value,
+      absent_value,
+      oversized,
+    ) == None,
+    mpf_proof_v1.delete_root_paired_fold(
+      oversized_membership_root,
+      key,
+      value,
+      oversized,
+    ) == None,
+  }
+}
+
+test mpf_proof_v1_paired_fold_inserts_from_the_midgard_empty_sentinel() {
+  and {
+    mpf_proof_v1.insert_root_paired_fold(
+      env.empty_merkle_tree_root,
+      key,
+      value,
+      [],
+    ) == Some(singleton_root()),
+    mpf_proof_v1.insert_root_paired_fold(
+      env.empty_merkle_tree_root,
+      key,
+      value,
+      [],
+    ) == mpf_proof_v1.insert_root_two_fold(
+      env.empty_merkle_tree_root,
+      key,
+      value,
+      [],
+    ),
   }
 }
 

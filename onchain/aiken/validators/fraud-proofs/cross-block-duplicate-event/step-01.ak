@@ -1,6 +1,6 @@
 //// Cross-block duplicate-event — step 01.
 ////
-//// Opens the duplicated deposit/withdrawal leaf under the challenged live
+//// Opens the duplicated deposit/withdrawal/forced-order leaf under the challenged live
 //// header's canonical counted root and carries only authenticated facts to the
 //// settlement-history step.
 
@@ -127,9 +127,10 @@ fn run_step_01(
   )
 }
 
-test cross_block_duplicate_event_step_01_accepts_deposit_and_withdrawal_membership() {
+test cross_block_duplicate_event_step_01_accepts_all_three_event_domains() {
   let deposit = step_01.duplicate_deposit_block_v1()
   let withdrawal = step_01.duplicate_withdrawal_block_v1()
+  let forced = step_01.duplicate_forced_transaction_block_v1()
   and {
     run_step_01(
       deposit,
@@ -141,7 +142,25 @@ test cross_block_duplicate_event_step_01_accepts_deposit_and_withdrawal_membersh
       withdrawal.committed_event,
       step_01.block_thread_asset_name_v1(withdrawal),
     ),
+    run_step_01(
+      forced,
+      forced.committed_event,
+      step_01.block_thread_asset_name_v1(forced),
+    ),
   }
+}
+
+test cross_block_duplicate_event_step_01_rejects_forged_forced_order_root() fail {
+  let challenged = step_01.duplicate_forced_transaction_block_v1()
+  let forged = step_01.forced_transaction_event_block_v1(
+    step_01.foreign_event_id_v1(),
+    step_01.duplicated_forced_transaction_v1(),
+  )
+  run_step_01(
+    challenged,
+    forged.committed_event,
+    step_01.block_thread_asset_name_v1(challenged),
+  )
 }
 
 test cross_block_duplicate_event_step_01_rejects_forged_source_root() fail {

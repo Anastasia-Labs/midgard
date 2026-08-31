@@ -370,7 +370,7 @@ validator mint(hub_oracle: ScriptHash) {
         // before use.
         let Pair(state_queue_redeemer_constructor, state_queue_redeemer_fields)
           = builtin.un_constr_data(state_queue_redeemer_data)
-        expect state_queue_redeemer_constructor == 4
+        expect state_queue_redeemer_constructor == 6
         expect list.length(state_queue_redeemer_fields) == 18
         expect Some(header_node_key_data) = list.at(
           state_queue_redeemer_fields,

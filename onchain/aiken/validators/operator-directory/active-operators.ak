@@ -518,7 +518,7 @@ validator mint(
 
             // 10a. With enough strikes, anyone can partially slash the
             //      operator,
-            expect self.fee >= env.inactivity_slashing_penalty
+            expect self.fee == env.inactivity_slashing_penalty
 
             // Done.
             True

@@ -137,7 +137,7 @@ validator mint(
 
           // 7. The Lovelace in the registered node must equal the
           //    `required_bond` Midgard parameter.
-          expect registered_node_lovelace >= env.required_bond
+          expect registered_node_lovelace == env.required_bond
 
           // 8. Let `activation_time` be equal to the sum of the Midgard
           //    `registration_duration` protocol parameter and the inclusive
@@ -305,7 +305,7 @@ validator mint(
         //    `RemoveFraudulentBlockHeader`, so no other endpoint may pay it.
         //    Exactness of the remainder on this route is F04 §2.5's open
         //    tranche-preservation item, owned by Q53.
-        expect fee >= env.slashing_penalty
+        expect fee == env.slashing_penalty
 
         // 2. Removal of the duplicate operator's node from the registered
         //    operator set must be valid.

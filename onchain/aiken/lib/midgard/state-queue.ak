@@ -4,6 +4,7 @@ use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/assets.{AssetName, PolicyId}
 use cardano/transaction.{Input, Output, OutputReference, ValidityRange}
+use midgard/availability_challenge as availability
 use midgard/common/utils
 use midgard/ledger_state.{
   ConfirmedState, DepositsRoot, EventToStepRoot, ForcedTransactionsRoot,
@@ -25,11 +26,17 @@ pub const block_asset_name_prefix: AssetName = "MBLC"
 pub const block_asset_name_prefix_length: Int =
   bytearray.length(block_asset_name_prefix)
 
-pub const no_da_attestation: ByteArray = ""
+pub const no_da_attestation: availability.StateQueueStatusV1 =
+  availability.Unattested
+
+/// F04's canonical V1 deadline for applying a DA attestation to a committed
+/// block. The block's `end_time` is commit-bound by Q60, so this duration has
+/// one authenticated on-chain origin rather than a submitter-selected clock.
+pub const da_attestation_timeout_v1: Int = 3_600_000
 
 pub type StateQueueNode {
   header: HeaderV1,
-  da_attestation: ByteArray,
+  da_attestation: availability.StateQueueStatusV1,
 }
 
 pub type StateQueueNodeV1 =
@@ -69,6 +76,15 @@ pub type SpendRedeemer {
     state_queue_input_index: Int,
     da_attestation_mint_redeemer_index: Int,
   }
+  /// Authorizes only the retained-DA status transitions whose availability
+  /// policy redeemer names this exact queue input and its exact continuation.
+  /// Timeout correction deliberately uses `LinkedListMutation`: it removes a
+  /// node and must never be laundered through this status-only arm.
+  AvailabilityStatusUpdate {
+    state_queue_input_index: Int,
+    state_queue_output_index: Int,
+    availability_mint_redeemer_index: Int,
+  }
 }
 
 /// How the fraudulent operator's bond is reached by a
@@ -81,10 +97,9 @@ pub type SpendRedeemer {
 /// ruling (2026-08-11 owner ruling 7), and the handler enforces the other half
 /// by refusing any reward-shaped output on that arm.
 ///
-/// `m_fraud_prover_reward_output_index` is `None` exactly when
-/// `env.fraud_prover_reward` is zero — the placeholder economics that F04 §2.5
-/// records as Q53's to replace. At every profile with a real reward the index
-/// is mandatory, because zero paid is not the ruled amount.
+/// `m_fraud_prover_reward_output_index` is `None` only for a deployment whose
+/// compiled reward is zero. Both release profiles compile a nonzero reward, so
+/// their bond-consuming arms must name the exact reward output.
 pub type SlashingApproach {
   SlashActiveOperator {
     active_operators_redeemer_index: Int,
@@ -111,6 +126,25 @@ pub type BlockRemovalApproach {
   }
 }
 
+/// Ordered correction for a head-of-line block whose DA attestation was not
+/// applied before `da_attestation_timeout_v1`.
+///
+/// Descendants are pruned first because their state transitions build on the
+/// timed-out block. Only once its link is empty may the root remove the timed-
+/// out head itself; otherwise the root could point at a header whose
+/// `prev_header_hash` and `prev_utxos_root` no longer match confirmed state.
+pub type AttestationTimeoutRemovalApproach {
+  PruneTimedOutBlockDescendant {
+    confirmed_state_ref_input_index: Int,
+    timed_out_node_input_outref: OutputReference,
+    timed_out_node_output_index: Int,
+  }
+  RemoveTimedOutHead {
+    confirmed_state_input_outref: OutputReference,
+    confirmed_state_output_index: Int,
+  }
+}
+
 pub type MintRedeemer {
   InitV1 { output_index: Int }
   Deinit
@@ -121,6 +155,13 @@ pub type MintRedeemer {
     scheduler_ref_input_index: Int,
     active_operators_input_index: Int,
     active_operators_redeemer_index: Int,
+    /// Required exactly when the queue is non-empty. The singleton root binds
+    /// the append to the current head for Q61's timeout fence.
+    m_confirmed_state_ref_input_index: Option<Int>,
+    /// Required when the current head differs from the consumed append anchor
+    /// (the tail). Omitted for a one-node queue, where the authenticated anchor
+    /// datum is already the head datum.
+    m_head_state_queue_node_ref_input_index: Option<Int>,
   }
   RemoveFraudulentBlockHeader {
     fraudulent_operator: VerificationKeyHash,
@@ -128,6 +169,24 @@ pub type MintRedeemer {
     slashing_approach: SlashingApproach,
     fraud_proof_ref_input_index: Int,
     block_removal_approach: BlockRemovalApproach,
+  }
+  /// Permissionless liveness correction. It never consumes an operator bond:
+  /// missing DA attestation may be committee failure, so it is not evidence of
+  /// operator fraud. The current state-queue node is the authoritative
+  /// applied-attestation state and the shared input that serializes this path
+  /// against `AttachDaAttestation`.
+  RemoveUnattestedBlockAfterTimeout {
+    timed_out_header_hash: HeaderHash,
+    removal_approach: AttestationTimeoutRemovalApproach,
+  }
+  /// Deterministic DA-availability correction. The dedicated availability
+  /// validator authenticates the expired challenged bond and exact slash on
+  /// the first transaction; the CorrectionLock singleton then carries the
+  /// same DACH identity across permissionless descendant pruning.
+  RemoveUnavailableBlockAfterTimeout {
+    unavailable_header_hash: HeaderHash,
+    challenge_asset_name: AssetName,
+    removal_approach: AttestationTimeoutRemovalApproach,
   }
   MergeToConfirmedStateV1 {
     header_node_key: ByteArray,
@@ -225,6 +284,38 @@ pub fn get_state_queue_node(
       )
 }
 
+/// Authenticate the singleton confirmed-state root and expose its current
+/// head link. Referencing this UTxO lets append and correction paths agree on
+/// one queue head without consuming the root on ordinary appends.
+pub fn get_confirmed_state_root(
+  reference_inputs: List<Input>,
+  state_queue_policy: ByteArray,
+  confirmed_state_ref_input_index: Int,
+  return: fn(ConfirmedState, Option<HeaderHash>) -> result,
+) -> result {
+  expect Some(Input { output, .. }) = reference_inputs
+    |> list.at(confirmed_state_ref_input_index)
+  let linked_list_eval = {
+    let
+        _confirmed_state_address,
+        _confirmed_state_lovelace,
+        m_confirmed_state_key,
+        confirmed_state_data,
+        head_link
+      <- linked_list.get_element_info(output)
+    expect m_confirmed_state_key == None
+    expect confirmed_state: ConfirmedState = confirmed_state_data
+    return(confirmed_state, head_link)
+  }
+  linked_list_eval
+    |> linked_list.run_element_with(
+        state_queue_policy,
+        confirmed_state_asset_name,
+        block_asset_name_prefix,
+        block_asset_name_prefix_length,
+      )
+}
+
 fn get_node_info(
   output: Output,
   state_queue_policy: PolicyId,
@@ -254,7 +345,44 @@ pub fn validate_da_attestation_attachment(
   state_queue_input_index: Int,
   state_queue_output_index: Int,
   expected_header_hash: HeaderHash,
-  da_attestation_policy_id: PolicyId,
+  da_bond_asset_name: AssetName,
+  validity_range: ValidityRange,
+) -> Bool {
+  expect
+    validate_da_availability_status_transition(
+      inputs,
+      outputs,
+      state_queue_policy,
+      state_queue_input_index,
+      state_queue_output_index,
+      expected_header_hash,
+      no_da_attestation,
+      availability.Attested { da_bond_asset_name },
+    )
+  expect Some(Input { output: input_output, .. }) = inputs
+    |> list.at(state_queue_input_index)
+  let _, _, input_block, _ <- get_node_info(input_output, state_queue_policy)
+  let (_, inclusive_tx_upper_bound) = utils.get_inclusive_bounds_of_a_short_validity_range(
+    validity_range,
+  )
+  expect
+    inclusive_tx_upper_bound <= input_block.header.end_time + da_attestation_timeout_v1
+  True
+}
+
+/// Exact in-place availability status transition for one authenticated linked-
+/// list node. The availability policy uses this for Attested→Challenged and
+/// Challenged→Published; the DA policy uses the wrapper above for the
+/// deadline-bound Unattested→Attested transition.
+pub fn validate_da_availability_status_transition(
+  inputs: List<Input>,
+  outputs: List<Output>,
+  state_queue_policy: PolicyId,
+  state_queue_input_index: Int,
+  state_queue_output_index: Int,
+  expected_header_hash: HeaderHash,
+  expected_input_status: availability.StateQueueStatusV1,
+  expected_output_status: availability.StateQueueStatusV1,
 ) -> Bool {
   expect Some(Input { output: input_output, .. }) = inputs
     |> list.at(state_queue_input_index)
@@ -274,11 +402,13 @@ pub fn validate_da_attestation_attachment(
 
   expect input_header_hash == expected_header_hash
   expect output_header_hash == expected_header_hash
+  let input_header_data: Data = input_block.header
+  expect input_header_hash == utils.serialise_and_hash_28(input_header_data)
   expect output_lovelace >= input_lovelace
   expect output_link == input_link
-  expect input_block.da_attestation == no_da_attestation
+  expect input_block.da_attestation == expected_input_status
   expect output_block.header == input_block.header
-  expect output_block.da_attestation == da_attestation_policy_id
+  expect output_block.da_attestation == expected_output_status
   True
 }
 

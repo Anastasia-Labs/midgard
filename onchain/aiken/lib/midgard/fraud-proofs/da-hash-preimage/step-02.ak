@@ -4,16 +4,11 @@
 //// committed into the computation thread.
 
 use midgard/computation_thread as ct
-use midgard/ledger_state.{MidgardTxId}
+use midgard/fraud_proofs/da_hash_preimage/rule.{VerdictV1}
 
 pub type State {
-  /// MPF key the block committed the leaf under.
-  committed_tx_id: MidgardTxId,
-  /// Canonical native-V1 transaction id the committed leaf value itself
-  /// commits to, derived by `rule.derive_committed_leaf_tx_id_v1`.
-  derived_tx_id: MidgardTxId,
-  /// Byte length of the committed leaf value.
-  committed_leaf_byte_count: Int,
+  /// Total verdict step 01 derived from the exact authenticated raw leaf.
+  verdict: VerdictV1,
 }
 
 pub type Datum =

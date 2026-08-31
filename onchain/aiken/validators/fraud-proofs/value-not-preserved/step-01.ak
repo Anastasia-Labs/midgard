@@ -70,9 +70,11 @@ validator main(
         //
         //    This `validity_code` read is committed by the **root**, not by
         //    the prover: `pass_native_tx_to_next_step` proved
-        //    `tx_inclusion.native_tx_compact_cbor` to be the exact leaf value
-        //    the block's counted `transactions_root` commits at `bad_tx_id`,
-        //    and `bad_tx_view` is re-derived from those very bytes — the same
+        //    `tx_inclusion.l2_transaction_source_cbor` to be the exact source
+        //    leaf value the block's counted `transactions_root` commits at
+        //    `bad_tx_id`, verified the proof-source triple, and returned its
+        //    compact bytes. `bad_tx_view` is re-derived from those authenticated
+        //    compact bytes — the same
         //    argument the transition-trace family's
         //    `unanchored_validity_code_of(anchored) == 0` call site owes and
         //    documents (`midgard/fraud_proofs/field_opening_v1`).

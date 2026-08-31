@@ -113,7 +113,7 @@ fn run_step_01(tx: MidgardTransaction) -> Bool {
     expected_output_state,
     block.transactions_phas_root,
     block.tx_id,
-    block.compact_cbor,
+    block.source_cbor,
   )
   main.spend(
     fixture.next_step_script_hash,

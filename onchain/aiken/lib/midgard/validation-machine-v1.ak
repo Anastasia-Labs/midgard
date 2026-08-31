@@ -9380,45 +9380,54 @@ fn script_sources_output_proof_finalize(
     expect Some(address) = ledger_output_v1.decode_canonical_address_bytes(
       descriptor.address,
     )
-    when
-      protected_output_authorization(
-        address,
-        control.signer_count,
-        control.signer_frontier_commitment,
-        signer_proof,
+    let context = decode_validation_context(control.context_cbor)
+    if address.network_id != context.expected_network_id {
+      rejected_successor_is_exact(
+        pre,
+        witness.claimed_successor,
+        reject_network_id_mismatch,
       )
-    is {
-      InputSignerMissing ->
-        rejected_successor_is_exact(
-          pre,
-          witness.claimed_successor,
-          reject_missing_required_witness,
+    } else {
+      when
+        protected_output_authorization(
+          address,
+          control.signer_count,
+          control.signer_frontier_commitment,
+          signer_proof,
         )
-      InputSignerProofMalformed -> False
-      InputSignerAuthorized ->
-        script_sources_control_successor_is_exact(
-          pre,
-          witness,
-          ScriptSourcesControlV1 {
-            ..control,
-            output_cursor: control.output_cursor + 1,
-            receive_scan: receive_source_successor(
-              ReceivePurposeScanControlV1 {
-                ..control.receive_scan,
-                descriptor_peaks: validation_merkle_v1.append_leaf(
-                  control.output_cursor,
-                  control.receive_scan.descriptor_peaks,
-                  script_proof_v1.output_descriptor_leaf_hash(
+      is {
+        InputSignerMissing ->
+          rejected_successor_is_exact(
+            pre,
+            witness.claimed_successor,
+            reject_missing_required_witness,
+          )
+        InputSignerProofMalformed -> False
+        InputSignerAuthorized ->
+          script_sources_control_successor_is_exact(
+            pre,
+            witness,
+            ScriptSourcesControlV1 {
+              ..control,
+              output_cursor: control.output_cursor + 1,
+              receive_scan: receive_source_successor(
+                ReceivePurposeScanControlV1 {
+                  ..control.receive_scan,
+                  descriptor_peaks: validation_merkle_v1.append_leaf(
                     control.output_cursor,
-                    descriptor_cbor,
+                    control.receive_scan.descriptor_peaks,
+                    script_proof_v1.output_descriptor_leaf_hash(
+                      control.output_cursor,
+                      descriptor_cbor,
+                    ),
                   ),
-                ),
-              },
-              address,
-            ),
-            output_proof: None,
-          },
-        )
+                },
+                address,
+              ),
+              output_proof: None,
+            },
+          )
+      }
     }
   }
 }

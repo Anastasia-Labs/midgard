@@ -2,6 +2,7 @@ use aiken/builtin
 use aiken/collection/dict
 use aiken/collection/list
 use aiken/crypto.{VerificationKeyHash, blake2b_256, verify_ed25519_signature}
+use aiken/interval.{between}
 use aiken/primitive/bytearray
 use aiken_design_patterns/linked_list
 use cardano/address.{Address, Script}
@@ -10,6 +11,7 @@ use cardano/transaction.{
   InlineDatum, Input, Mint, NoDatum, Output, OutputReference, Transaction,
   placeholder, resolve_input,
 }
+use midgard/availability_challenge as availability
 use midgard/common/utils
 use midgard/da_attestation_types.{
   AddSignatures, ApplyToStateQueue, BurnForRescue, BurnForStateQueue,
@@ -26,11 +28,6 @@ use midgard/state_queue
 fn attestation_asset_name(header_hash: HeaderHash) -> AssetName {
   expect bytearray.length(header_hash) == 28
   attestation_asset_name_prefix |> bytearray.concat(header_hash)
-}
-
-fn attestation_message(header_hash: HeaderHash) -> ByteArray {
-  bytearray.from_string(@"MidgardDAAttestationV1")
-    |> bytearray.concat(header_hash)
 }
 
 fn bytearray_slice(bytes: ByteArray, offset: Int, byte_count: Int) -> ByteArray {
@@ -149,6 +146,7 @@ fn validate_init_output(
   output: Output,
   own_policy_id: PolicyId,
   params: DaParamsDatum,
+  availability_parameters: availability.ParametersV1,
   expected_header_hash: HeaderHash,
 ) -> AssetName {
   expect
@@ -163,13 +161,24 @@ fn validate_init_output(
 
   expect datum: DaAttestationDatum = datum_data
   expect datum.header_hash == expected_header_hash
+  expect datum.availability_commitment.header_hash == expected_header_hash
+  expect
+    availability.commitment_is_canonical_v1(
+      datum.availability_commitment,
+      availability_parameters,
+    )
   expect datum.da_threshold == params.da_threshold
   expect datum.committee_signers_hash == params.committee_signers_hash
+  expect datum.rescue_beneficiary.payment_credential != Script(own_policy_id)
   expect datum.attested_signers == empty_attested_signer_bitmap
   expect datum.attestation_count == 0
 
   let asset_name = attestation_asset_name(datum.header_hash)
-  expect assets.has_nft_strict(value, own_policy_id, asset_name)
+  expect
+    value == (
+      assets.from_lovelace(availability_parameters.da_bond_lovelace)
+        |> assets.add(own_policy_id, asset_name, 1)
+    )
 
   asset_name
 }
@@ -270,6 +279,7 @@ fn validate_rescue_refund(
   attestation_value: Value,
   own_policy_id: PolicyId,
   attestation_asset: AssetName,
+  rescue_beneficiary: Address,
 ) -> Bool {
   let Output { address: refund_address, value: refund_value, .. } = outputs
     |> output_at_index(refund_output_index)
@@ -277,6 +287,7 @@ fn validate_rescue_refund(
   // Refunding back into this script would re-strand the ADA rather than
   // release it: every spend path requires the UTxO to carry its DAAT, and the
   // DAAT is being burnt here, so such an output could never be spent again.
+  expect refund_address == rescue_beneficiary
   expect refund_address.payment_credential != Script(own_policy_id)
 
   expect
@@ -364,9 +375,12 @@ pub fn validate_add_signatures(
 
   expect output_datum: DaAttestationDatum = output_datum_data
   expect output_datum.header_hash == input_datum.header_hash
+  expect
+    output_datum.availability_commitment == input_datum.availability_commitment
   expect output_datum.da_threshold == input_datum.da_threshold
   expect
     output_datum.committee_signers_hash == input_datum.committee_signers_hash
+  expect output_datum.rescue_beneficiary == input_datum.rescue_beneficiary
 
   let params = get_da_params(
     tx.reference_inputs,
@@ -381,7 +395,7 @@ pub fn validate_add_signatures(
 
   let attested_signers = verify_indexed_signatures(
     signatures,
-    attestation_message(input_datum.header_hash),
+    availability.attestation_message_v1(input_datum.availability_commitment),
     params.committee,
     input_datum.attested_signers,
     0,
@@ -399,6 +413,8 @@ pub fn validate_add_signatures(
 validator da_attestation(
   da_params_policy_id: PolicyId,
   reference_script_auth_policy_id: PolicyId,
+  availability_policy_id: PolicyId,
+  availability_parameters: availability.ParametersV1,
 ) {
   mint(redeemer: MintRedeemer, own_policy_id: PolicyId, tx: Transaction) {
     when redeemer is {
@@ -432,7 +448,12 @@ validator da_attestation(
 
         let attestation_asset = tx.outputs
           |> output_at_index(output_index)
-          |> validate_init_output(own_policy_id, params, expected_header_hash)
+          |> validate_init_output(
+              own_policy_id,
+              params,
+              availability_parameters,
+              expected_header_hash,
+            )
 
         expect [Pair(minted_asset_name, minted_quantity)] = tx.mint
           |> assets.tokens(own_policy_id)
@@ -448,6 +469,7 @@ validator da_attestation(
         state_queue_input_index,
         state_queue_output_index,
         state_queue_mint_ref_script_input_index,
+        availability_mint_redeemer_index,
       } -> {
         let (attestation_datum, _attestation_value) = get_attestation_input_datum(
           tx.inputs,
@@ -483,6 +505,29 @@ validator da_attestation(
         )
         expect expect_sole_burn(tx, own_policy_id, attestation_asset)
 
+        expect Some(Input { output_reference: attestation_input_outref, .. }) = tx.inputs
+          |> list.at(da_attestation_input_index)
+        let da_bond_asset_name = availability.da_bond_asset_name_v1(
+          attestation_input_outref,
+        )
+        let availability_mint_redeemer_data = tx.redeemers
+          |> utils.get_redeemer_at(
+              Mint(availability_policy_id),
+              availability_mint_redeemer_index,
+            )
+        expect
+            availability.MintBondFromAttestation {
+              da_attestation_input_index: availability_attestation_input_index,
+              state_queue_input_index: availability_state_queue_input_index,
+              state_queue_output_index: availability_state_queue_output_index,
+              ..
+            }: availability.MintRedeemerV1
+          = availability_mint_redeemer_data
+        expect
+          availability_attestation_input_index == da_attestation_input_index
+        expect availability_state_queue_input_index == state_queue_input_index
+        expect availability_state_queue_output_index == state_queue_output_index
+
         let state_queue_policy_id = get_authenticated_state_queue_policy_id(
           tx.reference_inputs,
           reference_script_auth_policy_id,
@@ -496,7 +541,8 @@ validator da_attestation(
           state_queue_input_index,
           state_queue_output_index,
           attestation_datum.header_hash,
-          own_policy_id,
+          da_bond_asset_name,
+          tx.validity_range,
         )
       }
       RescueStrandedAttestation {
@@ -553,6 +599,7 @@ validator da_attestation(
           attestation_value,
           own_policy_id,
           attestation_asset,
+          attestation_datum.rescue_beneficiary,
         )
       }
     }
@@ -606,6 +653,9 @@ validator da_attestation(
 const test_da_policy: PolicyId =
   #"da11da11da11da11da11da11da11da11da11da11da11da11da11da11"
 
+const test_availability_policy: PolicyId =
+  #"ab11ab11ab11ab11ab11ab11ab11ab11ab11ab11ab11ab11ab11ab11"
+
 const test_da_params_policy: PolicyId =
   #"cd22cd22cd22cd22cd22cd22cd22cd22cd22cd22cd22cd22cd22cd22"
 
@@ -615,8 +665,46 @@ const test_ref_script_auth_policy: PolicyId =
 const test_refund_key_hash: VerificationKeyHash =
   #"12341234123412341234123412341234123412341234123412341234"
 
-const test_header_hash: HeaderHash =
+const test_parent_header_hash: HeaderHash =
   #"aabbccddaabbccddaabbccddaabbccddaabbccddaabbccddaabbccdd"
+
+fn test_availability_parameters() -> availability.ParametersV1 {
+  availability.ParametersV1 {
+    response_geometry: availability.ResponseGeometryV1 {
+      chunk_byte_length: 4_096,
+      tranche_byte_length: 4 * 1024 * 1024,
+      max_tranche_count: 16,
+    },
+    da_bond_lovelace: test_attestation_lovelace,
+    challenger_bond_lovelace: test_attestation_lovelace,
+    max_open_fee_lovelace: 1,
+    max_publication_fee_lovelace: 1,
+    max_settlement_fee_lovelace: 1,
+    max_close_fee_lovelace: 1,
+    max_timeout_fee_lovelace: 1,
+  }
+}
+
+fn test_availability_commitment() -> availability.CommitmentV1 {
+  availability.CommitmentV1 {
+    version: availability.commitment_version_v1,
+    deployment_identity: test_parent_header_hash,
+    header_hash: test_header_hash(),
+    payload_byte_length: 1,
+    response_geometry: test_availability_parameters().response_geometry,
+    tranche_descriptors: [
+      availability.TrancheDescriptorV1 {
+        tranche_index: 0,
+        start_offset: 0,
+        byte_length: 1,
+        chunk_count: 1,
+        chunk_commitment: #"acacacacacacacacacacacacacacacacacacacacacacacacacacacacacac",
+        terminal_accumulator: #"abababababababababababababababababababababababababababababababab",
+      },
+    ],
+    bond_owner: test_refund_key_hash,
+  }
+}
 
 const test_attestation_ref: OutputReference =
   OutputReference {
@@ -734,16 +822,18 @@ fn test_attestation_datum(
   attestation_count: Int,
 ) -> DaAttestationDatum {
   DaAttestationDatum {
-    header_hash: test_header_hash,
+    header_hash: test_header_hash(),
+    availability_commitment: test_availability_commitment(),
     da_threshold,
     committee_signers_hash,
+    rescue_beneficiary: address.from_verification_key(test_refund_key_hash),
     attested_signers: test_attested_bitmap(attestation_count),
     attestation_count,
   }
 }
 
 fn test_attestation_asset() -> AssetName {
-  attestation_asset_name(test_header_hash)
+  attestation_asset_name(test_header_hash())
 }
 
 fn test_attestation_value() -> Value {
@@ -807,12 +897,13 @@ fn test_rescue_mint_redeemer() -> MintRedeemer {
 /// the attestation froze; `params` supplies the governed committee it is
 /// compared against; the remaining knobs are the mutation points the negatives
 /// below move, one at a time.
-fn test_rescue_tx(
+fn test_rescue_tx_to(
   attestation_datum: DaAttestationDatum,
   params: DaParamsDatum,
   burn_quantity: Int,
   refund_lovelace: Int,
   with_second_attestation: Bool,
+  refund_address: Address,
 ) -> Transaction {
   let redeemer_data: Data = test_rescue_mint_redeemer()
   let first_input = test_attestation_input(
@@ -832,7 +923,7 @@ fn test_rescue_tx(
     reference_inputs: [test_params_reference_input(params)],
     outputs: [
       Output {
-        address: address.from_verification_key(test_refund_key_hash),
+        address: refund_address,
         value: assets.from_lovelace(refund_lovelace),
         datum: NoDatum,
         reference_script: None,
@@ -845,6 +936,23 @@ fn test_rescue_tx(
     ),
     redeemers: [Pair(Mint(test_da_policy), redeemer_data)],
   }
+}
+
+fn test_rescue_tx(
+  attestation_datum: DaAttestationDatum,
+  params: DaParamsDatum,
+  burn_quantity: Int,
+  refund_lovelace: Int,
+  with_second_attestation: Bool,
+) -> Transaction {
+  test_rescue_tx_to(
+    attestation_datum,
+    params,
+    burn_quantity,
+    refund_lovelace,
+    with_second_attestation,
+    attestation_datum.rescue_beneficiary,
+  )
 }
 
 /// The fixture's stranded attestation: it froze committee A, gathered one of
@@ -862,6 +970,8 @@ fn test_rescue_mint(tx: Transaction) -> Bool {
   da_attestation.mint(
     test_da_params_policy,
     test_ref_script_auth_policy,
+    test_availability_policy,
+    test_availability_parameters(),
     test_rescue_mint_redeemer(),
     test_da_policy,
     tx,
@@ -874,6 +984,8 @@ fn test_apply_burn_spend(tx: Transaction, redeemer: SpendRedeemer) -> Bool {
   da_attestation.spend(
     test_da_params_policy,
     test_ref_script_auth_policy,
+    test_availability_policy,
+    test_availability_parameters(),
     None,
     redeemer,
     test_attestation_ref,
@@ -885,6 +997,8 @@ fn test_rescue_spend(tx: Transaction, own_ref: OutputReference) -> Bool {
   da_attestation.spend(
     test_da_params_policy,
     test_ref_script_auth_policy,
+    test_availability_policy,
+    test_availability_parameters(),
     None,
     BurnForRescue { mint_redeemer_index: 0 },
     own_ref,
@@ -1084,6 +1198,21 @@ test da_attestation_rescue_rejects_refund_short_of_attestation_value() fail {
   )
 }
 
+/// Rescue beneficiary binding: a permissionless rescuer may submit the burn,
+/// but changing only the refund address cannot redirect the stranded value.
+test da_attestation_rescue_rejects_redirected_beneficiary() fail {
+  test_rescue_mint(
+    test_rescue_tx_to(
+      test_stranded_attestation(),
+      test_rotated_params(),
+      -1,
+      test_attestation_lovelace,
+      False,
+      address.from_verification_key(test_owner_hash(0x8)),
+    ),
+  )
+}
+
 // ---------------------------------------------------------------------------
 // ## Q62 / decision row D-DA4 — non-retroactive committee rotation
 //
@@ -1120,16 +1249,21 @@ fn test_header() -> ledger_state.HeaderV1 {
     expected_network_id: 0,
     min_fee_a: 0,
     min_fee_b: 0,
-    prev_header_hash: test_header_hash,
-    operator_vkey: test_header_hash,
+    prev_header_hash: test_parent_header_hash,
+    operator_vkey: test_parent_header_hash,
     protocol_version: ledger_state.protocol_version_v1,
   }
 }
 
-/// A state-queue linked-list node for `test_header_hash`. `da_attestation` is
-/// `no_da_attestation` on the way in and the DA policy id on the way out, which
-/// is the attachment `validate_da_attestation_attachment` requires.
-fn test_state_queue_node_output(da_attestation: ByteArray) -> Output {
+fn test_header_hash() -> HeaderHash {
+  let header_data: Data = test_header()
+  utils.serialise_and_hash_28(header_data)
+}
+
+/// A state-queue linked-list node for `test_header_hash()`.
+fn test_state_queue_node_output(
+  da_attestation: availability.StateQueueStatusV1,
+) -> Output {
   let node = state_queue.StateQueueNode {
     header: test_header(),
     da_attestation,
@@ -1145,7 +1279,7 @@ fn test_state_queue_node_output(da_attestation: ByteArray) -> Output {
       |> assets.add(
           test_state_queue_policy,
           state_queue.block_asset_name_prefix
-            |> bytearray.concat(test_header_hash),
+            |> bytearray.concat(test_header_hash()),
           1,
         ),
     datum: InlineDatum(element_data),
@@ -1179,6 +1313,18 @@ fn test_apply_mint_redeemer() -> MintRedeemer {
     state_queue_input_index: 1,
     state_queue_output_index: 0,
     state_queue_mint_ref_script_input_index: 1,
+    availability_mint_redeemer_index: 1,
+  }
+}
+
+fn test_availability_mint_redeemer() -> availability.MintRedeemerV1 {
+  availability.MintBondFromAttestation {
+    hub_oracle_ref_input_index: 2,
+    da_attestation_input_index: 0,
+    da_attestation_mint_redeemer_index: 0,
+    bond_output_index: 1,
+    state_queue_input_index: 1,
+    state_queue_output_index: 0,
   }
 }
 
@@ -1191,6 +1337,11 @@ fn test_apply_tx(
   params_reference_input: Input,
 ) -> Transaction {
   let redeemer_data: Data = test_apply_mint_redeemer()
+  let availability_redeemer_data: Data = test_availability_mint_redeemer()
+  let da_bond_asset_name = availability.da_bond_asset_name_v1(
+    test_attestation_ref,
+  )
+  let attestation_deadline = test_header().end_time + state_queue.da_attestation_timeout_v1
   Transaction {
     ..placeholder,
     inputs: [
@@ -1204,9 +1355,16 @@ fn test_apply_tx(
       params_reference_input,
       test_state_queue_ref_script_input(),
     ],
-    outputs: [test_state_queue_node_output(test_da_policy)],
-    mint: assets.from_asset(test_da_policy, test_attestation_asset(), -1),
-    redeemers: [Pair(Mint(test_da_policy), redeemer_data)],
+    outputs: [
+      test_state_queue_node_output(availability.Attested { da_bond_asset_name }),
+    ],
+    mint: assets.from_asset(test_da_policy, test_attestation_asset(), -1)
+      |> assets.add(test_availability_policy, da_bond_asset_name, 1),
+    redeemers: [
+      Pair(Mint(test_da_policy), redeemer_data),
+      Pair(Mint(test_availability_policy), availability_redeemer_data),
+    ],
+    validity_range: between(attestation_deadline - 60_000, attestation_deadline),
   }
 }
 
@@ -1214,6 +1372,8 @@ fn test_apply_mint(tx: Transaction) -> Bool {
   da_attestation.mint(
     test_da_params_policy,
     test_ref_script_auth_policy,
+    test_availability_policy,
+    test_availability_parameters(),
     test_apply_mint_redeemer(),
     test_da_policy,
     tx,

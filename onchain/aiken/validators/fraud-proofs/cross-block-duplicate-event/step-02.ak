@@ -171,6 +171,33 @@ test cross_block_duplicate_event_step_02_convicts_confirmed_withdrawal_duplicate
   )
 }
 
+test cross_block_duplicate_event_step_02_convicts_confirmed_forced_order_duplicate() {
+  let challenged = step_01.duplicate_forced_transaction_block_v1()
+  let settled = step_01.duplicate_forced_transaction_block_v1()
+  run_step_02(
+    challenged,
+    settled,
+    step_02.historical_header_hash_v1(settled),
+    settled.committed_event,
+  )
+}
+
+/// Valid-block negative for the forced-order arm: the surviving settlement
+/// history commits a different tx-order identity.
+test cross_block_duplicate_event_step_02_rejects_honest_different_forced_order() fail {
+  let challenged = step_01.duplicate_forced_transaction_block_v1()
+  let settled = step_01.forced_transaction_event_block_v1(
+    step_01.foreign_event_id_v1(),
+    step_01.duplicated_forced_transaction_v1(),
+  )
+  run_step_02(
+    challenged,
+    settled,
+    step_02.historical_header_hash_v1(settled),
+    settled.committed_event,
+  )
+}
+
 /// Honest/single-application case: confirmed history contains another event,
 /// not the event the challenged block applies.
 test cross_block_duplicate_event_step_02_rejects_honest_different_event() fail {

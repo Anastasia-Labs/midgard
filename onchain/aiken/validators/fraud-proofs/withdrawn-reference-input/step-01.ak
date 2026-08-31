@@ -47,7 +47,7 @@ validator main(
             output_state_data,
             header,
             bad_tx_id,
-            _bad_tx_view
+            bad_tx_view
           <- pass_native_tx_to_next_step(
           computation_thread_token_policy_id,
           hub_oracle,
@@ -56,6 +56,8 @@ validator main(
           own_out_ref,
           tx,
         )
+
+        expect bad_tx_view.tx_compact.validity_code == 0
 
         // 2. The UTxO must be produced at next step's script hash with the
         //    native reference-inputs hash of the bad transaction, plus the
@@ -96,7 +98,7 @@ test withdrawn_reference_input_step_01_binds_native_v1_block_fixture() {
     expected_output_state,
     block.transactions_phas_root,
     block.tx_id,
-    block.compact_cbor,
+    block.source_cbor,
   )
   main.spend(
     fixture.next_step_script_hash,

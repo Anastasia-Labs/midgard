@@ -191,6 +191,13 @@ pub type FieldViewV1 {
     count: Int,
     stride: Int,
   }
+  /// Tiers 1–2 opened for a checkpointed variable-width walk. The bytes and
+  /// header are authenticated, but the count remains provisional until the
+  /// grammar walk reaches the exact end. This constructor is appended after
+  /// the two pre-existing variants so their internal constructor indices stay
+  /// stable, and it never leaves the resumable-walk API as an authenticated
+  /// count claim.
+  ProvisionalWhole { bytes: ByteArray, count: Int, stride: Int }
 }
 
 /// §8.6. The tier-3 digest manifest, minted by the permissionless
@@ -434,12 +441,40 @@ pub fn authenticated_field_view(
   reference_inputs: List<Input>,
   certificate_policy_id: PolicyId,
 ) -> FieldViewV1 {
+  let Pair(_field_hash, view) = authenticated_field_view_with_commitment(
+    verified,
+    witness_set,
+    field_index,
+    carriage,
+    reference_inputs,
+    certificate_policy_id,
+  )
+  view
+}
+
+/// The field-access door plus the exact positional §4 commitment it opened.
+///
+/// This surface exists for the tier-3 grammar-certification checkpoint. The
+/// checkpoint must bind the content identity it walked without re-hashing the
+/// whole chunked preimage on every resume. The commitment returned here is not
+/// caller supplied: it is extracted by `field_door_prologue` from the same
+/// verified compact structures and witness-set pairing that authenticate the
+/// view. Ordinary consumers use `authenticated_field_view` and never receive
+/// it.
+pub fn authenticated_field_view_with_commitment(
+  verified: VerifiedMidgardNativeTxCompact,
+  witness_set: NativeTxWitnessSetCompact,
+  field_index: Int,
+  carriage: FieldCarriageV1,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> Pair<ByteArray, FieldViewV1> {
   let Pair(expected_hash, stride) = field_door_prologue(
     verified,
     witness_set,
     field_index,
   )
-  when carriage is {
+  let view = when carriage is {
     Inline { preimage } -> whole_view(preimage, expected_hash, stride)
     RawUtxo { ref_input_index } ->
       whole_view(
@@ -459,6 +494,49 @@ pub fn authenticated_field_view(
         certificate_policy_id,
       )
   }
+  Pair(expected_hash, view)
+}
+
+/// The field door used only by checkpointed walks.
+///
+/// Variable-width tier-1/2 fields are hash-authenticated here without paying
+/// `whole_view`'s O(N) envelope walk up front; their count remains provisional
+/// and is certified incrementally. Fixed-stride fields retain the arithmetic
+/// whole-view check, while tier 3 retains its certificate/chunk checks.
+pub fn authenticated_resumable_field_view_with_commitment(
+  verified: VerifiedMidgardNativeTxCompact,
+  witness_set: NativeTxWitnessSetCompact,
+  field_index: Int,
+  carriage: FieldCarriageV1,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> Pair<ByteArray, FieldViewV1> {
+  let Pair(expected_hash, stride) = field_door_prologue(
+    verified,
+    witness_set,
+    field_index,
+  )
+  let view = when carriage is {
+    Inline { preimage } -> resumable_whole_view(preimage, expected_hash, stride)
+    RawUtxo { ref_input_index } ->
+      resumable_whole_view(
+        raw_carriage_bytes(reference_inputs, ref_input_index),
+        expected_hash,
+        stride,
+      )
+    Certified { cert_ref_input_index, chunk_ref_input_indices } ->
+      certified_view(
+        verified.tx_id,
+        field_index,
+        expected_hash,
+        stride,
+        reference_inputs,
+        cert_ref_input_index,
+        chunk_ref_input_indices,
+        certificate_policy_id,
+      )
+  }
+  Pair(expected_hash, view)
 }
 
 /// Everything both public doors do before they look at the carriage: check the
@@ -525,6 +603,26 @@ fn whole_view(
     expect walk_to_end(preimage, header_len, count) == total_length
   }
   Whole { bytes: preimage, count, stride }
+}
+
+fn resumable_whole_view(
+  preimage: ByteArray,
+  expected_hash: ByteArray,
+  stride: Int,
+) -> FieldViewV1 {
+  expect field_commitment(preimage) == expected_hash
+  let total_length = bytearray.length(preimage)
+  expect total_length <= max_transaction_aggregate_field_bytes
+  let Pair(header_len, count) = decode_field_array_header(preimage)
+  if stride > walk_derived_stride {
+    expect header_len + stride * count == total_length
+    Whole { bytes: preimage, count, stride }
+  } else {
+    // Count/terminal consistency is intentionally deferred to the bounded
+    // grammar-certification checkpoint machine.
+    expect header_len + count <= total_length
+    ProvisionalWhole { bytes: preimage, count, stride }
+  }
 }
 
 /// Tier 3 (§8.4): chunks stay unhashed until an accessor touches them. The
@@ -926,6 +1024,10 @@ fn raw_carriage_bytes(reference_inputs: List<Input>, index: Int) -> ByteArray {
 pub fn field_item_count(view: FieldViewV1) -> Int {
   when view is {
     Whole { count, .. } -> count
+    ProvisionalWhole { count, .. } -> {
+      expect False
+      count
+    }
     Chunked { count, stride, .. } -> {
       expect stride > walk_derived_stride
       count
@@ -940,13 +1042,39 @@ pub fn field_item_count(view: FieldViewV1) -> Int {
 fn declared_item_count(view: FieldViewV1) -> Int {
   when view is {
     Whole { count, .. } -> count
+    ProvisionalWhole { count, .. } -> count
     Chunked { count, .. } -> count
   }
+}
+
+/// True exactly for a view whose §5.1 count is provisional: every
+/// variable-width tier-3 view, plus a variable-width tier-1/2 view opened by
+/// the resumable door. A semantic consumer must not read that count until the
+/// grammar-certification walk has reached its terminal.
+pub fn field_count_requires_certification(view: FieldViewV1) -> Bool {
+  when view is {
+    Whole { .. } -> False
+    ProvisionalWhole { .. } -> True
+    Chunked { stride, .. } -> stride == walk_derived_stride
+  }
+}
+
+/// The header-declared count of any provisional variable-width field, exposed
+/// only for the grammar-certification machine.
+///
+/// The name is the contract: this value is not authenticated merely because
+/// its header bytes came from a verified chunk. It becomes a semantic count
+/// only when a checkpointed walk has consumed exactly this many canonical
+/// envelopes and landed exactly at `field_total_length(view)`.
+pub fn provisional_field_item_count_for_certification(view: FieldViewV1) -> Int {
+  expect field_count_requires_certification(view)
+  declared_item_count(view)
 }
 
 pub fn field_total_length(view: FieldViewV1) -> Int {
   when view is {
     Whole { bytes, .. } -> bytearray.length(bytes)
+    ProvisionalWhole { bytes, .. } -> bytearray.length(bytes)
     Chunked { chunks, .. } ->
       list.foldl(
         chunks,
@@ -1021,6 +1149,7 @@ pub fn field_item_extent(view: FieldViewV1, index: Int) -> Pair<Int, Int> {
 pub fn field_view_stride(view: FieldViewV1) -> Int {
   when view is {
     Whole { stride, .. } -> stride
+    ProvisionalWhole { stride, .. } -> stride
     Chunked { stride, .. } -> stride
   }
 }
@@ -1056,6 +1185,7 @@ pub fn field_read_range(
 ) -> ByteArray {
   when view is {
     Whole { bytes, .. } -> slice_exact(bytes, offset, length)
+    ProvisionalWhole { bytes, .. } -> slice_exact(bytes, offset, length)
     Chunked { chunks, chunk_digests, .. } ->
       read_chunked_range(chunks, chunk_digests, offset, length)
   }

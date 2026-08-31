@@ -2,7 +2,7 @@ use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, pass_native_tx_to_next_step}
+use midgard/fraud_proofs/common.{cancel, pass_native_tx_to_next_step_carried}
 use midgard/fraud_proofs/min_fee/step_01.{Datum, SpendRedeemer}
 use midgard/fraud_proofs/min_fee/step_02
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
@@ -41,7 +41,7 @@ validator main(
             header,
             bad_tx_id,
             bad_tx_view
-          <- pass_native_tx_to_next_step(
+          <- pass_native_tx_to_next_step_carried(
           computation_thread_token_policy_id,
           hub_oracle,
           datum,
@@ -49,6 +49,8 @@ validator main(
           own_out_ref,
           tx,
         )
+
+        expect bad_tx_view.tx_compact.validity_code == 0
 
         // 2. The UTxO must be produced at next step's script hash with the
         //    verified native compact transaction, its inline body fee, the
@@ -98,14 +100,14 @@ fn run_continue(block: fixture.NativeBlockFixtureV1, output_state: Data) -> Bool
     output_state,
     block.transactions_phas_root,
     block.tx_id,
-    block.compact_cbor,
+    block.source_cbor,
   )
   main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
     fixture.hub_oracle_script_hash,
     Some(fixture.step_datum_without_state()),
-    ct.Continue(fixture.native_inclusion_args_v1(block)),
+    ct.Continue(fixture.native_inclusion_carriage_v1(block)),
     fixture.own_out_ref(),
     l1_tx,
   )

@@ -49,7 +49,7 @@ validator main(
             output_state_data,
             _header,
             bad_tx_id,
-            _bad_tx_view
+            bad_tx_view
           <- pass_native_tx_to_next_step_carried(
           computation_thread_token_policy_id,
           hub_oracle,
@@ -58,6 +58,8 @@ validator main(
           own_out_ref,
           tx,
         )
+
+        expect bad_tx_view.tx_compact.validity_code == 0
 
         // 2. The UTxO must be produced at next step's script hash carrying the
         //    bad transaction's §2.5 anchor. Step-02 opens field 0 through the
@@ -98,7 +100,7 @@ test zero_input_step_01_binds_native_v1_block_fixture() {
     expected_output_state,
     block.transactions_phas_root,
     block.tx_id,
-    block.compact_cbor,
+    block.source_cbor,
   )
   main.spend(
     fixture.next_step_script_hash,
@@ -128,7 +130,7 @@ fn deep_zero_input_block() -> (fixture.NativeBlockFixtureV1, mpf.Proof) {
   (
     fixture.deep_transactions_root_block_fixture_v1(
       base,
-      fixture.adversarial_membership_root(base.tx_id, base.compact_cbor, steps),
+      fixture.adversarial_membership_root(base.tx_id, base.source_cbor, steps),
       1_000_000,
     ),
     steps,
@@ -235,7 +237,7 @@ test zero_input_step_01_rejects_forged_transactions_root() fail {
     expected_output_state,
     claimed_block.transactions_phas_root,
     claimed_block.tx_id,
-    claimed_block.compact_cbor,
+    claimed_block.source_cbor,
   )
   main.spend(
     fixture.next_step_script_hash,

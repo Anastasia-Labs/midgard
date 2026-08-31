@@ -314,7 +314,8 @@ pub fn continue_step_01_l1_tx_v1(
       fixture.phas_withdraw_redeemer_entry(
         block.block.transactions_phas_root,
         block.block.tx_id,
-        block.block.compact_cbor,
+        // The raw transactions trie commits `Data(L2TransactionSourceV1)`.
+        block.block.source_cbor,
       ),
     ],
   }

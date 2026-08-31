@@ -66,7 +66,7 @@ validator main(
             output_state_data,
             _header,
             bad_tx_id,
-            _bad_tx_view
+            bad_tx_view
           <- pass_native_tx_to_next_step_carried(
           computation_thread_token_policy_id,
           hub_oracle,
@@ -77,6 +77,7 @@ validator main(
         )
 
         expect None = m_input_state_data
+        expect bad_tx_view.tx_compact.validity_code == 0
 
         // 2. The UTxO must be produced at next step's script hash with the
         //    verified first bad transaction ID in the `data` field of its
@@ -130,7 +131,7 @@ fn run_step_01(claimed: fixture.NativeBlockFixtureV1) -> Bool {
     expected_output_state,
     claimed.transactions_phas_root,
     claimed.tx_id,
-    claimed.compact_cbor,
+    claimed.source_cbor,
   )
   main.spend(
     fixture.next_step_script_hash,
@@ -166,7 +167,7 @@ fn deep_double_spend_block() -> (fixture.NativeBlockFixtureV1, mpf.Proof) {
   (
     fixture.deep_transactions_root_block_fixture_v1(
       base,
-      fixture.adversarial_membership_root(base.tx_id, base.compact_cbor, steps),
+      fixture.adversarial_membership_root(base.tx_id, base.source_cbor, steps),
       1_000_000,
     ),
     steps,

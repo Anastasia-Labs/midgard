@@ -101,6 +101,21 @@ pub fn verify_confirmed_duplicate_v1(
               cbor.serialise(membership.value),
             )
         }
+        (
+          step_01.DuplicateForcedTransactionV1,
+          step_01.CommittedDuplicateForcedTransactionV1 { membership },
+        ) -> {
+          expect membership.key == state.event_key
+          expect
+            transition_trace.verify_root_membership_with_bytes(
+              membership,
+              transition_trace.ForcedTransactionsV1RootDomain,
+              settled.forced_transactions_root,
+              membership.count,
+              cbor.serialise(membership.key),
+              cbor.serialise(membership.value),
+            )
+        }
         _ -> fail @"cross-block-duplicate-event: root domains differ"
       }
       settled_header_hash

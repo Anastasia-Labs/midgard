@@ -89,8 +89,11 @@ use midgard/native_tx_field_access_v1.{
   FieldCarriageV1, FieldViewV1, authenticated_field_view, field_item_count,
 }
 use midgard/native_tx_machine_walk_v1.{
-  FieldWalkCheckpointV1, open_field_walk, resume_field_walk_from_commitment,
-  walk_fold, walk_is_complete,
+  FieldGrammarCheckpointV1, FieldWalkCheckpointV1,
+  open_certified_field_walk_from_grammar_commitment,
+  open_field_grammar_certification, open_field_walk,
+  resume_field_grammar_certification_from_commitment,
+  resume_field_walk_from_commitment, walk_fold, walk_is_complete,
 }
 
 // §2.5's positional field table, named. Call sites pass one of these literals
@@ -477,6 +480,82 @@ pub fn resume_opened_field_walk(
   let anchored = anchored_native_tx(tx_opening_of(opening), anchor)
   expect field_pairs_with(anchored, field_index)
   resume_field_walk_from_commitment(
+    anchored.verified,
+    anchored.witness_set,
+    committed_checkpoint_hash,
+    checkpoint_bytes,
+    carriage_of(opening),
+    reference_inputs,
+    certificate_policy_id,
+  )
+}
+
+/// Begin the provisional, bounded envelope certification required before a
+/// variable-width field may become a resumable semantic walk. The transaction
+/// and witness-set anchors, positional field identity, and carriage all pass
+/// through the same family opening boundary as an ordinary walk; only the
+/// view constructor differs, because it deliberately does not pay an O(N)
+/// whole-field walk in this transaction.
+pub fn opened_field_grammar_certification(
+  opening: FieldOpeningV1,
+  anchor: NativeTxAnchorV1,
+  field_index: Int,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> Pair<FieldViewV1, FieldGrammarCheckpointV1> {
+  let anchored = anchored_native_tx(tx_opening_of(opening), anchor)
+  expect field_pairs_with(anchored, field_index)
+  open_field_grammar_certification(
+    anchored.verified,
+    anchored.witness_set,
+    field_index,
+    carriage_of(opening),
+    reference_inputs,
+    certificate_policy_id,
+  )
+}
+
+/// Resume provisional envelope certification only from the checkpoint digest
+/// held by computation-thread state. The redeemer's bytes are never accepted
+/// as provenance for a variable-width position.
+pub fn resume_opened_field_grammar_certification(
+  opening: FieldOpeningV1,
+  anchor: NativeTxAnchorV1,
+  field_index: Int,
+  committed_checkpoint_hash: ByteArray,
+  checkpoint_bytes: ByteArray,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> Pair<FieldViewV1, FieldGrammarCheckpointV1> {
+  let anchored = anchored_native_tx(tx_opening_of(opening), anchor)
+  expect field_pairs_with(anchored, field_index)
+  resume_field_grammar_certification_from_commitment(
+    anchored.verified,
+    anchored.witness_set,
+    committed_checkpoint_hash,
+    checkpoint_bytes,
+    carriage_of(opening),
+    reference_inputs,
+    certificate_policy_id,
+  )
+}
+
+/// Convert a terminal grammar certificate committed by thread state into the
+/// semantic walk's derived item-zero checkpoint. This is the only bridge
+/// between the two checkpoint domains; a provisional count cannot reach a
+/// family accumulator through any non-terminal route.
+pub fn opened_certified_field_walk_from_grammar(
+  opening: FieldOpeningV1,
+  anchor: NativeTxAnchorV1,
+  field_index: Int,
+  committed_checkpoint_hash: ByteArray,
+  checkpoint_bytes: ByteArray,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> Pair<FieldViewV1, FieldWalkCheckpointV1> {
+  let anchored = anchored_native_tx(tx_opening_of(opening), anchor)
+  expect field_pairs_with(anchored, field_index)
+  open_certified_field_walk_from_grammar_commitment(
     anchored.verified,
     anchored.witness_set,
     committed_checkpoint_hash,

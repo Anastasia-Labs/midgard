@@ -7,11 +7,14 @@ use cardano/address.{
 }
 use cardano/assets.{Lovelace, PolicyId, quantity_of}
 use cardano/transaction.{
-  Input, Mint, NoDatum, Output, OutputReference, Redeemer, ScriptPurpose,
-  Transaction,
+  InlineDatum, Input, Mint, NoDatum, Output, OutputReference, Redeemer,
+  ScriptPurpose, Transaction, ValidityRange,
 }
 use env
+use midgard/availability_challenge as availability
+use midgard/claim_registry_v1 as claim_registry
 use midgard/common/utils
+use midgard/correction_lock
 use midgard/da_attestation_types as da_attestation
 use midgard/fraud_proof
 use midgard/hub_oracle as hub
@@ -26,13 +29,16 @@ use midgard/operator_directory/retired_operators
 use midgard/scheduler
 use midgard/settlement
 use midgard/state_queue.{
-  AttachDaAttestation, CommitBlockHeader, Deinit, HeaderView, InitV1,
-  LinkedListMutation, MergeToConfirmedStateV1, MintRedeemer,
-  OperatorAlreadySlashed, RemoveFraudulentBlockHeader,
-  RemoveFraudulentBlocksLink, RemoveLastFraudulentBlock, SlashActiveOperator,
-  SlashRetiredOperator, SpendRedeemer, StateQueueNode,
+  AttachDaAttestation, AvailabilityStatusUpdate, CommitBlockHeader, Deinit,
+  HeaderView, InitV1, LinkedListMutation, MergeToConfirmedStateV1, MintRedeemer,
+  OperatorAlreadySlashed, PruneTimedOutBlockDescendant,
+  RemoveFraudulentBlockHeader, RemoveFraudulentBlocksLink,
+  RemoveLastFraudulentBlock, RemoveTimedOutHead,
+  RemoveUnattestedBlockAfterTimeout, RemoveUnavailableBlockAfterTimeout,
+  SlashActiveOperator, SlashRetiredOperator, SpendRedeemer, StateQueueNode,
   commit_bound_header_time_is_valid, confirmed_state_asset_name,
-  decode_header_view, finalize_linked_list, no_da_attestation,
+  da_attestation_timeout_v1, decode_header_view, finalize_linked_list,
+  get_confirmed_state_root, get_state_queue_node, no_da_attestation,
 }
 
 /// Pure CommitBlockHeader structural seam. The full validator authenticates
@@ -91,6 +97,75 @@ pub fn commit_block_header_carries_confirmed_state_v1(
   }
 }
 
+/// Q61 append fence. An unattested head accepts descendants only through a
+/// validity window ending strictly before its timeout boundary. Once attached,
+/// the exact configured DA policy marker restores appendability. An unknown
+/// non-empty marker authorizes neither branch.
+pub fn state_queue_head_allows_append_v1(
+  head: StateQueueNode,
+  _da_attestation_policy_id: PolicyId,
+  validity_range: ValidityRange,
+) -> Bool {
+  let header = decode_header_view(head.header)
+  let (_, inclusive_tx_upper_bound) = utils.get_inclusive_bounds_of_a_short_validity_range(
+    validity_range,
+  )
+  and {
+    header_v1_is_valid(header),
+    when head.da_attestation is {
+      availability.Unattested ->
+        inclusive_tx_upper_bound < header.end_time + da_attestation_timeout_v1
+      availability.Attested { .. } -> True
+      availability.Challenged { .. } -> False
+      availability.Published { .. } -> True
+    },
+  }
+}
+
+/// Resolve the current head observed by a non-empty append. The append helper
+/// has already authenticated `append_anchor_data` as the consumed tail. The
+/// singleton root decides whether that tail is also the head; a deeper queue
+/// must supply the separately authenticated head node.
+pub fn authenticated_queue_head_for_append_v1(
+  reference_inputs: List<Input>,
+  state_queue_policy_id: PolicyId,
+  append_anchor_header_hash: ByteArray,
+  append_anchor_data: Data,
+  confirmed_state_ref_input_index: Int,
+  m_head_state_queue_node_ref_input_index: Option<Int>,
+) -> StateQueueNode {
+  let head_header_hash = get_confirmed_state_root(
+    reference_inputs,
+    state_queue_policy_id,
+    confirmed_state_ref_input_index,
+    fn(confirmed_state, head_link) {
+      expect
+        confirmed_state_next_header_protocol_version_v1(confirmed_state) != None
+      expect Some(head_header_hash) = head_link
+      head_header_hash
+    },
+  )
+  let head_node = if head_header_hash == append_anchor_header_hash {
+    expect m_head_state_queue_node_ref_input_index == None
+    expect authenticated_head: StateQueueNode = append_anchor_data
+    authenticated_head
+  } else {
+    expect Some(head_ref_input_index) = m_head_state_queue_node_ref_input_index
+    get_state_queue_node(
+      reference_inputs,
+      state_queue_policy_id,
+      head_ref_input_index,
+      fn(authenticated_head, authenticated_head_hash) {
+        expect authenticated_head_hash == head_header_hash
+        authenticated_head
+      },
+    )
+  }
+  let head_header_data: Data = head_node.header
+  expect head_header_hash == utils.serialise_and_hash_28(head_header_data)
+  head_node
+}
+
 /// Exact fraud-prover reward routing (F04 §2.3; 2026-08-11 owner ruling 7, D3).
 ///
 /// The reward-bearing slash transaction pays `expected_reward` lovelace,
@@ -110,11 +185,12 @@ pub fn fraud_prover_reward_output_is_exact_v1(
   fraud_prover: VerificationKeyHash,
   expected_reward: Lovelace,
 ) -> Bool {
-  let Output { address, value, reference_script, .. } = reward_output
+  let Output { address, value, datum, reference_script } = reward_output
   and {
     address == from_verification_key(fraud_prover),
     assets.lovelace_of(value) == expected_reward,
     assets.without_lovelace(value) == assets.zero,
+    datum == NoDatum,
     reference_script == None,
   }
 }
@@ -145,11 +221,9 @@ pub fn no_output_pays_fraud_prover_reward_v1(
 
 /// Routes the reward for one bond-consuming slashing arm.
 ///
-/// `None` is the placeholder-economics case and nothing else: it is accepted
-/// only while `expected_reward` is zero, which is exactly the state
-/// `onchain/aiken/env/{default,testnet}.ak` compile today and which F04 §2.5
-/// records as Q53's to replace. Under any real F04 profile the index is
-/// mandatory, because paying nothing is not paying `fraud_prover_reward`.
+/// `None` is accepted only when `expected_reward` is zero. Both release
+/// profiles compile a nonzero reward, so their bond-consuming arms must name
+/// the exact reward output.
 pub fn fraud_prover_reward_routing_is_exact_v1(
   outputs: List<Output>,
   m_reward_output_index: Option<Int>,
@@ -160,39 +234,33 @@ pub fn fraud_prover_reward_routing_is_exact_v1(
     None -> expected_reward == 0
     Some(reward_output_index) -> {
       expect Some(reward_output) = outputs |> list.at(reward_output_index)
-      fraud_prover_reward_output_is_exact_v1(
-        reward_output,
-        fraud_prover,
-        expected_reward,
-      )
+      and {
+        fraud_prover_reward_output_is_exact_v1(
+          reward_output,
+          fraud_prover,
+          expected_reward,
+        ),
+        list.length(
+          list.filter(
+            outputs,
+            fn(output) { output.address == from_verification_key(fraud_prover) },
+          ),
+        ) == 1,
+      }
     }
   }
 }
 
 /// The complete reward obligation of a bond-consuming
-/// `RemoveFraudulentBlockHeader` arm: exact routing to the fraud prover named
-/// by the fraud-proof datum, and — when the transaction actually bears a reward
-/// output — that prover's own signature on the transaction that pays it.
+/// `RemoveFraudulentBlockHeader` arm: exact routing to the immutable fraud
+/// prover enterprise address named by the authentic fraud-proof datum.
 ///
-/// The signature is F04 §2.3's second binding — "the same prover must be an
-/// extra signatory of the reward-bearing slash transaction … on-chain
-/// enforcement, not an SDK preflight, establishes both bindings" — and it is
-/// what stops a third party from forcing a payout on a prover's behalf while
-/// spending the prover's one-shot claim.
-///
-/// ## Why the signature is gated on the reward-bearing case
-///
-/// F04 §2.3 scopes that binding to "the reward-bearing slash transaction", and
-/// the 2026-08-12 orchestrator ruling on #603 pins the scope: the signature is
-/// demanded exactly when the reward output exists — the `Some` arm. A
-/// zero-profile slash routes its reward by omitting the output (`None`, which
-/// `fraud_prover_reward_routing_is_exact_v1` accepts only while
-/// `expected_reward` is zero), pays the prover nothing, and so protects no
-/// asset by demanding the prover's cooperation; an unconditional demand would
-/// only add a liveness dependency, letting an absent prover block the slash of
-/// a fraudulent operator. Under any nonzero profile the two conditions
-/// coincide: `None` fails the routing conjunct outright, so every transaction
-/// that clears this predicate is a `Some` transaction and is signed.
+/// The slash is deliberately permissionless after a proof token exists. The
+/// prover authenticated its identity when opening the computation thread; a
+/// second signature here would let an unavailable prover block correction and
+/// is not needed to protect any prover-controlled input. Exact address, value,
+/// output uniqueness, bond consumption and the already-slashed branch remain
+/// the complete no-redirection/no-double-reward boundary.
 ///
 /// ## Why the reward rides the slash rather than the target block's removal
 ///
@@ -218,22 +286,13 @@ pub fn route_fraud_prover_reward_v1(
   m_reward_output_index: Option<Int>,
   fraud_prover: VerificationKeyHash,
   expected_reward: Lovelace,
-  extra_signatories: List<VerificationKeyHash>,
 ) -> Bool {
-  and {
-    fraud_prover_reward_routing_is_exact_v1(
-      outputs,
-      m_reward_output_index,
-      fraud_prover,
-      expected_reward,
-    ),
-    when m_reward_output_index is {
-      // No reward output: nothing is paid to the prover, so nothing of the
-      // prover's is spent and no signature is owed.
-      None -> True
-      Some(_) -> fraud_prover |> utils.has_signed(extra_signatories)
-    },
-  }
+  fraud_prover_reward_routing_is_exact_v1(
+    outputs,
+    m_reward_output_index,
+    fraud_prover,
+    expected_reward,
+  )
 }
 
 pub type MergeCommitments {
@@ -354,7 +413,12 @@ fn merge_to_confirmed_state(
     expect
         StateQueueNode { header: input_header_data, da_attestation }: StateQueueNode
       = input_header_node_data
-    expect da_attestation == da_attestation_policy_id
+    expect
+      when da_attestation is {
+        availability.Attested { .. } -> True
+        availability.Published { .. } -> True
+        _ -> False
+      }
 
     let input_header = decode_header_view(input_header_data)
     expect input_header.protocol_version == expected_protocol_version
@@ -425,6 +489,7 @@ fn merge_to_confirmed_state(
 validator spend(
   state_queue_mint_script_hash: ByteArray,
   da_attestation_policy_id: PolicyId,
+  availability_policy_id: PolicyId,
 ) {
   spend(
     _datum: Option<Data>,
@@ -459,6 +524,23 @@ validator spend(
           = mint_redeemer_data
         redeemer_state_queue_input_index == state_queue_input_index
       }
+      AvailabilityStatusUpdate {
+        state_queue_input_index,
+        state_queue_output_index,
+        availability_mint_redeemer_index,
+      } -> {
+        expect Some(Input { output_reference, .. }) = tx.inputs
+          |> list.at(state_queue_input_index)
+        expect output_reference == own_ref
+
+        availability_status_update_is_authorized_v1(
+          tx.redeemers,
+          availability_policy_id,
+          availability_mint_redeemer_index,
+          state_queue_input_index,
+          state_queue_output_index,
+        )
+      }
     }
   }
 
@@ -467,8 +549,429 @@ validator spend(
   }
 }
 
+/// Cross-policy authorization seam for the state-queue spending validator.
+/// The availability mint policy owns the semantic status transition; this
+/// helper proves that its selected redeemer names the exact queue input and
+/// continuation being spent here. Only the three status-preserving arms are
+/// admitted. Timeout removes queue structure and is therefore excluded.
+pub fn availability_status_update_is_authorized_v1(
+  redeemers: List<Pair<ScriptPurpose, Data>>,
+  availability_policy_id: PolicyId,
+  availability_mint_redeemer_index: Int,
+  state_queue_input_index: Int,
+  state_queue_output_index: Int,
+) -> Bool {
+  let redeemer_data = redeemers
+    |> utils.get_redeemer_at(
+        Mint(availability_policy_id),
+        availability_mint_redeemer_index,
+      )
+  expect availability_redeemer: availability.MintRedeemerV1 = redeemer_data
+  when availability_redeemer is {
+    availability.MintBondFromAttestation {
+      state_queue_input_index: bound_input,
+      state_queue_output_index: bound_output,
+      ..
+    } -> and {
+        bound_input == state_queue_input_index,
+        bound_output == state_queue_output_index,
+      }
+    availability.OpenChallenge {
+      state_queue_input_index: bound_input,
+      state_queue_output_index: bound_output,
+      ..
+    } -> and {
+        bound_input == state_queue_input_index,
+        bound_output == state_queue_output_index,
+      }
+    availability.CloseChallenge {
+      state_queue_input_index: bound_input,
+      state_queue_output_index: bound_output,
+      ..
+    } -> and {
+        bound_input == state_queue_input_index,
+        bound_output == state_queue_output_index,
+      }
+    availability.SettleTranche { .. } -> False
+    availability.TimeoutChallenge { .. } -> False
+  }
+}
+
+/// Remove the node currently linked from the fraud-proved anchor.
+///
+/// `linked_list.remove` authenticates both list inputs and proves that the
+/// removed node is the anchor's current successor.  That structural relation
+/// is the authority for pruning: after an earlier child has been removed, the
+/// anchor can point directly at a later descendant whose own `prev_header_hash`
+/// (and operator) necessarily names the original chain rather than the anchor.
+/// Requiring the descendant's operator to equal the fraudulent block's
+/// operator would therefore deadlock correction whenever the scheduler rotates.
+pub fn remove_fraudulent_blocks_link_v1(
+  state_queue_policy_id: PolicyId,
+  inputs: List<Input>,
+  outputs: List<Output>,
+  mint: assets.Value,
+  fraudulent_blocks_header_hash: ByteArray,
+  fraudulent_node_input_outref: OutputReference,
+  fraudulent_node_output_index: Int,
+) -> Bool {
+  expect Some(fraudulent_node_output) = outputs
+    |> list.at(fraudulent_node_output_index)
+  {
+    let
+        _fraudulent_header_input,
+        _fraudulent_header_lovelace_change,
+        m_fraudulent_header_hash,
+        _fraudulent_header_data,
+        _removed_block_input,
+        _removed_node_lovelace,
+        _removed_node_header_hash,
+        removed_node_header_data,
+        _removed_node_link
+      <- linked_list.remove(
+      anchor_input_outref: fraudulent_node_input_outref,
+      continued_anchor_element_output: fraudulent_node_output,
+      inputs: inputs,
+      tx_mint: mint,
+    )
+    expect Some(fraudulent_blocks_header_hash) == m_fraudulent_header_hash
+    expect StateQueueNode { header: removed_node_header, .. }: StateQueueNode = removed_node_header_data
+    expect
+      decode_header_view(removed_node_header).protocol_version == protocol_version_v1
+    True
+  }
+    |> finalize_linked_list(state_queue_policy_id)
+}
+
+/// Remove the fraud-proved block itself once it is the terminal queue node.
+///
+/// Unlike descendant pruning, this branch must bind the removed header's own
+/// operator to the operator being slashed: this is the target block rather than
+/// a structurally invalid descendant committed by a later scheduled operator.
+pub fn remove_last_fraudulent_block_v1(
+  state_queue_policy_id: PolicyId,
+  inputs: List<Input>,
+  outputs: List<Output>,
+  mint: assets.Value,
+  fraudulent_operator: VerificationKeyHash,
+  fraudulent_blocks_header_hash: ByteArray,
+  anchor_element_input_outref: OutputReference,
+  anchor_element_output_index: Int,
+) -> Bool {
+  expect Some(anchor_element_output) = outputs
+    |> list.at(anchor_element_output_index)
+  {
+    let
+        _anchor_input,
+        _anchor_lovelace_change,
+        _m_anchor_key,
+        _anchor_data,
+        _removed_node_input,
+        _removed_node_lovelace,
+        removed_node_header_hash,
+        removed_node_header_data,
+        removed_node_link
+      <- linked_list.remove(
+      anchor_input_outref: anchor_element_input_outref,
+      continued_anchor_element_output: anchor_element_output,
+      inputs: inputs,
+      tx_mint: mint,
+    )
+    expect fraudulent_blocks_header_hash == removed_node_header_hash
+    expect StateQueueNode { header: removed_node_header, .. }: StateQueueNode = removed_node_header_data
+    let removed_header_view = decode_header_view(removed_node_header)
+    expect removed_header_view.operator_vkey == fraudulent_operator
+    removed_node_link == None
+  }
+    |> finalize_linked_list(state_queue_policy_id)
+}
+
+/// The authenticated state-queue node is the applied-attestation singleton.
+/// `AttachDaAttestation` changes this exact node from `no_da_attestation` to
+/// the configured DA policy, so a timeout correction and an attachment spend
+/// the same UTxO and cannot both confirm. A separately minted or thresholded
+/// DAAT is not an absence oracle and is deliberately not treated as one: until
+/// it wins that state transition, the block remains unapplied-attestation
+/// state. Refetching after either confirmation makes the losing race reject.
+pub fn unattested_block_timeout_elapsed_v1(
+  timed_out_header_hash: ByteArray,
+  authenticated_header_hash: ByteArray,
+  node: StateQueueNode,
+  validity_range: ValidityRange,
+) -> Bool {
+  let header = decode_header_view(node.header)
+  let inclusive_tx_lower_bound = utils.get_inclusive_lower_bound_of_interval(
+    validity_range,
+  )
+  and {
+    authenticated_header_hash == timed_out_header_hash,
+    authenticated_header_hash == crypto.blake2b_224(
+      builtin.serialise_data(node.header),
+    ),
+    node.da_attestation == no_da_attestation,
+    header_v1_is_valid(header),
+    inclusive_tx_lower_bound >= header.end_time + da_attestation_timeout_v1,
+  }
+}
+
+/// Prune the current descendant of an unattested, timed-out head before the
+/// head itself is removed. The authenticated list link, not the descendant's
+/// operator, makes it invalid once its predecessor is removed.
+pub fn prune_timed_out_block_descendant_v1(
+  state_queue_policy_id: PolicyId,
+  inputs: List<Input>,
+  outputs: List<Output>,
+  reference_inputs: List<Input>,
+  mint: assets.Value,
+  validity_range: ValidityRange,
+  timed_out_header_hash: ByteArray,
+  confirmed_state_ref_input_index: Int,
+  timed_out_node_input_outref: OutputReference,
+  timed_out_node_output_index: Int,
+) -> Bool {
+  // A timed-out node may authorize pruning only after it is the current head.
+  // The root NFT is a singleton; reading that UTxO as a reference input both
+  // authenticates the head link and makes a concurrent root merge/removal
+  // invalidate this transaction.
+  expect Some(Input { output: confirmed_state_output, .. }) = reference_inputs
+    |> list.at(confirmed_state_ref_input_index)
+  expect
+    {
+      let
+          _confirmed_state_address,
+          _confirmed_state_lovelace,
+          m_confirmed_state_key,
+          confirmed_state_data,
+          confirmed_state_link
+        <- linked_list.get_element_info(confirmed_state_output)
+      expect m_confirmed_state_key == None
+      expect confirmed_state: ConfirmedState = confirmed_state_data
+      expect
+        confirmed_state_next_header_protocol_version_v1(confirmed_state) != None
+      confirmed_state_link == Some(timed_out_header_hash)
+    }
+      |> finalize_linked_list(state_queue_policy_id)
+
+  expect Some(timed_out_node_output) = outputs
+    |> list.at(timed_out_node_output_index)
+  {
+    let
+        _timed_out_node_input,
+        _timed_out_node_lovelace_change,
+        m_timed_out_node_header_hash,
+        timed_out_node_data,
+        _removed_descendant_input,
+        _removed_descendant_lovelace,
+        _removed_descendant_header_hash,
+        removed_descendant_data,
+        _removed_descendant_link
+      <- linked_list.remove(
+      anchor_input_outref: timed_out_node_input_outref,
+      continued_anchor_element_output: timed_out_node_output,
+      inputs: inputs,
+      tx_mint: mint,
+    )
+    expect Some(authenticated_header_hash) = m_timed_out_node_header_hash
+    expect timed_out_node: StateQueueNode = timed_out_node_data
+    expect
+      unattested_block_timeout_elapsed_v1(
+        timed_out_header_hash,
+        authenticated_header_hash,
+        timed_out_node,
+        validity_range,
+      )
+    expect removed_descendant: StateQueueNode = removed_descendant_data
+    expect
+      decode_header_view(removed_descendant.header).protocol_version == protocol_version_v1
+    True
+  }
+    |> finalize_linked_list(state_queue_policy_id)
+}
+
+/// Remove the timed-out block from the state-queue root after every descendant
+/// has been pruned. Requiring the removed link to be `None` prevents confirmed
+/// state from being re-linked directly to a transition built on the discarded
+/// block.
+pub fn remove_unattested_head_after_timeout_v1(
+  state_queue_policy_id: PolicyId,
+  inputs: List<Input>,
+  outputs: List<Output>,
+  mint: assets.Value,
+  validity_range: ValidityRange,
+  timed_out_header_hash: ByteArray,
+  confirmed_state_input_outref: OutputReference,
+  confirmed_state_output_index: Int,
+) -> Bool {
+  expect Some(confirmed_state_output) = outputs
+    |> list.at(confirmed_state_output_index)
+  {
+    let
+        _confirmed_state_input,
+        _confirmed_state_lovelace_change,
+        m_confirmed_state_key,
+        confirmed_state_data,
+        _timed_out_node_input,
+        _timed_out_node_lovelace,
+        authenticated_header_hash,
+        timed_out_node_data,
+        timed_out_node_link
+      <- linked_list.remove(
+      anchor_input_outref: confirmed_state_input_outref,
+      continued_anchor_element_output: confirmed_state_output,
+      inputs: inputs,
+      tx_mint: mint,
+    )
+    expect m_confirmed_state_key == None
+    expect confirmed_state: ConfirmedState = confirmed_state_data
+    expect
+      confirmed_state_next_header_protocol_version_v1(confirmed_state) != None
+    expect timed_out_node: StateQueueNode = timed_out_node_data
+    expect
+      unattested_block_timeout_elapsed_v1(
+        timed_out_header_hash,
+        authenticated_header_hash,
+        timed_out_node,
+        validity_range,
+      )
+    timed_out_node_link == None
+  }
+    |> finalize_linked_list(state_queue_policy_id)
+}
+
+fn unavailable_target_matches_v1(
+  unavailable_header_hash: ByteArray,
+  authenticated_header_hash: ByteArray,
+  challenge_asset_name: ByteArray,
+  node: StateQueueNode,
+) -> Bool {
+  and {
+    authenticated_header_hash == unavailable_header_hash,
+    authenticated_header_hash == crypto.blake2b_224(
+      builtin.serialise_data(node.header),
+    ),
+    node.da_attestation == availability.Challenged {
+      da_bond_asset_name: when node.da_attestation is {
+        availability.Challenged { da_bond_asset_name, .. } -> da_bond_asset_name
+        _ -> fail
+      },
+      challenge_asset_name,
+    },
+    header_v1_is_valid(decode_header_view(node.header)),
+  }
+}
+
+pub fn prune_unavailable_block_descendant_v1(
+  state_queue_policy_id: PolicyId,
+  inputs: List<Input>,
+  outputs: List<Output>,
+  reference_inputs: List<Input>,
+  mint: assets.Value,
+  unavailable_header_hash: ByteArray,
+  challenge_asset_name: ByteArray,
+  confirmed_state_ref_input_index: Int,
+  unavailable_node_input_outref: OutputReference,
+  unavailable_node_output_index: Int,
+) -> Bool {
+  expect Some(Input { output: confirmed_state_output, .. }) = reference_inputs
+    |> list.at(confirmed_state_ref_input_index)
+  expect
+    {
+      let _address, _lovelace, m_key, confirmed_state_data, head_link <- linked_list.get_element_info(
+        confirmed_state_output,
+      )
+      expect m_key == None
+      expect confirmed_state: ConfirmedState = confirmed_state_data
+      expect
+        confirmed_state_next_header_protocol_version_v1(confirmed_state) != None
+      head_link == Some(unavailable_header_hash)
+    }
+      |> finalize_linked_list(state_queue_policy_id)
+
+  expect Some(unavailable_node_output) = outputs
+    |> list.at(unavailable_node_output_index)
+  {
+    let
+        _anchor_input,
+        _anchor_lovelace_change,
+        m_anchor_header_hash,
+        anchor_node_data,
+        _removed_input,
+        _removed_lovelace,
+        _removed_header_hash,
+        removed_node_data,
+        _removed_link
+      <- linked_list.remove(
+      anchor_input_outref: unavailable_node_input_outref,
+      continued_anchor_element_output: unavailable_node_output,
+      inputs: inputs,
+      tx_mint: mint,
+    )
+    expect Some(authenticated_header_hash) = m_anchor_header_hash
+    expect anchor_node: StateQueueNode = anchor_node_data
+    expect
+      unavailable_target_matches_v1(
+        unavailable_header_hash,
+        authenticated_header_hash,
+        challenge_asset_name,
+        anchor_node,
+      )
+    expect removed_node: StateQueueNode = removed_node_data
+    decode_header_view(removed_node.header).protocol_version == protocol_version_v1
+  }
+    |> finalize_linked_list(state_queue_policy_id)
+}
+
+pub fn remove_unavailable_head_v1(
+  state_queue_policy_id: PolicyId,
+  inputs: List<Input>,
+  outputs: List<Output>,
+  mint: assets.Value,
+  unavailable_header_hash: ByteArray,
+  challenge_asset_name: ByteArray,
+  confirmed_state_input_outref: OutputReference,
+  confirmed_state_output_index: Int,
+) -> Bool {
+  expect Some(confirmed_state_output) = outputs
+    |> list.at(confirmed_state_output_index)
+  {
+    let
+        _root_input,
+        _root_lovelace_change,
+        m_root_key,
+        confirmed_state_data,
+        _removed_input,
+        _removed_lovelace,
+        authenticated_header_hash,
+        removed_node_data,
+        removed_link
+      <- linked_list.remove(
+      anchor_input_outref: confirmed_state_input_outref,
+      continued_anchor_element_output: confirmed_state_output,
+      inputs: inputs,
+      tx_mint: mint,
+    )
+    expect m_root_key == None
+    expect confirmed_state: ConfirmedState = confirmed_state_data
+    expect
+      confirmed_state_next_header_protocol_version_v1(confirmed_state) != None
+    expect removed_node: StateQueueNode = removed_node_data
+    expect
+      unavailable_target_matches_v1(
+        unavailable_header_hash,
+        authenticated_header_hash,
+        challenge_asset_name,
+        removed_node,
+      )
+    removed_link == None
+  }
+    |> finalize_linked_list(state_queue_policy_id)
+}
+
 validator mint(
   hub_oracle_script_hash: PolicyId,
+  correction_lock_script_hash: ByteArray,
+  claim_registry_script_hash: ByteArray,
+  computation_thread_policy_id: PolicyId,
   active_operators_script_hash: PolicyId,
   active_operators_addr: Address,
   retired_operators_script_hash: PolicyId,
@@ -476,13 +979,37 @@ validator mint(
   fraud_proof_script_hash: PolicyId,
   settlement_script_hash: PolicyId,
   da_attestation_policy_id: PolicyId,
+  availability_policy_id: PolicyId,
 ) {
   mint(redeemer: MintRedeemer, own_policy_id: PolicyId, self: Transaction) {
+    let correction_lock_address = from_script(correction_lock_script_hash)
+    let claim_registry_address = from_script(claim_registry_script_hash)
     when redeemer is {
       InitV1 { output_index } -> {
         let Transaction { outputs, mint, validity_range, .. } = self
 
         expect Some(root_output) = outputs |> list.at(output_index)
+        let correction_lock_output = correction_lock.unique_output(
+          outputs,
+          hub_oracle_script_hash,
+          correction_lock_address,
+        )
+        expect
+          correction_lock.decode_datum(correction_lock_output) == correction_lock.Idle
+        expect
+          quantity_of(mint, hub_oracle_script_hash, correction_lock.asset_name) == 1
+        let claim_registry_output = claim_registry.unique_output(
+          outputs,
+          hub_oracle_script_hash,
+          claim_registry_address,
+        )
+        expect
+          claim_registry.decode_datum(claim_registry_output) == claim_registry.Datum {
+            claims_root: claim_registry.empty_claims_root,
+            computation_thread_policy_id,
+          }
+        expect
+          quantity_of(mint, hub_oracle_script_hash, claim_registry.asset_name) == 1
 
         let (_current_time_lower, current_time_upper) = utils.get_inclusive_bounds_of_a_short_validity_range(
           validity_range,
@@ -514,11 +1041,31 @@ validator mint(
         True
       }
       Deinit -> {
-        let Transaction { inputs, mint, .. } = self
+        let Transaction { inputs, outputs, mint, .. } = self
 
         // 1. Hub oracle NFT must be getting burnt.
         expect quantity_of(mint, hub_oracle_script_hash, hub.asset_name) == -1
 
+        let correction_lock_input = correction_lock.unique_input(
+          inputs,
+          hub_oracle_script_hash,
+          correction_lock_address,
+        )
+        expect
+          correction_lock.decode_datum(correction_lock_input.output) == correction_lock.Idle
+        expect
+          quantity_of(mint, hub_oracle_script_hash, correction_lock.asset_name) == -1
+        expect correction_lock.has_no_output(outputs, hub_oracle_script_hash)
+        let claim_registry_input = claim_registry.unique_input(
+          inputs,
+          hub_oracle_script_hash,
+          claim_registry_address,
+        )
+        expect
+          claim_registry.decode_datum(claim_registry_input.output).computation_thread_policy_id == computation_thread_policy_id
+        expect
+          quantity_of(mint, hub_oracle_script_hash, claim_registry.asset_name) == -1
+        expect claim_registry.has_no_output(outputs, hub_oracle_script_hash)
         // 2. Linked list de-initialization must be valid. No other validations
         //    required.
         expect
@@ -542,6 +1089,8 @@ validator mint(
         scheduler_ref_input_index,
         active_operators_input_index,
         active_operators_redeemer_index,
+        m_confirmed_state_ref_input_index,
+        m_head_state_queue_node_ref_input_index,
       } -> {
         let
             Transaction {
@@ -584,6 +1133,13 @@ validator mint(
             inputs: inputs,
             tx_mint: mint,
           )
+
+          expect
+            correction_lock.references_idle(
+              reference_inputs,
+              hub_oracle_script_hash,
+              correction_lock_address,
+            )
 
           expect
               StateQueueNode { header: output_header_data, da_attestation }: StateQueueNode
@@ -646,6 +1202,28 @@ validator mint(
           // node (i.e. latest block in the queue).
           when m_anchor_key is {
             Some(header_hash) -> {
+              // Q61 starvation fence. A non-empty append observes the
+              // singleton root's current head. If the tail anchor is not that
+              // head, a second reference authenticates the head node. Timeout
+              // pruning spends/continues the same head, so an old append
+              // conflicts; the upper-bound rule prevents a refetched append
+              // from extending the queue after the deadline.
+              expect Some(confirmed_state_ref_input_index) = m_confirmed_state_ref_input_index
+              let head_node = authenticated_queue_head_for_append_v1(
+                reference_inputs,
+                own_policy_id,
+                header_hash,
+                anchor_data,
+                confirmed_state_ref_input_index,
+                m_head_state_queue_node_ref_input_index,
+              )
+              expect
+                state_queue_head_allows_append_v1(
+                  head_node,
+                  da_attestation_policy_id,
+                  validity_range,
+                )
+
               // 10a. New block must properly carry over data from previous
               //      block.
               expect
@@ -663,6 +1241,11 @@ validator mint(
               True
             }
             None -> {
+              // The consumed anchor is the root, so the queue is empty and
+              // there is no head to fence or reference.
+              expect m_confirmed_state_ref_input_index == None
+              expect m_head_state_queue_node_ref_input_index == None
+
               // 10b. New block must properly carry over data from confirmed
               //      state.
               expect
@@ -694,6 +1277,124 @@ validator mint(
           }
         }
           |> finalize_linked_list(own_policy_id)
+      }
+      RemoveUnattestedBlockAfterTimeout {
+        timed_out_header_hash,
+        removal_approach,
+      } -> {
+        let
+            Transaction {
+              inputs,
+              outputs,
+              reference_inputs,
+              mint,
+              validity_range,
+              ..
+            }
+          = self
+
+        // Q61: the state-queue node itself serializes DA attachment and
+        // permissionless timeout correction. No operator-directory input,
+        // slash redeemer, fraud proof, reward, or signature authorizes this
+        // liveness path.
+        expect _correction_lock_input = correction_lock.unique_input(
+          inputs,
+          hub_oracle_script_hash,
+          correction_lock_address,
+        )
+        when removal_approach is {
+          PruneTimedOutBlockDescendant {
+            confirmed_state_ref_input_index,
+            timed_out_node_input_outref,
+            timed_out_node_output_index,
+          } ->
+            prune_timed_out_block_descendant_v1(
+              own_policy_id,
+              inputs: inputs,
+              outputs: outputs,
+              reference_inputs: reference_inputs,
+              mint: mint,
+              validity_range: validity_range,
+              timed_out_header_hash: timed_out_header_hash,
+              confirmed_state_ref_input_index: confirmed_state_ref_input_index,
+              timed_out_node_input_outref: timed_out_node_input_outref,
+              timed_out_node_output_index: timed_out_node_output_index,
+            )
+          RemoveTimedOutHead {
+            confirmed_state_input_outref,
+            confirmed_state_output_index,
+          } ->
+            remove_unattested_head_after_timeout_v1(
+              own_policy_id,
+              inputs: inputs,
+              outputs: outputs,
+              mint: mint,
+              validity_range: validity_range,
+              timed_out_header_hash: timed_out_header_hash,
+              confirmed_state_input_outref: confirmed_state_input_outref,
+              confirmed_state_output_index: confirmed_state_output_index,
+            )
+        }
+      }
+      RemoveUnavailableBlockAfterTimeout {
+        unavailable_header_hash,
+        challenge_asset_name,
+        removal_approach,
+      } -> {
+        let Transaction { inputs, outputs, reference_inputs, mint, .. } = self
+        let lock_input = correction_lock.unique_input(
+          inputs,
+          hub_oracle_script_hash,
+          correction_lock_address,
+        )
+        let expected_lock = correction_lock.Locked {
+          target_header_hash: unavailable_header_hash,
+          correction_identity: correction_lock.AvailabilityChallenge {
+            challenge_asset_name,
+          },
+        }
+        expect
+          when correction_lock.decode_datum(lock_input.output) is {
+            correction_lock.Idle ->
+              quantity_of(mint, availability_policy_id, challenge_asset_name) == -1
+            current -> and {
+                current == expected_lock,
+                quantity_of(mint, availability_policy_id, challenge_asset_name) == 0,
+              }
+          }
+        when removal_approach is {
+          PruneTimedOutBlockDescendant {
+            confirmed_state_ref_input_index,
+            timed_out_node_input_outref,
+            timed_out_node_output_index,
+          } ->
+            prune_unavailable_block_descendant_v1(
+              own_policy_id,
+              inputs,
+              outputs,
+              reference_inputs,
+              mint,
+              unavailable_header_hash,
+              challenge_asset_name,
+              confirmed_state_ref_input_index,
+              timed_out_node_input_outref,
+              timed_out_node_output_index,
+            )
+          RemoveTimedOutHead {
+            confirmed_state_input_outref,
+            confirmed_state_output_index,
+          } ->
+            remove_unavailable_head_v1(
+              own_policy_id,
+              inputs,
+              outputs,
+              mint,
+              unavailable_header_hash,
+              challenge_asset_name,
+              confirmed_state_input_outref,
+              confirmed_state_output_index,
+            )
+        }
       }
       RemoveFraudulentBlockHeader {
         fraudulent_operator,
@@ -732,6 +1433,12 @@ validator mint(
         expect
           referenced_fraudulent_header_hash == fraudulent_blocks_header_hash
 
+        expect _correction_lock_input = correction_lock.unique_input(
+          inputs,
+          hub_oracle_script_hash,
+          correction_lock_address,
+        )
+
         // Slash the fraudulent operator:
         // 1. Let `slashing_approach` be a sum type indicating whether the
         //    fraudulent operator is active, retired, or already slashed.
@@ -763,14 +1470,13 @@ validator mint(
               // 2a-i. This arm consumes the operator's bond, so it is the
               //       reward-bearing transaction: exactly
               //       `env.fraud_prover_reward` must reach the prover named by
-              //       the fraud-proof datum, and — whenever that payment is
-              //       actually made — that prover must have signed.
+              //       the fraud-proof datum. Correction remains permissionless
+              //       once the permanent proof token exists.
               route_fraud_prover_reward_v1(
                 outputs,
                 m_fraud_prover_reward_output_index,
                 fraud_prover,
                 env.fraud_prover_reward,
-                extra_signatories,
               )
             }
             SlashRetiredOperator {
@@ -802,7 +1508,6 @@ validator mint(
                 m_fraud_prover_reward_output_index,
                 fraud_prover,
                 env.fraud_prover_reward,
-                extra_signatories,
               )
             }
             OperatorAlreadySlashed {
@@ -850,74 +1555,43 @@ validator mint(
             RemoveFraudulentBlocksLink {
               fraudulent_node_input_outref,
               fraudulent_node_output_index,
-            } -> {
+            } ->
               // 4a. If the fraudulent block has a link, its successor node must
               //     be removed first.
               //
               //     > [!NOTE]
               //     > The successor node is also considered fraudulent because
               //     > of getting appended to a fraudulent block, so it does not
-              //     > need to have an associated fraud proof token.
-              expect Some(fraudulent_node_output) = outputs
-                |> list.at(fraudulent_node_output_index)
-              let
-                  _fraudulent_header_input,
-                  _fraudulent_header_lovelace_change,
-                  m_fraudulent_header_hash,
-                  _fraudulent_header_data,
-                  _removed_block_input,
-                  _removed_node_lovelace,
-                  _removed_node_header_hash,
-                  removed_node_header_data,
-                  _removed_node_link
-                <- linked_list.remove(
-                anchor_input_outref: fraudulent_node_input_outref,
-                continued_anchor_element_output: fraudulent_node_output,
+              //     > need to have an associated fraud proof token. Its own
+              //     > operator is deliberately irrelevant: the authenticated
+              //     > list link proves it is a descendant of the removed anchor,
+              //     > including after operator rotation or earlier pruning.
+              remove_fraudulent_blocks_link_v1(
+                own_policy_id,
                 inputs: inputs,
-                tx_mint: mint,
+                outputs: outputs,
+                mint: mint,
+                fraudulent_blocks_header_hash: fraudulent_blocks_header_hash,
+                fraudulent_node_input_outref: fraudulent_node_input_outref,
+                fraudulent_node_output_index: fraudulent_node_output_index,
               )
-              expect
-                Some(fraudulent_blocks_header_hash) == m_fraudulent_header_hash
-              expect
-                  StateQueueNode { header: removed_node_header, .. }: StateQueueNode
-                = removed_node_header_data
-              let removed_header_view = decode_header_view(removed_node_header)
-              removed_header_view.operator_vkey == fraudulent_operator
-            }
             RemoveLastFraudulentBlock {
               anchor_element_input_outref,
               anchor_element_output_index,
-            } -> {
+            } ->
               // 4b. If the fraudulent block has no links, it can be removed
               //     from the very end of the state queue.
-              expect Some(anchor_element_output) = outputs
-                |> list.at(anchor_element_output_index)
-              let
-                  _anchor_input,
-                  _anchor_lovelace_change,
-                  _m_anchor_key,
-                  _anchor_data,
-                  _removed_node_input,
-                  _removed_node_lovelace,
-                  removed_node_header_hash,
-                  removed_node_header_data,
-                  removed_node_link
-                <- linked_list.remove(
-                anchor_input_outref: anchor_element_input_outref,
-                continued_anchor_element_output: anchor_element_output,
+              remove_last_fraudulent_block_v1(
+                own_policy_id,
                 inputs: inputs,
-                tx_mint: mint,
+                outputs: outputs,
+                mint: mint,
+                fraudulent_operator: fraudulent_operator,
+                fraudulent_blocks_header_hash: fraudulent_blocks_header_hash,
+                anchor_element_input_outref: anchor_element_input_outref,
+                anchor_element_output_index: anchor_element_output_index,
               )
-              expect fraudulent_blocks_header_hash == removed_node_header_hash
-              expect
-                  StateQueueNode { header: removed_node_header, .. }: StateQueueNode
-                = removed_node_header_data
-              let removed_header_view = decode_header_view(removed_node_header)
-              expect removed_header_view.operator_vkey == fraudulent_operator
-              removed_node_link == None
-            }
           }
-            |> finalize_linked_list(own_policy_id)
 
         // Done. (The fraud-proof reference input that used to be verified here
         // as step 5 is verified at step 0 above, where the prover it carries is
@@ -943,7 +1617,13 @@ validator mint(
         merged_block_total_event_count,
         merged_block_transition_step_count,
         merged_block_validation_trace_count,
-      } ->
+      } -> {
+        expect
+          correction_lock.references_idle(
+            self.reference_inputs,
+            hub_oracle_script_hash,
+            correction_lock_address,
+          )
         merge_to_confirmed_state(
           own_policy_id,
           da_attestation_policy_id,
@@ -971,6 +1651,7 @@ validator mint(
             validation_trace_count: merged_block_validation_trace_count,
           },
         )
+      }
     }
   }
 
@@ -1267,10 +1948,9 @@ test q49_l295_confirmed_ordinary_control_and_independent_mutations() {
 // The lovelace figure below is F04 §2.2's bounded-acceptance
 // `fraud_prover_reward` (400 tADA) used purely as a **test vector**. Nothing
 // here is an economics authority: the compiled validator routes
-// `env.fraud_prover_reward` unchanged, and no value in
-// `onchain/aiken/env/{default,testnet}.ak` moves in this lane. Exercising the
-// seams at a real amount is what makes "one lovelace over" and "one lovelace
-// under" observable while the compiled placeholder is still zero.
+// `env.fraud_prover_reward` unchanged. Exercising the seams at the bounded
+// profile amount makes "one lovelace over" and "one lovelace under"
+// observable without duplicating the environment as test authority.
 
 const d3_fraud_prover =
   #"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
@@ -1352,13 +2032,18 @@ test d3_reward_output_exactness_control_and_mutations() {
       d3_fraud_prover,
       d3_reward,
     ),
+    !fraud_prover_reward_output_is_exact_v1(
+      Output { ..control, datum: InlineDatum(0) },
+      d3_fraud_prover,
+      d3_reward,
+    ),
   }
 }
 
 /// D3 routing: the redeemer names the reward output, and omitting it is
-/// accepted only while the compiled reward is zero — the placeholder economics
-/// F04 §2.5 assigns to Q53. Under any real profile a missing reward output is
-/// a refusal, because paying nothing is not paying `fraud_prover_reward`.
+/// accepted only while the expected reward is zero. Under either release
+/// profile a missing reward output is a refusal, because paying nothing is not
+/// paying `fraud_prover_reward`.
 test d3_reward_routing_control_and_mutations() {
   let outputs = [d3_unrelated_output(), d3_reward_output(d3_reward)]
   and {
@@ -1378,6 +2063,12 @@ test d3_reward_routing_control_and_mutations() {
     !fraud_prover_reward_routing_is_exact_v1(
       outputs,
       None,
+      d3_fraud_prover,
+      d3_reward,
+    ),
+    !fraud_prover_reward_routing_is_exact_v1(
+      [d3_reward_output(d3_reward), d3_reward_output(d3_reward + 1)],
+      Some(0),
       d3_fraud_prover,
       d3_reward,
     ),
@@ -1424,54 +2115,15 @@ test d4_reward_exclusivity_control_and_double_claim() {
   }
 }
 
-/// D3 signature binding (F04 §2.3's second binding, scoped by the 2026-08-12
-/// orchestrator ruling on #603): a slash transaction that actually pays the
-/// reward must carry the prover's own signature, and one that does not pay it
-/// must not demand one.
-///
-/// Rows 1–2 are the reward-bearing pair: the same exact payment passes with the
-/// prover among the extra signatories and refuses without. Row 3 pins the
-/// binding to the prover specifically rather than to "somebody signed" — a
-/// third party's signature on a payout to the prover is still a refusal, which
-/// is the shape that would let a stranger spend the prover's one-shot claim.
-///
-/// Row 4 is the zero-profile positive the ruling turns on: with the reward at
-/// zero the routing is `None`, nothing reaches the prover, and the transaction
-/// clears with no prover signature at all — so an absent prover cannot hold up
-/// the slash of a fraudulent operator. Row 5 states the other half of that
-/// gating, that the zero profile is the only way to reach it: at a real reward
-/// `None` still refuses on the routing conjunct.
-test d3_reward_signature_binding_is_gated_on_the_reward_bearing_case() {
+/// D3 permissionless reward routing: after the prover identity is frozen by
+/// thread Init, reward validity depends only on the exact immutable enterprise
+/// address and amount. A missing reward output remains valid only for an exact
+/// zero-reward profile.
+test d3_reward_routing_does_not_require_the_prover_signature() {
   let outputs = [d3_unrelated_output(), d3_reward_output(d3_reward)]
   and {
-    route_fraud_prover_reward_v1(
-      outputs,
-      Some(1),
-      d3_fraud_prover,
-      d3_reward,
-      [d3_fraud_prover],
-    ),
-    !route_fraud_prover_reward_v1(
-      outputs,
-      Some(1),
-      d3_fraud_prover,
-      d3_reward,
-      [],
-    ),
-    !route_fraud_prover_reward_v1(
-      outputs,
-      Some(1),
-      d3_fraud_prover,
-      d3_reward,
-      [d3_other_key],
-    ),
-    route_fraud_prover_reward_v1(outputs, None, d3_fraud_prover, 0, []),
-    !route_fraud_prover_reward_v1(
-      outputs,
-      None,
-      d3_fraud_prover,
-      d3_reward,
-      [d3_fraud_prover],
-    ),
+    route_fraud_prover_reward_v1(outputs, Some(1), d3_fraud_prover, d3_reward),
+    route_fraud_prover_reward_v1(outputs, None, d3_fraud_prover, 0),
+    !route_fraud_prover_reward_v1(outputs, None, d3_fraud_prover, d3_reward),
   }
 }

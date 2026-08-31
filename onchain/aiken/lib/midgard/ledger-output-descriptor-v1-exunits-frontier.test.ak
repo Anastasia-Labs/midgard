@@ -128,29 +128,16 @@ test derivation_refuses_truncated_output_bytes() {
   ledger_output_descriptor_v1.ledger_value_v1(0, truncated) == None
 }
 
-/// An observation this lane measured rather than assumed, pinned so it cannot
-/// change silently.
-///
-/// The `l2_datum` sweep in
-/// `midgard/fraud_proofs/transition_trace/proof_exunits_frontier.test` has no
-/// `Some(#"")` rung because that rung cannot be built: an otherwise-canonical
-/// output whose inline datum is the empty byte string -- `#"40"`, which is
-/// exactly what `cbor.serialise` produces for an empty `ByteArray` and which
-/// `is_canonical_plutus_data_v1` accepts as canonical Plutus data -- has no
-/// §5.3 descriptor. `ledger_value_v1` declines it, so the `expect Some(..)` in
-/// every caller aborts. The one-byte datum immediately above it derives fine.
-///
-/// This test records the behaviour at the width where it bites; it does not
-/// claim the behaviour is correct. Whether an L2 output carrying an empty
-/// inline datum should be undeserviceable by `apply_l2_outputs` and by
-/// `validate_valid_deposit_transition` is a §5.3/§6.2 question this lane raises
-/// and does not settle -- see #628 and this lane's exec ledger.
-test derivation_declines_an_empty_inline_datum() {
+/// `40` is the canonical `serialiseData` image of an empty byte string. Its
+/// materialisation must therefore have the same descriptor coverage as the
+/// neighbouring one-byte datum; an Aiken stdlib decoder gap is not a protocol
+/// capability limit.
+test derivation_accepts_an_empty_inline_datum() {
   and {
     ledger_output_descriptor_v1.ledger_value_v1(
       0,
       output_cbor_with_datum(#"40"),
-    ) == None,
+    ) != None,
     ledger_output_descriptor_v1.ledger_value_v1(
       0,
       output_cbor_with_datum(#"41ab"),

@@ -357,6 +357,15 @@ test q1x_f6_double_spend_step_04_at_the_admissible_maximum() {
 /// `maximum_cardano_spend_redeemer_count`.
 const admissible_script_witness_count: Int = 224
 
+/// The **direct** route's own admissible maximum. Step-06's staged rebind caps
+/// `DirectFinalize` at `direct_script_witness_limit`; a wider field-6 certifies
+/// its §5.1 grammar and then scans in bounded batches through step-07/step-08,
+/// which `fraud_proofs/missing_native_script_tx/staged_v1.test` measures at
+/// both 65 and C20.6's 224. The one-L1-transaction rows below therefore sit at
+/// this step's own ceiling rather than at the envelope's.
+const direct_script_witness_count: Int =
+  missing_native_script_tx_step_06.direct_script_witness_limit
+
 const minimal_script_witness_count: Int = 1
 
 /// `count` distinct native script witnesses. Distinct because a real
@@ -450,6 +459,7 @@ fn missing_native_script_tx_step_06_at(count: Int) -> Bool {
   let asset_name = fixture.ct_token_asset_name(block)
   let l1_tx = fixture.finalize_step_l1_tx_v1(asset_name)
   missing_native_script_tx_step_06_validator.main.spend(
+    fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
     fixture.fraud_proof_policy_id,
     fixture.fraud_proof_token_address(),
@@ -462,12 +472,13 @@ fn missing_native_script_tx_step_06_at(count: Int) -> Bool {
             expected_missing_script_hash: absent_script_hash(),
             bad_tx_id: block.tx_id,
             bad_tx_witness_set_hash: block.compact.witness_set_hash,
+            phase: missing_native_script_tx_step_06.Ready,
           },
         ),
       },
     ),
     ct.Continue(
-      missing_native_script_tx_step_06.Args {
+      missing_native_script_tx_step_06.DirectFinalize {
         input_index: 0,
         output_index: 0,
         fraud_proof_mint_redeemer_index: 0,
@@ -488,13 +499,14 @@ test q1x_f6_missing_native_script_tx_step_06_at_one_script_witness() {
 }
 
 test q1x_f6_missing_native_script_tx_step_06_control_at_the_admissible_maximum() {
-  missing_native_script_tx_step_06_control(admissible_script_witness_count)
+  missing_native_script_tx_step_06_control(direct_script_witness_count)
 }
 
-/// The unbounded walk at C20.6's envelope: 224 script witnesses, every one
-/// visited, the absence claim true.
+/// The unbounded walk at the direct route's own ceiling: 64 script witnesses,
+/// every one visited, the absence claim true. C20.6's 224 is reached by the
+/// staged route and measured there.
 test q1x_f6_missing_native_script_tx_step_06_at_the_admissible_maximum() {
-  missing_native_script_tx_step_06_at(admissible_script_witness_count)
+  missing_native_script_tx_step_06_at(direct_script_witness_count)
 }
 
 // ---------------------------------------------------------------------------
@@ -792,11 +804,12 @@ test q1x_f6_compact_structure_length_is_cardinality_independent() {
 /// step-06 readings could be readings of a walk over an empty or unauthenticated
 /// collection.
 test q1x_f6_step_06_at_the_admissible_maximum_refuses_a_present_script() fail {
-  let count = admissible_script_witness_count
+  let count = direct_script_witness_count
   let block = script_cardinality_block(count)
   expect Some(present) = list.at(script_witnesses_of(count), count - 1)
   let asset_name = fixture.ct_token_asset_name(block)
   missing_native_script_tx_step_06_validator.main.spend(
+    fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
     fixture.fraud_proof_policy_id,
     fixture.fraud_proof_token_address(),
@@ -811,12 +824,13 @@ test q1x_f6_step_06_at_the_admissible_maximum_refuses_a_present_script() fail {
             ),
             bad_tx_id: block.tx_id,
             bad_tx_witness_set_hash: block.compact.witness_set_hash,
+            phase: missing_native_script_tx_step_06.Ready,
           },
         ),
       },
     ),
     ct.Continue(
-      missing_native_script_tx_step_06.Args {
+      missing_native_script_tx_step_06.DirectFinalize {
         input_index: 0,
         output_index: 0,
         fraud_proof_mint_redeemer_index: 0,

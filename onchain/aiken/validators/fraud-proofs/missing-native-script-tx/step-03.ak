@@ -41,7 +41,7 @@ validator main(
             output_state_data,
             _header,
             producing_tx_id,
-            _producing_tx_view
+            producing_tx_view
           <- pass_native_tx_to_next_step(
           computation_thread_token_policy_id,
           hub_oracle,
@@ -50,6 +50,8 @@ validator main(
           own_out_ref,
           tx,
         )
+
+        expect producing_tx_view.tx_compact.validity_code == 0
 
         expect
             Some(State {

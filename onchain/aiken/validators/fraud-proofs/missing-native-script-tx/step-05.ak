@@ -85,6 +85,7 @@ validator main(
           expected_missing_script_hash,
           bad_tx_id,
           bad_tx_witness_set_hash,
+          phase: step_06.Ready,
         }
         expect output_state_data == expected_output_state
 

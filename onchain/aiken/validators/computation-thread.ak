@@ -1,12 +1,15 @@
 use aiken/builtin
 use aiken/cbor
+use aiken/collection/dict
 use aiken/collection/list
 use aiken/primitive/bytearray
 use cardano/address.{Address, Script}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{
-  InlineDatum, Input, Output, Redeemer, ScriptPurpose, Transaction, placeholder,
+  InlineDatum, Input, Output, Redeemer, ScriptPurpose, Spend, Transaction,
+  placeholder,
 }
+use midgard/claim_registry_v1 as registry
 use midgard/common/utils
 use midgard/computation_thread.{
   BurnForCancellation, Init, MintRedeemer, StepDatum, Success,
@@ -16,9 +19,28 @@ use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/hub_oracle as hub
 use midgard/state_queue
 
+fn claim_registry_mutation(
+  inputs: List<Input>,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+  claim_registry_script_hash: ByteArray,
+) -> registry.Mutation {
+  let claim_registry_address = address.from_script(claim_registry_script_hash)
+  expect [Input { output_reference, .. }] = inputs
+    |> list.filter(
+        fn(Input { output: Output { address: input_address, .. }, .. }) {
+          input_address == claim_registry_address
+        },
+      )
+  expect Some(Pair(_, redeemer_data)) = redeemers
+    |> list.find(fn(Pair(purpose, _)) { purpose == Spend(output_reference) })
+  expect registry.Mutate { mutation }: registry.Redeemer = redeemer_data
+  mutation
+}
+
 validator mint(
   fraud_proof_catalogue_script_hash: ByteArray,
   hub_oracle_script_hash: PolicyId,
+  claim_registry_script_hash: ByteArray,
 ) {
   mint(redeemer: MintRedeemer, own_policy_id: PolicyId, self: Transaction) {
     when redeemer is {
@@ -35,6 +57,7 @@ validator mint(
         let
             Transaction {
               outputs,
+              inputs,
               reference_inputs,
               redeemers,
               mint,
@@ -108,6 +131,12 @@ validator mint(
         //      `fraudulent_header_hash`
         let expected_asset_name = fraud_category_id
           |> bytearray.concat(fraudulent_header_hash)
+        expect registry.OpenClaim { claim_id, .. } = claim_registry_mutation(
+          inputs,
+          redeemers,
+          claim_registry_script_hash,
+        )
+        expect claim_id == expected_asset_name
         let expected_mint_triplet = (own_policy_id, expected_asset_name, 1)
         expect
           utils.get_single_asset_from_value_apart_from_ada(
@@ -129,16 +158,30 @@ validator mint(
         True
       }
       Success { burning_token_asset_name } -> {
+        expect registry.CloseClaim { claim_id, .. } = claim_registry_mutation(
+          self.inputs,
+          self.redeemers,
+          claim_registry_script_hash,
+        )
+        expect claim_id == burning_token_asset_name
         // 1. Specified token must be burned. The rest of validations
         //    (including the coupling of this endpoint with minting of a
         //    `fraud_proof` token) are done in each fraud proof's last step.
-        expect
-          assets.quantity_of(self.mint, own_policy_id, burning_token_asset_name) == -1
+        let own_policy_mint = self.mint
+          |> assets.tokens(own_policy_id)
+          |> dict.to_pairs
+        expect own_policy_mint == [Pair(burning_token_asset_name, -1)]
 
         // Done.
         True
       }
       BurnForCancellation { burning_token_asset_name } -> {
+        expect registry.CancelClaim { claim_id, .. } = claim_registry_mutation(
+          self.inputs,
+          self.redeemers,
+          claim_registry_script_hash,
+        )
+        expect claim_id == burning_token_asset_name
         // 1. Transaction must burn the specified token, without minting or
         //    burning any other tokens.
         let expected_mint = assets.from_asset(
@@ -166,6 +209,9 @@ const test_catalogue_root =
 
 const test_other_policy =
   #"99999999999999999999999999999999999999999999999999999999"
+
+const test_claim_registry_script_hash =
+  #"77777777777777777777777777777777777777777777777777777777"
 
 fn test_block() -> fixture.NativeBlockFixtureV1 {
   fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
@@ -204,6 +250,39 @@ fn init_redeemer() -> MintRedeemer {
   }
 }
 
+fn claim_registry_input() -> Input {
+  let datum: Data = registry.Datum {
+    claims_root: registry.empty_claims_root,
+    computation_thread_policy_id: fixture.computation_thread_policy_id,
+  }
+  Input {
+    output_reference: fixture.own_out_ref(),
+    output: Output {
+      address: address.from_script(test_claim_registry_script_hash),
+      value: assets.from_lovelace(2_000_000)
+        |> assets.add(fixture.hub_oracle_script_hash, registry.asset_name, 1),
+      datum: InlineDatum(datum),
+      reference_script: None,
+    },
+  }
+}
+
+fn claim_registry_redeemer_entry(
+  mutation: registry.Mutation,
+) -> Pair<ScriptPurpose, Redeemer> {
+  let redeemer: Data = registry.Mutate { mutation }
+  Pair(Spend(fixture.own_out_ref()), redeemer)
+}
+
+fn open_claim_registry_redeemer_entry() -> Pair<ScriptPurpose, Redeemer> {
+  claim_registry_redeemer_entry(
+    registry.OpenClaim {
+      claim_id: fixture.ct_token_asset_name(test_block()),
+      proof: registry.RedeemerCarried([]),
+    },
+  )
+}
+
 fn run_init(
   first_step_hash: ByteArray,
   first_step_datum_data: Data,
@@ -216,6 +295,7 @@ fn run_init(
   mint.mint(
     fixture.catalogue_script_hash,
     fixture.hub_oracle_script_hash,
+    test_claim_registry_script_hash,
     init_redeemer(),
     fixture.computation_thread_policy_id,
     Transaction {
@@ -228,8 +308,9 @@ fn run_init(
           reference_script: None,
         },
       ],
+      inputs: [claim_registry_input()],
       reference_inputs: references,
-      redeemers,
+      redeemers: list.concat(redeemers, [open_claim_registry_redeemer_entry()]),
       mint: minted,
       extra_signatories: signatories,
     },
@@ -458,10 +539,20 @@ test ct_success_accepts_thread_token_burn() {
   mint.mint(
     fixture.catalogue_script_hash,
     fixture.hub_oracle_script_hash,
+    test_claim_registry_script_hash,
     Success { burning_token_asset_name: asset_name },
     fixture.computation_thread_policy_id,
     Transaction {
       ..placeholder,
+      inputs: [claim_registry_input()],
+      redeemers: [
+        claim_registry_redeemer_entry(
+          registry.CloseClaim {
+            claim_id: asset_name,
+            proof: registry.RedeemerCarried([]),
+          },
+        ),
+      ],
       mint: assets.from_asset(
         fixture.computation_thread_policy_id,
         asset_name,
@@ -479,11 +570,57 @@ test ct_success_rejects_missing_thread_token_burn() fail {
   mint.mint(
     fixture.catalogue_script_hash,
     fixture.hub_oracle_script_hash,
+    test_claim_registry_script_hash,
     Success { burning_token_asset_name: asset_name },
     fixture.computation_thread_policy_id,
     Transaction {
       ..placeholder,
+      inputs: [claim_registry_input()],
+      redeemers: [
+        claim_registry_redeemer_entry(
+          registry.CloseClaim {
+            claim_id: asset_name,
+            proof: registry.RedeemerCarried([]),
+          },
+        ),
+      ],
       mint: assets.from_asset(fixture.fraud_proof_policy_id, asset_name, 1),
+    },
+  )
+}
+
+/// Token-coupling negative: terminal success cannot piggyback an unregistered
+/// computation-thread asset under the same policy while burning the real one.
+test ct_success_rejects_surplus_own_policy_mint() fail {
+  let asset_name = fixture.ct_token_asset_name(test_block())
+  mint.mint(
+    fixture.catalogue_script_hash,
+    fixture.hub_oracle_script_hash,
+    test_claim_registry_script_hash,
+    Success { burning_token_asset_name: asset_name },
+    fixture.computation_thread_policy_id,
+    Transaction {
+      ..placeholder,
+      inputs: [claim_registry_input()],
+      redeemers: [
+        claim_registry_redeemer_entry(
+          registry.CloseClaim {
+            claim_id: asset_name,
+            proof: registry.RedeemerCarried([]),
+          },
+        ),
+      ],
+      mint: assets.from_asset(
+        fixture.computation_thread_policy_id,
+        asset_name,
+        -1,
+      )
+        |> assets.add(
+            fixture.computation_thread_policy_id,
+            "unregistered-thread",
+            1,
+          )
+        |> assets.add(fixture.fraud_proof_policy_id, asset_name, 1),
     },
   )
 }
@@ -495,10 +632,20 @@ test ct_burn_for_cancellation_accepts_exact_burn() {
   mint.mint(
     fixture.catalogue_script_hash,
     fixture.hub_oracle_script_hash,
+    test_claim_registry_script_hash,
     BurnForCancellation { burning_token_asset_name: asset_name },
     fixture.computation_thread_policy_id,
     Transaction {
       ..placeholder,
+      inputs: [claim_registry_input()],
+      redeemers: [
+        claim_registry_redeemer_entry(
+          registry.CancelClaim {
+            claim_id: asset_name,
+            proof: registry.RedeemerCarried([]),
+          },
+        ),
+      ],
       mint: assets.from_asset(
         fixture.computation_thread_policy_id,
         asset_name,
@@ -515,10 +662,20 @@ test ct_burn_for_cancellation_rejects_extra_mint() fail {
   mint.mint(
     fixture.catalogue_script_hash,
     fixture.hub_oracle_script_hash,
+    test_claim_registry_script_hash,
     BurnForCancellation { burning_token_asset_name: asset_name },
     fixture.computation_thread_policy_id,
     Transaction {
       ..placeholder,
+      inputs: [claim_registry_input()],
+      redeemers: [
+        claim_registry_redeemer_entry(
+          registry.CancelClaim {
+            claim_id: asset_name,
+            proof: registry.RedeemerCarried([]),
+          },
+        ),
+      ],
       mint: assets.from_asset(
         fixture.computation_thread_policy_id,
         asset_name,

@@ -1,9 +1,9 @@
 //// ## Invalid Range Fraud Proof (Section 5.1.2)
 ////
 //// Proves a given transaction, which has a validity range with one or both
-//// ends bounded, is included in a Midgard block whose validity range does not
-//// cover the transaction's validity range. Or if the transaction has an
-//// invalid time range (i.e. reversed interval).
+//// ends bounded, is included in a Midgard block whose canonical replay slot
+//// falls outside the transaction's validity range, or whose transaction has
+//// an invalid (reversed/empty) interval.
 
 use aiken/collection/list
 use aiken/crypto.{ScriptHash}
@@ -94,25 +94,20 @@ validator main(
         )
 
         expect None = m_input_state_data
+        expect bad_tx_view.tx_compact.validity_code == 0
 
-        let
-            HeaderV1 {
-              start_time: block_valid_from,
-              end_time: block_valid_to,
-              ..
-            }
-          = header
+        let HeaderV1 { block_slot, .. } = header
 
         let bad_tx_normalized_validity_range = normalize_native_validity_range(
           bad_tx_view.tx_compact.body,
         )
 
         // 2. The UTxO must be produced at next step's script hash with validity
-        //    range of the bad tx, and block's time range provided.
+        //    range of the bad tx and the exact replay slot committed by the
+        //    challenged header.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data = step_02.State {
-          block_valid_from,
-          block_valid_to,
+          block_slot,
           bad_tx_normalized_validity_range,
         }
         expect output_state_data == expected_output_state
@@ -208,8 +203,7 @@ fn run_step_01(
   expected_range: vrn.NormalizedTimeRange,
 ) -> Bool {
   let expected_output_state: Data = step_02.State {
-    block_valid_from: header.start_time,
-    block_valid_to: header.end_time,
+    block_slot: header.block_slot,
     bad_tx_normalized_validity_range: expected_range,
   }
   let l1_tx = fixture.continue_step_l1_tx_v1(
@@ -217,7 +211,7 @@ fn run_step_01(
     expected_output_state,
     claimed.transactions_phas_root,
     claimed.tx_id,
-    claimed.compact_cbor,
+    claimed.source_cbor,
   )
   main.spend(
     fixture.next_step_script_hash,
@@ -265,7 +259,7 @@ fn deep_invalid_range_block() -> (fixture.NativeBlockFixtureV1, mpf.Proof) {
   (
     fixture.deep_transactions_root_block_fixture_v1(
       base,
-      fixture.adversarial_membership_root(base.tx_id, base.compact_cbor, steps),
+      fixture.adversarial_membership_root(base.tx_id, base.source_cbor, steps),
       1_000_000,
     ),
     steps,
@@ -280,8 +274,7 @@ fn run_step_01_published(
   steps: mpf.Proof,
 ) -> Bool {
   let expected_output_state: Data = step_02.State {
-    block_valid_from: block.header.start_time,
-    block_valid_to: block.header.end_time,
+    block_slot: block.header.block_slot,
     bad_tx_normalized_validity_range: vrn.ClosedRange { lower: 5, upper: 8 },
   }
   main.spend(

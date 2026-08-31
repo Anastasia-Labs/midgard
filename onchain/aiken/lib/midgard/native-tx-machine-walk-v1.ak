@@ -65,11 +65,13 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardTxInput, NativeTxWitnessSetCompact, VerifiedMidgardNativeTxCompact,
 }
 use midgard/native_tx_field_access_v1.{
-  FieldCarriageV1, FieldViewV1, authenticated_field_view, field_count,
-  field_header_len, field_item_at, field_item_count, field_item_header_at,
-  field_read_range, field_total_length, field_view_stride,
-  fixed_item_wrapper_bytes, max_field_item_count,
-  max_transaction_aggregate_field_bytes, spend_input_item_bytes,
+  FieldCarriageV1, FieldViewV1, authenticated_field_view,
+  authenticated_resumable_field_view_with_commitment, field_count,
+  field_count_requires_certification, field_header_len, field_item_at,
+  field_item_count, field_item_header_at, field_read_range, field_total_length,
+  field_view_stride, fixed_item_wrapper_bytes, max_field_item_count,
+  max_transaction_aggregate_field_bytes,
+  provisional_field_item_count_for_certification, spend_input_item_bytes,
   spend_input_stride, walk_derived_stride,
 }
 
@@ -115,15 +117,36 @@ pub opaque type FieldWalkCheckpointV1 {
   field_index: Int,
   /// The authenticated preimage length the walk was opened against.
   total_length: Int,
-  /// The authenticated item count (§5.2). A field whose count is *not*
-  /// authenticated — a variable-width field under tier 3 (§8.6) — cannot be
-  /// walked at all: `field_item_count` aborts rather than hand back the
-  /// header's self-asserted number, and this module does not work around it.
+  /// The authenticated item count (§5.2). A provisional grammar view under
+  /// any carriage tier cannot create this semantic checkpoint: its header
+  /// count becomes authenticated only at the grammar terminal.
   item_count: Int,
   /// Items `[0, next_item_index)` are done.
   next_item_index: Int,
   /// Byte offset of item `next_item_index`'s §5.1 wrapper; equals
   /// `total_length` exactly when the walk is complete.
+  next_offset: Int,
+}
+
+/// Provisional envelope-certification position under any carriage tier.
+///
+/// `declared_count` is deliberately named rather than called an item count:
+/// the authenticated header asserted it, but no semantic family may rely on
+/// it until this checkpoint reaches both `next_item_index == declared_count`
+/// and `next_offset == total_length`. The type is opaque for the same inductive
+/// reason as `FieldWalkCheckpointV1`: a variable-width offset can only be
+/// opened, advanced over authenticated chunk bytes, or resumed from the exact
+/// digest the preceding computation-thread state committed.
+pub opaque type FieldGrammarCheckpointV1 {
+  tx_id: ByteArray,
+  field_index: Int,
+  /// The positional §4 commitment extracted by the field-access door. It
+  /// prevents a same-transaction/same-length checkpoint from being replayed
+  /// against different witness content.
+  field_commitment: ByteArray,
+  total_length: Int,
+  declared_count: Int,
+  next_item_index: Int,
   next_offset: Int,
 }
 
@@ -133,14 +156,200 @@ pub opaque type FieldWalkCheckpointV1 {
 const checkpoint_domain: ByteArray =
   #"4d6964676172644669656c6457616c6b436865636b706f696e745631"
 
+/// ASCII `MidgardFieldGrammarCheckpointV1`. A provisional grammar position is
+/// never interchangeable with a semantic walk position even when their
+/// scalar coordinates happen to match.
+const grammar_checkpoint_domain: ByteArray =
+  #"4d6964676172644669656c644772616d6d6172436865636b706f696e745631"
+
 /// §10.3. The wire form's length is a **constant**, independent of the field,
 /// the carriage tier, the preimage and the position. That is the property that
 /// makes "positions, not bytes" checkable rather than merely asserted.
 pub const field_walk_checkpoint_bytes: Int = 53
 
+/// `87`, tx id, field index, field commitment, and four fixed-width scalars.
+pub const field_grammar_checkpoint_bytes: Int = 87
+
 // ---------------------------------------------------------------------------
 // §10.1 / §10.2 opening and resuming
 // ---------------------------------------------------------------------------
+
+/// Opens the provisional grammar-certification phase for a variable-width
+/// field under any carriage tier. The field door authenticates the whole
+/// preimage hash (tiers 1–2) or the certificate/chunk manifest (tier 3), plus
+/// positional commitment, total length and header bytes; only the header's
+/// count remains provisional.
+pub fn open_field_grammar_certification(
+  verified: VerifiedMidgardNativeTxCompact,
+  witness_set: NativeTxWitnessSetCompact,
+  field_index: Int,
+  carriage: FieldCarriageV1,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> Pair<FieldViewV1, FieldGrammarCheckpointV1> {
+  let Pair(field_commitment, view) = authenticated_resumable_field_view_with_commitment(
+    verified,
+    witness_set,
+    field_index,
+    carriage,
+    reference_inputs,
+    certificate_policy_id,
+  )
+  expect field_count_requires_certification(view)
+  let declared_count = provisional_field_item_count_for_certification(view)
+  Pair(
+    view,
+    FieldGrammarCheckpointV1 {
+      tx_id: verified.tx_id,
+      field_index,
+      field_commitment,
+      total_length: field_total_length(view),
+      declared_count,
+      next_item_index: 0,
+      next_offset: field_header_len(view),
+    },
+  )
+}
+
+/// Advance over at most `budget` canonical item envelopes without interpreting
+/// their payloads. Every resume starts at the prior checkpoint's offset; no
+/// prefix is materialised or re-walked.
+pub fn certify_field_grammar(
+  view: FieldViewV1,
+  checkpoint: FieldGrammarCheckpointV1,
+  budget: Int,
+) -> FieldGrammarCheckpointV1 {
+  expect budget >= 0
+  if or {
+    budget == 0,
+    field_grammar_is_complete(checkpoint),
+  } {
+    checkpoint
+  } else {
+    expect checkpoint.next_item_index < checkpoint.declared_count
+    let Pair(payload_offset, length) = field_item_header_at(
+      view,
+      checkpoint.next_offset,
+    )
+    let next_offset = payload_offset + length
+    let next_item_index = checkpoint.next_item_index + 1
+    expect next_offset <= checkpoint.total_length
+    expect
+      if next_item_index == checkpoint.declared_count {
+        next_offset == checkpoint.total_length
+      } else {
+        next_offset < checkpoint.total_length
+      }
+    certify_field_grammar(
+      view,
+      FieldGrammarCheckpointV1 { ..checkpoint, next_item_index, next_offset },
+      budget - 1,
+    )
+  }
+}
+
+pub fn field_grammar_is_complete(checkpoint: FieldGrammarCheckpointV1) -> Bool {
+  and {
+    checkpoint.next_item_index == checkpoint.declared_count,
+    checkpoint.next_offset == checkpoint.total_length,
+  }
+}
+
+/// Resume provisional certification from the exact position committed by the
+/// preceding computation-thread state.
+pub fn resume_field_grammar_certification_from_commitment(
+  verified: VerifiedMidgardNativeTxCompact,
+  witness_set: NativeTxWitnessSetCompact,
+  committed: ByteArray,
+  checkpoint_bytes: ByteArray,
+  carriage: FieldCarriageV1,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> Pair<FieldViewV1, FieldGrammarCheckpointV1> {
+  let checkpoint = decode_field_grammar_checkpoint(checkpoint_bytes)
+  expect field_grammar_checkpoint_hash(checkpoint) == committed
+  let Pair(field_commitment, view) = authenticated_resumable_field_view_with_commitment(
+    verified,
+    witness_set,
+    checkpoint.field_index,
+    carriage,
+    reference_inputs,
+    certificate_policy_id,
+  )
+  expect field_count_requires_certification(view)
+  expect
+    grammar_checkpoint_is_bound_to_view(
+      verified.tx_id,
+      field_commitment,
+      view,
+      checkpoint,
+    )
+  Pair(view, checkpoint)
+}
+
+fn grammar_checkpoint_is_bound_to_view(
+  tx_id: ByteArray,
+  field_commitment: ByteArray,
+  view: FieldViewV1,
+  checkpoint: FieldGrammarCheckpointV1,
+) -> Bool {
+  let declared_count = provisional_field_item_count_for_certification(view)
+  let header_len = field_header_len(view)
+  and {
+    checkpoint.tx_id == tx_id,
+    checkpoint.field_commitment == field_commitment,
+    checkpoint.total_length == field_total_length(view),
+    checkpoint.declared_count == declared_count,
+    checkpoint.next_item_index >= 0,
+    checkpoint.next_item_index <= declared_count,
+    checkpoint.next_offset >= header_len,
+    checkpoint.next_offset <= checkpoint.total_length,
+    if checkpoint.next_item_index == declared_count {
+      checkpoint.next_offset == checkpoint.total_length
+    } else {
+      let Pair(payload_offset, length) = field_item_header_at(
+        view,
+        checkpoint.next_offset,
+      )
+      payload_offset + length <= checkpoint.total_length
+    },
+  }
+}
+
+/// Terminal grammar certification is the only constructor for a semantic
+/// walk from any provisional view. The returned semantic checkpoint starts at
+/// item zero with the now-certified count; subsequent transactions use the
+/// ordinary committed semantic-walk resume and never repeat this envelope
+/// pass.
+pub fn open_certified_field_walk_from_grammar_commitment(
+  verified: VerifiedMidgardNativeTxCompact,
+  witness_set: NativeTxWitnessSetCompact,
+  committed: ByteArray,
+  checkpoint_bytes: ByteArray,
+  carriage: FieldCarriageV1,
+  reference_inputs: List<Input>,
+  certificate_policy_id: PolicyId,
+) -> Pair<FieldViewV1, FieldWalkCheckpointV1> {
+  let Pair(view, grammar) = resume_field_grammar_certification_from_commitment(
+    verified,
+    witness_set,
+    committed,
+    checkpoint_bytes,
+    carriage,
+    reference_inputs,
+    certificate_policy_id,
+  )
+  expect field_grammar_is_complete(grammar)
+  Pair(
+    view,
+    walk_at_start_with_count(
+      grammar.tx_id,
+      grammar.field_index,
+      view,
+      grammar.declared_count,
+    ),
+  )
+}
 
 /// Open a walk over field `field_index` of the transaction committed by
 /// `verified`.
@@ -174,11 +383,20 @@ fn walk_at_start(
   field_index: Int,
   view: FieldViewV1,
 ) -> FieldWalkCheckpointV1 {
+  walk_at_start_with_count(tx_id, field_index, view, field_item_count(view))
+}
+
+fn walk_at_start_with_count(
+  tx_id: ByteArray,
+  field_index: Int,
+  view: FieldViewV1,
+  item_count: Int,
+) -> FieldWalkCheckpointV1 {
   FieldWalkCheckpointV1 {
     tx_id,
     field_index,
     total_length: field_total_length(view),
-    item_count: field_item_count(view),
+    item_count,
     next_item_index: 0,
     next_offset: field_header_len(view),
   }
@@ -218,7 +436,7 @@ fn resume_field_walk(
   certificate_policy_id: PolicyId,
 ) -> FieldViewV1 {
   expect checkpoint.tx_id == verified.tx_id
-  let view = authenticated_field_view(
+  let Pair(_field_commitment, view) = authenticated_resumable_field_view_with_commitment(
     verified,
     witness_set,
     checkpoint.field_index,
@@ -291,7 +509,11 @@ fn checkpoint_is_bound_to_view(
   let header_len = field_header_len(view)
   and {
     checkpoint.total_length == field_total_length(view),
-    checkpoint.item_count == field_item_count(view),
+    checkpoint.item_count == if field_count_requires_certification(view) {
+      provisional_field_item_count_for_certification(view)
+    } else {
+      field_item_count(view)
+    },
     checkpoint.next_item_index >= 0,
     checkpoint.next_item_index <= checkpoint.item_count,
     // Live, and the only one of the four bounds that is: a position aimed into
@@ -626,6 +848,77 @@ pub fn field_walk_checkpoint_hash(
     bytearray.concat(
       checkpoint_domain,
       encode_field_walk_checkpoint(checkpoint),
+    ),
+  )
+}
+
+/// Fixed-width provisional grammar checkpoint. The additional 32-byte field
+/// commitment is the content identity a semantic walk checkpoint inherits
+/// inductively after terminal certification.
+pub fn encode_field_grammar_checkpoint(
+  checkpoint: FieldGrammarCheckpointV1,
+) -> ByteArray {
+  expect bytearray.length(checkpoint.tx_id) == 32
+  expect checkpoint.field_index >= 0
+  expect checkpoint.field_index < field_count
+  expect bytearray.length(checkpoint.field_commitment) == 32
+  expect checkpoint.total_length > 0
+  expect checkpoint.total_length <= max_transaction_aggregate_field_bytes
+  expect checkpoint.declared_count >= 0
+  expect checkpoint.declared_count <= max_field_item_count
+  expect checkpoint.next_item_index >= 0
+  expect checkpoint.next_item_index <= checkpoint.declared_count
+  expect checkpoint.next_offset >= 0
+  expect checkpoint.next_offset <= checkpoint.total_length
+  #"87"
+    |> bytearray.concat(#"5820")
+    |> bytearray.concat(checkpoint.tx_id)
+    |> bytearray.concat(#"41")
+    |> bytearray.concat(
+        bytearray.from_int_big_endian(checkpoint.field_index, 1),
+      )
+    |> bytearray.concat(#"5820")
+    |> bytearray.concat(checkpoint.field_commitment)
+    |> bytearray.concat(#"43")
+    |> bytearray.concat(
+        bytearray.from_int_big_endian(checkpoint.total_length, 3),
+      )
+    |> bytearray.concat(#"43")
+    |> bytearray.concat(
+        bytearray.from_int_big_endian(checkpoint.declared_count, 3),
+      )
+    |> bytearray.concat(#"43")
+    |> bytearray.concat(
+        bytearray.from_int_big_endian(checkpoint.next_item_index, 3),
+      )
+    |> bytearray.concat(#"43")
+    |> bytearray.concat(
+        bytearray.from_int_big_endian(checkpoint.next_offset, 3),
+      )
+}
+
+fn decode_field_grammar_checkpoint(bytes: ByteArray) -> FieldGrammarCheckpointV1 {
+  expect bytearray.length(bytes) == field_grammar_checkpoint_bytes
+  let checkpoint = FieldGrammarCheckpointV1 {
+    tx_id: bytearray.slice(bytes, 3, 34),
+    field_index: bytearray.at(bytes, 36),
+    field_commitment: bytearray.slice(bytes, 39, 70),
+    total_length: bytearray.to_int_big_endian(bytearray.slice(bytes, 72, 74)),
+    declared_count: bytearray.to_int_big_endian(bytearray.slice(bytes, 76, 78)),
+    next_item_index: bytearray.to_int_big_endian(bytearray.slice(bytes, 80, 82)),
+    next_offset: bytearray.to_int_big_endian(bytearray.slice(bytes, 84, 86)),
+  }
+  expect encode_field_grammar_checkpoint(checkpoint) == bytes
+  checkpoint
+}
+
+pub fn field_grammar_checkpoint_hash(
+  checkpoint: FieldGrammarCheckpointV1,
+) -> ByteArray {
+  blake2b_256(
+    bytearray.concat(
+      grammar_checkpoint_domain,
+      encode_field_grammar_checkpoint(checkpoint),
     ),
   )
 }

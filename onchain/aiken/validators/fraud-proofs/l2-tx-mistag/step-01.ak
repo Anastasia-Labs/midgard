@@ -109,7 +109,7 @@ fn run_step_01(block: fixture.NativeBlockFixtureV1, output_state: Data) -> Bool 
       output_state,
       block.transactions_phas_root,
       block.tx_id,
-      block.compact_cbor,
+      block.source_cbor,
     ),
   )
 }
@@ -188,7 +188,7 @@ fn deep_mistagged_block() -> (fixture.NativeBlockFixtureV1, mpf.Proof) {
   (
     fixture.deep_transactions_root_block_fixture_v1(
       base,
-      fixture.adversarial_membership_root(base.tx_id, base.compact_cbor, steps),
+      fixture.adversarial_membership_root(base.tx_id, base.source_cbor, steps),
       1_000_000,
     ),
     steps,

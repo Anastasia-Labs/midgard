@@ -2,7 +2,7 @@ use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, pass_native_tx_to_next_step}
+use midgard/fraud_proofs/common.{cancel, pass_native_tx_to_next_step_carried}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/reference_input_no_idx/step_03.{
   Datum, SpendRedeemer, State,
@@ -46,8 +46,8 @@ validator main(
             output_state_data,
             _header,
             producing_tx_id,
-            _producing_tx_view
-          <- pass_native_tx_to_next_step(
+            producing_tx_view
+          <- pass_native_tx_to_next_step_carried(
           computation_thread_token_policy_id,
           hub_oracle,
           datum,
@@ -55,6 +55,8 @@ validator main(
           own_out_ref,
           tx,
         )
+
+        expect producing_tx_view.tx_compact.validity_code == 0
 
         expect
             Some(State {
@@ -111,7 +113,7 @@ fn run_step_03(
     expected_output_state,
     producing.transactions_phas_root,
     producing.tx_id,
-    producing.compact_cbor,
+    producing.source_cbor,
   )
   main.spend(
     fixture.next_step_script_hash,
@@ -125,7 +127,7 @@ fn run_step_03(
         ),
       },
     ),
-    ct.Continue(fixture.native_inclusion_args_v1(producing)),
+    ct.Continue(fixture.native_inclusion_carriage_v1(producing)),
     fixture.own_out_ref(),
     l1_tx,
   )

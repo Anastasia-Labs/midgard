@@ -267,15 +267,51 @@ pub fn native_script_run(
   context: NativeScriptContextV1,
   budget: Int,
 ) -> NativeScriptWalkV1 {
-  expect budget >= 0
-  expect blake2b_256(payload) == walk.script_digest
-  run_steps(walk, payload, context, budget)
+  native_script_run_with_signer_verdict(
+    walk,
+    payload,
+    context.validity_interval_start,
+    context.validity_interval_end,
+    budget,
+    fn(key_hash) { list.has(context.signers, key_hash) },
+  )
 }
 
-fn run_steps(
+/// The same canonical pushdown with signer membership supplied by an
+/// authenticated predicate instead of a materialised signer list.
+///
+/// Fraud-proof families use this at maximum signer cardinality: their thread
+/// commits the validation machine's signer frontier and each signature node is
+/// answered by an exact membership/non-membership proof. The recursive
+/// evaluator, cursor, bounds, interval rules and every non-signature node stay
+/// identical to `native_script_run`; only the source of the membership bit is
+/// abstracted.
+pub fn native_script_run_with_signer_verdict(
   walk: NativeScriptWalkV1,
   payload: ByteArray,
-  context: NativeScriptContextV1,
+  validity_interval_start: Int,
+  validity_interval_end: Int,
+  budget: Int,
+  signer_is_present: fn(ByteArray) -> Bool,
+) -> NativeScriptWalkV1 {
+  expect budget >= 0
+  expect blake2b_256(payload) == walk.script_digest
+  run_steps_with_signer_verdict(
+    walk,
+    payload,
+    validity_interval_start,
+    validity_interval_end,
+    signer_is_present,
+    budget,
+  )
+}
+
+fn run_steps_with_signer_verdict(
+  walk: NativeScriptWalkV1,
+  payload: ByteArray,
+  validity_interval_start: Int,
+  validity_interval_end: Int,
+  signer_is_present: fn(ByteArray) -> Bool,
   budget: Int,
 ) -> NativeScriptWalkV1 {
   if or {
@@ -284,10 +320,18 @@ fn run_steps(
   } {
     walk
   } else {
-    run_steps(
-      native_script_step(walk, payload, context),
+    run_steps_with_signer_verdict(
+      native_script_step_with_signer_verdict(
+        walk,
+        payload,
+        validity_interval_start,
+        validity_interval_end,
+        signer_is_present,
+      ),
       payload,
-      context,
+      validity_interval_start,
+      validity_interval_end,
+      signer_is_present,
       budget - 1,
     )
   }
@@ -299,15 +343,23 @@ fn run_steps(
 /// Private because it does not re-establish the payload digest —
 /// `native_script_run` does that once for the whole fold, and a step reachable
 /// without it would be a step over bytes nobody checked.
-fn native_script_step(
+fn native_script_step_with_signer_verdict(
   walk: NativeScriptWalkV1,
   payload: ByteArray,
-  context: NativeScriptContextV1,
+  validity_interval_start: Int,
+  validity_interval_end: Int,
+  signer_is_present: fn(ByteArray) -> Bool,
 ) -> NativeScriptWalkV1 {
   if walk.pending != pending_none {
     fold_into_parent(walk)
   } else {
-    read_node(walk, payload, context)
+    read_node_with_signer_verdict(
+      walk,
+      payload,
+      validity_interval_start,
+      validity_interval_end,
+      signer_is_present,
+    )
   }
 }
 
@@ -396,10 +448,12 @@ pub fn encode_frame(frame: NativeScriptFrameV1) -> ByteArray {
 // §11.3 node reading
 // ---------------------------------------------------------------------------
 
-fn read_node(
+fn read_node_with_signer_verdict(
   walk: NativeScriptWalkV1,
   payload: ByteArray,
-  context: NativeScriptContextV1,
+  validity_interval_start: Int,
+  validity_interval_end: Int,
+  signer_is_present: fn(ByteArray) -> Bool,
 ) -> NativeScriptWalkV1 {
   let nodes_visited = walk.nodes_visited + 1
   expect nodes_visited <= max_native_script_node_count
@@ -420,19 +474,19 @@ fn read_node(
     NativeScriptWalkV1 {
       ..stepped,
       offset: key_offset + key_length,
-      pending: verdict_of(list.has(context.signers, key_hash)),
+      pending: verdict_of(signer_is_present(key_hash)),
     }
   } else if tag == after_node {
     let Pair(next, slot) = head_at(payload, after_tag, 0)
     NativeScriptWalkV1 { ..stepped, offset: next, pending: verdict_of(and {
-          context.validity_interval_start >= 0,
-          context.validity_interval_start >= slot,
+          validity_interval_start >= 0,
+          validity_interval_start >= slot,
         }) }
   } else if tag == before_node {
     let Pair(next, slot) = head_at(payload, after_tag, 0)
     NativeScriptWalkV1 { ..stepped, offset: next, pending: verdict_of(and {
-          context.validity_interval_end >= 0,
-          context.validity_interval_end <= slot,
+          validity_interval_end >= 0,
+          validity_interval_end <= slot,
         }) }
   } else if tag == at_least_node {
     let Pair(after_required, required) = head_at(payload, after_tag, 0)

@@ -257,3 +257,84 @@ pub fn published_chunk_non_membership(
     Some(proof) -> mpf_proof_v1.does_not_have(merkle_root, key_bytes, proof)
   }
 }
+
+/// Published absence verification for callers that require publication chunks
+/// to be maximally packed. Four well-formed chunks can contain at most 64
+/// proof steps (4 * `maximum_chunk_proof_step_count`), so the protocol-wide
+/// proof bound follows structurally and does not require another full traversal
+/// of the assembled proof. The ordinary eight-chunk route remains available
+/// to callers that need partially packed publication UTxOs.
+pub fn published_chunk_non_membership_four_chunks(
+  reference_inputs: List<Input>,
+  carriage: PublishedProofCarriage,
+  merkle_root: ByteArray,
+  key_bytes: ByteArray,
+) -> Bool {
+  let PublishedProofCarriage { ordered_chunk_reference_input_indices: indices }
+    = carriage
+  and {
+    at_most_four_distinct_indices(indices),
+    when
+      mpf_chunked_proof_v1.concatenate_published_steps(
+        reference_inputs,
+        indices,
+      )
+    is {
+      None -> False
+      Some(proof) -> mpf_proof_v1.does_not_have(merkle_root, key_bytes, proof)
+    },
+  }
+}
+
+/// Four-maximally-packed-chunk membership twin. The same structural 64-step
+/// derivation applies; the committed value preimage is hashed exactly once.
+pub fn published_chunk_membership_four_chunks(
+  reference_inputs: List<Input>,
+  carriage: PublishedProofCarriage,
+  merkle_root: ByteArray,
+  key_bytes: ByteArray,
+  value_bytes: ByteArray,
+) -> Bool {
+  let PublishedProofCarriage { ordered_chunk_reference_input_indices: indices }
+    = carriage
+  and {
+    at_most_four_distinct_indices(indices),
+    when
+      mpf_chunked_proof_v1.concatenate_published_steps(
+        reference_inputs,
+        indices,
+      )
+    is {
+      None -> False
+      Some(proof) ->
+        mpf_proof_v1.has_value_hash(
+          merkle_root,
+          key_bytes,
+          blake2b_256(value_bytes),
+          proof,
+        )
+    },
+  }
+}
+
+fn at_most_four_distinct_indices(indices: List<Int>) -> Bool {
+  when indices is {
+    [] -> True
+    [_] -> True
+    [a, b] -> a != b
+    [a, b, c] -> and {
+        a != b,
+        a != c,
+        b != c,
+      }
+    [a, b, c, d] -> and {
+        a != b,
+        a != c,
+        a != d,
+        b != c,
+        b != d,
+        c != d,
+      }
+    _ -> False
+  }
+}

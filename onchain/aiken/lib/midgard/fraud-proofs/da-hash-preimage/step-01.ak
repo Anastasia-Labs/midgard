@@ -10,9 +10,10 @@ use midgard/fraud_proofs/common.{NativeTxInclusionArgs}
 pub type Datum =
   ct.StepDatum<Data>
 
-/// The committed leaf key travels in `native_tx_id` and the committed leaf
-/// value in `native_tx_compact_cbor`; neither is required to satisfy the
-/// native codec, which is exactly the fault under proof.
+/// The committed leaf key travels in `native_tx_id` and the raw committed
+/// `Data(L2TransactionSourceV1)` bytes in `l2_transaction_source_cbor`;
+/// neither is required to satisfy the normal source codec, which is exactly
+/// the property under proof.
 pub type Args =
   NativeTxInclusionArgs
 

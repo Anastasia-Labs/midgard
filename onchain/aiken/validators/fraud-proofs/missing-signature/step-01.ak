@@ -54,6 +54,8 @@ validator main(
           tx,
         )
 
+        expect bad_tx_view.tx_compact.validity_code == 0
+
         // 2. The UTxO must be produced at next step's script hash with the bad
         //    transaction's §2.5 anchor. Steps 02 and 04 open fields 4 and 7
         //    through the §8.8 door from it. Field 4 needs only the id; field 7
@@ -110,7 +112,7 @@ test missing_signature_step_01_binds_native_v1_block_fixture() {
     expected_output_state,
     block.transactions_phas_root,
     block.tx_id,
-    block.compact_cbor,
+    block.source_cbor,
   )
   main.spend(
     fixture.next_step_script_hash,

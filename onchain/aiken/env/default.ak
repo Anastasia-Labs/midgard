@@ -16,9 +16,9 @@ pub const shift_duration: PosixTimeDuration = 30
 
 pub const registration_duration: PosixTimeDuration = 30
 
-pub const slashing_penalty: Int = 0
+pub const slashing_penalty: Int = 25_000_000_000
 
-pub const fraud_prover_reward: Int = 0
+pub const fraud_prover_reward: Int = 75_000_000_000
 
 pub const required_bond: Int = slashing_penalty + fraud_prover_reward
 
@@ -30,7 +30,7 @@ pub const required_bond: Int = slashing_penalty + fraud_prover_reward
 ///       ```
 ///       Note that if `inactivity_slashing_penalty` is larger than
 ///       `slashing_penalty`, fraud provers will be rewarded a smaller amount.
-pub const inactivity_slashing_penalty: Int = 0
+pub const inactivity_slashing_penalty: Int = 10_000_000_000
 
 /// Max inactivity of operators after the earliest user event slated for
 /// inclusion.

@@ -43,9 +43,42 @@ use midgard/native_script_v1.{
 use midgard/native_tx_script_pushdown_v1.{
   NativeScriptContextV1, NativeScriptFrameV1, encode_native_script_cursor,
   native_script_cursor_bytes, native_script_cursor_hash,
-  native_script_nodes_visited, native_script_run, native_script_verdict,
+  native_script_nodes_visited, native_script_run,
+  native_script_run_with_signer_verdict, native_script_verdict,
   native_script_walk_frames, native_script_walk_is_complete,
   open_native_script_walk, resume_native_script_walk_from_commitment,
+}
+
+test authenticated_signer_predicate_matches_materialised_signers() {
+  let script = any_of([signature(key_1), signature(key_3)])
+  let materialised = native_script_run(
+    open_native_script_walk(script),
+    script,
+    context(),
+    16,
+  )
+  let authenticated = native_script_run_with_signer_verdict(
+    open_native_script_walk(script),
+    script,
+    context().validity_interval_start,
+    context().validity_interval_end,
+    16,
+    fn(key_hash) { list.has(context().signers, key_hash) },
+  )
+  native_script_verdict(authenticated) == native_script_verdict(materialised)
+}
+
+test authenticated_signer_predicate_preserves_an_unsatisfied_verdict() {
+  let script = all_of([signature(key_2), signature(key_3)])
+  let walked = native_script_run_with_signer_verdict(
+    open_native_script_walk(script),
+    script,
+    context().validity_interval_start,
+    context().validity_interval_end,
+    16,
+    fn(key_hash) { key_hash == key_1 },
+  )
+  native_script_verdict(walked) == Some(False)
 }
 
 // ---------------------------------------------------------------------------

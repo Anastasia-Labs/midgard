@@ -212,6 +212,701 @@ fn do_fork(
   )
 }
 
+// Strict predecessor folds for the two-fold mutation helpers below. Each
+// branch validates the untrusted proof step before it contributes to the
+// reconstructed root, so validation and predecessor reconstruction share one
+// traversal. The successor fold may then reuse the now-proven proof without a
+// third walk.
+fn do_excluding_strict(
+  path: ByteArray,
+  cursor: Int,
+  proof: mpf.Proof,
+  remaining_step_count: Int,
+) -> Option<ByteArray> {
+  when proof is {
+    [] ->
+      if and {
+        cursor >= 0,
+        cursor <= path_nibble_count,
+      } {
+        Some(null_hash)
+      } else {
+        None
+      }
+    [mpf.Branch { skip, neighbors }, ..steps] -> {
+      let next_cursor = cursor + 1 + skip
+      if and {
+        common_step_is_well_formed(cursor, skip, remaining_step_count),
+        bytearray.length(neighbors) == 4 * digest_byte_count,
+      } {
+        when
+          do_excluding_strict(
+            path,
+            next_cursor,
+            steps,
+            remaining_step_count - 1,
+          )
+        is {
+          Some(root) ->
+            Some(do_branch(path, cursor, next_cursor, root, neighbors))
+          None -> None
+        }
+      } else {
+        None
+      }
+    }
+    [mpf.Fork { skip, neighbor }] -> {
+      let next_cursor = cursor + 1 + skip
+      if and {
+        common_step_is_well_formed(cursor, skip, remaining_step_count),
+        neighbor_is_well_formed(neighbor),
+        nibble(path, next_cursor - 1) != neighbor.nibble,
+      } {
+        let prefix = bytearray.push(neighbor.prefix, neighbor.nibble)
+        Some(combine(prefix, neighbor.root))
+      } else {
+        None
+      }
+    }
+    [mpf.Fork { skip, neighbor }, ..steps] -> {
+      let next_cursor = cursor + 1 + skip
+      if and {
+        common_step_is_well_formed(cursor, skip, remaining_step_count),
+        neighbor_is_well_formed(neighbor),
+        nibble(path, next_cursor - 1) != neighbor.nibble,
+      } {
+        when
+          do_excluding_strict(
+            path,
+            next_cursor,
+            steps,
+            remaining_step_count - 1,
+          )
+        is {
+          Some(root) -> Some(do_fork(path, cursor, next_cursor, root, neighbor))
+          None -> None
+        }
+      } else {
+        None
+      }
+    }
+    [mpf.Leaf { skip, key, value }] -> {
+      let next_cursor = cursor + 1 + skip
+      if and {
+        common_step_is_well_formed(cursor, skip, remaining_step_count),
+        bytearray.length(key) == digest_byte_count,
+        bytearray.length(value) == digest_byte_count,
+        nibble(path, next_cursor - 1) != nibble(key, next_cursor - 1),
+      } {
+        Some(combine(suffix(key, cursor), value))
+      } else {
+        None
+      }
+    }
+    [mpf.Leaf { skip, key, value }, ..steps] -> {
+      let next_cursor = cursor + 1 + skip
+      if and {
+        common_step_is_well_formed(cursor, skip, remaining_step_count),
+        bytearray.length(key) == digest_byte_count,
+        bytearray.length(value) == digest_byte_count,
+        nibble(path, next_cursor - 1) != nibble(key, cursor),
+      } {
+        when
+          do_excluding_strict(
+            path,
+            next_cursor,
+            steps,
+            remaining_step_count - 1,
+          )
+        is {
+          Some(root) -> {
+            let neighbor = mpf.Neighbor {
+              prefix: suffix(key, next_cursor),
+              nibble: nibble(key, cursor),
+              root: value,
+            }
+            Some(do_fork(path, cursor, next_cursor, root, neighbor))
+          }
+          None -> None
+        }
+      } else {
+        None
+      }
+    }
+  }
+}
+
+fn do_including_strict(
+  path: ByteArray,
+  value_hash: ByteArray,
+  cursor: Int,
+  proof: mpf.Proof,
+  remaining_step_count: Int,
+) -> Option<ByteArray> {
+  when proof is {
+    [] ->
+      if and {
+        cursor >= 0,
+        cursor <= path_nibble_count,
+      } {
+        Some(combine(suffix(path, cursor), value_hash))
+      } else {
+        None
+      }
+    [mpf.Branch { skip, neighbors }, ..steps] -> {
+      let next_cursor = cursor + 1 + skip
+      if and {
+        common_step_is_well_formed(cursor, skip, remaining_step_count),
+        bytearray.length(neighbors) == 4 * digest_byte_count,
+      } {
+        when
+          do_including_strict(
+            path,
+            value_hash,
+            next_cursor,
+            steps,
+            remaining_step_count - 1,
+          )
+        is {
+          Some(root) ->
+            Some(do_branch(path, cursor, next_cursor, root, neighbors))
+          None -> None
+        }
+      } else {
+        None
+      }
+    }
+    [mpf.Fork { skip, neighbor }, ..steps] -> {
+      let next_cursor = cursor + 1 + skip
+      if and {
+        common_step_is_well_formed(cursor, skip, remaining_step_count),
+        neighbor_is_well_formed(neighbor),
+        nibble(path, next_cursor - 1) != neighbor.nibble,
+      } {
+        when
+          do_including_strict(
+            path,
+            value_hash,
+            next_cursor,
+            steps,
+            remaining_step_count - 1,
+          )
+        is {
+          Some(root) -> Some(do_fork(path, cursor, next_cursor, root, neighbor))
+          None -> None
+        }
+      } else {
+        None
+      }
+    }
+    [mpf.Leaf { skip, key, value }, ..steps] -> {
+      let next_cursor = cursor + 1 + skip
+      if and {
+        common_step_is_well_formed(cursor, skip, remaining_step_count),
+        bytearray.length(key) == digest_byte_count,
+        bytearray.length(value) == digest_byte_count,
+        nibble(path, next_cursor - 1) != nibble(key, next_cursor - 1),
+      } {
+        when
+          do_including_strict(
+            path,
+            value_hash,
+            next_cursor,
+            steps,
+            remaining_step_count - 1,
+          )
+        is {
+          Some(root) -> {
+            let neighbor = mpf.Neighbor {
+              prefix: suffix(key, next_cursor),
+              nibble: nibble(key, next_cursor - 1),
+              root: value,
+            }
+            Some(do_fork(path, cursor, next_cursor, root, neighbor))
+          }
+          None -> None
+        }
+      } else {
+        None
+      }
+    }
+  }
+}
+
+// Strict paired folds used by singleton state machines that must authenticate
+// a predecessor and derive its exact successor in one bounded traversal. Each
+// proof step is validated once and applies the same branch transform to both
+// accumulators. The terminal Fork/Leaf arms deliberately preserve the
+// forestry insert/delete semantics rather than treating a non-membership
+// terminal as an ordinary recursive step.
+fn do_insert_pair_strict(
+  path: ByteArray,
+  new_value_hash: ByteArray,
+  cursor: Int,
+  proof: mpf.Proof,
+  remaining_step_count: Int,
+) -> Option<(ByteArray, ByteArray)> {
+  when proof is {
+    [] ->
+      if and {
+        cursor >= 0,
+        cursor <= path_nibble_count,
+      } {
+        Some((null_hash, combine(suffix(path, cursor), new_value_hash)))
+      } else {
+        None
+      }
+    [mpf.Branch { skip, neighbors }, ..steps] -> {
+      let next_cursor = cursor + 1 + skip
+      if and {
+        common_step_is_well_formed(cursor, skip, remaining_step_count),
+        bytearray.length(neighbors) == 4 * digest_byte_count,
+      } {
+        when
+          do_insert_pair_strict(
+            path,
+            new_value_hash,
+            next_cursor,
+            steps,
+            remaining_step_count - 1,
+          )
+        is {
+          Some((predecessor, successor)) ->
+            Some(
+              (
+                do_branch(path, cursor, next_cursor, predecessor, neighbors),
+                do_branch(path, cursor, next_cursor, successor, neighbors),
+              ),
+            )
+          None -> None
+        }
+      } else {
+        None
+      }
+    }
+    [mpf.Fork { skip, neighbor }] -> {
+      let next_cursor = cursor + 1 + skip
+      if and {
+        common_step_is_well_formed(cursor, skip, remaining_step_count),
+        neighbor_is_well_formed(neighbor),
+        nibble(path, next_cursor - 1) != neighbor.nibble,
+      } {
+        let predecessor = combine(
+          bytearray.push(neighbor.prefix, neighbor.nibble),
+          neighbor.root,
+        )
+        let inserted = combine(suffix(path, next_cursor), new_value_hash)
+        Some(
+          (predecessor, do_fork(path, cursor, next_cursor, inserted, neighbor)),
+        )
+      } else {
+        None
+      }
+    }
+    [mpf.Fork { skip, neighbor }, ..steps] -> {
+      let next_cursor = cursor + 1 + skip
+      if and {
+        common_step_is_well_formed(cursor, skip, remaining_step_count),
+        neighbor_is_well_formed(neighbor),
+        nibble(path, next_cursor - 1) != neighbor.nibble,
+      } {
+        when
+          do_insert_pair_strict(
+            path,
+            new_value_hash,
+            next_cursor,
+            steps,
+            remaining_step_count - 1,
+          )
+        is {
+          Some((predecessor, successor)) ->
+            Some(
+              (
+                do_fork(path, cursor, next_cursor, predecessor, neighbor),
+                do_fork(path, cursor, next_cursor, successor, neighbor),
+              ),
+            )
+          None -> None
+        }
+      } else {
+        None
+      }
+    }
+    [mpf.Leaf { skip, key, value }] -> {
+      let next_cursor = cursor + 1 + skip
+      if and {
+        common_step_is_well_formed(cursor, skip, remaining_step_count),
+        bytearray.length(key) == digest_byte_count,
+        bytearray.length(value) == digest_byte_count,
+        nibble(path, next_cursor - 1) != nibble(key, next_cursor - 1),
+      } {
+        let predecessor = combine(suffix(key, cursor), value)
+        let inserted = combine(suffix(path, next_cursor), new_value_hash)
+        let neighbor = mpf.Neighbor {
+          prefix: suffix(key, next_cursor),
+          nibble: nibble(key, next_cursor - 1),
+          root: value,
+        }
+        Some(
+          (predecessor, do_fork(path, cursor, next_cursor, inserted, neighbor)),
+        )
+      } else {
+        None
+      }
+    }
+    [mpf.Leaf { skip, key, value }, ..steps] -> {
+      let next_cursor = cursor + 1 + skip
+      if and {
+        common_step_is_well_formed(cursor, skip, remaining_step_count),
+        bytearray.length(key) == digest_byte_count,
+        bytearray.length(value) == digest_byte_count,
+        nibble(path, next_cursor - 1) != nibble(key, cursor),
+      } {
+        when
+          do_insert_pair_strict(
+            path,
+            new_value_hash,
+            next_cursor,
+            steps,
+            remaining_step_count - 1,
+          )
+        is {
+          Some((predecessor, successor)) -> {
+            let predecessor_neighbor = mpf.Neighbor {
+              prefix: suffix(key, next_cursor),
+              nibble: nibble(key, cursor),
+              root: value,
+            }
+            let successor_neighbor = mpf.Neighbor {
+              prefix: suffix(key, next_cursor),
+              nibble: nibble(key, next_cursor - 1),
+              root: value,
+            }
+            Some(
+              (
+                do_fork(
+                  path,
+                  cursor,
+                  next_cursor,
+                  predecessor,
+                  predecessor_neighbor,
+                ),
+                do_fork(
+                  path,
+                  cursor,
+                  next_cursor,
+                  successor,
+                  successor_neighbor,
+                ),
+              ),
+            )
+          }
+          None -> None
+        }
+      } else {
+        None
+      }
+    }
+  }
+}
+
+fn do_update_pair_strict(
+  path: ByteArray,
+  old_value_hash: ByteArray,
+  new_value_hash: ByteArray,
+  cursor: Int,
+  proof: mpf.Proof,
+  remaining_step_count: Int,
+) -> Option<(ByteArray, ByteArray)> {
+  when proof is {
+    [] ->
+      if and {
+        cursor >= 0,
+        cursor <= path_nibble_count,
+      } {
+        Some(
+          (
+            combine(suffix(path, cursor), old_value_hash),
+            combine(suffix(path, cursor), new_value_hash),
+          ),
+        )
+      } else {
+        None
+      }
+    [mpf.Branch { skip, neighbors }, ..steps] -> {
+      let next_cursor = cursor + 1 + skip
+      if and {
+        common_step_is_well_formed(cursor, skip, remaining_step_count),
+        bytearray.length(neighbors) == 4 * digest_byte_count,
+      } {
+        when
+          do_update_pair_strict(
+            path,
+            old_value_hash,
+            new_value_hash,
+            next_cursor,
+            steps,
+            remaining_step_count - 1,
+          )
+        is {
+          Some((predecessor, successor)) ->
+            Some(
+              (
+                do_branch(path, cursor, next_cursor, predecessor, neighbors),
+                do_branch(path, cursor, next_cursor, successor, neighbors),
+              ),
+            )
+          None -> None
+        }
+      } else {
+        None
+      }
+    }
+    [mpf.Fork { skip, neighbor }, ..steps] -> {
+      let next_cursor = cursor + 1 + skip
+      if and {
+        common_step_is_well_formed(cursor, skip, remaining_step_count),
+        neighbor_is_well_formed(neighbor),
+        nibble(path, next_cursor - 1) != neighbor.nibble,
+      } {
+        when
+          do_update_pair_strict(
+            path,
+            old_value_hash,
+            new_value_hash,
+            next_cursor,
+            steps,
+            remaining_step_count - 1,
+          )
+        is {
+          Some((predecessor, successor)) ->
+            Some(
+              (
+                do_fork(path, cursor, next_cursor, predecessor, neighbor),
+                do_fork(path, cursor, next_cursor, successor, neighbor),
+              ),
+            )
+          None -> None
+        }
+      } else {
+        None
+      }
+    }
+    [mpf.Leaf { skip, key, value }, ..steps] -> {
+      let next_cursor = cursor + 1 + skip
+      if and {
+        common_step_is_well_formed(cursor, skip, remaining_step_count),
+        bytearray.length(key) == digest_byte_count,
+        bytearray.length(value) == digest_byte_count,
+        nibble(path, next_cursor - 1) != nibble(key, next_cursor - 1),
+      } {
+        when
+          do_update_pair_strict(
+            path,
+            old_value_hash,
+            new_value_hash,
+            next_cursor,
+            steps,
+            remaining_step_count - 1,
+          )
+        is {
+          Some((predecessor, successor)) -> {
+            let neighbor = mpf.Neighbor {
+              prefix: suffix(key, next_cursor),
+              nibble: nibble(key, next_cursor - 1),
+              root: value,
+            }
+            Some(
+              (
+                do_fork(path, cursor, next_cursor, predecessor, neighbor),
+                do_fork(path, cursor, next_cursor, successor, neighbor),
+              ),
+            )
+          }
+          None -> None
+        }
+      } else {
+        None
+      }
+    }
+  }
+}
+
+fn do_delete_pair_strict(
+  path: ByteArray,
+  old_value_hash: ByteArray,
+  cursor: Int,
+  proof: mpf.Proof,
+  remaining_step_count: Int,
+) -> Option<(ByteArray, ByteArray)> {
+  when proof is {
+    [] ->
+      if and {
+        cursor >= 0,
+        cursor <= path_nibble_count,
+      } {
+        Some((combine(suffix(path, cursor), old_value_hash), null_hash))
+      } else {
+        None
+      }
+    [mpf.Branch { skip, neighbors }, ..steps] -> {
+      let next_cursor = cursor + 1 + skip
+      if and {
+        common_step_is_well_formed(cursor, skip, remaining_step_count),
+        bytearray.length(neighbors) == 4 * digest_byte_count,
+      } {
+        when
+          do_delete_pair_strict(
+            path,
+            old_value_hash,
+            next_cursor,
+            steps,
+            remaining_step_count - 1,
+          )
+        is {
+          Some((predecessor, successor)) ->
+            Some(
+              (
+                do_branch(path, cursor, next_cursor, predecessor, neighbors),
+                do_branch(path, cursor, next_cursor, successor, neighbors),
+              ),
+            )
+          None -> None
+        }
+      } else {
+        None
+      }
+    }
+    [mpf.Fork { skip, neighbor }] -> {
+      let next_cursor = cursor + 1 + skip
+      if and {
+        common_step_is_well_formed(cursor, skip, remaining_step_count),
+        neighbor_is_well_formed(neighbor),
+        nibble(path, next_cursor - 1) != neighbor.nibble,
+      } {
+        let included = combine(suffix(path, next_cursor), old_value_hash)
+        Some(
+          (
+            do_fork(path, cursor, next_cursor, included, neighbor),
+            combine(
+              bytearray.push(neighbor.prefix, neighbor.nibble),
+              neighbor.root,
+            ),
+          ),
+        )
+      } else {
+        None
+      }
+    }
+    [mpf.Fork { skip, neighbor }, ..steps] -> {
+      let next_cursor = cursor + 1 + skip
+      if and {
+        common_step_is_well_formed(cursor, skip, remaining_step_count),
+        neighbor_is_well_formed(neighbor),
+        nibble(path, next_cursor - 1) != neighbor.nibble,
+      } {
+        when
+          do_delete_pair_strict(
+            path,
+            old_value_hash,
+            next_cursor,
+            steps,
+            remaining_step_count - 1,
+          )
+        is {
+          Some((predecessor, successor)) ->
+            Some(
+              (
+                do_fork(path, cursor, next_cursor, predecessor, neighbor),
+                do_fork(path, cursor, next_cursor, successor, neighbor),
+              ),
+            )
+          None -> None
+        }
+      } else {
+        None
+      }
+    }
+    [mpf.Leaf { skip, key, value }] -> {
+      let next_cursor = cursor + 1 + skip
+      if and {
+        common_step_is_well_formed(cursor, skip, remaining_step_count),
+        bytearray.length(key) == digest_byte_count,
+        bytearray.length(value) == digest_byte_count,
+        nibble(path, next_cursor - 1) != nibble(key, next_cursor - 1),
+      } {
+        let included = combine(suffix(path, next_cursor), old_value_hash)
+        let neighbor = mpf.Neighbor {
+          prefix: suffix(key, next_cursor),
+          nibble: nibble(key, next_cursor - 1),
+          root: value,
+        }
+        Some(
+          (
+            do_fork(path, cursor, next_cursor, included, neighbor),
+            combine(suffix(key, cursor), value),
+          ),
+        )
+      } else {
+        None
+      }
+    }
+    [mpf.Leaf { skip, key, value }, ..steps] -> {
+      let next_cursor = cursor + 1 + skip
+      if and {
+        common_step_is_well_formed(cursor, skip, remaining_step_count),
+        bytearray.length(key) == digest_byte_count,
+        bytearray.length(value) == digest_byte_count,
+        nibble(path, next_cursor - 1) != nibble(key, next_cursor - 1),
+      } {
+        when
+          do_delete_pair_strict(
+            path,
+            old_value_hash,
+            next_cursor,
+            steps,
+            remaining_step_count - 1,
+          )
+        is {
+          Some((predecessor, successor)) -> {
+            let predecessor_neighbor = mpf.Neighbor {
+              prefix: suffix(key, next_cursor),
+              nibble: nibble(key, next_cursor - 1),
+              root: value,
+            }
+            let successor_neighbor = mpf.Neighbor {
+              prefix: suffix(key, next_cursor),
+              nibble: nibble(key, cursor),
+              root: value,
+            }
+            Some(
+              (
+                do_fork(
+                  path,
+                  cursor,
+                  next_cursor,
+                  predecessor,
+                  predecessor_neighbor,
+                ),
+                do_fork(
+                  path,
+                  cursor,
+                  next_cursor,
+                  successor,
+                  successor_neighbor,
+                ),
+              ),
+            )
+          }
+          None -> None
+        }
+      } else {
+        None
+      }
+    }
+  }
+}
+
 fn do_excluding(path: ByteArray, cursor: Int, proof: mpf.Proof) -> ByteArray {
   when proof is {
     [] -> null_hash
@@ -453,6 +1148,203 @@ pub fn delete_root(
     )
   } else {
     None
+  }
+}
+
+// ## Total paired-fold and two-fold mutations
+
+/// Authenticates exact non-membership and derives the insertion successor in
+/// one traversal. This is the preferred atomic singleton-state transition at
+/// the 64-step protocol ceiling.
+pub fn insert_root_paired_fold(
+  root: ByteArray,
+  key: ByteArray,
+  value: ByteArray,
+  proof: mpf.Proof,
+) -> Option<ByteArray> {
+  let path = blake2b_256(key)
+  if bytearray.length(root) != digest_byte_count {
+    None
+  } else {
+    when
+      do_insert_pair_strict(
+        path,
+        blake2b_256(value),
+        0,
+        proof,
+        maximum_proof_step_count,
+      )
+    is {
+      Some((predecessor, successor)) ->
+        if predecessor == library_root(root) {
+          Some(successor)
+        } else {
+          None
+        }
+      None -> None
+    }
+  }
+}
+
+/// Authenticates membership at `old_value` and derives the exact update to
+/// `new_value` in one traversal.
+pub fn update_root_paired_fold(
+  root: ByteArray,
+  key: ByteArray,
+  old_value: ByteArray,
+  new_value: ByteArray,
+  proof: mpf.Proof,
+) -> Option<ByteArray> {
+  let path = blake2b_256(key)
+  if bytearray.length(root) != digest_byte_count {
+    None
+  } else {
+    when
+      do_update_pair_strict(
+        path,
+        blake2b_256(old_value),
+        blake2b_256(new_value),
+        0,
+        proof,
+        maximum_proof_step_count,
+      )
+    is {
+      Some((predecessor, successor)) ->
+        if predecessor == root {
+          Some(successor)
+        } else {
+          None
+        }
+      None -> None
+    }
+  }
+}
+
+/// Authenticates membership and derives the exact deletion successor in one
+/// traversal.
+pub fn delete_root_paired_fold(
+  root: ByteArray,
+  key: ByteArray,
+  value: ByteArray,
+  proof: mpf.Proof,
+) -> Option<ByteArray> {
+  let path = blake2b_256(key)
+  if bytearray.length(root) != digest_byte_count {
+    None
+  } else {
+    when
+      do_delete_pair_strict(
+        path,
+        blake2b_256(value),
+        0,
+        proof,
+        maximum_proof_step_count,
+      )
+    is {
+      Some((predecessor, successor)) ->
+        if predecessor == root {
+          Some(successor)
+        } else {
+          None
+        }
+      None -> None
+    }
+  }
+}
+
+//
+// The compatibility helpers above first run a total predicate and then invoke
+// the forestry library's partial mutation. That is deliberately safe, but the
+// library repeats the predecessor fold internally before computing the
+// successor: three complete proof walks. A registry transition at the
+// protocol-wide 64-step ceiling cannot afford that repetition once published
+// proof chunks are decoded from reference inputs.
+//
+// These helpers preserve the exact fail-closed preconditions while deriving
+// the predecessor and successor directly with this module's already strict,
+// total folds. They perform exactly two walks and never enter a partial
+// forestry mutation.
+
+pub fn insert_root_two_fold(
+  root: ByteArray,
+  key: ByteArray,
+  value: ByteArray,
+  proof: mpf.Proof,
+) -> Option<ByteArray> {
+  let path = blake2b_256(key)
+  if bytearray.length(root) != digest_byte_count {
+    None
+  } else {
+    when do_excluding_strict(path, 0, proof, maximum_proof_step_count) is {
+      Some(predecessor) ->
+        if predecessor == library_root(root) {
+          Some(do_including(path, blake2b_256(value), 0, proof))
+        } else {
+          None
+        }
+      None -> None
+    }
+  }
+}
+
+pub fn update_root_two_fold(
+  root: ByteArray,
+  key: ByteArray,
+  old_value: ByteArray,
+  new_value: ByteArray,
+  proof: mpf.Proof,
+) -> Option<ByteArray> {
+  let path = blake2b_256(key)
+  if bytearray.length(root) != digest_byte_count {
+    None
+  } else {
+    when
+      do_including_strict(
+        path,
+        blake2b_256(old_value),
+        0,
+        proof,
+        maximum_proof_step_count,
+      )
+    is {
+      Some(predecessor) ->
+        if predecessor == root {
+          Some(do_including(path, blake2b_256(new_value), 0, proof))
+        } else {
+          None
+        }
+      None -> None
+    }
+  }
+}
+
+pub fn delete_root_two_fold(
+  root: ByteArray,
+  key: ByteArray,
+  value: ByteArray,
+  proof: mpf.Proof,
+) -> Option<ByteArray> {
+  let path = blake2b_256(key)
+  if bytearray.length(root) != digest_byte_count {
+    None
+  } else {
+    when
+      do_including_strict(
+        path,
+        blake2b_256(value),
+        0,
+        proof,
+        maximum_proof_step_count,
+      )
+    is {
+      Some(predecessor) ->
+        if predecessor == root {
+          Some(do_excluding(path, 0, proof))
+        } else {
+          None
+        }
+      None -> None
+    }
   }
 }
 

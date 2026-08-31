@@ -1,5 +1,5 @@
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{NativeTxInclusionArgs}
+use midgard/fraud_proofs/common.{NativeTxInclusionCarriage}
 
 pub type Datum =
   ct.StepDatum<Data>
@@ -10,7 +10,7 @@ pub type Datum =
 /// which it alone can authenticate (§3's transaction id does not commit it) —
 /// that goes into `step_02.State`, not into these arguments.
 pub type Args =
-  NativeTxInclusionArgs
+  NativeTxInclusionCarriage
 
 pub type SpendRedeemer =
   ct.StepRedeemer<Args>

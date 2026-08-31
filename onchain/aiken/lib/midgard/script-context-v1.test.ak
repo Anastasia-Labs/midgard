@@ -629,6 +629,21 @@ test datum_predicates_agree_on_ordinary_datums() {
   }
 }
 
+/// `40` is the canonical `serialiseData` image of an empty byte string. The
+/// stdlib decoder declines it, but that decoder gap must not make a canonical
+/// L2 output impossible to describe. The materialisation gate reconstructs
+/// precisely this one Data value; neighbouring ordinary byte strings continue
+/// through the general path.
+test empty_byte_string_datum_is_materialised() {
+  and {
+    is_canonical_plutus_data_v1(#"40"),
+    !retired_round_trip_pin(#"40"),
+    datum_gate_admits(#"40"),
+    datum_gate_admits(#"41ab"),
+    script_context_v1.ledger_output_summaries_v1(output_with_datum(#"40")) != None,
+  }
+}
+
 /// The direction that matters for soundness: the new predicate is not weaker.
 /// Every structural form the retired pin refused is still refused — by the
 /// predicate, and by the gate.

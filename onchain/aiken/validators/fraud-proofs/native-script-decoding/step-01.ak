@@ -162,7 +162,7 @@ fn run_step_01_normal(claimed: fixture.NativeBlockFixtureV1) -> Bool {
     expected_output_state,
     claimed.transactions_phas_root,
     claimed.tx_id,
-    claimed.compact_cbor,
+    claimed.source_cbor,
   )
   main.spend(
     fixture.next_step_script_hash,
@@ -259,7 +259,7 @@ test decoding_step_01_binds_a_published_chunk_membership_proof() {
   let steps = fixture.adversarial_branch_steps(adversarial_branch_levels)
   let block = fixture.deep_transactions_root_block_fixture_v1(
     base,
-    fixture.adversarial_membership_root(base.tx_id, base.compact_cbor, steps),
+    fixture.adversarial_membership_root(base.tx_id, base.source_cbor, steps),
     1_000_000,
   )
   let expected_output_state: Data = engine.BindStateV1 {

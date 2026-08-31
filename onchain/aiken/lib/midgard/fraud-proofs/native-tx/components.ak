@@ -122,10 +122,10 @@ pub fn encode_midgard_address(address: MidgardAddress) -> ByteArray {
         stake_credential,
       }
     = address
-  expect or {
-      network_id == 0,
-      network_id == 1,
-    }
+  // Foreign logical ids must remain encodable/decodable so an operator that
+  // commits one can be convicted by the network-id proof family. Bit 3 of the
+  // raw nibble remains reserved for `protected`, leaving logical ids 0..7.
+  expect network_id >= 0 && network_id <= 7
   let payment_hash = midgard_credential_hash(payment_credential)
   let address_type = when stake_credential is {
     Some(stake_credential) -> {
@@ -181,10 +181,6 @@ fn decode_midgard_address_payload(
   } else {
     network_nibble
   }
-  expect or {
-      network_id == 0,
-      network_id == 1,
-    }
   let payment_is_script = or {
     address_type == 1,
     address_type == 3,

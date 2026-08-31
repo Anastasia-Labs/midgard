@@ -52,7 +52,7 @@ validator main(
             output_state_data,
             header,
             bad_tx_id,
-            _bad_tx_view
+            bad_tx_view
           <- pass_native_tx_to_next_step_carried(
           computation_thread_token_policy_id,
           hub_oracle,
@@ -61,6 +61,8 @@ validator main(
           own_out_ref,
           tx,
         )
+
+        expect bad_tx_view.tx_compact.validity_code == 0
 
         let ledger_state.HeaderV1 { prev_utxos_root, .. } = header
 
@@ -108,7 +110,7 @@ fn run_step_01(claimed: fixture.NativeBlockFixtureV1) -> Bool {
     expected_output_state,
     claimed.transactions_phas_root,
     claimed.tx_id,
-    claimed.compact_cbor,
+    claimed.source_cbor,
   )
   main.spend(
     fixture.next_step_script_hash,
@@ -145,7 +147,7 @@ fn deep_no_input_block() -> (fixture.NativeBlockFixtureV1, mpf.Proof) {
   (
     fixture.deep_transactions_root_block_fixture_v1(
       base,
-      fixture.adversarial_membership_root(base.tx_id, base.compact_cbor, steps),
+      fixture.adversarial_membership_root(base.tx_id, base.source_cbor, steps),
       1_000_000,
     ),
     steps,

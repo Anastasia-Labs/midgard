@@ -15,13 +15,13 @@ pub const shift_duration: PosixTimeDuration = 60 * 60 * 1000
 
 pub const registration_duration: PosixTimeDuration = 30
 
-pub const slashing_penalty: Int = 0
+pub const slashing_penalty: Int = 500_000_000
 
-pub const fraud_prover_reward: Int = 0
+pub const fraud_prover_reward: Int = 400_000_000
 
 pub const required_bond: Int = slashing_penalty + fraud_prover_reward
 
-pub const inactivity_slashing_penalty: Int = 0
+pub const inactivity_slashing_penalty: Int = 100_000_000
 
 pub const user_events_negligence_timeout: PosixTimeDuration = 5 * 60 * 1000
 

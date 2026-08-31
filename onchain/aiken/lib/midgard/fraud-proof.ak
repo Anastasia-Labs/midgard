@@ -41,6 +41,26 @@ pub fn get_proven_fraud_record(
   fraud_proof_ref_input_index: Int,
   return: fn(HeaderHash, VerificationKeyHash) -> result,
 ) -> result {
+  get_proven_fraud_record_with_identity(
+    reference_inputs,
+    fraud_proof_policy_id,
+    fraud_proof_ref_input_index,
+    fn(header_hash, fraud_prover, _fraud_proof_asset_name) {
+      return(header_hash, fraud_prover)
+    },
+  )
+}
+
+/// Variant used by the state-correction lock. The permanent token's complete
+/// asset name is the immutable proof identity: category id || header hash.
+/// Keeping it in the lock prevents a proof for the same header but a different
+/// category from resuming an in-flight correction.
+pub fn get_proven_fraud_record_with_identity(
+  reference_inputs: List<Input>,
+  fraud_proof_policy_id: PolicyId,
+  fraud_proof_ref_input_index: Int,
+  return: fn(HeaderHash, VerificationKeyHash, AssetName) -> result,
+) -> result {
   let fraud_proof_input, fraud_proof_asset_name <- utils.get_authentic_input_and_asset_name_with_policy_at(
     reference_inputs,
     fraud_proof_policy_id,
@@ -48,5 +68,9 @@ pub fn get_proven_fraud_record(
   )
   expect InlineDatum(fraud_proof_datum_data) = fraud_proof_input.output.datum
   expect Datum { fraud_prover }: Datum = fraud_proof_datum_data
-  return(asset_name_to_header_hash(fraud_proof_asset_name), fraud_prover)
+  return(
+    asset_name_to_header_hash(fraud_proof_asset_name),
+    fraud_prover,
+    fraud_proof_asset_name,
+  )
 }

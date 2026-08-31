@@ -44,7 +44,7 @@ validator main(
             output_state_data,
             _header,
             tx2_id,
-            _tx2_view
+            tx2_view
           <- pass_native_tx_to_next_step_carried(
           computation_thread_token_policy_id,
           hub_oracle,
@@ -55,6 +55,7 @@ validator main(
         )
 
         expect Some(State { verified_tx1_id }) = m_input_state_data
+        expect tx2_view.tx_compact.validity_code == 0
 
         // 2. The two transactions must be different.
         expect verified_tx1_id != tx2_id
@@ -109,7 +110,7 @@ fn run_step_02(
     expected_output_state,
     tx2_block.transactions_phas_root,
     tx2_block.tx_id,
-    tx2_block.compact_cbor,
+    tx2_block.source_cbor,
   )
   main.spend(
     fixture.next_step_script_hash,
@@ -151,7 +152,7 @@ test double_spend_step_02_binds_a_published_chunk_membership_proof() {
   let steps = fixture.adversarial_branch_steps(adversarial_branch_levels)
   let tx2_block = fixture.deep_transactions_root_block_fixture_v1(
     base,
-    fixture.adversarial_membership_root(base.tx_id, base.compact_cbor, steps),
+    fixture.adversarial_membership_root(base.tx_id, base.source_cbor, steps),
     1_000_000,
   )
   let expected_output_state: Data = step_03.State {

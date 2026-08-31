@@ -281,19 +281,13 @@ fn parse_address(data: Data) -> Option<MidgardAddress> {
         } else {
           PubKeyCredential(payment_hash)
         }
-        if and {
+        if if length == 29 {
           or {
-            network_id == 0,
-            network_id == 1,
-          },
-          if length == 29 {
-            or {
-              address_type == 6,
-              address_type == 7,
-            }
-          } else {
-            address_type >= 0 && address_type <= 3
-          },
+            address_type == 6,
+            address_type == 7,
+          }
+        } else {
+          address_type >= 0 && address_type <= 3
         } {
           let stake_credential = if length == 57 {
             let stake_hash = bytearray.slice(bytes, 29, 56)

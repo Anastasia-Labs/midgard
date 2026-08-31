@@ -117,17 +117,33 @@ fn script_value_data(value_data: Data) -> Data {
 /// succeed -- tag 102 was already `None`, and a bignum was an abort rather than
 /// a value. No datum that materialised before this change fails to materialise
 /// after it.
+///
+/// The exact CBOR encoding `40` is the one total exception to asking the
+/// stdlib decoder to materialise the datum. It is canonical Plutus Data -- the
+/// `serialiseData` image of an empty byte string -- but this Aiken stdlib
+/// decoder answers `None` for it. Reconstructing that one Data value directly
+/// preserves the specified inverse without admitting another spelling: no
+/// other input takes this branch, and the canonical/materialisability screen
+/// remains load-bearing for every other datum.
+fn materialise_datum(datum_cbor: ByteArray) -> Option<Data> {
+  if datum_cbor == #"40" {
+    Some(builtin.b_data(#""))
+  } else if canonical_plutus_data_v1.is_materialisable_plutus_data_v1(
+    datum_cbor,
+  ) {
+    cbor.deserialise(datum_cbor)
+  } else {
+    None
+  }
+}
+
 fn datum_data(output: MidgardTxOutput) -> Option<Data> {
   when output.datum_cbor is {
     None -> Some(builtin.constr_data(0, []))
     Some(datum_cbor) ->
-      if canonical_plutus_data_v1.is_materialisable_plutus_data_v1(datum_cbor) {
-        when cbor.deserialise(datum_cbor) is {
-          None -> None
-          Some(datum) -> Some(builtin.constr_data(2, [datum]))
-        }
-      } else {
-        None
+      when materialise_datum(datum_cbor) is {
+        None -> None
+        Some(datum) -> Some(builtin.constr_data(2, [datum]))
       }
   }
 }
@@ -912,21 +928,15 @@ pub fn spend_datum_summary_v1(
           // both from a single scan, so screening recursively costs less than
           // the head-byte screen it replaces, which ran beside a separate
           // canonicity walk.
-          if canonical_plutus_data_v1.is_materialisable_plutus_data_v1(
-            datum_cbor,
-          ) {
-            when cbor.deserialise(datum_cbor) is {
-              None -> None
-              Some(datum) ->
-                Some(
-                  small_constr_summary(
-                    0,
-                    [cek_data_v1.semantic_data_summary_v1(datum)],
-                  ),
-                )
-            }
-          } else {
-            None
+          when materialise_datum(datum_cbor) is {
+            None -> None
+            Some(datum) ->
+              Some(
+                small_constr_summary(
+                  0,
+                  [cek_data_v1.semantic_data_summary_v1(datum)],
+                ),
+              )
           }
       }
   }

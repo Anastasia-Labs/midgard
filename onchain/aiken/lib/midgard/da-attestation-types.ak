@@ -1,5 +1,7 @@
 use aiken/crypto.{VerificationKeyHash}
+use cardano/address.{Address}
 use cardano/assets.{AssetName}
+use midgard/availability_challenge as availability
 use midgard/ledger_state.{HeaderHash}
 
 pub const da_params_asset_name: AssetName = "MIDGARD_DA_PARAMS"
@@ -27,9 +29,18 @@ pub const empty_attested_signer_bitmap: ByteArray =
 
 pub type DaAttestationDatum {
   header_hash: HeaderHash,
+  /// Signer-authenticated retained-DA framing, bond owner and release
+  /// geometry. This is deliberately distinct from `rescue_beneficiary`:
+  /// committee rotation refunds the latter, while an availability response or
+  /// slash follows the former.
+  availability_commitment: availability.CommitmentV1,
   da_threshold: Int,
   /// Hash of the immutable sorted committee verification keys.
   committee_signers_hash: ByteArray,
+  /// Full Cardano address selected when the attestation is created. Committee
+  /// rotation may make the attestation permanently unusable, but it never
+  /// changes who receives the rescued value.
+  rescue_beneficiary: Address,
   /// 256-bit MSB-first bitmap of committee indexes that have attested.
   attested_signers: ByteArray,
   attestation_count: Int,
@@ -66,6 +77,7 @@ pub type MintRedeemer {
     state_queue_input_index: Int,
     state_queue_output_index: Int,
     state_queue_mint_ref_script_input_index: Int,
+    availability_mint_redeemer_index: Int,
   }
   /// Refunds an attestation that a mid-flight committee rotation stranded
   /// (decision row D-DA5 clause c). Authorization is a *state condition*, not a

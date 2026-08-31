@@ -3,7 +3,8 @@
 ////
 //// ### The rule this family adjudicates
 ////
-//// Every L1 event (a deposit, or a withdrawal order) must be applied by
+//// Every L1 event (a deposit, withdrawal order, or forced transaction order)
+//// must be applied by
 //// **exactly one** L2 block. Block event windows are contiguous and strictly
 //// monotone (`timed_l1_event_is_due`: `start_time < t <= end_time`, and each
 //// header's `start_time` is its parent's `end_time`), so an event's
@@ -80,6 +81,7 @@ use midgard/fraud_proof_catalogue
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/hub_oracle as hub
 use midgard/ledger_state
+use midgard/rejection_reason_v1
 use midgard/state_queue
 use midgard/transition_trace
 
@@ -196,15 +198,20 @@ pub type CommittedWithdrawalSourceProofV1 =
     ledger_state.WithdrawalInfo,
   >
 
+/// Membership witness for one `(TxOrderId, ForcedInclusionTxV1)` leaf of a
+/// counted `forced_transactions_root`.
+pub type CommittedForcedTransactionSourceProofV1 =
+  transition_trace.RootMembershipProof<
+    ledger_state.TxOrderId,
+    ledger_state.ForcedInclusionTxV1,
+  >
+
 /// Which counted source-root domain the duplicated event lives in.
 ///
-/// The tx-order (`ForcedTransactionsV1RootDomain`) arm is a recorded
-/// follow-up, not implemented here: forced transaction orders share the same
-/// exactly-once window rule, but their leaf value type routes through the
-/// tx-order validity override machinery and deserves its own witness arm.
 pub type DuplicateEventKindV1 {
   DuplicateDepositV1
   DuplicateWithdrawalV1
+  DuplicateForcedTransactionV1
 }
 
 /// The committed event leaf under challenge, in one of the two implemented
@@ -220,6 +227,9 @@ pub type CommittedDuplicateEventProofV1 {
   CommittedDuplicateDepositV1 { membership: CommittedDepositSourceProofV1 }
   CommittedDuplicateWithdrawalV1 {
     membership: CommittedWithdrawalSourceProofV1,
+  }
+  CommittedDuplicateForcedTransactionV1 {
+    membership: CommittedForcedTransactionSourceProofV1,
   }
 }
 
@@ -256,6 +266,15 @@ pub fn verify_committed_event_membership_v1(
         cbor.serialise(membership.key),
         cbor.serialise(membership.value),
       )
+    CommittedDuplicateForcedTransactionV1 { membership } ->
+      transition_trace.verify_root_membership_with_bytes(
+        membership,
+        transition_trace.ForcedTransactionsV1RootDomain,
+        header.forced_transactions_root,
+        header.forced_transaction_count,
+        cbor.serialise(membership.key),
+        cbor.serialise(membership.value),
+      )
   }
 }
 
@@ -266,6 +285,7 @@ pub fn committed_event_kind_v1(
   when committed_event is {
     CommittedDuplicateDepositV1 { .. } -> DuplicateDepositV1
     CommittedDuplicateWithdrawalV1 { .. } -> DuplicateWithdrawalV1
+    CommittedDuplicateForcedTransactionV1 { .. } -> DuplicateForcedTransactionV1
   }
 }
 
@@ -276,6 +296,7 @@ pub fn committed_event_key_v1(
   when committed_event is {
     CommittedDuplicateDepositV1 { membership } -> membership.key
     CommittedDuplicateWithdrawalV1 { membership } -> membership.key
+    CommittedDuplicateForcedTransactionV1 { membership } -> membership.key
   }
 }
 
@@ -354,6 +375,22 @@ pub fn duplicated_withdrawal_info_v1() -> ledger_state.WithdrawalInfo {
           ),
     ),
     validity: ledger_state.WithdrawalIsValid,
+  }
+}
+
+/// The forced-inclusion value committed for the duplicated tx-order identity.
+/// The duplicate predicate is key-only; nevertheless the exact value travels
+/// through both authenticated membership openings so neither root can be
+/// substituted or recomputed over a different leaf.
+pub fn duplicated_forced_transaction_v1() -> ledger_state.ForcedInclusionTxV1 {
+  ledger_state.ForcedInclusionTxV1 {
+    tx_id: #"1111111111111111111111111111111111111111111111111111111111111111",
+    source: ledger_state.NativeTxProofSourceV1 {
+      compact_cbor: #"80",
+      witness_set_compact_cbor: #"80",
+      field_preimage_lengths_cbor: #"80",
+    },
+    verdict: rejection_reason_v1.ForcedTxValid,
   }
 }
 
@@ -441,6 +478,50 @@ pub fn withdrawal_event_block_v1(
   }
 }
 
+/// Commits `(key, value)` as the single leaf of the block's raw forced-order
+/// MPF and re-derives the counted root and dependent header counters.
+pub fn forced_transaction_event_block_v1(
+  key: ledger_state.TxOrderId,
+  value: ledger_state.ForcedInclusionTxV1,
+) -> DuplicateEventBlockV1 {
+  let base = fixture.native_block_fixture_v1(fixture.valid_native_tx_v1())
+  let event_phas_root = mpf.root(
+    mpf.insert(mpf.empty, cbor.serialise(key), cbor.serialise(value), []),
+  )
+  let header = ledger_state.HeaderV1 {
+    ..base.header,
+    forced_transactions_root: transition_trace.commit_counted_root(
+      transition_trace.ForcedTransactionsV1RootDomain,
+      event_phas_root,
+      1,
+    ),
+    forced_transaction_count: 1,
+    total_event_count: base.header.total_event_count + 1,
+    transition_step_count: base.header.transition_step_count + 1,
+  }
+  let header_data: Data = header
+  let block = fixture.NativeBlockFixtureV1 {
+    ..base,
+    header,
+    header_hash: utils.serialise_and_hash_28(header_data),
+  }
+  DuplicateEventBlockV1 {
+    block,
+    event_phas_root,
+    committed_event: CommittedDuplicateForcedTransactionV1 {
+      membership: transition_trace.RootMembershipProof {
+        domain: transition_trace.ForcedTransactionsV1RootDomain,
+        root: header.forced_transactions_root,
+        phas_root: event_phas_root,
+        count: 1,
+        key,
+        value,
+        proof: [],
+      },
+    },
+  }
+}
+
 /// The challenged block of the family's deposit scenario: it commits the
 /// duplicated deposit event a settlement node already absorbed.
 pub fn duplicate_deposit_block_v1() -> DuplicateEventBlockV1 {
@@ -452,6 +533,14 @@ pub fn duplicate_withdrawal_block_v1() -> DuplicateEventBlockV1 {
   withdrawal_event_block_v1(
     duplicated_event_id_v1(),
     duplicated_withdrawal_info_v1(),
+  )
+}
+
+/// The challenged block of the family's forced transaction-order scenario.
+pub fn duplicate_forced_transaction_block_v1() -> DuplicateEventBlockV1 {
+  forced_transaction_event_block_v1(
+    duplicated_event_id_v1(),
+    duplicated_forced_transaction_v1(),
   )
 }
 

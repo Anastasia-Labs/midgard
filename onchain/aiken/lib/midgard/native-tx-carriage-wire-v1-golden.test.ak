@@ -412,7 +412,7 @@ test golden_view_trailing_bytes_rejects() {
 }
 
 const view_constructor_index_out_of_range_cbor: ByteArray =
-  #"d87b9f4180001828ff"
+  #"d87c9f4180001828ff"
 
 /// `view_constructor_index_out_of_range` is well-formed CBOR. This is
 /// what keeps the `fail` test below honest: its refusal has to come from
@@ -422,7 +422,8 @@ test golden_view_constructor_index_out_of_range_parses_as_cbor() {
 }
 
 /// FieldViewV1 / `view_constructor_index_out_of_range`: constructor index
-/// 2; FieldViewV1 declares exactly Whole/Chunked at 0/1.
+/// 3; FieldViewV1 declares exactly Whole/Chunked/ProvisionalWhole at
+/// 0/1/2.
 test golden_view_constructor_index_out_of_range_rejects() fail {
   expect Some(decoded_data) = cbor.deserialise(
     view_constructor_index_out_of_range_cbor,

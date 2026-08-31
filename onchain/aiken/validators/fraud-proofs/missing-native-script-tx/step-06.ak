@@ -1,16 +1,20 @@
 use aiken/collection/list
+use aiken/crypto.{ScriptHash}
 use aiken/primitive/bytearray
 use cardano/address.{Address}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, finalize}
+use midgard/fraud_proofs/common.{cancel, continue, finalize}
 use midgard/fraud_proofs/field_opening_v1.{
-  WitnessAnchor, fold_opened_field, opened_field_walk,
+  NativeTxAnchorV1, WitnessAnchor, fold_opened_field,
+  opened_field_grammar_certification, opened_field_walk,
   script_witnesses_field_index,
 }
 use midgard/fraud_proofs/missing_native_script_tx/step_06.{
-  Args, Datum, SpendRedeemer, State,
+  Datum, DirectFinalize, GrammarCertification, Ready, SpendRedeemer,
+  StartGrammarCertification, State, direct_script_witness_limit,
+  staged_batch_limit,
 }
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/components.{
@@ -20,9 +24,17 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardTransactionWitnessSet, MidgardVersionedScript, NativeCardanoScript,
   NativeTxWitnessSetCompact,
 }
+use midgard/native_tx_field_access_v1.{
+  field_item_count, provisional_field_item_count_for_certification,
+}
+use midgard/native_tx_machine_walk_v1.{
+  certify_field_grammar, field_grammar_checkpoint_hash,
+  field_grammar_is_complete,
+}
 use midgard/script_proof_v1
 
 validator main(
+  step_07_validator_script_hash: ScriptHash,
   computation_thread_token_policy_id: PolicyId,
   fraud_proof_token_policy_id: PolicyId,
   fraud_proof_token_address: Address,
@@ -44,119 +56,150 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(Args {
-        input_index,
-        output_index,
-        fraud_proof_mint_redeemer_index,
-        script_tx_wits_opening,
-      }) -> {
+      ct.Continue(action) -> {
         let Transaction { inputs, outputs, redeemers, reference_inputs, .. } = tx
-
         expect Some(step_datum) = datum
-
-        // 1. Specified input must be authentic and properly reproduced at the
-        //    fraud proof's spending address.
-        let
-            _own_script_hash,
-            _computation_thread_token_asset_name,
-            _fraud_prover,
-            m_input_state_data
-          <- finalize(
-          computation_thread_token_policy_id,
-          fraud_proof_token_policy_id,
-          fraud_proof_token_address,
-          step_datum,
-          input_index,
-          output_index,
-          fraud_proof_mint_redeemer_index,
-          own_out_ref,
-          inputs,
-          outputs,
-          redeemers,
-        )
-
-        expect
-            Some(State {
-              expected_missing_script_hash,
-              bad_tx_id,
-              bad_tx_witness_set_hash,
-            })
-          = m_input_state_data
-
-        // 2. Field 6's preimage is authenticated through the §8.8 door, which
-        //    for a witness-set field also re-derives the supplied witness set
-        //    against `bad_tx_witness_set_hash`.
-        //
-        //    That hash is thread state, carried from step-01, and it is what
-        //    makes this step's absence claim mean anything. §3's transaction id
-        //    preimage is the *body*: the compact structure's trailing
-        //    `witness_set_hash` is outside it, so bytes carrying the genuine
-        //    body and an invented tail re-derive to this very `bad_tx_id`. A
-        //    door that checked only the id would accept the empty witness set
-        //    against any transaction, making "the required native script is
-        //    absent" true of every transaction ever committed.
-        //
-        //    **Carriage limit (§8, issue #565).** Field 6 is variable-width, so
-        //    step 3 below needs `field_item_count`, which is only authenticated
-        //    for tiers 1–2 — under tier 3 (Certified) a variable-width field's
-        //    count is the §5.1 header's self-assertion and
-        //    `field_item_count` aborts rather than return it. A prover whose
-        //    field-6 preimage does not fit tier-2 carriage therefore cannot
-        //    finalize this family at all. (Until #606 this was over-determined
-        //    by E2 limit 3's outright tier-3 refusal at the witness-set
-        //    fields; that refusal lifted with #606's welded-hash repair, so
-        //    limit 2 is what remains and it is this family's own.) The abort
-        //    is a *known, loud* limitation, not a silent clamp — unconditional
-        //    and recorded in `docs/spec/midgard-tx.md` §8.3 erratum E2 as
-        //    limit 2. Lifting it is #565/#579's, not this step's.
-        let script_tx_wits_walk = opened_field_walk(
-          script_tx_wits_opening,
-          WitnessAnchor {
-            tx_id: bad_tx_id,
-            witness_set_hash: bad_tx_witness_set_hash,
-          },
-          script_witnesses_field_index,
-          reference_inputs,
-          field_preimage_certificate_policy_id,
-        )
-
-        // 3. The bad transaction's script witnesses must not contain the
-        //    required native script (canonical versioned-script hash). Field 6
-        //    is variable-width, so the absence claim walks it once rather than
-        //    indexing it — indexing would re-walk from item 0 every time.
-        let required_script_is_present = fold_opened_field(
-          script_tx_wits_walk,
-          False,
-          fn(found, _index, item) {
-            let Pair(_offset, script_wit) = decode_midgard_versioned_script_at(
-              item,
-              0,
+        when action is {
+          DirectFinalize {
+            input_index,
+            output_index,
+            fraud_proof_mint_redeemer_index,
+            script_tx_wits_opening,
+          } -> {
+            let
+                _own_script_hash,
+                _computation_thread_token_asset_name,
+                _fraud_prover,
+                m_input_state_data
+              <- finalize(
+              computation_thread_token_policy_id,
+              fraud_proof_token_policy_id,
+              fraud_proof_token_address,
+              step_datum,
+              input_index,
+              output_index,
+              fraud_proof_mint_redeemer_index,
+              own_out_ref,
+              inputs,
+              outputs,
+              redeemers,
             )
-            // §6.1 canonicality, re-established by re-encoding. The decoder
-            // reads a *prefix*: it stops at the end of the versioned-script
-            // structure and says nothing about bytes after it, and
-            // `decode_definite_bytes_at` accepts a non-minimal length prefix
-            // (`58 05` where `45` was canonical). Either would let two distinct
-            // committed items decode to the same script, so the hash below
-            // would be a statement about something the field did not commit.
-            // Re-encoding pins both at once.
-            expect encode_midgard_versioned_script(script_wit) == item
-            or {
-              found,
-              script_proof_v1.versioned_script_hash(script_wit) == expected_missing_script_hash,
-            }
-          },
-        )
-        expect required_script_is_present == False
-
-        // Done.
-        True
+            expect Some(state) = m_input_state_data
+            expect Ready = state.phase
+            let opened = opened_field_walk(
+              script_tx_wits_opening,
+              anchor_of(state),
+              script_witnesses_field_index,
+              reference_inputs,
+              field_preimage_certificate_policy_id,
+            )
+            let Pair(view, _start) = opened
+            expect field_item_count(view) <= direct_script_witness_limit
+            let required_script_is_present = fold_opened_field(
+              opened,
+              False,
+              fn(found, index, item) {
+                scan_script_witness(
+                  state.expected_missing_script_hash,
+                  found,
+                  index,
+                  item,
+                )
+              },
+            )
+            expect required_script_is_present == False
+            True
+          }
+          StartGrammarCertification {
+            input_index,
+            output_index,
+            script_tx_wits_opening,
+            item_budget,
+          } -> {
+            expect expect_valid_staged_budget(item_budget)
+            let
+                _own_script_hash,
+                _computation_thread_token_asset_name,
+                _fraud_prover,
+                m_input_state_data,
+                output_script_hash,
+                output_state_data
+              <- continue(
+              computation_thread_token_policy_id,
+              step_datum,
+              input_index,
+              output_index,
+              own_out_ref,
+              inputs,
+              outputs,
+            )
+            expect Some(state) = m_input_state_data
+            expect Ready = state.phase
+            let Pair(view, start) = opened_field_grammar_certification(
+              script_tx_wits_opening,
+              anchor_of(state),
+              script_witnesses_field_index,
+              reference_inputs,
+              field_preimage_certificate_policy_id,
+            )
+            expect
+              provisional_field_item_count_for_certification(view) > direct_script_witness_limit
+            let next = certify_field_grammar(view, start, item_budget)
+            expect !field_grammar_is_complete(next)
+            expect output_script_hash == step_07_validator_script_hash
+            expect_output_state(
+              output_state_data,
+              State {
+                ..state,
+                phase: GrammarCertification {
+                  checkpoint_hash: field_grammar_checkpoint_hash(next),
+                },
+              },
+            )
+          }
+        }
       }
     }
   }
 
   else(_) {
     fail
+  }
+}
+
+fn anchor_of(state: State) -> NativeTxAnchorV1 {
+  WitnessAnchor {
+    tx_id: state.bad_tx_id,
+    witness_set_hash: state.bad_tx_witness_set_hash,
+  }
+}
+
+fn expect_valid_staged_budget(item_budget: Int) -> Bool {
+  expect item_budget > 0
+  expect item_budget <= staged_batch_limit
+  True
+}
+
+fn expect_output_state(output_state_data: Data, expected_state: State) -> Bool {
+  let expected: Data = expected_state
+  expect output_state_data == expected
+  True
+}
+
+fn scan_script_witness(
+  expected_missing_script_hash: ByteArray,
+  found: Bool,
+  _index: Int,
+  item: ByteArray,
+) -> Bool {
+  let Pair(_offset, script_wit) = decode_midgard_versioned_script_at(item, 0)
+  // §6.1: the decoder reads a prefix and accepts non-minimal length heads, so
+  // exact re-encoding is part of every semantic batch rather than a one-shot
+  // precondition.
+  expect encode_midgard_versioned_script(script_wit) == item
+  or {
+    found,
+    script_proof_v1.versioned_script_hash(script_wit) == expected_missing_script_hash,
   }
 }
 
@@ -177,9 +220,11 @@ fn run_finalize_against(
     expected_missing_script_hash,
     bad_tx_id: anchored_block.tx_id,
     bad_tx_witness_set_hash: anchored_block.compact.witness_set_hash,
+    phase: Ready,
   }
   let asset_name = fixture.ct_token_asset_name(anchored_block)
   main.spend(
+    fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
     fixture.fraud_proof_policy_id,
     fixture.fraud_proof_token_address(),
@@ -191,7 +236,7 @@ fn run_finalize_against(
       },
     ),
     ct.Continue(
-      Args {
+      DirectFinalize {
         input_index: 0,
         output_index: 0,
         fraud_proof_mint_redeemer_index: 0,

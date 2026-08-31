@@ -8,7 +8,9 @@ use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, pass_native_tx_to_next_step}
+use midgard/fraud_proofs/common.{
+  cancel, carriage_transactions_phas_root, pass_native_tx_to_next_step_carried,
+}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/no_reference_input/step_01.{Datum, SpendRedeemer}
 use midgard/fraud_proofs/no_reference_input/step_02
@@ -47,8 +49,8 @@ validator main(
             output_state_data,
             header,
             bad_tx_id,
-            _bad_tx_view
-          <- pass_native_tx_to_next_step(
+            bad_tx_view
+          <- pass_native_tx_to_next_step_carried(
           computation_thread_token_policy_id,
           hub_oracle,
           datum,
@@ -56,6 +58,8 @@ validator main(
           own_out_ref,
           tx,
         )
+
+        expect bad_tx_view.tx_compact.validity_code == 0
 
         let ledger_state.HeaderV1 { prev_utxos_root, .. } = header
 
@@ -69,7 +73,9 @@ validator main(
         let expected_output_state: Data = step_02.State {
           bad_tx_id,
           blocks_prev_utxos_root: prev_utxos_root,
-          blocks_transactions_root: tx_inclusion_args.transactions_phas_root,
+          blocks_transactions_root: carriage_transactions_phas_root(
+            tx_inclusion_args,
+          ),
         }
         expect output_state_data == expected_output_state
 
@@ -100,14 +106,14 @@ test no_reference_input_step_01_binds_native_v1_block_fixture() {
     expected_output_state,
     block.transactions_phas_root,
     block.tx_id,
-    block.compact_cbor,
+    block.source_cbor,
   )
   main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
     fixture.hub_oracle_script_hash,
     Some(fixture.step_datum_without_state()),
-    ct.Continue(fixture.native_inclusion_args_v1(block)),
+    ct.Continue(fixture.native_inclusion_carriage_v1(block)),
     fixture.own_out_ref(),
     l1_tx,
   )
@@ -140,14 +146,14 @@ test no_reference_input_step_01_rejects_forged_transactions_root() fail {
     expected_output_state,
     forged_block.transactions_phas_root,
     forged_block.tx_id,
-    forged_block.compact_cbor,
+    forged_block.source_cbor,
   )
   main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
     fixture.hub_oracle_script_hash,
     Some(fixture.step_datum_without_state()),
-    ct.Continue(fixture.native_inclusion_args_v1(forged_block)),
+    ct.Continue(fixture.native_inclusion_carriage_v1(forged_block)),
     fixture.own_out_ref(),
     l1_tx,
   )

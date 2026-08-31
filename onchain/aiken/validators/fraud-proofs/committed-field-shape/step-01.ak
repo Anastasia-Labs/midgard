@@ -96,6 +96,9 @@ validator main(
           tx,
         )
 
+        // Shape faults are ordered after the normal-leaf mistag fault.
+        expect verified.tx_compact.validity_code == 0
+
         // 2. The UTxO must be produced at the next step's script hash carrying
         //    the exact accusation. Both members of it are derived here — the
         //    field index from the claim whose bytes the door then held to that
@@ -254,7 +257,7 @@ fn run_step_01_at(
       output_state,
       block.transactions_phas_root,
       block.tx_id,
-      block.compact_cbor,
+      block.source_cbor,
     ),
   )
 }

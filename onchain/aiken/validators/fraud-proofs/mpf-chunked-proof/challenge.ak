@@ -281,7 +281,10 @@ fn honest_challenge() -> ProofChallengeDatum {
     challenged_header_hash: claimed.header_hash,
     challenged_root_domain: transition_trace.TransactionsV1RootDomain,
     target_key: claimed.tx_id,
-    target_value_hash: blake2b_256(claimed.compact_cbor),
+    // The block's raw transactions trie commits `Data(L2TransactionSourceV1)`
+    // at `tx_id`, so the target value is the source bytes, not the bare
+    // compact structure the source carries.
+    target_value_hash: blake2b_256(claimed.source_cbor),
     expected_root: claimed.transactions_phas_root,
     expected_leaf_count: 1,
     mode: Membership,

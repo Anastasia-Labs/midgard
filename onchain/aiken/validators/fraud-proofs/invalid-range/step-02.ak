@@ -62,33 +62,21 @@ validator main(
           redeemers,
         )
 
-        expect
-            Some(State {
-              block_valid_from,
-              block_valid_to,
-              bad_tx_normalized_validity_range,
-            })
-          = m_input_state_data
+        expect Some(State { block_slot, bad_tx_normalized_validity_range }) = m_input_state_data
 
-        // 2. One or more **bounds** of the bad transaction's validity interval
-        //    must fall out of the block's. Meaning unbounded ends are not
-        //    validated against the block's time range.
-        //
-        //    Also if the range is invalid (i.e. lower bound is greater than or
-        //    equal to the upper bound), the fraud proof should be able to
-        //    succeed.
-        //
-        //    > [!NOTE]
-        //    > We are assuming inclusive lower bound and exclusive upper bound
-        //    > in the block. TODO: This needs clarification in specs.
+        // 2. Canonical Phase B evaluates the normalized transaction interval
+        //    at `header.block_slot`. A valid closed interval includes both
+        //    endpoints after the native exclusive upper bound was normalized
+        //    to an inclusive one. The proof succeeds iff that exact slot lies
+        //    outside the normalized interval, or the interval is malformed.
         expect
           when bad_tx_normalized_validity_range is {
             ClosedRange { lower, upper } -> or {
-                lower < block_valid_from,
-                upper >= block_valid_to,
+                lower > block_slot,
+                upper < block_slot,
               }
-            FromNegInf { upper } -> upper >= block_valid_to
-            ToPosInf { lower } -> lower < block_valid_from
+            FromNegInf { upper } -> upper < block_slot
+            ToPosInf { lower } -> lower > block_slot
             Always -> fail @"The tx does not have an invalid time range"
             InvalidRange -> True
           }
@@ -133,38 +121,74 @@ fn run_finalize(state: State) -> Bool {
 }
 
 /// Positive selector: both malformed-interval shapes finalize into a permanent
-/// fraud-proof token — a closed interval whose lower bound falls below the
-/// block's `start_time`, and an inverted interval, which overlaps no block
-/// interval at all. The inverted case is the executable disposition of F21
+/// fraud-proof token — a closed interval whose upper bound falls below the
+/// block's replay slot, and an inverted interval. The inverted case is the
+/// executable disposition of F21
 /// physical structural row L302 (Q49-L302), previously an unverified inference.
 test invalid_range_step_02_accepts_uncovered_and_inverted_intervals() {
   and {
     run_finalize(
       State {
-        block_valid_from: 10,
-        block_valid_to: 20,
+        block_slot: 10,
         bad_tx_normalized_validity_range: ClosedRange { lower: 5, upper: 8 },
       },
     ),
     run_finalize(
       State {
-        block_valid_from: 10,
-        block_valid_to: 20,
-        bad_tx_normalized_validity_range: InvalidRange,
+        block_slot: 10,
+        bad_tx_normalized_validity_range: ClosedRange { lower: 11, upper: 20 },
       },
+    ),
+    run_finalize(
+      State {
+        block_slot: 10,
+        bad_tx_normalized_validity_range: FromNegInf { upper: 9 },
+      },
+    ),
+    run_finalize(
+      State {
+        block_slot: 10,
+        bad_tx_normalized_validity_range: ToPosInf { lower: 11 },
+      },
+    ),
+    run_finalize(
+      State { block_slot: 10, bad_tx_normalized_validity_range: InvalidRange },
     ),
   }
 }
 
+test invalid_range_step_02_rejects_valid_lower_boundary() fail {
+  run_finalize(
+    State {
+      block_slot: 10,
+      bad_tx_normalized_validity_range: ToPosInf { lower: 10 },
+    },
+  )
+}
+
+test invalid_range_step_02_rejects_valid_upper_boundary() fail {
+  run_finalize(
+    State {
+      block_slot: 10,
+      bad_tx_normalized_validity_range: FromNegInf { upper: 10 },
+    },
+  )
+}
+
+test invalid_range_step_02_rejects_always_valid_range() fail {
+  run_finalize(
+    State { block_slot: 10, bad_tx_normalized_validity_range: Always },
+  )
+}
+
 /// Valid-block negative selector: in a valid block every transaction interval
-/// lies inside the header's `[start_time, end_time)` window, so a challenge
-/// carrying a covered interval cannot finalize.
+/// contains the committed replay slot, so a challenge carrying either exact
+/// boundary cannot finalize.
 test invalid_range_step_02_rejects_valid_block_challenge() fail {
   run_finalize(
     State {
-      block_valid_from: 10,
-      block_valid_to: 20,
-      bad_tx_normalized_validity_range: ClosedRange { lower: 10, upper: 19 },
+      block_slot: 10,
+      bad_tx_normalized_validity_range: ClosedRange { lower: 10, upper: 10 },
     },
   )
 }

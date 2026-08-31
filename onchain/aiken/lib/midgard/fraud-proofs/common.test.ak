@@ -4,6 +4,7 @@
 //// fixture, proving lifecycle, token-coupling, reference-input-discipline,
 //// and valid-block-rejection properties independently of any single family.
 
+use aiken/cbor
 use cardano/address
 use cardano/assets
 use cardano/transaction.{InlineDatum, Output, Transaction}
@@ -14,6 +15,7 @@ use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/types.{
   MidgardTransaction, MidgardTransactionBody,
 }
+use midgard/ledger_state
 
 const other_policy = #"99999999999999999999999999999999999999999999999999999999"
 
@@ -368,7 +370,7 @@ test common_native_binding_accepts_committed_transaction() {
       sample_state(),
       block.transactions_phas_root,
       block.tx_id,
-      block.compact_cbor,
+      block.source_cbor,
     ),
   )
 }
@@ -389,7 +391,7 @@ test common_native_binding_rejects_forged_raw_root() fail {
       sample_state(),
       forged_root,
       block.tx_id,
-      block.compact_cbor,
+      block.source_cbor,
     ),
   )
 }
@@ -411,7 +413,7 @@ test common_native_binding_rejects_mismatched_tx_id() fail {
       sample_state(),
       block.transactions_phas_root,
       foreign_id,
-      block.compact_cbor,
+      block.source_cbor,
     ),
   )
 }
@@ -426,7 +428,7 @@ test common_native_binding_rejects_foreign_block_thread() fail {
     sample_state(),
     block.transactions_phas_root,
     block.tx_id,
-    block.compact_cbor,
+    block.source_cbor,
   )
   run_native_binding(
     block,
@@ -450,7 +452,7 @@ test common_native_binding_rejects_substituted_state_queue_node() fail {
     sample_state(),
     block.transactions_phas_root,
     block.tx_id,
-    block.compact_cbor,
+    block.source_cbor,
   )
   run_native_binding(
     block,
@@ -474,7 +476,7 @@ test common_native_binding_rejects_substituted_hub_oracle() fail {
     sample_state(),
     block.transactions_phas_root,
     block.tx_id,
-    block.compact_cbor,
+    block.source_cbor,
   )
   run_native_binding(
     block,
@@ -487,6 +489,90 @@ test common_native_binding_rejects_substituted_hub_oracle() fail {
       ],
     },
   )
+}
+
+fn decoded_source(
+  block: fixture.NativeBlockFixtureV1,
+) -> ledger_state.L2TransactionSourceV1 {
+  expect Some(source_data) = cbor.deserialise(block.source_cbor)
+  expect source: ledger_state.L2TransactionSourceV1 = source_data
+  source
+}
+
+fn run_committed_source(source_cbor: ByteArray) -> Bool {
+  let base = valid_block()
+  let block = fixture.committed_leaf_block_fixture_v1(
+    base,
+    base.tx_id,
+    source_cbor,
+  )
+  run_native_binding(
+    block,
+    fixture.native_inclusion_args_v1(block),
+    fixture.continue_step_l1_tx_v1(
+      block,
+      sample_state(),
+      block.transactions_phas_root,
+      block.tx_id,
+      block.source_cbor,
+    ),
+  )
+}
+
+test common_native_binding_rejects_a_source_value_under_a_foreign_key() fail {
+  let base = valid_block()
+  let block = fixture.committed_leaf_block_fixture_v1(
+    base,
+    other_block().tx_id,
+    base.source_cbor,
+  )
+  run_native_binding(
+    block,
+    fixture.native_inclusion_args_v1(block),
+    fixture.continue_step_l1_tx_v1(
+      block,
+      sample_state(),
+      block.transactions_phas_root,
+      block.tx_id,
+      block.source_cbor,
+    ),
+  )
+}
+
+test common_native_binding_rejects_forged_source_witness_bytes() fail {
+  let block = valid_block()
+  let source = decoded_source(block)
+  run_committed_source(
+    cbor.serialise(
+      ledger_state.L2TransactionSourceV1 {
+        ..source,
+        source: ledger_state.NativeTxProofSourceV1 {
+          ..source.source,
+          witness_set_compact_cbor: #"80",
+        },
+      },
+    ),
+  )
+}
+
+test common_native_binding_rejects_forged_source_field_lengths() fail {
+  let block = valid_block()
+  let source = decoded_source(block)
+  run_committed_source(
+    cbor.serialise(
+      ledger_state.L2TransactionSourceV1 {
+        ..source,
+        source: ledger_state.NativeTxProofSourceV1 {
+          ..source.source,
+          field_preimage_lengths_cbor: #"80",
+        },
+      },
+    ),
+  )
+}
+
+test common_native_binding_rejects_malformed_source_data() fail {
+  run_committed_source(#"ff")
 }
 // ## 6. Witness-set binding at the shared layer
 //

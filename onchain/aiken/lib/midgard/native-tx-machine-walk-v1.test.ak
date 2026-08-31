@@ -49,6 +49,7 @@
 //// drift with the encoder without the round-trip test noticing.
 
 use aiken/builtin
+use aiken/cbor
 use aiken/collection/list
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
@@ -74,8 +75,13 @@ use midgard/native_tx_field_access_v1.{
   spend_input_stride,
 }
 use midgard/native_tx_machine_walk_v1.{
-  FieldWalkCheckpointV1, encode_field_walk_checkpoint,
-  field_walk_checkpoint_bytes, field_walk_checkpoint_hash, open_field_walk,
+  FieldGrammarCheckpointV1, FieldWalkCheckpointV1, certify_field_grammar,
+  encode_field_grammar_checkpoint, encode_field_walk_checkpoint,
+  field_grammar_checkpoint_bytes, field_grammar_is_complete,
+  field_walk_checkpoint_bytes, field_walk_checkpoint_hash,
+  open_certified_field_walk_from_grammar_commitment,
+  open_field_grammar_certification, open_field_walk,
+  resume_field_grammar_certification_from_commitment,
   resume_field_walk_from_commitment, spend_input_at, spend_input_count,
   walk_field_index, walk_fold, walk_is_complete, walk_next, walk_next_item_index,
   walk_remaining, walk_skip, walk_tx_id,
@@ -153,6 +159,22 @@ fn script_items(next: Int, remaining: Int) -> List<ByteArray> {
   } else {
     [script_item(next), ..script_items(next + 1, remaining - 1)]
   }
+}
+
+/// The exact C20.6 Cardano-maximum native-script witness shape: every encoded
+/// item is 44 bytes and its §5.1 field wrapper is two more. 224 such items
+/// produce the authoritative 10,306-byte field; item 225 is outside Cardano's
+/// signed-transaction envelope.
+fn maximum_script_item(index: Int) -> ByteArray {
+  encode_midgard_versioned_script(
+    MidgardVersionedScript {
+      language: NativeCardanoScript,
+      script_bytes: #"8201828200581c"
+        |> bytearray.concat(owner_hash)
+        |> bytearray.concat(#"8205")
+        |> bytearray.concat(cbor.serialise(20000 + index)),
+    },
+  )
 }
 
 fn other_script_items(next: Int, remaining: Int) -> List<ByteArray> {
@@ -355,6 +377,69 @@ fn open_certified(
   )
 }
 
+fn preimage_chunks(preimage: ByteArray) -> List<ByteArray> {
+  if bytearray.length(preimage) <= chunk_bytes_k {
+    [preimage]
+  } else {
+    [
+      bytearray.take(preimage, chunk_bytes_k),
+      ..preimage_chunks(bytearray.drop(preimage, chunk_bytes_k))
+    ]
+  }
+}
+
+fn chunk_indices(next: Int, remaining: Int) -> List<Int> {
+  if remaining <= 0 {
+    []
+  } else {
+    [next, ..chunk_indices(next + 1, remaining - 1)]
+  }
+}
+
+fn chunk_inputs(chunks: List<ByteArray>, next: Int) -> List<Input> {
+  when chunks is {
+    [] -> []
+    [chunk, ..rest] ->
+      [
+        input_of(next, key_output(builtin.b_data(chunk))),
+        ..chunk_inputs(rest, next + 1)
+      ]
+  }
+}
+
+fn certified_carriage(
+  field_index: Int,
+  preimage: ByteArray,
+) -> Pair<FieldCarriageV1, List<Input>> {
+  let chunks = preimage_chunks(preimage)
+  let count = list.length(chunks)
+  Pair(
+    Certified {
+      cert_ref_input_index: 0,
+      chunk_ref_input_indices: chunk_indices(1, count),
+    },
+    [certificate_for(field_index, preimage, chunks), ..chunk_inputs(chunks, 1)],
+  )
+}
+
+fn open_grammar(
+  tx_id: ByteArray,
+  field_index: Int,
+  preimage: ByteArray,
+  carriage: FieldCarriageV1,
+  reference_inputs: List<Input>,
+) -> Pair<FieldViewV1, FieldGrammarCheckpointV1> {
+  let Pair(verified, witness_set) = source(tx_id, field_index, preimage)
+  open_field_grammar_certification(
+    verified,
+    witness_set,
+    field_index,
+    carriage,
+    reference_inputs,
+    certificate_policy_id,
+  )
+}
+
 /// A cheap order-sensitive summary of the items a walk visited: it is
 /// position-dependent, so a resumed walk that silently restarted, skipped, or
 /// repeated an item cannot produce the same number as the uninterrupted one.
@@ -382,6 +467,408 @@ fn spend_input_preimage() -> ByteArray {
   )
 }
 
+const maximum_script_item_count: Int = 224
+
+const maximum_script_field_bytes: Int = 10306
+
+const maximum_script_item_stride: Int = 46
+
+fn maximum_script_preimage() -> ByteArray {
+  bytearray.concat(
+    encode_field_array_header(maximum_script_item_count),
+    repeat_bytes(
+      bytearray.concat(#"582c", maximum_script_item(0)),
+      maximum_script_item_count,
+    ),
+  )
+}
+
+fn count_item(state: Int, _index: Int, _item: ByteArray) -> Int {
+  state + 1
+}
+
+// ---------------------------------------------------------------------------
+// §10.2 grammar certification — exact Q17 maximum and adversarial matrix
+// ---------------------------------------------------------------------------
+
+/// Transaction 1 at the exact Q17 maximum: authenticate the 10,306-byte
+/// inline field, consume only the first 32 envelopes, and commit an 87-byte
+/// position. The runner row is the per-transaction fit evidence.
+test grammar_maximum_inline_open_and_32_fit() {
+  let preimage = maximum_script_preimage()
+  let Pair(view, start) = open_grammar(
+    sample_tx_id,
+    6,
+    preimage,
+    Inline { preimage },
+    [],
+  )
+  let paused = certify_field_grammar(view, start, 32)
+  and {
+    bytearray.length(preimage) == maximum_script_field_bytes,
+    bytearray.length(maximum_script_item(0)) == 44,
+    encode_field_grammar_checkpoint(paused) == maximum_grammar_wire(32),
+    bytearray.length(encode_field_grammar_checkpoint(paused)) == field_grammar_checkpoint_bytes,
+    !field_grammar_is_complete(paused),
+  }
+}
+
+/// A middle transaction starts at item 96 and touches exactly the next 32.
+/// Its fixture starts from independently spelled committed bytes so the cost
+/// row contains no hidden execution of the preceding 96-item prefix.
+test grammar_maximum_inline_middle_32_fit_without_prefix_replay() {
+  let preimage = maximum_script_preimage()
+  let wire = maximum_grammar_wire(96)
+  let Pair(view, resumed) = resume_maximum_grammar_wire(
+    sample_tx_id,
+    preimage,
+    wire,
+    Inline { preimage },
+    [],
+  )
+  let paused = certify_field_grammar(view, resumed, 32)
+  and {
+    encode_field_grammar_checkpoint(paused) == maximum_grammar_wire(128),
+    !field_grammar_is_complete(paused),
+  }
+}
+
+/// The final grammar transaction starts at 192 and alone certifies the exact
+/// terminal `(224, 10306)` pair.
+test grammar_maximum_inline_terminal_32_fit() {
+  let preimage = maximum_script_preimage()
+  let Pair(view, resumed) = resume_maximum_grammar_wire(
+    sample_tx_id,
+    preimage,
+    maximum_grammar_wire(192),
+    Inline { preimage },
+    [],
+  )
+  let terminal = certify_field_grammar(view, resumed, 32)
+  and {
+    encode_field_grammar_checkpoint(terminal) == maximum_grammar_wire(224),
+    field_grammar_is_complete(terminal),
+  }
+}
+
+/// Tier 2 is the same maximum and the same bounded grammar transition; only
+/// the source of the already-committed bytes changes.
+test grammar_maximum_raw_utxo_middle_32_fit() {
+  let preimage = maximum_script_preimage()
+  let refs = [input_of(0, key_output(builtin.b_data(preimage)))]
+  let Pair(view, resumed) = resume_maximum_grammar_wire(
+    sample_tx_id,
+    preimage,
+    maximum_grammar_wire(96),
+    RawUtxo { ref_input_index: 0 },
+    refs,
+  )
+  encode_field_grammar_checkpoint(certify_field_grammar(view, resumed, 32)) == maximum_grammar_wire(
+    128,
+  )
+}
+
+/// The exact Q17 maximum is below the protocol's 15,148-byte tier-3 boundary,
+/// so it has exactly the two admissible routes measured above. Re-publishing
+/// it as a certificate is rejected instead of creating a second spelling.
+test grammar_maximum_certified_carriage_is_inadmissible_below_k() fail {
+  let preimage = maximum_script_preimage()
+  let Pair(carriage, refs) = certified_carriage(6, preimage)
+  let Pair(view, start) = open_grammar(
+    sample_tx_id,
+    6,
+    preimage,
+    carriage,
+    refs,
+  )
+  field_grammar_is_complete(certify_field_grammar(view, start, 32))
+}
+
+/// The shared primitive still covers genuine tier 3: 330 exact Q17-shaped
+/// envelopes cross K, arrive as two certified chunks, and must enter the same
+/// provisional grammar phase before any semantic count exists.
+test grammar_tier_three_variable_field_open_and_32_fit() {
+  let count = 330
+  let preimage = bytearray.concat(
+    encode_field_array_header(count),
+    repeat_bytes(bytearray.concat(#"582c", maximum_script_item(0)), count),
+  )
+  let Pair(carriage, refs) = certified_carriage(6, preimage)
+  let Pair(view, start) = open_grammar(
+    sample_tx_id,
+    6,
+    preimage,
+    carriage,
+    refs,
+  )
+  let paused = certify_field_grammar(view, start, 32)
+  and {
+    bytearray.length(preimage) > chunk_bytes_k,
+    list.length(preimage_chunks(preimage)) == 2,
+    bytearray.length(encode_field_grammar_checkpoint(paused)) == field_grammar_checkpoint_bytes,
+    !field_grammar_is_complete(paused),
+  }
+}
+
+/// Only a terminal grammar checkpoint can create the semantic start. The
+/// first semantic transaction then reads 32 items without re-certifying or
+/// re-walking any envelope prefix.
+test grammar_maximum_terminal_opens_semantic_first_32_fit() {
+  let preimage = maximum_script_preimage()
+  let terminal_wire = maximum_grammar_wire(224)
+  let Pair(verified, witness_set) = source(sample_tx_id, 6, preimage)
+  let Pair(view, start) = open_certified_field_walk_from_grammar_commitment(
+    verified,
+    witness_set,
+    grammar_thread_commitment(terminal_wire),
+    terminal_wire,
+    Inline { preimage },
+    [],
+    certificate_policy_id,
+  )
+  let Pair(count, paused) = walk_fold(view, start, 32, 0, count_item)
+  and {
+    count == 32,
+    walk_next_item_index(paused) == 32,
+    !walk_is_complete(paused),
+  }
+}
+
+/// A later semantic transaction resumes at item 96 and consumes 32 only. The
+/// resumable door authenticates the field but does not perform the 224-item
+/// grammar walk again.
+test grammar_maximum_semantic_middle_32_fit_without_prefix_replay() {
+  let preimage = maximum_script_preimage()
+  let Pair(view, resumed) = resume_maximum_semantic_wire(
+    preimage,
+    maximum_semantic_wire(96),
+  )
+  let Pair(count, paused) = walk_fold(view, resumed, 32, 0, count_item)
+  and {
+    count == 32,
+    walk_next_item_index(paused) == 128,
+    walk_remaining(paused) == 96,
+  }
+}
+
+test grammar_maximum_semantic_terminal_32_fit() {
+  let preimage = maximum_script_preimage()
+  let Pair(view, resumed) = resume_maximum_semantic_wire(
+    preimage,
+    maximum_semantic_wire(192),
+  )
+  let Pair(count, terminal) = walk_fold(view, resumed, 32, 0, count_item)
+  and {
+    count == 32,
+    walk_is_complete(terminal),
+    walk_next_item_index(terminal) == maximum_script_item_count,
+  }
+}
+
+/// Complete uninterrupted and two-phase/resumed walks have the same semantic
+/// result. This functional row deliberately executes both whole paths; fit is
+/// established by the isolated 32-item rows above, not by this aggregate.
+test grammar_maximum_resumed_semantics_equal_uninterrupted() {
+  let preimage = maximum_script_preimage()
+  let Pair(direct_view, direct_start) = open_inline(6, preimage)
+  let Pair(direct_count, direct_done) = walk_fold(
+    direct_view,
+    direct_start,
+    maximum_script_item_count,
+    0,
+    count_item,
+  )
+
+  let terminal_wire = maximum_grammar_wire(224)
+  let Pair(verified, witness_set) = source(sample_tx_id, 6, preimage)
+  let Pair(staged_view, staged_start) = open_certified_field_walk_from_grammar_commitment(
+    verified,
+    witness_set,
+    grammar_thread_commitment(terminal_wire),
+    terminal_wire,
+    Inline { preimage },
+    [],
+    certificate_policy_id,
+  )
+  let Pair(staged_count, staged_done) = walk_fold(
+    staged_view,
+    staged_start,
+    maximum_script_item_count,
+    0,
+    count_item,
+  )
+  and {
+    walk_is_complete(direct_done),
+    walk_is_complete(staged_done),
+    direct_count == maximum_script_item_count,
+    staged_count == direct_count,
+  }
+}
+
+test grammar_rejects_a_short_declared_count_at_terminal() fail {
+  let canonical = maximum_script_preimage()
+  let malformed = bytearray.concat(#"98df", bytearray.drop(canonical, 2))
+  let Pair(view, start) = open_grammar(
+    sample_tx_id,
+    6,
+    malformed,
+    Inline { preimage: malformed },
+    [],
+  )
+  field_grammar_is_complete(certify_field_grammar(view, start, 223))
+}
+
+test grammar_rejects_an_inflated_declared_count_at_the_real_end() fail {
+  let canonical = maximum_script_preimage()
+  let malformed = bytearray.concat(#"98e1", bytearray.drop(canonical, 2))
+  let Pair(view, start) = open_grammar(
+    sample_tx_id,
+    6,
+    malformed,
+    Inline { preimage: malformed },
+    [],
+  )
+  field_grammar_is_complete(certify_field_grammar(view, start, 224))
+}
+
+test grammar_refuses_a_checkpoint_from_another_transaction() fail {
+  let preimage = maximum_script_preimage()
+  let Pair(view, resumed) = resume_maximum_grammar_wire(
+    other_tx_id,
+    preimage,
+    maximum_grammar_wire(96),
+    Inline { preimage },
+    [],
+  )
+  field_grammar_is_complete(certify_field_grammar(view, resumed, 1))
+}
+
+test grammar_refuses_a_forged_field_commitment() fail {
+  let preimage = maximum_script_preimage()
+  let honest = maximum_grammar_wire(96)
+  let forged = bytearray.take(honest, 39)
+    |> bytearray.concat(other_tx_id)
+    |> bytearray.concat(bytearray.drop(honest, 71))
+  let Pair(view, resumed) = resume_maximum_grammar_wire(
+    sample_tx_id,
+    preimage,
+    forged,
+    Inline { preimage },
+    [],
+  )
+  field_grammar_is_complete(certify_field_grammar(view, resumed, 1))
+}
+
+test grammar_refuses_a_forged_total_length() fail {
+  let preimage = maximum_script_preimage()
+  let honest = maximum_grammar_wire(96)
+  let forged = patch_wire_scalar(
+    honest,
+    grammar_wire_total_length_at,
+    maximum_script_field_bytes - 1,
+  )
+  let Pair(view, resumed) = resume_maximum_grammar_wire(
+    sample_tx_id,
+    preimage,
+    forged,
+    Inline { preimage },
+    [],
+  )
+  field_grammar_is_complete(certify_field_grammar(view, resumed, 1))
+}
+
+test grammar_refuses_a_forged_declared_count() fail {
+  let preimage = maximum_script_preimage()
+  let honest = maximum_grammar_wire(96)
+  let forged = patch_wire_scalar(
+    honest,
+    grammar_wire_declared_count_at,
+    maximum_script_item_count - 1,
+  )
+  let Pair(view, resumed) = resume_maximum_grammar_wire(
+    sample_tx_id,
+    preimage,
+    forged,
+    Inline { preimage },
+    [],
+  )
+  field_grammar_is_complete(certify_field_grammar(view, resumed, 1))
+}
+
+test grammar_refuses_checkpoint_bytes_the_thread_did_not_commit() fail {
+  let preimage = maximum_script_preimage()
+  let honest = maximum_grammar_wire(96)
+  let forged = patch_wire_scalar(
+    honest,
+    grammar_wire_next_offset_at,
+    2 + maximum_script_item_stride * 95,
+  )
+  let Pair(verified, witness_set) = source(sample_tx_id, 6, preimage)
+  let Pair(view, resumed) = resume_field_grammar_certification_from_commitment(
+    verified,
+    witness_set,
+    grammar_thread_commitment(honest),
+    forged,
+    Inline { preimage },
+    [],
+    certificate_policy_id,
+  )
+  field_grammar_is_complete(certify_field_grammar(view, resumed, 1))
+}
+
+test grammar_refuses_same_shape_content_under_the_wrong_root() fail {
+  let committed = maximum_script_preimage()
+  let altered = bytearray.take(committed, maximum_script_field_bytes - 1)
+    |> bytearray.concat(#"00")
+  let wire = maximum_grammar_wire(96)
+  let Pair(verified, witness_set) = source(sample_tx_id, 6, committed)
+  let Pair(view, resumed) = resume_field_grammar_certification_from_commitment(
+    verified,
+    witness_set,
+    grammar_thread_commitment(wire),
+    wire,
+    Inline { preimage: altered },
+    [],
+    certificate_policy_id,
+  )
+  field_grammar_is_complete(certify_field_grammar(view, resumed, 1))
+}
+
+test grammar_checkpoint_cannot_resume_as_a_semantic_checkpoint() fail {
+  let preimage = maximum_script_preimage()
+  let Pair(view, resumed) = resume_maximum_semantic_wire(
+    preimage,
+    maximum_grammar_wire(96),
+  )
+  walk_next_item_index(walk_skip(view, resumed, 1)) == 97
+}
+
+test semantic_checkpoint_cannot_resume_as_a_grammar_checkpoint() fail {
+  let preimage = maximum_script_preimage()
+  let Pair(view, resumed) = resume_maximum_grammar_wire(
+    sample_tx_id,
+    preimage,
+    maximum_semantic_wire(96),
+    Inline { preimage },
+    [],
+  )
+  field_grammar_is_complete(certify_field_grammar(view, resumed, 1))
+}
+
+test grammar_noncanonical_checkpoint_wire_is_rejected() fail {
+  let preimage = maximum_script_preimage()
+  let honest = maximum_grammar_wire(96)
+  let malformed = bytearray.concat(#"86", bytearray.drop(honest, 1))
+  let Pair(view, resumed) = resume_maximum_grammar_wire(
+    sample_tx_id,
+    preimage,
+    malformed,
+    Inline { preimage },
+    [],
+  )
+  field_grammar_is_complete(certify_field_grammar(view, resumed, 1))
+}
+
 // ---------------------------------------------------------------------------
 // Forging a carried position, the way a prover would
 // ---------------------------------------------------------------------------
@@ -395,9 +882,128 @@ fn spend_input_preimage() -> ByteArray {
 const checkpoint_domain: ByteArray =
   #"4d6964676172644669656c6457616c6b436865636b706f696e745631"
 
+const grammar_checkpoint_domain: ByteArray =
+  #"4d6964676172644669656c644772616d6d6172436865636b706f696e745631"
+
 /// The digest a thread commits for `wire`.
 fn thread_commitment(wire: ByteArray) -> ByteArray {
   blake2b_256(bytearray.concat(checkpoint_domain, wire))
+}
+
+fn grammar_thread_commitment(wire: ByteArray) -> ByteArray {
+  blake2b_256(bytearray.concat(grammar_checkpoint_domain, wire))
+}
+
+/// Independently spells the frozen grammar-checkpoint wire. This is how a
+/// resumed-transaction cost vector starts at a genuine earlier position
+/// without making the Aiken runner also execute all prior transactions in the
+/// same row.
+fn grammar_wire(
+  tx_id: ByteArray,
+  field_index: Int,
+  field_hash: ByteArray,
+  total_length: Int,
+  declared_count: Int,
+  next_item_index: Int,
+  next_offset: Int,
+) -> ByteArray {
+  #"87"
+    |> bytearray.concat(#"5820")
+    |> bytearray.concat(tx_id)
+    |> bytearray.concat(#"41")
+    |> bytearray.concat(bytearray.from_int_big_endian(field_index, 1))
+    |> bytearray.concat(#"5820")
+    |> bytearray.concat(field_hash)
+    |> bytearray.concat(#"43")
+    |> bytearray.concat(bytearray.from_int_big_endian(total_length, 3))
+    |> bytearray.concat(#"43")
+    |> bytearray.concat(bytearray.from_int_big_endian(declared_count, 3))
+    |> bytearray.concat(#"43")
+    |> bytearray.concat(bytearray.from_int_big_endian(next_item_index, 3))
+    |> bytearray.concat(#"43")
+    |> bytearray.concat(bytearray.from_int_big_endian(next_offset, 3))
+}
+
+fn semantic_wire(
+  tx_id: ByteArray,
+  field_index: Int,
+  total_length: Int,
+  item_count: Int,
+  next_item_index: Int,
+  next_offset: Int,
+) -> ByteArray {
+  #"86"
+    |> bytearray.concat(#"5820")
+    |> bytearray.concat(tx_id)
+    |> bytearray.concat(#"41")
+    |> bytearray.concat(bytearray.from_int_big_endian(field_index, 1))
+    |> bytearray.concat(#"43")
+    |> bytearray.concat(bytearray.from_int_big_endian(total_length, 3))
+    |> bytearray.concat(#"43")
+    |> bytearray.concat(bytearray.from_int_big_endian(item_count, 3))
+    |> bytearray.concat(#"43")
+    |> bytearray.concat(bytearray.from_int_big_endian(next_item_index, 3))
+    |> bytearray.concat(#"43")
+    |> bytearray.concat(bytearray.from_int_big_endian(next_offset, 3))
+}
+
+fn maximum_grammar_wire(next_item_index: Int) -> ByteArray {
+  let preimage = maximum_script_preimage()
+  grammar_wire(
+    sample_tx_id,
+    6,
+    field_commitment(preimage),
+    maximum_script_field_bytes,
+    maximum_script_item_count,
+    next_item_index,
+    2 + maximum_script_item_stride * next_item_index,
+  )
+}
+
+fn maximum_semantic_wire(next_item_index: Int) -> ByteArray {
+  semantic_wire(
+    sample_tx_id,
+    6,
+    maximum_script_field_bytes,
+    maximum_script_item_count,
+    next_item_index,
+    2 + maximum_script_item_stride * next_item_index,
+  )
+}
+
+fn resume_maximum_grammar_wire(
+  tx_id: ByteArray,
+  preimage: ByteArray,
+  wire: ByteArray,
+  carriage: FieldCarriageV1,
+  reference_inputs: List<Input>,
+) -> Pair<FieldViewV1, FieldGrammarCheckpointV1> {
+  let Pair(verified, witness_set) = source(tx_id, 6, preimage)
+  resume_field_grammar_certification_from_commitment(
+    verified,
+    witness_set,
+    grammar_thread_commitment(wire),
+    wire,
+    carriage,
+    reference_inputs,
+    certificate_policy_id,
+  )
+}
+
+fn resume_maximum_semantic_wire(
+  preimage: ByteArray,
+  wire: ByteArray,
+) -> Pair<FieldViewV1, FieldWalkCheckpointV1> {
+  let Pair(verified, witness_set) = source(sample_tx_id, 6, preimage)
+  resume_field_walk_from_commitment(
+    verified,
+    witness_set,
+    thread_commitment(wire),
+    wire,
+    Inline { preimage },
+    [],
+    certificate_policy_id,
+  )
 }
 
 /// §10.3's byte offsets of the four three-byte scalars, counted off the wire
@@ -410,6 +1016,12 @@ const wire_item_count_at: Int = 42
 const wire_next_item_index_at: Int = 46
 
 const wire_next_offset_at: Int = 50
+
+const grammar_wire_total_length_at: Int = 72
+
+const grammar_wire_declared_count_at: Int = 76
+
+const grammar_wire_next_offset_at: Int = 84
 
 fn wire_scalar(wire: ByteArray, at: Int) -> Int {
   bytearray.to_int_big_endian(bytearray.slice(wire, at, at + 2))

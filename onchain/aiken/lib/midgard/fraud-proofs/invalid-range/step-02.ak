@@ -1,10 +1,8 @@
 use aiken_design_patterns/validity_range_normalization as vrn
-use midgard/common/types.{PosixTime}
 use midgard/computation_thread as ct
 
 pub type State {
-  block_valid_from: PosixTime,
-  block_valid_to: PosixTime,
+  block_slot: Int,
   bad_tx_normalized_validity_range: vrn.NormalizedTimeRange,
 }
 

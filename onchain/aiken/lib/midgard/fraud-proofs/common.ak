@@ -1,3 +1,4 @@
+use aiken/cbor
 use aiken/collection/list
 use aiken/crypto.{ScriptHash, VerificationKeyHash}
 use aiken/primitive/bytearray
@@ -18,10 +19,10 @@ use midgard/computation_thread as ct
 use midgard/fraud_proof
 use midgard/fraud_proof_catalogue
 use midgard/fraud_proofs/chunked_inclusion_v1.{PublishedProofCarriage}
-use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_compact_cbor_v1}
+use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_proof_source_v1}
 use midgard/fraud_proofs/native_tx/types.{VerifiedMidgardNativeTxCompact} as native_tx_types
 use midgard/hub_oracle as hub
-use midgard/ledger_state.{HeaderV1}
+use midgard/ledger_state.{HeaderV1, L2TransactionSourceV1}
 use midgard/state_queue
 use midgard/transition_trace
 
@@ -31,7 +32,9 @@ pub type NativeTxInclusionArgs {
   hub_ref_input_index: Int,
   state_queue_node_ref_input_index: Int,
   native_tx_id: ByteArray,
-  native_tx_compact_cbor: ByteArray,
+  /// Canonical CBOR `Data(L2TransactionSourceV1)`, exactly the value committed
+  /// by the header's normative transactions MPF.
+  l2_transaction_source_cbor: ByteArray,
   // Raw transactions MPF root the prover supplies. It is authenticated against
   // the header's counted `transactions_root` before being used for the
   // membership check (see `verify_native_tx_in_state_queue_node`).
@@ -54,7 +57,7 @@ pub type PublishedChunkInclusionArgs {
   hub_ref_input_index: Int,
   state_queue_node_ref_input_index: Int,
   native_tx_id: ByteArray,
-  native_tx_compact_cbor: ByteArray,
+  l2_transaction_source_cbor: ByteArray,
   transactions_phas_root: ByteArray,
   ordered_chunk_reference_input_indices: List<Int>,
 }
@@ -86,6 +89,53 @@ pub type NonMembershipCarriage {
   }
   /// The proof was published beforehand; this transaction names its chunks.
   PublishedChunkNonMembership(PublishedProofCarriage)
+}
+
+/// How a step's membership opening reaches L1. This is the exact membership
+/// twin of `NonMembershipCarriage`: fitting proofs use the merkelized `phas`
+/// withdrawal and deep proofs use the shared published-chunk verifier.
+pub type MembershipCarriage {
+  RedeemerCarriedMembership {
+    membership_proof: Proof,
+    membership_proof_script_redeemer_index: Int,
+  }
+  PublishedChunkMembership(PublishedProofCarriage)
+}
+
+/// Verifies `(key_bytes, value_bytes)` under an already-authenticated root.
+/// Callers must invoke this at most once per transaction because each direct
+/// arm resolves the unique shared withdrawal redeemer.
+pub fn verify_membership_carried(
+  carriage: MembershipCarriage,
+  merkle_root: ByteArray,
+  key_bytes: ByteArray,
+  value_bytes: ByteArray,
+  reference_inputs: List<Input>,
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+) -> Bool {
+  when carriage is {
+    RedeemerCarriedMembership {
+      membership_proof,
+      membership_proof_script_redeemer_index,
+    } ->
+      plutarch_phas_raw(
+        merkle_root: merkle_root,
+        key_bytes: key_bytes,
+        value_bytes: value_bytes,
+        membership_proof: membership_proof,
+        redeemers: redeemers,
+        withdraw_redeemer_index: membership_proof_script_redeemer_index,
+      )
+    PublishedChunkMembership(published) ->
+      chunked_inclusion_v1.delegated_chunk_membership(
+        env.mpf_chunked_verify_validator_hash,
+        redeemers,
+        published,
+        merkle_root,
+        key_bytes,
+        value_bytes,
+      )
+  }
 }
 
 /// The raw transactions MPF root a carriage names, whichever arm it is.
@@ -185,7 +235,7 @@ pub fn pass_native_tx_to_next_step_carried(
             hub_ref_input_index,
             state_queue_node_ref_input_index,
             native_tx_id,
-            native_tx_compact_cbor,
+            l2_transaction_source_cbor,
             transactions_phas_root,
             ordered_chunk_reference_input_indices,
           }
@@ -214,7 +264,7 @@ pub fn pass_native_tx_to_next_step_carried(
 
       let _verified_tx_id, header, native_tx_view <- verify_native_tx_in_state_queue_node_with(
         native_tx_id,
-        native_tx_compact_cbor,
+        l2_transaction_source_cbor,
         transactions_phas_root,
         computation_thread_token_asset_name,
         hub_oracle,
@@ -281,7 +331,7 @@ pub fn pass_native_tx_to_next_step(
         hub_ref_input_index,
         state_queue_node_ref_input_index,
         native_tx_id,
-        native_tx_compact_cbor,
+        l2_transaction_source_cbor,
         transactions_phas_root,
         tx_membership_proof,
         inclusion_proof_script_withdraw_redeemer_index,
@@ -311,7 +361,7 @@ pub fn pass_native_tx_to_next_step(
 
   let _verified_tx_id, header, native_tx_view <- verify_native_tx_in_state_queue_node(
     native_tx_id,
-    native_tx_compact_cbor,
+    l2_transaction_source_cbor,
     transactions_phas_root,
     tx_membership_proof,
     computation_thread_token_asset_name,
@@ -376,7 +426,7 @@ pub fn pass_committed_transactions_leaf_to_next_step(
         hub_ref_input_index,
         state_queue_node_ref_input_index,
         native_tx_id: committed_tx_id,
-        native_tx_compact_cbor: committed_leaf_value,
+        l2_transaction_source_cbor: committed_leaf_value,
         transactions_phas_root,
         tx_membership_proof,
         inclusion_proof_script_withdraw_redeemer_index,
@@ -744,7 +794,7 @@ pub fn verify_committed_transactions_leaf_in_state_queue_node(
 
 pub fn verify_native_tx_in_state_queue_node(
   native_tx_id: ByteArray,
-  native_tx_compact_cbor: ByteArray,
+  l2_transaction_source_cbor: ByteArray,
   transactions_phas_root: ByteArray,
   tx_membership_proof: Proof,
   computation_thread_token_asset_name: AssetName,
@@ -758,7 +808,7 @@ pub fn verify_native_tx_in_state_queue_node(
 ) -> result {
   verify_native_tx_in_state_queue_node_with(
     native_tx_id,
-    native_tx_compact_cbor,
+    l2_transaction_source_cbor,
     transactions_phas_root,
     computation_thread_token_asset_name,
     hub_oracle,
@@ -791,7 +841,7 @@ pub fn verify_native_tx_in_state_queue_node(
 /// bytes travelled.
 pub fn verify_native_tx_in_state_queue_node_with(
   native_tx_id: ByteArray,
-  native_tx_compact_cbor: ByteArray,
+  l2_transaction_source_cbor: ByteArray,
   transactions_phas_root: ByteArray,
   computation_thread_token_asset_name: AssetName,
   hub_oracle: ScriptHash,
@@ -801,11 +851,25 @@ pub fn verify_native_tx_in_state_queue_node_with(
   membership_check: fn(ByteArray, ByteArray, ByteArray) -> Bool,
   return: fn(ByteArray, HeaderV1, VerifiedMidgardNativeTxCompact) -> result,
 ) -> result {
-  let native_tx_view = verify_native_tx_compact_cbor_v1(
+  expect Some(source_data) = cbor.deserialise(l2_transaction_source_cbor)
+  expect source: L2TransactionSourceV1 = source_data
+  // Exact leaf grammar: no alternate/trailing CBOR spelling and no key/value
+  // disagreement can reach either the direct or published proof route.
+  expect cbor.serialise(source) == l2_transaction_source_cbor
+  expect source.tx_id == native_tx_id
+  let Pair(native_tx_view, _witness_set) = verify_native_tx_proof_source_v1(
     native_tx_id,
-    native_tx_compact_cbor,
+    source.source.compact_cbor,
+    source.source.witness_set_compact_cbor,
+    source.source.field_preimage_lengths_cbor,
   )
 
+  // This helper authenticates the normal transactions-root source and its
+  // exact compact scalar, but deliberately does not impose the scalar's
+  // semantic domain. Most families explicitly require code 0 (accepted) at
+  // their step-01 boundary; `l2-tx-mistag` exists precisely to prove a code-1
+  // source was committed in this root. Putting the gate here would make that
+  // launch-scope fault unprovable.
   let hub.Datum { state_queue: state_queue_policy, .. } = hub.get_datum(
     reference_inputs,
     hub_oracle,
@@ -840,7 +904,7 @@ pub fn verify_native_tx_in_state_queue_node_with(
     membership_check(
       transactions_phas_root,
       native_tx_id,
-      native_tx_compact_cbor,
+      l2_transaction_source_cbor,
     )
 
   return(native_tx_id, state_queue_datum, native_tx_view)

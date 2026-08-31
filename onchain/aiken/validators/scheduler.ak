@@ -5,7 +5,7 @@ use aiken/math.{max}
 use aiken_design_patterns/linked_list
 use aiken_design_patterns/singular_utxo_indexer
 use cardano/address.{Address}
-use cardano/assets.{PolicyId}
+use cardano/assets.{PolicyId, quantity_of}
 use cardano/transaction.{
   Input, Mint, OutputReference, Redeemer, ScriptPurpose, Transaction,
   ValidityRange,
@@ -38,20 +38,14 @@ validator mint(hub_oracle_script_hash: PolicyId) {
     let Transaction { mint, .. } = self
     when redeemer is {
       Init -> and {
-          Pair(hub.asset_name, 1) == utils.get_singleton_asset_with_policy(
-            mint,
-            hub_oracle_script_hash,
-          ),
+          quantity_of(mint, hub_oracle_script_hash, hub.asset_name) == 1,
           Pair(asset_name, 1) == utils.get_singleton_asset_with_policy(
             mint,
             own_policy_id,
           ),
         }
       Deinit -> and {
-          Pair(hub.asset_name, -1) == utils.get_singleton_asset_with_policy(
-            mint,
-            hub_oracle_script_hash,
-          ),
+          quantity_of(mint, hub_oracle_script_hash, hub.asset_name) == -1,
           Pair(asset_name, -1) == utils.get_singleton_asset_with_policy(
             mint,
             own_policy_id,

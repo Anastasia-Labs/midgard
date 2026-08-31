@@ -6493,6 +6493,62 @@ test script_sources_finishes_protected_receive_purpose_scan() {
   protected_receive_purpose_step(3)
 }
 
+fn script_sources_rejects_wrong_output_network(
+  network_id: Int,
+  protected: Bool,
+) -> Bool {
+  let output = MidgardTxOutput {
+    address: MidgardAddress {
+      protected,
+      network_id,
+      payment_credential: PubKeyCredential(h_28_a),
+      stake_credential: None,
+    },
+    value: MidgardValue { lovelace: 0, assets: [] },
+    datum_cbor: None,
+    script_ref: None,
+  }
+  let output_cbor = encode_midgard_tx_output(output)
+  let material = authenticated_output_material(output_cbor)
+  let base = empty_v1_transaction()
+  let tx = MidgardTransaction {
+    ..base,
+    body: MidgardTransactionBody { ..base.body, outputs: [output] },
+  }
+  let output_frontier = validation_merkle_v1.build_frontier(
+    [script_proof_v1.output_leaf_hash(0, output_cbor)],
+  )
+  let Pair(pre, work_witness_cbor) = script_sources_active_output_proof_fixture(
+    tx,
+    0,
+    output_frontier,
+    validation_machine_v1.empty_receive_purpose_scan_control(),
+    material.terminal,
+    15,
+  )
+  validation_machine_v1.verify_script_sources_output_proof_finalize_semantics_v1(
+    pre,
+    validation_machine_v1.ValidationOneStepWitnessV1 {
+      work_witness_cbor,
+      claimed_successor: exact_rejection_post(
+        pre,
+        network_mismatch_rejection_code,
+      ),
+    },
+    material.descriptor_cbor,
+    validation_machine_v1.NoSignerSetProof,
+  )
+}
+
+test script_sources_rejects_foreign_raw_network_nibble_2() {
+  script_sources_rejects_wrong_output_network(2, False)
+}
+
+test script_sources_rejects_protected_foreign_raw_network_nibble_15() {
+  // The Midgard protection bit makes raw 15 logical protected-network 7.
+  script_sources_rejects_wrong_output_network(7, True)
+}
+
 test script_sources_rejects_an_unsigned_protected_pubkey_output() {
   let output = MidgardTxOutput {
     address: MidgardAddress {

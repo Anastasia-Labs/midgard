@@ -177,14 +177,15 @@ pub type NativeBlockFixtureV1 {
   compact: native_types.NativeTxCompact,
   compact_cbor: ByteArray,
   witness_set_compact: native_types.NativeTxWitnessSetCompact,
+  source_cbor: ByteArray,
   transactions_phas_root: ByteArray,
   header: ledger_state.HeaderV1,
   header_hash: ByteArray,
 }
 
 /// Commits `tx` as the single transaction of a native-V1 block: the raw MPF
-/// transactions root holds exactly `(tx_id, compact_cbor)` and the header
-/// commits it under the `TransactionsV1RootDomain` counted root.
+/// transactions root holds exactly `(tx_id, Data(L2TransactionSourceV1))` and
+/// the header commits it under the `TransactionsV1RootDomain` counted root.
 pub fn native_block_fixture_v1(
   tx: native_types.MidgardTransaction,
 ) -> NativeBlockFixtureV1 {
@@ -205,8 +206,23 @@ pub fn native_block_fixture_with_withdrawals_v1(
   let witness_set_compact = native_transaction.midgard_transaction_witness_set_to_compact(
     tx.witness_set,
   )
+  let witness_set_compact_cbor = native_compact.encode_native_tx_witness_set_compact(
+    witness_set_compact,
+  )
+  let field_preimage_lengths_cbor = native_compact.encode_native_tx_field_preimage_lengths_v1(
+    field_preimage_lengths_v1(tx),
+  )
+  let source: ledger_state.L2TransactionSourceV1 = ledger_state.L2TransactionSourceV1 {
+    tx_id,
+    source: ledger_state.NativeTxProofSourceV1 {
+      compact_cbor,
+      witness_set_compact_cbor,
+      field_preimage_lengths_cbor,
+    },
+  }
+  let source_cbor = cbor.serialise(source)
   let transactions_phas_root = mpf.root(
-    mpf.insert(mpf.empty, tx_id, compact_cbor, []),
+    mpf.insert(mpf.empty, tx_id, source_cbor, []),
   )
   let withdrawals_root = transition_trace.commit_counted_root(
     transition_trace.WithdrawalsRootDomain,
@@ -252,6 +268,7 @@ pub fn native_block_fixture_with_withdrawals_v1(
     compact,
     compact_cbor,
     witness_set_compact,
+    source_cbor,
     transactions_phas_root,
     header,
     header_hash,
@@ -265,7 +282,7 @@ pub fn native_block_fixture_with_withdrawals_v1(
 /// The key is deliberately **not** required to be the value's canonical
 /// native-V1 transaction id: this is the committed shape the
 /// `da-hash-preimage` family adjudicates (GOAL_SPEC.md Q44). `tx_id` and
-/// `compact_cbor` on the returned fixture carry the committed pair, so
+/// `source_cbor` on the returned fixture carries the committed value, so
 /// `native_inclusion_args_v1` produces the matching prover arguments.
 pub fn committed_leaf_block_fixture_v1(
   base: NativeBlockFixtureV1,
@@ -288,6 +305,7 @@ pub fn committed_leaf_block_fixture_v1(
     ..base,
     tx_id: committed_key,
     compact_cbor: committed_leaf_value,
+    source_cbor: committed_leaf_value,
     transactions_phas_root,
     header,
     header_hash: utils.serialise_and_hash_28(header_data),
@@ -295,14 +313,14 @@ pub fn committed_leaf_block_fixture_v1(
 }
 
 /// Single-transaction block whose only committed leaf holds the canonical
-/// compact bytes of `tx` under the foreign key `committed_key` — the
-/// `da-hash-preimage` violation.
+/// canonical transaction-source bytes of `tx` under the foreign key
+/// `committed_key` — the `da-hash-preimage` violation.
 pub fn miskeyed_block_fixture_v1(
   tx: native_types.MidgardTransaction,
   committed_key: ByteArray,
 ) -> NativeBlockFixtureV1 {
   let base = native_block_fixture_v1(tx)
-  committed_leaf_block_fixture_v1(base, committed_key, base.compact_cbor)
+  committed_leaf_block_fixture_v1(base, committed_key, base.source_cbor)
 }
 
 /// The same committed block under a different header fee schedule: replaces
@@ -530,10 +548,30 @@ pub fn committed_field_preimage_block_fixture_v1(
     native_types.native_tx_version_v1,
     native_compact.encode_native_tx_body_compact(body),
   )
-  let recommitted = committed_leaf_block_fixture_v1(base, tx_id, compact_cbor)
+  // The committed leaf is the canonical `Data(L2TransactionSourceV1)` for the
+  // re-committed structures, exactly as `native_block_fixture_with_withdrawals_v1`
+  // builds it: only the challenged field's commitment differs.
+  let source: ledger_state.L2TransactionSourceV1 = ledger_state.L2TransactionSourceV1 {
+    tx_id,
+    source: ledger_state.NativeTxProofSourceV1 {
+      compact_cbor,
+      witness_set_compact_cbor: native_compact.encode_native_tx_witness_set_compact(
+        witness_set,
+      ),
+      field_preimage_lengths_cbor: native_compact.encode_native_tx_field_preimage_lengths_v1(
+        field_preimage_lengths_v1(base.tx),
+      ),
+    },
+  }
+  let recommitted = committed_leaf_block_fixture_v1(
+    base,
+    tx_id,
+    cbor.serialise(source),
+  )
   NativeBlockFixtureV1 {
     ..recommitted,
     compact,
+    compact_cbor,
     witness_set_compact: witness_set,
   }
 }
@@ -866,7 +904,7 @@ pub fn native_inclusion_args_v1(
     hub_ref_input_index: 0,
     state_queue_node_ref_input_index: 1,
     native_tx_id: fixture.tx_id,
-    native_tx_compact_cbor: fixture.compact_cbor,
+    l2_transaction_source_cbor: fixture.source_cbor,
     transactions_phas_root: fixture.transactions_phas_root,
     tx_membership_proof: [],
     inclusion_proof_script_withdraw_redeemer_index: 0,
@@ -924,6 +962,66 @@ pub fn adversarial_membership_root(
   steps: mpf.Proof,
 ) -> ByteArray {
   fold_membership_root(blake2b_256(key), blake2b_256(value), 0, steps)
+}
+
+const adversarial_absence_leaf_value_hash =
+  #"6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+
+/// A maximum-width non-membership witness: `branch_count` full Branch steps
+/// followed by one divergent terminal leaf. Callers use 63 branches so the
+/// proof reaches the protocol-wide 64-step ceiling.
+pub fn adversarial_non_membership_steps(branch_count: Int) -> mpf.Proof {
+  list.concat(
+    adversarial_branch_steps(branch_count),
+    [
+      mpf.Leaf {
+        skip: 0,
+        key: blake2b_256(#"7133352d616273656e6365"),
+        value: adversarial_absence_leaf_value_hash,
+      },
+    ],
+  )
+}
+
+/// Independent root reconstruction for the Branch-prefixed terminal-leaf
+/// witness emitted by `adversarial_non_membership_steps`.
+pub fn adversarial_non_membership_root(
+  key: ByteArray,
+  steps: mpf.Proof,
+) -> ByteArray {
+  fold_non_membership_root(blake2b_256(key), 0, steps)
+}
+
+fn fold_non_membership_root(
+  path: ByteArray,
+  cursor: Int,
+  steps: mpf.Proof,
+) -> ByteArray {
+  when steps is {
+    [mpf.Leaf { key, value, .. }] -> combine(suffix(key, cursor), value)
+    [mpf.Branch { skip, neighbors }, ..rest] -> {
+      let next_cursor = cursor + 1 + skip
+      let child_root = fold_non_membership_root(path, next_cursor, rest)
+      combine(
+        nibbles(path, cursor, next_cursor - 1),
+        merkle_16(
+          nibble(path, next_cursor - 1),
+          child_root,
+          builtin.slice_bytearray(0, 32, neighbors),
+          builtin.slice_bytearray(32, 32, neighbors),
+          builtin.slice_bytearray(64, 32, neighbors),
+          builtin.slice_bytearray(96, 32, neighbors),
+        ),
+      )
+    }
+    // The witness is Branch-prefixed with a single terminal Leaf by
+    // construction; the other step shapes are enumerated rather than
+    // wildcarded so no unenumerated case can be accepted here
+    // (family-scaffold rule).
+    [] -> merkling.null_hash
+    [mpf.Fork { .. }, ..] -> merkling.null_hash
+    [mpf.Leaf { .. }, _, ..] -> merkling.null_hash
+  }
 }
 
 fn fold_membership_root(
@@ -1040,7 +1138,7 @@ pub fn published_chunk_inclusion_carriage_v1(
       hub_ref_input_index: 0,
       state_queue_node_ref_input_index: 1,
       native_tx_id: fixture.tx_id,
-      native_tx_compact_cbor: fixture.compact_cbor,
+      l2_transaction_source_cbor: fixture.source_cbor,
       transactions_phas_root: fixture.transactions_phas_root,
       ordered_chunk_reference_input_indices: chunk_indices_v1(chunk_count),
     },
@@ -1091,7 +1189,7 @@ pub fn absent_midgard_tx_input() -> native_types.MidgardTxInput {
 }
 
 /// Genuine single-leaf absence witness against the fixture block's raw
-/// transactions root. The trie holds exactly `(tx_id, compact_cbor)`, so for
+/// transactions root. The trie holds exactly `(tx_id, source_cbor)`, so for
 /// any key whose path diverges from `blake2b_256(tx_id)` at the first nibble
 /// the committed leaf alone witnesses non-membership — callers must assert
 /// that divergence alongside the walk.
@@ -1102,7 +1200,7 @@ pub fn transactions_phas_absence_witness(
     mpf.Leaf {
       skip: 0,
       key: blake2b_256(fixture.tx_id),
-      value: blake2b_256(fixture.compact_cbor),
+      value: blake2b_256(fixture.source_cbor),
     },
   ]
 }
@@ -1137,7 +1235,7 @@ pub fn chunked_membership_claim_v1(
     mode: chunked_inclusion_v1.Membership,
     merkle_root: fixture.transactions_phas_root,
     key_bytes: fixture.tx_id,
-    value_hash: blake2b_256(fixture.compact_cbor),
+    value_hash: blake2b_256(fixture.source_cbor),
     ordered_chunk_reference_input_indices: chunk_indices_v1(chunk_count),
   }
 }
@@ -1438,7 +1536,7 @@ pub fn continue_step_l1_tx_with_carriage_v1(
       phas_withdraw_redeemer_entry(
         fixture.transactions_phas_root,
         fixture.tx_id,
-        fixture.compact_cbor,
+        fixture.source_cbor,
       ),
     ],
   }

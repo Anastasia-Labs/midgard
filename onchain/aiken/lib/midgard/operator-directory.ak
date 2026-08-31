@@ -110,6 +110,33 @@ pub fn operator_is_not_a_member(
   }
 }
 
+pub fn transferred_operator_bond_tranche_is_exact_v1(
+  node_lovelace: Int,
+  penalize_for_inactivity: Bool,
+) -> Bool {
+  node_lovelace == if penalize_for_inactivity {
+    env.required_bond - env.inactivity_slashing_penalty
+  } else {
+    env.required_bond
+  }
+}
+
+pub fn fraudulent_operator_slash_economics_are_exact_v1(
+  node_lovelace: Int,
+  fee: Int,
+) -> Bool {
+  or {
+    and {
+      node_lovelace == env.required_bond,
+      fee == env.slashing_penalty,
+    },
+    and {
+      node_lovelace == env.required_bond - env.inactivity_slashing_penalty,
+      fee == env.slashing_penalty - env.inactivity_slashing_penalty,
+    },
+  }
+}
+
 /// Helper for validating transfer of operators from one set to another.
 /// Currently this only consists of:
 /// - From registered to active set
@@ -179,15 +206,10 @@ pub fn validate_transferred_operator_insertion(
   expect anchor_lovelace_change >= 0
 
   expect
-    if must_penalize {
-      // 6a. ADA bond must be transferred from the origin operator node, without
-      //     the inactivity slashing penalty (paid as transaction fees only,
-      //     TODO?).
-      inserted_node_lovelace >= env.required_bond - env.inactivity_slashing_penalty
-    } else {
-      // 6b. ADA bond must be transferred from the origin operator node.
-      inserted_node_lovelace >= env.required_bond
-    }
+    transferred_operator_bond_tranche_is_exact_v1(
+      inserted_node_lovelace,
+      must_penalize,
+    )
 
   // 7. The newly inserted node must carry the same operator as the one
   //    provided via the redeemer as its key.
@@ -301,16 +323,10 @@ pub fn slash_fraudulent_operator_and_get_info(
   //    `RemoveFraudulentBlockHeader` handler, which is the only endpoint that
   //    may pay the reward (2026-08-11 owner ruling 7, D3/D4).
   expect
-    if slashed_operator_node_lovelace < env.required_bond {
-      // 6a. If the operator is partially slashed, the portion already sent to
-      //     the Cardano treasury doesn't need to be deposited again (since
-      //     partial slashing is entirely paid as tx fee).
-      fee >= env.slashing_penalty - env.inactivity_slashing_penalty
-    } else {
-      // 6b. Slashing penalty must be paid to the Cardano treasury via the
-      //     transaction fee.
-      fee >= env.slashing_penalty
-    }
+    fraudulent_operator_slash_economics_are_exact_v1(
+      slashed_operator_node_lovelace,
+      fee,
+    )
 
   // 7. Given custom validations must pass.
   expect
@@ -379,4 +395,43 @@ pub fn cross_validate_slashing_reason(
   )
   expect fraudulent_operator == slashed_operator
   slashing_reason
+}
+
+test q53_operator_bond_tranches_are_exact() {
+  let full = env.required_bond
+  let partial = env.required_bond - env.inactivity_slashing_penalty
+  and {
+    transferred_operator_bond_tranche_is_exact_v1(full, False),
+    transferred_operator_bond_tranche_is_exact_v1(partial, True),
+    !transferred_operator_bond_tranche_is_exact_v1(full - 1, False),
+    !transferred_operator_bond_tranche_is_exact_v1(full + 1, False),
+    !transferred_operator_bond_tranche_is_exact_v1(partial - 1, True),
+    !transferred_operator_bond_tranche_is_exact_v1(partial + 1, True),
+    !transferred_operator_bond_tranche_is_exact_v1(
+      env.required_bond - env.inactivity_slashing_penalty - 2,
+      True,
+    ),
+  }
+}
+
+test q53_fraud_slash_fee_and_tranche_are_exact() {
+  let full = env.required_bond
+  let partial = env.required_bond - env.inactivity_slashing_penalty
+  let full_fee = env.slashing_penalty
+  let partial_fee = env.slashing_penalty - env.inactivity_slashing_penalty
+  and {
+    fraudulent_operator_slash_economics_are_exact_v1(full, full_fee),
+    fraudulent_operator_slash_economics_are_exact_v1(partial, partial_fee),
+    !fraudulent_operator_slash_economics_are_exact_v1(full, full_fee - 1),
+    !fraudulent_operator_slash_economics_are_exact_v1(full, full_fee + 1),
+    !fraudulent_operator_slash_economics_are_exact_v1(partial, partial_fee - 1),
+    !fraudulent_operator_slash_economics_are_exact_v1(partial, partial_fee + 1),
+    !fraudulent_operator_slash_economics_are_exact_v1(full - 1, full_fee),
+    !fraudulent_operator_slash_economics_are_exact_v1(full + 1, full_fee),
+    !fraudulent_operator_slash_economics_are_exact_v1(partial - 1, partial_fee),
+    !fraudulent_operator_slash_economics_are_exact_v1(
+      env.required_bond - env.inactivity_slashing_penalty - 2,
+      partial_fee,
+    ),
+  }
 }

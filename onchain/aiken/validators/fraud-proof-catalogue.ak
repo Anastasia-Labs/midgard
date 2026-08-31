@@ -1,4 +1,4 @@
-use cardano/assets.{PolicyId}
+use cardano/assets.{PolicyId, quantity_of}
 use cardano/script_context.{ScriptContext, Spending}
 use cardano/transaction.{Redeemer, Transaction, placeholder}
 use midgard/common/utils.{get_singleton_asset_with_policy}
@@ -17,10 +17,7 @@ validator mint(hub_oracle_script_hash: PolicyId) {
   mint(_redeemer: Redeemer, own_policy_id: PolicyId, self: Transaction) {
     let Transaction { mint, .. } = self
     and {
-      Pair(hub.asset_name, 1) == get_singleton_asset_with_policy(
-        mint,
-        hub_oracle_script_hash,
-      ),
+      quantity_of(mint, hub_oracle_script_hash, hub.asset_name) == 1,
       Pair(asset_name, 1) == get_singleton_asset_with_policy(
         mint,
         own_policy_id,
