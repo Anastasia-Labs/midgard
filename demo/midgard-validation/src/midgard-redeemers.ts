@@ -33,10 +33,10 @@ export const midgardRedeemerPointerKey = (
 
 const ensureSupportedTag = (tag: number, fieldName: string): void => {
   if (
-    tag !== MidgardRedeemerTag.Spend &&
-    tag !== MidgardRedeemerTag.Mint &&
-    tag !== MidgardRedeemerTag.Reward &&
-    tag !== MidgardRedeemerTag.Receiving
+    tag !== Number(MidgardRedeemerTag.Spend) &&
+    tag !== Number(MidgardRedeemerTag.Mint) &&
+    tag !== Number(MidgardRedeemerTag.Reward) &&
+    tag !== Number(MidgardRedeemerTag.Receiving)
   ) {
     throw new Error(`${fieldName} has unsupported redeemer tag ${tag}`);
   }

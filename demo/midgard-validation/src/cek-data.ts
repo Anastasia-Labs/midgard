@@ -574,4 +574,7 @@ export const encodeMidgardCekCoreStepDataCborV1 = (step: {
   readonly post: MidgardCekMachineStateV1;
   readonly witness: MidgardCekCoreStepWitnessV1;
 }): Buffer =>
-  Buffer.from(Data.to(midgardCekCoreStepDataV1(step) as any), "hex");
+  Buffer.from(
+    Data.to(midgardCekCoreStepDataV1(step) as unknown as Data),
+    "hex",
+  );

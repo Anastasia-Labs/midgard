@@ -278,6 +278,8 @@ const waitForPollInterval = (
 ): Promise<void> =>
   new Promise((resolve, reject) => {
     throwIfPollingAborted(signal);
+    // Assigned after the abort callback is defined so the callback can clear it.
+    // eslint-disable-next-line prefer-const
     let timeout: ReturnType<typeof setTimeout>;
     const onAbort = () => {
       clearTimeout(timeout);

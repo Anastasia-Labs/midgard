@@ -160,7 +160,8 @@ const assertPermit = ({
       revocationReason: state.revokedReason,
     });
     admittedRevocationErrors.add(error);
-    throw Object.freeze(error);
+    Object.freeze(error);
+    throw error;
   }
   return state;
 };
@@ -211,7 +212,8 @@ export const assertProductionWorkflowActuationPermitIdentityV1 = ({
       revocationReason: state.revokedReason,
     });
     admittedRevocationErrors.add(error);
-    throw Object.freeze(error);
+    Object.freeze(error);
+    throw error;
   }
   return Object.freeze({
     decisionDigest: state.decisionDigest,

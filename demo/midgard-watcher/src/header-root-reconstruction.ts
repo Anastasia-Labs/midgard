@@ -496,6 +496,8 @@ const classifyFailure = (error: unknown): Classification => {
     };
   }
   if (error instanceof TransitionTraceChallengerError) {
+    // Only evidence-shape errors receive specialized classifications here.
+    // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check
     switch (error.code) {
       case "malformedPayload":
         return {

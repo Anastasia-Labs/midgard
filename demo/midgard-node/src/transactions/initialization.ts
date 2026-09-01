@@ -679,7 +679,7 @@ export const fetchConfiguredNonceUtxo = (
  */
 export const completeAndSubmit = (
   lucid: LucidEvolution,
-  txBuilder: any,
+  txBuilder: TxBuilder,
   failureMessage: string,
 ): Effect.Effect<
   string,
@@ -690,7 +690,7 @@ export const completeAndSubmit = (
       try: () => txBuilder.complete({ localUPLCEval: true }),
       catch: (cause) =>
         new SDK.LucidError({
-          message: `${failureMessage}: ${cause}`,
+          message: `${failureMessage}: ${String(cause)}`,
           cause,
         }),
     });

@@ -1008,7 +1008,7 @@ export const validatePhase4ResetAttestation = ({
   for (const [key, value] of Object.entries(expected)) {
     if (attestation[key as keyof typeof attestation] !== value) {
       throw new Error(
-        `Phase 4 reset attestation ${key} mismatch: expected=${String(value)},actual=${String(attestation[key as keyof typeof attestation])}`,
+        `Phase 4 reset attestation ${key} mismatch: expected=${JSON.stringify(value) ?? "undefined"},actual=${JSON.stringify(attestation[key as keyof typeof attestation]) ?? "undefined"}`,
       );
     }
   }
@@ -1809,7 +1809,13 @@ const seedBaseAndPayload = async ({
     );
   }
   const baseSummary = await basePromise;
-  if (scenarioFailure !== undefined) throw scenarioFailure;
+  if (scenarioFailure !== undefined) {
+    throw scenarioFailure instanceof Error
+      ? scenarioFailure
+      : new Error("Pipelined commit scenario failed", {
+          cause: scenarioFailure,
+        });
+  }
   if (baseSummary.attempts[0]?.fileTermination?.path !== stopFile) {
     throw new Error(
       `${label}: seed node was not stopped by the external stop-file supervisor`,

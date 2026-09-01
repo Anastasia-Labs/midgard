@@ -470,7 +470,7 @@ export const buildDaPayloadInsert = ({
           table: PendingBlockFinalizationsDB.tableName,
           message:
             "Refusing to build DA payload for an unknown consensus profile",
-          cause: `profile=${profileId}`,
+          cause: `profile=${String(profileId)}`,
         }),
       );
     }

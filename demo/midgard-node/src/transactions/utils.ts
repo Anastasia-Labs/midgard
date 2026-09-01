@@ -1197,7 +1197,7 @@ export function handleSignSubmit(
     );
   }).pipe(
     Effect.tapErrorTag("TxSignError", (e) =>
-      Effect.logError(`TxSignError: ${e}`),
+      Effect.logError(`TxSignError: ${e.message}`),
     ),
   );
 }
@@ -1325,7 +1325,7 @@ export function handleSignSubmitNoConfirmation(
     return submission.txHash;
   }).pipe(
     Effect.tapErrorTag("TxSignError", (e) =>
-      Effect.logError(`TxSignError: ${e}`),
+      Effect.logError(`TxSignError: ${e.message}`),
     ),
   );
 }

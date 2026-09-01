@@ -58,7 +58,9 @@ const summarizeFetchFailure = (cause: unknown): string => {
     cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause);
   const nested = cause instanceof Error ? cause.cause : undefined;
   return summarizeProviderBody(
-    nested === undefined ? primary : `${primary}; cause=${String(nested)}`,
+    nested === undefined
+      ? primary
+      : `${primary}; cause=${JSON.stringify(nested) ?? "undefined"}`,
   );
 };
 

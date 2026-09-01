@@ -348,6 +348,8 @@ const main = async (): Promise<void> => {
     }
   };
   await runTick();
+  // runTick contains its own error boundary and overlap guard.
+  // eslint-disable-next-line @typescript-eslint/no-misused-promises
   const interval = setInterval(runTick, config.pollIntervalMs);
   const shutdown = async (): Promise<void> => {
     clearInterval(interval);

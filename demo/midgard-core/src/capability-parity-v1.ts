@@ -168,6 +168,8 @@ const cardanoRequiredForDimension = (
   snapshot: CardanoCapabilitySnapshotV1,
 ): bigint | null => {
   const parameters = snapshot.parameters;
+  // Feature dimensions intentionally share the default feature fallback.
+  // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check
   switch (dimension) {
     case "total_transaction_bytes":
       return isSafeNonNegativeInteger(parameters.maxTxSize)
@@ -225,6 +227,8 @@ const midgardSupportedForDimension = (
   dimension: MidgardCapabilityDimensionV1,
 ): bigint => {
   const limits = MIDGARD_CONSENSUS_LIMITS_V1;
+  // Feature dimensions intentionally share the default support value.
+  // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check
   switch (dimension) {
     case "total_transaction_bytes":
       return BigInt(limits.maxTxCanonicalCborBytes);

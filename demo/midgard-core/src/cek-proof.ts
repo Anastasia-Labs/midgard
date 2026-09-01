@@ -1099,6 +1099,9 @@ export const hashMidgardCekProgramMaterialPreimageV1 = (
   preimage: Uint8Array,
 ): Hash32 => {
   const exact = exactMaterialPreimage(preimage);
+  // Data nodes use specialized hashes; all remaining material kinds use the
+  // generic domain-separated hash in the default arm.
+  // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check
   switch (kind) {
     case "dataNode":
       return hashMidgardCekDataNodePreimageV1(exact);

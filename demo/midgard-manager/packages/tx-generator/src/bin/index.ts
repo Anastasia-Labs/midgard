@@ -63,7 +63,7 @@ program
 
       if (options.testWallet) {
         console.log(chalk.yellow('Generating test wallet...'));
-        const account = await generateEmulatorAccountFromPrivateKey({});
+        const account = generateEmulatorAccountFromPrivateKey({});
         walletSeedOrPrivateKey = account.privateKey;
 
         // Create initial UTxO with test funds
@@ -116,6 +116,7 @@ program
       console.log(chalk.green('\nGenerator started successfully!'));
       console.log(chalk.gray('Press Ctrl+C to stop'));
 
+      // eslint-disable-next-line @typescript-eslint/no-misused-promises
       process.on('SIGINT', async () => {
         console.log(chalk.yellow('\nStopping generator...'));
         await stopGenerator();

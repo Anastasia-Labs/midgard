@@ -1370,7 +1370,7 @@ const watcherSource = readIndexedFile(
   "demo/midgard-watcher/src/scaffold.ts",
   "utf8",
 );
-const watcherScaffoldTestBytes = readIndexedFile(
+readIndexedFile(
   "demo/midgard-watcher/tests/scaffold.test.ts",
 );
 if (
@@ -1392,31 +1392,31 @@ if (scaffold?.expectedFocusedTestCount !== 5) {
 const strictConfiguration =
   dependencyMap.requiredWatcherPackage?.strictConfiguration;
 const configBytes = readIndexedFile("demo/midgard-watcher/src/config.ts");
-const configTestBytes = readIndexedFile(
+readIndexedFile(
   "demo/midgard-watcher/tests/config.test.ts",
 );
 const deploymentIdentityBytes = readIndexedFile(
   "demo/midgard-watcher/src/deployment-identity.ts",
 );
-const deploymentIdentityTestBytes = readIndexedFile(
+readIndexedFile(
   "demo/midgard-watcher/tests/deployment-identity.test.ts",
 );
 const durableStoreBytes = readIndexedFile(
   "demo/midgard-watcher/src/durable-store.ts",
 );
-const durableStoreTestBytes = readIndexedFile(
+readIndexedFile(
   "demo/midgard-watcher/tests/durable-store.test.ts",
 );
 const l1AdapterBytes = readIndexedFile(
   "demo/midgard-watcher/src/l1-adapter.ts",
 );
-const l1AdapterTestBytes = readIndexedFile(
+readIndexedFile(
   "demo/midgard-watcher/tests/l1-adapter.test.ts",
 );
 const multiProviderConsistencyBytes = readIndexedFile(
   "demo/midgard-watcher/src/multi-provider-consistency.ts",
 );
-const multiProviderConsistencyTestBytes = readIndexedFile(
+readIndexedFile(
   "demo/midgard-watcher/tests/multi-provider-consistency.test.ts",
 );
 const finalityEngineBytes = readIndexedFile(
@@ -1428,37 +1428,37 @@ const finalityEngineTestBytes = readIndexedFile(
 const rollbackEngineBytes = readIndexedFile(
   "demo/midgard-watcher/src/rollback-engine.ts",
 );
-const rollbackEngineTestBytes = readIndexedFile(
+readIndexedFile(
   "demo/midgard-watcher/tests/rollback-engine.test.ts",
 );
 const ruleBundleBytes = readIndexedFile(
   "demo/midgard-watcher/src/rule-bundle-v1.ts",
 );
-const ruleBundleTestBytes = readIndexedFile(
+readIndexedFile(
   "demo/midgard-watcher/tests/rule-bundle-v1.test.ts",
 );
 const stateQueueIndexerBytes = readIndexedFile(
   "demo/midgard-watcher/src/state-queue-indexer.ts",
 );
-const stateQueueIndexerTestBytes = readIndexedFile(
+readIndexedFile(
   "demo/midgard-watcher/tests/state-queue-indexer.test.ts",
 );
 const userEventIndexerBytes = readIndexedFile(
   "demo/midgard-watcher/src/user-event-indexer.ts",
 );
-const userEventIndexerTestBytes = readIndexedFile(
+readIndexedFile(
   "demo/midgard-watcher/tests/user-event-indexer.test.ts",
 );
 const settlementIndexerBytes = readIndexedFile(
   "demo/midgard-watcher/src/settlement-indexer.ts",
 );
-const settlementIndexerTestBytes = readIndexedFile(
+readIndexedFile(
   "demo/midgard-watcher/tests/settlement-indexer.test.ts",
 );
 const proofThreadIndexerBytes = readIndexedFile(
   "demo/midgard-watcher/src/proof-thread-indexer.ts",
 );
-const proofThreadIndexerTestBytes = readIndexedFile(
+readIndexedFile(
   "demo/midgard-watcher/tests/proof-thread-indexer.test.ts",
 );
 const watcherIndexSource = readIndexedFile(

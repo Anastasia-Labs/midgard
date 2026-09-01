@@ -676,7 +676,7 @@ export const initializeProtocol = async ({
       referenceScriptsLucid,
     ),
   );
-  await emulator.awaitSlot(REGISTRATION_ACTIVATION_DELAY_SLOTS);
+  emulator.awaitSlot(REGISTRATION_ACTIVATION_DELAY_SLOTS);
   vi.setSystemTime(new Date(emulator.now()));
   await Effect.runPromise(
     activateOperatorProgram(
@@ -1391,7 +1391,7 @@ export const advanceEmulatorToDueWork = async (
     fixture.operatorLucid.unixTimeToSlot(fixture.emulator.now()),
   );
   const slotsToAdvance = Math.max(1, dueWork.dueSlot - currentSlot + 1);
-  await fixture.emulator.awaitSlot(slotsToAdvance);
+  fixture.emulator.awaitSlot(slotsToAdvance);
   vi.setSystemTime(new Date(fixture.emulator.now()));
 };
 
@@ -2389,7 +2389,7 @@ export const advanceEmulatorPastLatestBlockEndTime = async (
   // creating user events; otherwise the worker will correctly exclude the
   // deposit from the first block window.
   while (fixture.emulator.now() <= latestBlockEndTime) {
-    await fixture.emulator.awaitSlot(1);
+    fixture.emulator.awaitSlot(1);
   }
 };
 
@@ -2398,7 +2398,7 @@ export const advanceEmulatorPastUnixTime = async (
   unixTimeMs: number,
 ) => {
   while (fixture.emulator.now() <= unixTimeMs) {
-    await fixture.emulator.awaitSlot(1);
+    fixture.emulator.awaitSlot(1);
   }
 };
 

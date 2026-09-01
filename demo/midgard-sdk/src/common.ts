@@ -80,6 +80,13 @@ const validateProviderUtxos = (value: unknown): UTxO[] => {
 /**
  * Silently drops the UTxOs without proper authentication NFTs.
  */
+const addressOrCredentialLabel = (
+  addressOrCred: Address | Credential,
+): string =>
+  typeof addressOrCred === "string"
+    ? addressOrCred
+    : `${addressOrCred.type}:${addressOrCred.hash}`;
+
 export const utxosAtByNFTPolicyId = (
   lucid: LucidEvolution,
   addressOrCred: Address | Credential,
@@ -100,7 +107,7 @@ export const utxosAtByNFTPolicyId = (
         ).utxosAtWithPolicy(addressOrCred, policyId),
       catch: (e) => {
         return new LucidError({
-          message: `Failed to fetch UTxOs at: ${addressOrCred}`,
+          message: `Failed to fetch UTxOs at: ${addressOrCredentialLabel(addressOrCred)}`,
           cause: e,
         });
       },
@@ -109,7 +116,7 @@ export const utxosAtByNFTPolicyId = (
       try: () => validateProviderUtxos(providerResult),
       catch: (e) =>
         new LucidError({
-          message: `Failed to fetch UTxOs at: ${addressOrCred}`,
+          message: `Failed to fetch UTxOs at: ${addressOrCredentialLabel(addressOrCred)}`,
           cause: e,
         }),
     });
@@ -142,7 +149,7 @@ export const utxosAtByNFTPolicyId = (
     Effect.catchAllDefect(
       (d) =>
         new LucidError({
-          message: `Unexpected error while fetching UTxOs at: ${addressOrCred}`,
+          message: `Unexpected error while fetching UTxOs at: ${addressOrCredentialLabel(addressOrCred)}`,
           cause: d,
         }),
     ),

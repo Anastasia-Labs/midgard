@@ -376,7 +376,7 @@ describe("scheduler refresh witness selection", () => {
     const emulator = new Emulator([operator]);
     const lucid = await Lucid(emulator, "Custom");
     lucid.selectWallet.fromSeed(operator.seedPhrase);
-    await emulator.awaitSlot(60);
+    emulator.awaitSlot(60);
 
     const snapshot = captureSchedulerSlotSnapshot(lucid);
     const targetCommitEndTime = BigInt(

@@ -1468,6 +1468,7 @@ export const validationSemanticResolverIndexV1 = (
         case "finish":
           return 0;
       }
+    // eslint-disable-next-line no-fallthrough
     case "valueAndMint":
       switch (valueAndMintKindV1(witness)) {
         case "begin":
@@ -1493,6 +1494,7 @@ export const validationSemanticResolverIndexV1 = (
         case "finalize":
           return 10;
       }
+    // eslint-disable-next-line no-fallthrough
     case "terminal":
       break;
   }

@@ -3168,7 +3168,7 @@ if (parentPort !== null) {
     ),
   );
 
-  Effect.runPromise(
+  void Effect.runPromise(
     program.pipe(
       Effect.catchAllCause((cause) =>
         Effect.succeed({

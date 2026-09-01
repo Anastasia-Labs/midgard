@@ -678,9 +678,8 @@ export const createManifestBoundMissingNativeScriptUtxoWorkflowV1 = async (
       const planned =
         action.input.stage === "step_02"
           ? spendFieldPlan(admitted, config.signer.paymentKeyHash)
-          : ["step_05", "step_06", "step_07"].includes(
-                String(action.input.stage),
-              )
+          : typeof action.input.stage === "string" &&
+              ["step_05", "step_06", "step_07"].includes(action.input.stage)
             ? scriptFieldPlan(admitted, config.signer.paymentKeyHash)
             : null;
       if (planned === null) return null;

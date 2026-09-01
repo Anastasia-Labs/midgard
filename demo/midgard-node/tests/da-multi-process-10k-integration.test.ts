@@ -525,7 +525,10 @@ const stopChildBounded = async (child: ChildProcess): Promise<void> => {
   if (child.exitCode !== null) return;
   await new Promise<void>((resolveStop) => {
     let settled = false;
+    // Assigned after finish is defined so the closure can clear both timers.
+    // eslint-disable-next-line prefer-const
     let killTimer: NodeJS.Timeout | undefined;
+    // eslint-disable-next-line prefer-const
     let finishTimer: NodeJS.Timeout | undefined;
     const finish = () => {
       if (settled) return;

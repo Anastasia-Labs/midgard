@@ -101,7 +101,7 @@ describe.sequential("deposit flow emulator", () => {
       fixture.operatorLucid.unixTimeToSlot(
         Number(fetchedDepositUtxos[0]!.datum.inclusion_time),
       ) + 1;
-    await fixture.emulator.awaitSlot(inclusionSlot);
+    fixture.emulator.awaitSlot(inclusionSlot);
     vi.setSystemTime(new Date(fixture.emulator.now()));
 
     const latestBlockBeforeCommit = await fetchLatestCommittedBlock(
@@ -285,7 +285,7 @@ describe.sequential("deposit flow emulator", () => {
     );
     expect(fetchedDepositUtxos).toHaveLength(1);
     const depositUtxo = fetchedDepositUtxos[0]!;
-    await fixture.emulator.awaitSlot(
+    fixture.emulator.awaitSlot(
       fixture.operatorLucid.unixTimeToSlot(
         Number(depositUtxo.datum.inclusion_time),
       ) + 1,
@@ -645,7 +645,7 @@ describe.sequential("deposit flow emulator", () => {
       withdrawalUtxo.idCbor.toString("hex"),
     );
 
-    await fixture.emulator.awaitSlot(
+    fixture.emulator.awaitSlot(
       fixture.operatorLucid.unixTimeToSlot(
         Number(withdrawalUtxo.datum.inclusion_time),
       ) + 1,

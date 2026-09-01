@@ -62,7 +62,7 @@ export const generateDaLibp2pRuntimeManifest = async (
   options: DaLibp2pRuntimeManifestOptions,
 ): Promise<DaLibp2pRuntimeManifest> => {
   validateProfile(options.profile);
-  const deploymentIdentity = await readFinalizedDeploymentIdentity(
+  const deploymentIdentity = readFinalizedDeploymentIdentity(
     options.contractDeploymentInfoPath,
   );
   const deploymentFingerprint = normalizeDaDeploymentFingerprintHex(

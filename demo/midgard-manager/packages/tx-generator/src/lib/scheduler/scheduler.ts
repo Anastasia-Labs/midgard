@@ -121,7 +121,7 @@ export const startGenerator = async (
 ): Promise<void> => {
   // Stop any existing generator
   if (state.currentPromise) {
-    stopGenerator();
+    await stopGenerator();
   }
 
   // Reset the stop flag

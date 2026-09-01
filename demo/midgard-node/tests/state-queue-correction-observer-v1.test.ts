@@ -684,7 +684,7 @@ describe("node-owned state-queue correction observer", () => {
   });
 
   it("classifies a timeout from Kupo history plus the exact Ogmios mint arm", async () => {
-    let mintRedeemer = Data.to(
+    const mintRedeemer = Data.to(
       {
         RemoveUnattestedBlockAfterTimeout: {
           timed_out_header_hash: target,

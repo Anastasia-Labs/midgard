@@ -246,7 +246,7 @@ export const configureTxGenerator: Action = {
 
         try {
           // Generate test wallet
-          const account = await generateEmulatorAccountFromPrivateKey({});
+          const account = generateEmulatorAccountFromPrivateKey({});
           const initialUTxO = {
             txHash: Buffer.from(Array(32).fill(0)).toString('hex'),
             outputIndex: 0,

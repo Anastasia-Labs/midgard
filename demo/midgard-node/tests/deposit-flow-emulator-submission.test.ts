@@ -163,7 +163,7 @@ describe.sequential("deposit flow emulator", () => {
       fixture.operatorLucid.unixTimeToSlot(
         Number(depositUtxo.datum.inclusion_time),
       ) + 1;
-    await fixture.emulator.awaitSlot(inclusionSlot);
+    fixture.emulator.awaitSlot(inclusionSlot);
 
     vi.setSystemTime(new Date(fixture.emulator.now()));
 

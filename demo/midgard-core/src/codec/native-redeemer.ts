@@ -33,9 +33,9 @@ const supportedCardanoRedeemerTag = (
   | CML.RedeemerTag.Spend
   | CML.RedeemerTag.Mint
   | CML.RedeemerTag.Reward =>
-  tag === CML.RedeemerTag.Spend ||
-  tag === CML.RedeemerTag.Mint ||
-  tag === CML.RedeemerTag.Reward;
+  tag === Number(CML.RedeemerTag.Spend) ||
+  tag === Number(CML.RedeemerTag.Mint) ||
+  tag === Number(CML.RedeemerTag.Reward);
 
 const redeemerPointer = (
   redeemer: Pick<NormalizedRedeemer, "tag" | "index">,

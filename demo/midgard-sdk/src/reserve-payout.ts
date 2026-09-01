@@ -129,8 +129,11 @@ export type RefundInvalidWithdrawalConfig = CommonBuilderConfig & {
   >;
 };
 
+type LucidDataSchema = Parameters<typeof Data.to>[1];
+type LucidDataValue = Parameters<typeof Data.to>[0];
+
 const encodeHexBytesData = (hex: string): unknown =>
-  Data.from(Data.to(hex as any, Data.Bytes()));
+  Data.from(Data.to(hex, Data.Bytes() as unknown as LucidDataSchema));
 
 const requireNetwork = (
   lucid: LucidEvolution,
@@ -189,7 +192,10 @@ const cardanoDatumToOutputDatum = (
   }
   return {
     kind: "inline",
-    value: Data.to(datum.InlineDatum.data as any, Data.Any() as any),
+    value: Data.to(
+      datum.InlineDatum.data,
+      Data.Any() as unknown as LucidDataSchema,
+    ),
   };
 };
 
@@ -300,10 +306,12 @@ const encodeMembershipProofWithdrawalRedeemer = (
   const rootData = Data.from(Data.to(proof.phas_root, SDK.MerkleRoot));
   const keyData = encodeHexBytesData(keyCbor);
   const valueData = encodeHexBytesData(valueCbor);
-  const proofData = Data.from(Data.to(proof.proof, SDK.Proof));
+  const proofData = Data.from(
+    Data.to(proof.proof, SDK.Proof as unknown as LucidDataSchema),
+  );
   return Data.to(
-    [rootData, keyData, valueData, proofData] as any,
-    Data.Array(Data.Any()) as any,
+    [rootData, keyData, valueData, proofData] as unknown as LucidDataValue,
+    Data.Array(Data.Any()) as unknown as LucidDataSchema,
   );
 };
 
@@ -351,7 +359,7 @@ const outputDatumMatches = (
   }
   return outputDatumCborMatches(
     output,
-    Data.to(datum.InlineDatum.data as any, Data.Any() as any),
+    Data.to(datum.InlineDatum.data, Data.Any() as unknown as LucidDataSchema),
   );
 };
 

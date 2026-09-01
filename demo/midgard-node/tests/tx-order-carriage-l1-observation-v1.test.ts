@@ -206,7 +206,7 @@ const submitAndObserve = async (
   const signed = await tx.sign.withWallet().complete();
   const cbor = signed.toCBOR();
   await signed.submit();
-  await harness.emulator.awaitBlock(1);
+  harness.emulator.awaitBlock(1);
   harness.l1.appendBlock([cbor]);
   return signed.toHash();
 };

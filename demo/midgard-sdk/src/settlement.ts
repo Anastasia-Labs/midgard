@@ -483,7 +483,7 @@ export const unsignedAttachResolutionClaimTxProgram = (
         composedTx,
         (e) =>
           new SettlementError({
-            message: `Failed to build the transaction: ${e}`,
+            message: `Failed to build the transaction: ${String(e)}`,
             cause: e,
           }),
       );
@@ -766,7 +766,7 @@ export const unsignedDisproveResolutionClaimTxProgram = (
         composedTx,
         (e) =>
           new SettlementError({
-            message: `Failed to build the transaction: ${e}`,
+            message: `Failed to build the transaction: ${String(e)}`,
             cause: e,
           }),
       );
@@ -854,11 +854,13 @@ export const incompleteResolveSettlementProgram = (
       );
     }) satisfies BuildTxWithRedeemer;
 
-    const resolutionTime = Number(
-      params.settlementUTxO.datum.resolution_claim?.resolution_time ?? 0n,
-    );
+    const resolutionClaim = params.settlementUTxO.datum.resolution_claim;
+    if (resolutionClaim === null) {
+      throw new Error("Settlement resolution claim is required");
+    }
+    const resolutionTime = Number(resolutionClaim.resolution_time);
     const txLowerBound = resolutionTime + 1 * 60_000;
-    const txSigner = params.settlementUTxO.datum.resolution_claim?.operator!;
+    const txSigner = resolutionClaim.operator;
     const changeAmount = 1_000_000n;
 
     const settlementNFT = toUnit(
@@ -908,7 +910,7 @@ export const unsignedResolveSettlementTxProgram = (
         resolveSettlementTx,
         (e) =>
           new SettlementError({
-            message: `Failed to build the transaction: ${e}`,
+            message: `Failed to build the transaction: ${String(e)}`,
             cause: e,
           }),
       );

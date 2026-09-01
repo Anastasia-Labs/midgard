@@ -29,8 +29,8 @@ const assertKind: (value: number) => asserts value is NativeMpfRpcKind = (
 ) => {
   if (
     !Number.isSafeInteger(value) ||
-    value < NativeMpfRpcKind.Hello ||
-    value > NativeMpfRpcKind.Error
+    value < Number(NativeMpfRpcKind.Hello) ||
+    value > Number(NativeMpfRpcKind.Error)
   ) {
     throw new Error(`Unknown native MPF RPC message kind ${value.toString()}`);
   }

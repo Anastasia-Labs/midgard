@@ -297,6 +297,8 @@ const nativeScriptComplexity = (
     ) {
       return { depth, nodeCount };
     }
+    // Leaf native-script variants have no children to enqueue.
+    // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check
     switch (current.script.type) {
       case "all":
       case "any":

@@ -325,6 +325,8 @@ export const publishCommitMempoolLedgerMutation = (
   workerOutput: WorkerOutput,
   deltaLogMax: number,
 ): Effect.Effect<void> => {
+  // Only outputs that mutate the mempool ledger require work here.
+  // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check
   switch (workerOutput.type) {
     case "SuccessfulSubmissionOutput":
     case "SuccessfulLocalFinalizationRecoveryOutput":

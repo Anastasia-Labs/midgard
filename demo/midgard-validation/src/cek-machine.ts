@@ -599,6 +599,8 @@ const verifyCompute = (
   post: MidgardCekMachineStateV1,
   witness: MidgardCekCoreStepWitnessV1,
 ): boolean => {
+  // This verifier handles compute witnesses; other phases fail closed below.
+  // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check
   switch (witness.kind) {
     case "computeVariable":
       return (
@@ -1022,6 +1024,8 @@ const verifyReturn = (
   post: MidgardCekMachineStateV1,
   witness: MidgardCekCoreStepWitnessV1,
 ): boolean => {
+  // This verifier handles return witnesses; other phases fail closed below.
+  // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check
   switch (witness.kind) {
     case "returnEmptyContinuation":
       return (

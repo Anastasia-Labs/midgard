@@ -250,7 +250,7 @@ describe("withdrawn-reference-input adversarial emulator suite", () => {
       lucid: harness.funderLucid,
       contracts: harness.family,
     });
-    const { init: _init, step01 } = await initAndBind({
+    const { step01 } = await initAndBind({
       harness,
       scenario,
       refs,

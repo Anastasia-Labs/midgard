@@ -3061,6 +3061,8 @@ const forcedVerdictForRejection = (
   code: RejectCode,
   phase: "phaseA" | "phaseB",
 ): SDK.OperatorVerdictV1 => {
+  // Rejection codes are grouped into the protocol reason families below.
+  // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check
   switch (code) {
     case RejectCodes.InputNotFound:
       return {
@@ -5162,7 +5164,7 @@ class MidgardMpfRootViewStore extends Store {
     return result;
   }
 
-  async get(key: unknown, deserialise: (...args: any[]) => unknown) {
+  async get(key: unknown, deserialise: (...args: unknown[]) => unknown) {
     this.assertUsable();
     if (key === ROOT_KEY) {
       return deserialise(key, this.currentRoot.toString("hex"), this);
@@ -5236,7 +5238,7 @@ class MidgardMpfRootViewStore extends Store {
 
   async getMany(
     keys: readonly unknown[],
-    deserialise: (...args: any[]) => unknown,
+    deserialise: (...args: unknown[]) => unknown,
   ) {
     this.assertUsable();
     const storageKeys = keys.map((key) => this.storageKey(key));
@@ -6419,7 +6421,11 @@ class MidgardMpfRootViewStore extends Store {
 
   async waitForSpills() {
     await this.spillChain;
-    if (this.spillError !== undefined) throw this.spillError;
+    if (this.spillError !== undefined) {
+      throw this.spillError instanceof Error
+        ? this.spillError
+        : new Error("MPF spill failed", { cause: this.spillError });
+    }
   }
 
   private async waitForAncestorSpills() {
@@ -6875,6 +6881,8 @@ class MidgardMpfRootViewStore extends Store {
 
   private reservePromotionChain(): readonly MidgardMpfRootViewStore[] {
     const reserved: MidgardMpfRootViewStore[] = [];
+    // The traversal intentionally starts at this store and walks its parents.
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     let current: MidgardMpfRootViewStore | undefined = this;
     try {
       while (current !== undefined) {

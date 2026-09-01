@@ -446,7 +446,12 @@ export class DaPayloadSubmitAdmission {
         if (index >= 0) {
           this.#waiters.splice(index, 1);
         }
-        reject(signal?.reason ?? new Error("DA payload admission cancelled"));
+        const reason = signal?.reason;
+        reject(
+          reason instanceof Error
+            ? reason
+            : new Error("DA payload admission cancelled", { cause: reason }),
+        );
       };
       const waiter = {
         signal,

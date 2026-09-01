@@ -1,5 +1,5 @@
-import { Network, UTxO } from '@lucid-evolution/lucid';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Network } from '@lucid-evolution/lucid';
+import { beforeEach, describe, expect, vi } from 'vitest';
 
 import { MidgardNodeClient } from '../src/lib/client/node-client';
 import {

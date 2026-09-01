@@ -51,7 +51,7 @@ const constructorBody = (source: string, name: string): string => {
 };
 
 const fieldNames = (body: string): string[] =>
-  [...body.matchAll(/^      ([a-z_]+):/gmu)].map((match) => match[1]!);
+  [...body.matchAll(/^ {6}([a-z_]+):/gmu)].map((match) => match[1]!);
 
 describe("ValidationAuxiliaryWitnessV1Schema", () => {
   it("round-trips the canonical 40-constructor V1 corpus exactly", () => {

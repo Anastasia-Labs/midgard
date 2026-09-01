@@ -452,7 +452,7 @@ export const createManifestBoundFabricatedDepositWorkflowV1 = async (
     stateQueueMutationLeaseCoordinator:
       config.stateQueueMutationLeaseCoordinator,
   });
-  let adapter = createProductionLinearFamilyWorkflowAdapterV1({
+  const adapter = createProductionLinearFamilyWorkflowAdapterV1({
     category: "fabricatedDeposit",
     l1,
     transactions,

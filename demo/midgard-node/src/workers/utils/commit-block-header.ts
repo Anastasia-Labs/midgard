@@ -204,7 +204,7 @@ export const serializeStateQueueUTxO = (
       try: () => utxoToCore(stateQueueUTxO.utxo),
       catch: (e) =>
         new SDK.CmlUnexpectedError({
-          message: `Failed to serialize state queue UTxO: ${e}`,
+          message: `Failed to serialize state queue UTxO: ${String(e)}`,
           cause: e,
         }),
     });
@@ -212,7 +212,7 @@ export const serializeStateQueueUTxO = (
       try: () => SDK.encodeLinkedListNodeView(stateQueueUTxO.datum),
       catch: (e) =>
         new SDK.CborSerializationError({
-          message: `Failed to serialize state queue datum: ${e}`,
+          message: `Failed to serialize state queue datum: ${String(e)}`,
           cause: e,
         }),
     });
@@ -237,7 +237,7 @@ export const deserializeStateQueueUTxO = (
         ),
       catch: (e) =>
         new SDK.CmlUnexpectedError({
-          message: `Failed to convert state queue UTxO to CML: ${e}`,
+          message: `Failed to convert state queue UTxO to CML: ${String(e)}`,
           cause: e,
         }),
     });
@@ -245,7 +245,7 @@ export const deserializeStateQueueUTxO = (
       Effect.mapError(
         (e) =>
           new SDK.CborDeserializationError({
-            message: `Failed to deserialize datum: ${e}`,
+            message: `Failed to deserialize datum: ${e.message}`,
             cause: e,
           }),
       ),

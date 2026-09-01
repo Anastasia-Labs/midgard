@@ -632,6 +632,8 @@ const authenticatedValidatorFromManifest = (
   ...mintingValidatorFromManifest(manifest, sourcePath, mintName),
 });
 
+// This tuple is a compile-time registry used to derive the exact category union.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES = [
   "fabricatedDeposit",
   "fabricatedWithdrawal",

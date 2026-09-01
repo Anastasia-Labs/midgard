@@ -512,6 +512,8 @@ export const startWatcherTrustedHeadAuthorityServerV1 = async (input: {
       "trusted-head authority production port cannot be ephemeral",
     );
   }
+  // The request body catches failures and always writes a bounded response.
+  // eslint-disable-next-line @typescript-eslint/no-misused-promises
   const server: Server = createServer(async (request, response) => {
     try {
       if (!authorized(request.headers.authorization, httpSecret)) {

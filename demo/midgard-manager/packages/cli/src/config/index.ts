@@ -27,7 +27,7 @@ const ensureConfigDir = Effect.try({
     mkdirSync(CONFIG_DIR, { recursive: true });
   },
   catch: (error) => {
-    throw MidgardError.config(`Failed to create config directory: ${error}`);
+    throw MidgardError.config(`Failed to create config directory: ${String(error)}`);
   },
 });
 
@@ -51,7 +51,7 @@ export const loadConfig = Effect.gen(function* (_) {
         return S.decodeSync(configSchema)(parsedConfig);
       },
       catch: (error) => {
-        throw MidgardError.config(`Failed to load config: ${error}`);
+        throw MidgardError.config(`Failed to load config: ${String(error)}`);
       },
     })
   );
@@ -71,7 +71,7 @@ export const saveConfig = (config: MidgardConfig) =>
           return config;
         },
         catch: (error) => {
-          throw MidgardError.config(`Failed to save config: ${error}`);
+          throw MidgardError.config(`Failed to save config: ${String(error)}`);
         },
       })
     );

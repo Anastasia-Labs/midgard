@@ -149,6 +149,8 @@ const makeProductionCommitParams = (
 };
 
 const makeValidityRecordingLucid = () => {
+  // Assigned after the recursive spies are created so they can return it.
+  // eslint-disable-next-line prefer-const
   let txBuilder: TxBuilder;
   const validFrom = vi.fn((_: number) => txBuilder);
   const validTo = vi.fn((_: number) => {

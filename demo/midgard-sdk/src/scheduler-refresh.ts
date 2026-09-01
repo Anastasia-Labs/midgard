@@ -342,7 +342,10 @@ export const buildUnsignedSchedulerRefreshTxProgram = (
           }),
         ),
       catch: (cause) =>
-        schedulerError(`Failed to build scheduler refresh tx: ${cause}`, cause),
+        schedulerError(
+          `Failed to build scheduler refresh tx: ${String(cause)}`,
+          cause,
+        ),
     });
     if (callbackCount < 1) {
       return yield* failScheduler(
@@ -370,7 +373,7 @@ export const buildUnsignedSchedulerRefreshTxProgram = (
         ),
       catch: (cause) =>
         schedulerError(
-          `Failed to rebuild scheduler refresh tx: ${cause}`,
+          `Failed to rebuild scheduler refresh tx: ${String(cause)}`,
           cause,
         ),
     });

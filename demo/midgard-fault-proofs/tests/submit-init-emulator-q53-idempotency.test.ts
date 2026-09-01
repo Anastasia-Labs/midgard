@@ -43,7 +43,7 @@ describe("Q53 fraud-proof reward idempotency", () => {
       }
     };
     const first = await capture("first");
-    await fixture.emulator.awaitSlot(1);
+    fixture.emulator.awaitSlot(1);
     const replacement = await capture("replacement");
 
     expect(replacement.txHash).not.toBe(first.txHash);

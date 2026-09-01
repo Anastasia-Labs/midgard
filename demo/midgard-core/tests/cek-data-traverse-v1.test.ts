@@ -230,7 +230,7 @@ describe("authenticated CEK Data traversal V1", () => {
       kind: "headSequence",
       expectedChildren: 1,
     });
-    let child = initialMidgardCekDataListFrameV1({
+    const child = initialMidgardCekDataListFrameV1({
       tail: hashMidgardCekDataFrameV1(parent),
       expectedChildren: 0,
     });

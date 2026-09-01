@@ -254,7 +254,7 @@ export const unsignedLinkedListTxProgram = (
       yield* incompleteInitLinkedListTxProgram(lucid, initParams),
       (e) =>
         new LucidError({
-          message: `Failed to build the linked list initialization transaction: ${e}`,
+          message: `Failed to build the linked list initialization transaction: ${String(e)}`,
           cause: e,
         }),
     );

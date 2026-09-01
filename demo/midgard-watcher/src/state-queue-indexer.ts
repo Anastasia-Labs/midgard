@@ -2143,7 +2143,7 @@ const verifyFinalityAuthority = (
       }),
       result,
     });
-  } catch (error) {
+  } catch (_error) {
     return null;
   }
 };

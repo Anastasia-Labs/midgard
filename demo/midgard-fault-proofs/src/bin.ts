@@ -603,6 +603,8 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
       case "-h":
         console.log(usage);
         process.exit(0);
+      // process.exit is typed never, but ESLint does not use that fact here.
+      // eslint-disable-next-line no-fallthrough
       default:
         throw new Error(`Unknown argument: ${arg}`);
     }

@@ -1145,7 +1145,7 @@ export const buildAndSubmitMergeTx = (
        */
       const onSubmitFailure = (err: TxSubmitError) =>
         Effect.gen(function* () {
-          yield* Effect.logError(`Submit tx error: ${err}`);
+          yield* Effect.logError(`Submit tx error: ${err.message}`);
           yield* Effect.fail(
             new TxSubmitError({
               message: "failed to submit the merge tx",
@@ -1160,7 +1160,7 @@ export const buildAndSubmitMergeTx = (
       const onConfirmFailure = (err: TxConfirmError) =>
         Effect.gen(function* () {
           yield* Effect.logError(
-            `Confirm tx error: ${err}; refusing local merge finalization until L1 confirmation is verified`,
+            `Confirm tx error: ${err.message}; refusing local merge finalization until L1 confirmation is verified`,
           );
           yield* Effect.fail(
             new TxConfirmError({

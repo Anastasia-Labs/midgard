@@ -2668,7 +2668,7 @@ class StructuralExecutorV1 {
         );
         return;
       }
-      case "case":
+      case "case": {
         if (value.kind !== "constr") {
           this.record(
             {
@@ -2725,6 +2725,7 @@ class StructuralExecutorV1 {
           }),
         );
         return;
+      }
       case "caseSelect":
       case "caseApply":
         throw new Error("case work continuation cannot be returned directly");

@@ -90,6 +90,8 @@ export const startWatcherProductionOperationsHttpServerV1 = async (input: {
     rejectDone = reject;
   });
   void done.catch(() => undefined);
+  // The request body catches failures and settles the server lifecycle promise.
+  // eslint-disable-next-line @typescript-eslint/no-misused-promises
   const server = createServer(async (request, response) => {
     try {
       const target = request.url ?? "";

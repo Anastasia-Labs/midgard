@@ -109,7 +109,7 @@ export const retrieveTxHashesByHeaderHash = (
 ): Effect.Effect<readonly Buffer[], DatabaseError, Database> =>
   Effect.gen(function* () {
     yield* Effect.logDebug(
-      `${tableName} db: attempt retrieve txHashes for block ${headerHash}`,
+      `${tableName} db: attempt retrieve txHashes for block ${headerHash.toString("hex")}`,
     );
     const sql = yield* SqlClient.SqlClient;
 
@@ -120,7 +120,7 @@ export const retrieveTxHashesByHeaderHash = (
     )} WHERE ${sql(Columns.HEADER_HASH)} = ${headerHash}`;
 
     yield* Effect.logDebug(
-      `${tableName} db: retrieved ${result.length} txHashes for block ${headerHash}`,
+      `${tableName} db: retrieved ${result.length} txHashes for block ${headerHash.toString("hex")}`,
     );
     return result.map((row) => row[Columns.TX_ID]);
   }).pipe(
@@ -139,7 +139,7 @@ export const retrieveHeaderHashByTxHash = (
 ): Effect.Effect<Buffer, DatabaseError, Database> =>
   Effect.gen(function* () {
     yield* Effect.logDebug(
-      `${tableName} db: attempt retrieve headerHash for txHash ${txHash}`,
+      `${tableName} db: attempt retrieve headerHash for txHash ${txHash.toString("hex")}`,
     );
     const sql = yield* SqlClient.SqlClient;
 
@@ -148,13 +148,13 @@ export const retrieveHeaderHashByTxHash = (
     )} FROM ${sql(tableName)} WHERE ${sql(Columns.TX_ID)} = ${txHash} LIMIT 1`;
 
     if (rows.length <= 0) {
-      const msg = `No headerHash found for ${txHash} txHash`;
+      const msg = `No headerHash found for ${txHash.toString("hex")} txHash`;
       yield* Effect.logDebug(msg);
       yield* Effect.fail(new SqlError.SqlError({ cause: msg }));
     }
     const result = rows[0][Columns.HEADER_HASH];
     yield* Effect.logDebug(
-      `${tableName} db: retrieved headerHash for tx ${txHash}: ${result}`,
+      `${tableName} db: retrieved headerHash for tx ${txHash.toString("hex")}: ${result.toString("hex")}`,
     );
     return result;
   }).pipe(
@@ -173,7 +173,7 @@ export const clearBlock = (
 ): Effect.Effect<void, DatabaseError, Database> =>
   Effect.gen(function* () {
     yield* Effect.logDebug(
-      `${tableName} db: attempt clear block ${headerHash}`,
+      `${tableName} db: attempt clear block ${headerHash.toString("hex")}`,
     );
     const sql = yield* SqlClient.SqlClient;
     yield* sql`DELETE FROM ${sql(

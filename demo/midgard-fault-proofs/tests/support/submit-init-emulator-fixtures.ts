@@ -2416,7 +2416,7 @@ export const retireFixtureOperatorAfterInactivity = async (
       fixture.funderLucid.unixTimeToSlot(inactivityThreshold) + 2;
     const slotsToAdvance = firstValidSlot - fixture.funderLucid.currentSlot();
     if (slotsToAdvance > 0) {
-      await fixture.emulator.awaitSlot(slotsToAdvance);
+      fixture.emulator.awaitSlot(slotsToAdvance);
     }
     const validFrom = fixture.funderLucid.slotToUnixTime(
       fixture.funderLucid.currentSlot(),

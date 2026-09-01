@@ -572,7 +572,7 @@ export const runNativeScriptDecodingProverV1 = async (
   } else {
     if (position.step !== "step03AdvanceOrClose") {
       throw nativeScriptDecodingSubmitError(
-        `unhandled thread position ${position.step}`,
+        `unhandled thread position ${String(position.step)}`,
       );
     }
     const threadOutRef = outRefLabel(position.threadUtxo);

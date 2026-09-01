@@ -524,7 +524,7 @@ const walkReachableRecords = async (
   visit: (hash: string, node: StoredNode) => Promise<void> | void,
 ): Promise<number> => {
   const seen = new Set<string>();
-  let pending = [marker];
+  const pending = [marker];
   let count = 0;
   while (pending.length > 0) {
     const batch = pending.splice(0, 4_096).filter((hash) => {

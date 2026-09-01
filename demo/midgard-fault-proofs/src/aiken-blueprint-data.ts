@@ -140,6 +140,8 @@ const validate = ({
       `${path} does not match any Aiken constructor: ${failures.join("; ")}`,
     );
   }
+  // A missing dataType is rejected by the default arm below.
+  // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check
   switch (schema.dataType) {
     case "bytes":
       if (

@@ -550,6 +550,9 @@ const withExclusiveConsolidationStateLock = async <A>(
     }
     await handle.close();
     if (!ownsPublishedLock) {
+      // Lock replacement is the safety-critical failure and must supersede an
+      // action error so callers cannot mistake the lock state for clean.
+      // eslint-disable-next-line no-unsafe-finally
       throw new Error(
         `Consolidation lock ownership changed at ${lockPath}; refusing to remove a missing or replacement lock.`,
       );
@@ -603,12 +606,16 @@ const withExclusiveStressWalletFundsLock = async <A>(
       ownsPublishedLock = false;
     }
     await handle.close();
-    if (!ownsPublishedLock)
+    if (!ownsPublishedLock) {
+      // Lock replacement is the safety-critical failure and must supersede an
+      // action error so callers cannot mistake the lock state for clean.
+      // eslint-disable-next-line no-unsafe-finally
       throw new Error(
         "Stress-wallet funds lock ownership changed at " +
           lockPath +
           "; refusing to remove a missing or replacement lock.",
       );
+    }
     await rm(lockPath);
   }
 };

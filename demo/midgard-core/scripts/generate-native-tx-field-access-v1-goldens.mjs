@@ -62,7 +62,6 @@ import {
   MIDGARD_SPEND_INPUT_ITEM_BYTES_V1,
   MIDGARD_FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_V1,
   midgardExpectedChunkCountV1,
-  midgardFieldCommitmentFromItemsV1,
   midgardFieldCommitmentV1,
   midgardFieldItemExtentV1,
   midgardFieldStrideV1,

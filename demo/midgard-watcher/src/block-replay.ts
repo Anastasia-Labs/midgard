@@ -1887,7 +1887,11 @@ const replayCandidates = async (
   let postStateRoot = prior.root;
   for (const [txIndex, entry] of perTx.entries()) {
     const first = cursor;
-    for (const _operation of entry.operations) {
+    for (
+      let remaining = entry.operations.length;
+      remaining > 0;
+      remaining -= 1
+    ) {
       const step = mutationSteps[cursor];
       const operation = step.operation;
       intermediateRoots.push(
@@ -2372,7 +2376,11 @@ const replayCommittedBlockV1 = async (input: {
   let postStateRoot = prior.root;
   for (const group of groups) {
     const first = cursor;
-    for (const _operation of group.operations) {
+    for (
+      let remaining = group.operations.length;
+      remaining > 0;
+      remaining -= 1
+    ) {
       const mutationStep = mutationSteps[cursor]!;
       intermediateRoots.push(
         Object.freeze({

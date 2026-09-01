@@ -991,7 +991,7 @@ export const parseAndValidatePhase4T1RecoveryAttestation = ({
       attestation[key as keyof Phase4T1RecoveryAttestation] !== expectedValue
     ) {
       throw new Error(
-        `T1 recovery attestation ${key} mismatch: expected=${String(expectedValue)},actual=${String(attestation[key as keyof Phase4T1RecoveryAttestation])}`,
+        `T1 recovery attestation ${key} mismatch: expected=${JSON.stringify(expectedValue) ?? "undefined"},actual=${JSON.stringify(attestation[key as keyof Phase4T1RecoveryAttestation]) ?? "undefined"}`,
       );
     }
   }

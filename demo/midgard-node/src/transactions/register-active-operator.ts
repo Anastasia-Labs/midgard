@@ -98,8 +98,8 @@ type OperatorLifecycleMode =
 const summarizeOnChainScriptFailure = (cause: unknown): string | null => {
   const message = String(cause);
   const scriptHashMatch = message.match(/ScriptHash[^0-9a-f]*([0-9a-f]{56})/i);
-  const scriptInfoMatch = message.match(/ScriptInfo:\\s*([^\\\\n\"]+)/i);
-  const reasonMatch = message.match(/Caused by:\\s*([^\\\\n\"]+)/i);
+  const scriptInfoMatch = message.match(/ScriptInfo:\\s*([^\\\\n"]+)/i);
+  const reasonMatch = message.match(/Caused by:\\s*([^\\\\n"]+)/i);
   const txIdMatch = message.match(/TxId:\\s*([0-9a-f]{64})/i);
   if (
     scriptHashMatch === null &&

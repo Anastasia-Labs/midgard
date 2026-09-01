@@ -122,7 +122,7 @@ const describeCause = (cause: unknown): string => {
   if (cause instanceof Error) {
     return ` (caused by ${cause.name}: ${cause.message})`;
   }
-  return ` (caused by ${String(cause)})`;
+  return ` (caused by ${JSON.stringify(cause) ?? "undefined"})`;
 };
 
 export type WatcherPublicDaPayloadV1 = Readonly<{

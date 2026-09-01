@@ -1201,7 +1201,7 @@ describe("Phase 3 soak full-corpus preflight", () => {
 
   it("rejects stale source, path/mtime drift, tampering, and reduced selection", async () => {
     for (const mutate of [
-      (fixture) => ({ expectedSourceIdentitySha256: hash("d") }),
+      (_fixture) => ({ expectedSourceIdentitySha256: hash("d") }),
       (fixture) => {
         writeFileSync(fixture.corpusIdentity.path, "tampered\n");
         return {};

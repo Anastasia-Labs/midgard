@@ -665,6 +665,8 @@ export const advanceMidgardLedgerOutputScanV1 = ({
       return null;
     }
     let next: MidgardLedgerOutputScanControlV1;
+    // Unknown numeric stages fail closed through the default arm.
+    // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check
     switch (control.stage) {
       case MidgardLedgerOutputScanStagesV1.RequiredFields:
         next = stepRequiredFields({ control, window, windowOffset });

@@ -42,7 +42,7 @@ const setup = async () => {
 
   // Create a mock Lucid instance
   const lucid = {
-    selectWalletFromPrivateKey: (key: string) => lucid,
+    selectWalletFromPrivateKey: (_key: string) => lucid,
     wallet: {
       address: () => address,
       getUtxos: () => Promise.resolve([mockInitialUtxo]),

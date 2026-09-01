@@ -147,6 +147,8 @@ const requireExactKeys = (
  * it enumerates, but an injected multi-line body spans lines and slips past it,
  * so the injection is closed here, at the parser, rather than downstream.
  */
+// Control characters are exactly what this injection guard must reject.
+// eslint-disable-next-line no-control-regex
 const UNSAFE_TEXT = /[\u0000-\u001F\u007F]|\/\/|\/\*|\*\//u;
 
 const requireText = (value: unknown, path: string): string => {

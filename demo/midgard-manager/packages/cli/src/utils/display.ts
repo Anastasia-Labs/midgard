@@ -114,7 +114,10 @@ export function displayError(message: string | Error, details?: unknown) {
   console.log(`│  ${chalk.bold(errorMessage)}`);
 
   if (details) {
-    const detailsStr = String(details);
+    const detailsStr =
+      details instanceof Error
+        ? (details.stack ?? details.message)
+        : (JSON.stringify(details) ?? 'undefined');
     console.log(`│  ${detailsStr}`);
   }
 

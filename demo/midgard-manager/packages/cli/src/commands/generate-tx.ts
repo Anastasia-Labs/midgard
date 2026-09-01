@@ -375,6 +375,7 @@ export const generateTxCommand = Command.make(
           );
 
           // Keep process running and handle graceful shutdown
+          // eslint-disable-next-line @typescript-eslint/no-misused-promises
           process.on('SIGINT', async () => {
             console.log('\n');
             const stopSpinner = ora('Stopping transaction generator...').start();

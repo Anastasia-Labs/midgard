@@ -1006,7 +1006,7 @@ const submitCommitHeaderTx = async ({
     ),
   );
   const commitUnsigned = await commitTx.complete({ localUPLCEval: true });
-  await emulator.awaitSlot(1);
+  emulator.awaitSlot(1);
   const commitSigned = await commitUnsigned.sign.withWallet().complete();
   await lucid.awaitTx(await commitSigned.submit());
 
@@ -1204,7 +1204,7 @@ describe("state-queue emulator builders", () => {
     const operator = paymentCredential.hash;
     // Lucid omits validity_start when it maps to slot zero. Advance one
     // emulator slot so the real initializer receives a closed range.
-    await emulator.awaitSlot(1);
+    emulator.awaitSlot(1);
     const initValidFrom = BigInt(emulator.now());
     const initValidTo = initValidFrom + 120_000n;
     const genesisTime = initValidTo - 1n;
@@ -1362,7 +1362,7 @@ describe("state-queue emulator builders", () => {
     const operator = paymentCredential.hash;
     // Lucid omits validity_start when it maps to slot zero. Advance one
     // emulator slot so the real initializer receives a closed range.
-    await emulator.awaitSlot(1);
+    emulator.awaitSlot(1);
     const initValidFrom = BigInt(emulator.now());
     const initValidTo = initValidFrom + 120_000n;
     const genesisTime = initValidTo - 1n;

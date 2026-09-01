@@ -887,7 +887,7 @@ export class AuthenticatedPackedMpfArena {
 
   private record(id: number): PackedMpfStoredValue {
     const meta = id * METADATA_FIELDS;
-    if (this.metadata[meta] === PackedNodeKind.Leaf) {
+    if (this.metadata[meta] === Number(PackedNodeKind.Leaf)) {
       const keyOffset = this.metadata[meta + 5]!;
       const keyLength = this.metadata[meta + 6]!;
       const valueOffset = this.metadata[meta + 7]!;
@@ -1438,7 +1438,7 @@ export class EventFlatMutationArena {
 
   private record(id: number): PackedMpfStoredValue {
     const meta = id * METADATA_FIELDS;
-    if (this.metadata[meta] === PackedNodeKind.Leaf) {
+    if (this.metadata[meta] === Number(PackedNodeKind.Leaf)) {
       return {
         __kind: "Leaf",
         prefix: this.prefix(id),
@@ -1524,7 +1524,7 @@ export class EventFlatMutationArena {
     this.incrementalBranchUpdates += 1;
     this.incrementalBranchDigests += 5;
     const sourceMeta = sourceId * METADATA_FIELDS;
-    if (this.metadata[sourceMeta] !== PackedNodeKind.Branch) {
+    if (this.metadata[sourceMeta] !== Number(PackedNodeKind.Branch)) {
       throw new Error("Event-flat Merkle update source is not a branch");
     }
     const updated = new Map<number, Buffer>();
@@ -1606,7 +1606,7 @@ export class EventFlatMutationArena {
       return this.appendLeaf(path.slice(cursor), key, value);
     const meta = id * METADATA_FIELDS;
     const nodePrefix = this.prefix(id);
-    if (this.metadata[meta] === PackedNodeKind.Leaf) {
+    if (this.metadata[meta] === Number(PackedNodeKind.Leaf)) {
       const nodeKey = this.leafKey(id);
       if (nodeKey.equals(key)) {
         throw new Error(
@@ -1688,7 +1688,7 @@ export class EventFlatMutationArena {
   ): number | undefined {
     const meta = id * METADATA_FIELDS;
     const nodePrefix = this.prefix(id);
-    if (this.metadata[meta] === PackedNodeKind.Leaf) {
+    if (this.metadata[meta] === Number(PackedNodeKind.Leaf)) {
       if (!this.leafKey(id).equals(key) || nodePrefix !== path.slice(cursor)) {
         throw new Error(`Event-flat key is absent: ${key.toString("hex")}`);
       }
@@ -1720,7 +1720,7 @@ export class EventFlatMutationArena {
       const childMeta = childId * METADATA_FIELDS;
       const childPrefix = this.prefix(childId);
       const prefix = `${nodePrefix}${only.index.toString(16)}${childPrefix}`;
-      return this.metadata[childMeta] === PackedNodeKind.Leaf
+      return this.metadata[childMeta] === Number(PackedNodeKind.Leaf)
         ? this.appendLeaf(
             prefix,
             this.leafKey(childId),

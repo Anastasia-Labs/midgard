@@ -1204,7 +1204,7 @@ describe("SDK canonical ABI fixtures", () => {
       path.join(repoRoot, "onchain/aiken/env/testnet.ak"),
       "utf8",
     ).match(
-      /pub const user_events_witness_script_prefix: ByteArray =\n  #"([^"]+)"/,
+      /pub const user_events_witness_script_prefix: ByteArray =\n {2}#"([^"]+)"/,
     )?.[1];
     expect(SDK.USER_EVENT_WITNESS_SCRIPT_PREFIX).toBe(aikenWitnessPrefix);
 

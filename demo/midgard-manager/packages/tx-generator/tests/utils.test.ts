@@ -1,4 +1,3 @@
-import { CML } from '@lucid-evolution/lucid';
 import { describe, expect, it, vi } from 'vitest';
 
 import {

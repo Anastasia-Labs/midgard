@@ -89,7 +89,7 @@ for (const [label, override, expectedError] of [
   });
 }
 
-test("custom Conway config rejects epoch length drift from 10k\/f", () => {
+test("custom Conway config rejects epoch length drift from 10k/f", () => {
   const result = validate({
     genesis: validGenesis({ epochLength: 270000 }),
   });

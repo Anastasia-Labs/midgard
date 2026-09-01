@@ -372,7 +372,7 @@ if (parentPort !== null) {
     provideConfirmationWorkerServices,
   );
 
-  Effect.runPromise(
+  void Effect.runPromise(
     program.pipe(
       Effect.catchAllCause((cause) =>
         Effect.succeed({

@@ -522,6 +522,16 @@ const journalValue = (value: unknown): JournalJsonValueV1 => {
 const artifactFrom = (value: JournalJsonObjectV1): DoubleSpendArtifactV1 =>
   value as DoubleSpendArtifactV1;
 
+const requireJournalString = (
+  value: JournalJsonValueV1 | undefined,
+  label: string,
+): string => {
+  if (typeof value !== "string") {
+    throw new Error(`${label} must be a string`);
+  }
+  return value;
+};
+
 const canonicalOutRef = (value: string, label: string): string => {
   if (!/^[0-9a-f]{64}#[0-9]+$/u.test(value)) {
     throw new Error(`${label} must be a canonical Cardano output reference`);
@@ -790,7 +800,10 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
       const tx = stage.kind === "step_01" ? artifact.tx1 : artifact.tx2;
       const publicationId = `${stage.kind}:publish-proof`;
       const chunks = await proofChunks(
-        String(tx.inclusion.txMembershipProofCbor),
+        requireJournalString(
+          tx.inclusion.txMembershipProofCbor,
+          "tx.inclusion.txMembershipProofCbor",
+        ),
       );
       if (chunks === undefined && !confirmed(entries, publicationId)) {
         return {
@@ -798,7 +811,10 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
           action: action(publicationId, {
             stage: "publish-proof",
             proofFor: stage.kind,
-            proofCbor: String(tx.inclusion.txMembershipProofCbor),
+            proofCbor: requireJournalString(
+              tx.inclusion.txMembershipProofCbor,
+              "tx.inclusion.txMembershipProofCbor",
+            ),
           }),
         };
       }
@@ -881,7 +897,7 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
     }
     if (stage.kind !== "proof_token") {
       throw new Error(
-        `unsupported authenticated double-spend stage: ${stage.kind}`,
+        `unsupported authenticated double-spend stage: ${String(stage.kind)}`,
       );
     }
     return {
@@ -903,14 +919,17 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
     readonly action: FraudProofWorkflowActionV1;
     readonly artifact: DoubleSpendArtifactV1;
   }): Promise<LocallyEvaluatedTransactionV1> => {
-    const stage = String(requested.input.stage);
+    const stage = requireJournalString(requested.input.stage, "action.stage");
     if (stage === "publish-proof") {
       return await captureLocallyEvaluatedTransactionV1(async (boundary) => {
         await publishProofChunksV1({
           lucid: config.lucid,
           network: config.network,
           signer: config.signer,
-          proofCbor: String(requested.input.proofCbor),
+          proofCbor: requireJournalString(
+            requested.input.proofCbor,
+            "action.proofCbor",
+          ),
           preSubmitBoundary: boundary,
         });
       });
@@ -924,7 +943,10 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
           network: config.network,
           signer: config.signer,
           fraudCategory: "doubleSpend",
-          fraudulentBlockOutRef: String(requested.input.stateQueueBlockOutRef),
+          fraudulentBlockOutRef: requireJournalString(
+            requested.input.stateQueueBlockOutRef,
+            "action.stateQueueBlockOutRef",
+          ),
           fraudulentHeaderHash: artifact.headerHash,
           witnessReferenceScripts: config.referenceScripts.witnesses,
           preSubmitBoundary: boundary,
@@ -934,7 +956,10 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
     if (stage === "step_01" || stage === "step_02") {
       const tx = stage === "step_01" ? artifact.tx1 : artifact.tx2;
       const chunks = await proofChunks(
-        String(tx.inclusion.txMembershipProofCbor),
+        requireJournalString(
+          tx.inclusion.txMembershipProofCbor,
+          "tx.inclusion.txMembershipProofCbor",
+        ),
       );
       if (chunks === undefined) {
         throw new Error(`${stage} proof chunks are not observable on L1`);
@@ -949,8 +974,14 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
         deploymentInfo: config.deploymentInfo,
         network: config.network,
         signer: config.signer,
-        threadOutRef: String(requested.input.threadOutRef),
-        stateQueueBlockOutRef: String(requested.input.stateQueueBlockOutRef),
+        threadOutRef: requireJournalString(
+          requested.input.threadOutRef,
+          "action.threadOutRef",
+        ),
+        stateQueueBlockOutRef: requireJournalString(
+          requested.input.stateQueueBlockOutRef,
+          "action.stateQueueBlockOutRef",
+        ),
         txInclusion: parseSubmitStep01TxInclusion(tx.inclusion),
         publishedProofChunks: chunks,
         witnessReferenceScripts: config.referenceScripts.witnesses,
@@ -972,7 +1003,10 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
       });
     }
     if (stage === "certify-field") {
-      const proofStage = String(requested.input.proofFor);
+      const proofStage = requireJournalString(
+        requested.input.proofFor,
+        "action.proofFor",
+      );
       if (proofStage !== "step_03" && proofStage !== "step_04") {
         throw new Error("field certification names an unknown proof stage");
       }
@@ -1033,7 +1067,9 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
       stage === "publish-field"
     ) {
       const proofStage =
-        stage === "publish-field" ? String(requested.input.proofFor) : stage;
+        stage === "publish-field"
+          ? requireJournalString(requested.input.proofFor, "action.proofFor")
+          : stage;
       if (proofStage !== "step_03" && proofStage !== "step_04") {
         throw new Error("field action names an unknown proof stage");
       }
@@ -1100,7 +1136,10 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
             deploymentInfo: config.deploymentInfo,
             network: config.network,
             signer: config.signer,
-            threadOutRef: String(requested.input.threadOutRef),
+            threadOutRef: requireJournalString(
+              requested.input.threadOutRef,
+              "action.threadOutRef",
+            ),
             tx1SpendInputCbors: tx.spendInputCbors,
             nativeTxCompactCbor: tx.nativeTxCompactCbor,
             doubleSpentInputIndex: BigInt(tx.doubleSpentInputIndex),
@@ -1125,7 +1164,10 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
             deploymentInfo: config.deploymentInfo,
             network: config.network,
             signer: config.signer,
-            threadOutRef: String(requested.input.threadOutRef),
+            threadOutRef: requireJournalString(
+              requested.input.threadOutRef,
+              "action.threadOutRef",
+            ),
             tx2SpendInputCbors: tx.spendInputCbors,
             nativeTxCompactCbor: tx.nativeTxCompactCbor,
             doubleSpentInputIndex: BigInt(tx.doubleSpentInputIndex),
@@ -1177,7 +1219,10 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
             preSubmitBoundary: async (transaction) => {
               if (
                 !workflowTransactionInputOutRefsV1(transaction.signed).includes(
-                  String(requested.input.nextRemovalOutRef),
+                  requireJournalString(
+                    requested.input.nextRemovalOutRef,
+                    "action.nextRemovalOutRef",
+                  ),
                 )
               ) {
                 throw new Error(
@@ -1187,7 +1232,12 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
               if (
                 !workflowTransactionReferenceInputOutRefsV1(
                   transaction.signed,
-                ).includes(String(requested.input.fraudProofOutRef))
+                ).includes(
+                  requireJournalString(
+                    requested.input.fraudProofOutRef,
+                    "action.fraudProofOutRef",
+                  ),
+                )
               ) {
                 throw new Error(
                   "removal transaction does not reference the authenticated permanent proof token",
@@ -1358,7 +1408,10 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
         mutationLeaseByTxHash.set(txHash, mutationLease);
       }
       const preparedArtifact = artifactFrom(artifact);
-      const actionStage = String(requested.input.stage);
+      const actionStage = requireJournalString(
+        requested.input.stage,
+        "action.stage",
+      );
       if (
         actionStage === "publish-proof" ||
         actionStage === "publish-field" ||
@@ -1373,7 +1426,9 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
           };
         }
         if (actionStage === "publish-proof") {
-          const chunks = await proofChunks(String(requested.input.proofCbor));
+          const chunks = await proofChunks(
+            requireJournalString(requested.input.proofCbor, "action.proofCbor"),
+          );
           if (
             chunks === undefined ||
             chunks.some((chunk) => chunk.utxo.txHash !== txHash)
@@ -1391,7 +1446,10 @@ export const createDoubleSpendConstrainedWorkflowAdapterV1 = (
             if (observed.kind !== "confirmed") return { kind: "not_found" };
           }
         } else {
-          const proofFor = String(requested.input.proofFor);
+          const proofFor = requireJournalString(
+            requested.input.proofFor,
+            "action.proofFor",
+          );
           if (proofFor !== "step_03" && proofFor !== "step_04") {
             return {
               kind: "conflict",

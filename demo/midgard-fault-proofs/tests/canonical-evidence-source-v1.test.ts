@@ -374,6 +374,8 @@ describe("Q03 canonical block evidence", () => {
     const eventEntry = Buffer.from("event entry");
     const transport: RetainedDaLibp2pTransport = {
       request: async ({ protocol }) => {
+        // This fixture implements only the proof surfaces exercised here.
+        // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check
         switch (protocol) {
           case DaRequestResponseProtocol.payloadByHeader:
             return encodeDaPayloadByHeaderResponseV1Cbor({

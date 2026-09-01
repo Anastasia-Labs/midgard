@@ -2165,6 +2165,8 @@ describe("transition-trace challenger tooling", () => {
     const transport: RetainedDaLibp2pTransport = {
       request: async ({ peer, protocol, payload }) => {
         calls.push({ peerId: peer.peerId, protocol });
+        // This fixture implements only the proof surfaces exercised here.
+        // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check
         switch (protocol) {
           case DaRequestResponseProtocol.payloadByHeader: {
             const request = decodeDaPayloadByHeaderRequestV1Cbor(payload);

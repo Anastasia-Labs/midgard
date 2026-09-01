@@ -1220,6 +1220,8 @@ const stepHead = ({
 }): MidgardCekDataTraverseControlV1 | null => {
   const bytes = exactSourceBytes({ control, sourceBytes });
   if (bytes === null || action === null) return null;
+  // Non-head actions are rejected by this phase-specific dispatcher.
+  // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check
   switch (action.kind) {
     case "headScalar":
       return stepHeadScalar({ control, bytes, action });

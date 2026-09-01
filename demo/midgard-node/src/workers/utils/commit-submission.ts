@@ -502,7 +502,7 @@ export const failedSubmissionProgram = (
   err: TxSubmitError,
 ): Effect.Effect<WorkerOutput> =>
   Effect.gen(function* () {
-    yield* Effect.logError(`🔹 ⚠️  Tx submit failed: ${err}`);
+    yield* Effect.logError(`🔹 ⚠️  Tx submit failed: ${err.message}`);
     yield* Effect.logError(
       "🔹 ⚠️  Transactions MPF root marker will be preserved for recovery.",
     );

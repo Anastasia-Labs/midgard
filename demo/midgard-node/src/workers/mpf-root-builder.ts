@@ -42,7 +42,11 @@ const rootRuntime = new Promise<{
   };
   blake2b.ready((error?: unknown) => {
     if (error !== undefined) {
-      reject(error);
+      reject(
+        error instanceof Error
+          ? error
+          : new Error("blake2b initialization failed", { cause: error }),
+      );
       return;
     }
     // blake2b@2.1.4 swaps its CommonJS export to blake2b-wasm in a

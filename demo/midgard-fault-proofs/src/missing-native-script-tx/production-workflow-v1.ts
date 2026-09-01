@@ -760,9 +760,8 @@ export const createManifestBoundMissingNativeScriptTxWorkflowV1 = async (
             ? spendFieldPlan(admitted, config.signer.paymentKeyHash)
             : action.input.stage === "step_04"
               ? outputFieldPlan(admitted, config.signer.paymentKeyHash)
-              : ["step_06", "step_07", "step_08"].includes(
-                    String(action.input.stage),
-                  )
+              : typeof action.input.stage === "string" &&
+                  ["step_06", "step_07", "step_08"].includes(action.input.stage)
                 ? scriptFieldPlan(admitted, config.signer.paymentKeyHash)
                 : null;
         if (planned === null) return null;

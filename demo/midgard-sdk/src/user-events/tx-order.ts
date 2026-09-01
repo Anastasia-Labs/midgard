@@ -21,7 +21,6 @@ import {
 } from "@al-ft/midgard-core/codec/native-tx-carriage-v1";
 import {
   encodeMidgardFieldArrayHeaderV1,
-  MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1,
   midgardFieldCommitmentV1,
 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import {

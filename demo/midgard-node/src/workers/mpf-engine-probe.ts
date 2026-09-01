@@ -97,7 +97,7 @@ const formatErrorChain = (error: unknown): string => {
       current = current.cause;
       continue;
     }
-    rendered.push(String(current));
+    rendered.push(JSON.stringify(current) ?? "undefined");
     break;
   }
   return rendered.join("\nCaused by: ");

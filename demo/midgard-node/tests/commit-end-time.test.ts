@@ -99,7 +99,7 @@ describe("commit end-time resolver", () => {
     const lucid = await Lucid(emulator, "Custom");
     lucid.selectWallet.fromSeed(operator.seedPhrase);
 
-    await emulator.awaitSlot(16 * 60);
+    emulator.awaitSlot(16 * 60);
     const firstNowMs = emulator.now();
     const firstFloorMs =
       firstNowMs + COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS;
@@ -121,7 +121,7 @@ describe("commit end-time resolver", () => {
       first.minimumCurrentTimeEndTime,
     );
 
-    await emulator.awaitSlot(60);
+    emulator.awaitSlot(60);
     const refreshedNowMs = emulator.now();
     const refreshed = resolveAlignedCommitEndTime({
       lucid,

@@ -624,8 +624,20 @@ const parseNonNegativeBigInt = (value: unknown, fieldName: string): bigint => {
 const defaultOutDir = (): string =>
   join(".stress-corpus", new Date().toISOString().replace(/[:.]/gu, "-"));
 
+const parseString = (
+  value: unknown,
+  fallback: string,
+  fieldName: string,
+): string => {
+  const resolved = value ?? fallback;
+  if (typeof resolved !== "string") {
+    throw new Error(`${fieldName} must be a string.`);
+  }
+  return resolved;
+};
+
 const parseNetwork = (value: unknown, env: NodeJS.ProcessEnv): Network => {
-  const raw = String(value ?? env.NETWORK ?? "Preprod");
+  const raw = parseString(value, env.NETWORK ?? "Preprod", "--network");
   return raw === "Mainnet" ? "Mainnet" : "Preprod";
 };
 
@@ -647,7 +659,11 @@ export const parseStressCorpusGenerateConfig = (
       "stress-corpus-generate requires --max-submit-tx-cbor-bytes or MAX_SUBMIT_TX_CBOR_BYTES.",
     );
   }
-  const fundingSource = String(input.fundingSource ?? "existing");
+  const fundingSource = parseString(
+    input.fundingSource,
+    "existing",
+    "--funding-source",
+  );
   if (fundingSource !== "existing" && fundingSource !== "fanout") {
     throw new Error("--funding-source must be existing or fanout.");
   }
@@ -692,8 +708,12 @@ export const parseStressCorpusGenerateConfig = (
       input.assumedAcceptanceLatencyMs ?? "1000",
       "--assumed-acceptance-latency-ms",
     ),
-    walletsDir: String(input.walletsDir ?? DEFAULT_STRESS_WALLET_DIR),
-    outDir: String(input.outDir ?? defaultOutDir()),
+    walletsDir: parseString(
+      input.walletsDir,
+      DEFAULT_STRESS_WALLET_DIR,
+      "--wallets-dir",
+    ),
+    outDir: parseString(input.outDir, defaultOutDir(), "--out-dir"),
     workers: parsePositiveInteger(
       input.workers ?? String(Math.max(1, cpus().length - 1)),
       "--workers",
@@ -702,7 +722,11 @@ export const parseStressCorpusGenerateConfig = (
       sliceWalletCounts?.length ??
       parsePositiveInteger(input.slices ?? "1", "--slices"),
     ...(sliceWalletCounts === undefined ? {} : { sliceWalletCounts }),
-    corpusSliceIdPrefix: String(input.corpusSliceIdPrefix ?? "default"),
+    corpusSliceIdPrefix: parseString(
+      input.corpusSliceIdPrefix,
+      "default",
+      "--corpus-slice-id-prefix",
+    ),
     fundingSource,
     network: parseNetwork(input.network, env),
     rebuildSampleRate: parsePositiveRate(

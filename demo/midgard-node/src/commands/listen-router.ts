@@ -1142,10 +1142,10 @@ const getTxHandler = Effect.gen(function* () {
   const txHashBytes = parseFixedHexParam(txHashParam, 32);
   if (txHashBytes === null) {
     yield* Effect.logInfo(
-      `GET /${TX_ENDPOINT} - Invalid transaction hash: ${txHashParam}`,
+      `GET /${TX_ENDPOINT} - Invalid transaction hash: ${String(txHashParam)}`,
     );
     return yield* HttpServerResponse.json(
-      { error: `Invalid transaction hash: ${txHashParam}` },
+      { error: `Invalid transaction hash: ${String(txHashParam)}` },
       { status: 404 },
     );
   }
@@ -1158,14 +1158,14 @@ const getTxHandler = Effect.gen(function* () {
         const fromImmutable =
           yield* ImmutableDB.retrieveTxCborByHash(txHashBytes);
         yield* Effect.logInfo(
-          `GET /${TX_ENDPOINT} - Transaction found in ImmutableDB: ${txHashParam}`,
+          `GET /${TX_ENDPOINT} - Transaction found in ImmutableDB: ${String(txHashParam)}`,
         );
         return fromImmutable;
       }),
     ),
   );
   yield* Effect.logInfo(
-    `GET /${TX_ENDPOINT} - Transaction found in mempool: ${txHashParam}`,
+    `GET /${TX_ENDPOINT} - Transaction found in mempool: ${String(txHashParam)}`,
   );
   yield* Effect.logInfo("foundCbor", SDK.bufferToHex(foundCbor));
   return yield* HttpServerResponse.json({
@@ -1192,10 +1192,10 @@ const getUtxosHandler = Effect.gen(function* () {
 
   if (typeof addr !== "string") {
     yield* Effect.logInfo(
-      `GET /${UTXOS_ENDPOINT} - Invalid address type: ${addr}`,
+      `GET /${UTXOS_ENDPOINT} - Invalid address type: ${String(addr)}`,
     );
     return yield* HttpServerResponse.json(
-      { error: `Invalid address type: ${addr}` },
+      { error: `Invalid address type: ${String(addr)}` },
       { status: 400 },
     );
   }
@@ -1340,7 +1340,7 @@ const getTxStatusHandler = Effect.gen(function* () {
   const txHashBytes = parseFixedHexParam(txHashParam, 32);
   if (txHashBytes === null) {
     return yield* HttpServerResponse.json(
-      { error: `Invalid transaction hash: ${txHashParam}` },
+      { error: `Invalid transaction hash: ${String(txHashParam)}` },
       { status: 400 },
     );
   }
@@ -2180,22 +2180,22 @@ const getBlockHandler = Effect.gen(function* () {
   const params = yield* ParsedSearchParams;
   const hdrHash = params["header_hash"];
   yield* Effect.logInfo(
-    `GET /block - Request received for header_hash: ${hdrHash}`,
+    `GET /block - Request received for header_hash: ${String(hdrHash)}`,
   );
 
   const headerHash = parseFixedHexParam(hdrHash, 28);
   if (headerHash === null) {
     yield* Effect.logInfo(
-      `GET /${BLOCK_ENDPOINT} - Invalid block hash: ${hdrHash}`,
+      `GET /${BLOCK_ENDPOINT} - Invalid block hash: ${String(hdrHash)}`,
     );
     return yield* HttpServerResponse.json(
-      { error: `Invalid block hash: ${hdrHash}` },
+      { error: `Invalid block hash: ${String(hdrHash)}` },
       { status: 400 },
     );
   }
   const hashes = yield* BlocksDB.retrieveTxHashesByHeaderHash(headerHash);
   yield* Effect.logInfo(
-    `GET /${BLOCK_ENDPOINT} - Found ${hashes.length} txs for block: ${hdrHash}`,
+    `GET /${BLOCK_ENDPOINT} - Found ${hashes.length} txs for block: ${String(hdrHash)}`,
   );
   return yield* HttpServerResponse.json({
     hashes: hashes.map(SDK.bufferToHex),
@@ -2268,12 +2268,12 @@ const getCommitEndpoint = Effect.gen(function* () {
   yield* Effect.logInfo(
     `GET /${COMMIT_ENDPOINT} - Manual block commitment order received`,
   );
-  const result = yield* blockCommitmentAction;
+  yield* blockCommitmentAction;
   yield* Effect.logInfo(
-    `GET /${COMMIT_ENDPOINT} - Block commitment successful: ${result}`,
+    `GET /${COMMIT_ENDPOINT} - Block commitment successful`,
   );
   return yield* HttpServerResponse.json({
-    message: `Block commitment successful: ${result}`,
+    message: "Block commitment successful",
   });
 }).pipe(
   Effect.catchTag("HttpBodyError", (e) =>
@@ -2348,10 +2348,10 @@ const getTxsOfAddressHandler = Effect.gen(function* () {
 
   if (typeof addr !== "string") {
     yield* Effect.logInfo(
-      `GET /${ADDRESS_HISTORY_ENDPOINT} - Invalid address type: ${addr}`,
+      `GET /${ADDRESS_HISTORY_ENDPOINT} - Invalid address type: ${String(addr)}`,
     );
     return yield* HttpServerResponse.json(
-      { error: `Invalid address type: ${addr}` },
+      { error: `Invalid address type: ${String(addr)}` },
       { status: 400 },
     );
   }

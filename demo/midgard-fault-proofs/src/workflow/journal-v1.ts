@@ -121,7 +121,7 @@ export const normalizeFraudProofWorkflowIdentityV1 = (
     identity.schemaVersion !== FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION
   ) {
     throw new Error(
-      `workflow identity schemaVersion must be ${FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION}`,
+      `workflow identity schemaVersion must be ${String(FRAUD_PROOF_WORKFLOW_IDENTITY_V1_SCHEMA_VERSION)}`,
     );
   }
   if (
