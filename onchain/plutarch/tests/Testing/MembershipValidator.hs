@@ -6,11 +6,12 @@ import Test.Tasty
 import Test.Tasty.HUnit
 
 -- import Midgard.Utils (pand'List, pintToByteString)
-import Testing.Eval (psucceeds)
+import Testing.Eval (pfails, psucceeds)
 
 -- import Midgard.Crypto (pethereumPubKeyToPubKeyHash, pcompressPublicKey)
 
 import Codec.Serialise (deserialise)
+import Data.ByteString qualified as BS
 import Data.ByteString.Base16.Lazy qualified as BS16
 import Data.ByteString.Lazy.Char8 qualified as BS8
 import Plutarch.Internal.Term
@@ -19,11 +20,13 @@ import Plutarch.MerkleTree.PatriciaForestry (MerklePatriciaForestry (..), ProofS
 import Plutarch.Prelude
 import PlutusCore.Data qualified as PD
 import PlutusLedgerApi.V3 hiding (POSIXTime)
+import PlutusTx.Builtins (fromBuiltin, toBuiltin)
+import PlutusTx.Builtins qualified as Builtins
 import PlutusTx.Builtins.HasOpaque (stringToBuiltinByteStringHex)
 import PlutusTx.IsData qualified as PlutusTx
 import Testing.ScriptContextBuilder (buildScriptContext, withRewardingScript)
-import Types.Membership (MerkleMembershipRedeemer (..), MerkleNonMembershipRedeemer (..))
-import Validators.Membership (membershipStakeValidator, nonMembershipStakeValidator)
+import MerkleTree.Types.Membership (MerkleMembershipRedeemer (..), MerkleNonMembershipRedeemer (..))
+import MerkleTree.Validators.Membership (membershipStakeValidator, nonMembershipStakeValidator)
 
 -- | Collects the tests defined in this module.
 -- | Aggregates the membership-validator test cases.
@@ -46,6 +49,10 @@ tests =
         psucceeds $
           nonMembershipStakeValidator #$ pconstant . buildScriptContext $
             withRewardingScript (toBuiltinData simpleNonMembershipRedeemer) nonMembershipValidatorCredential 0
+    , testCase "Canonical Fork Non Membership" $
+        psucceeds (runRawNonMembership canonicalForkNonMembershipRedeemer)
+    , testCase "Obsolete Bare-List Fork Neighbor" $
+        pfails (runRawNonMembership obsoleteForkNonMembershipRedeemer)
     ]
 
 -- | Defines the credential used for membership-validator test contexts.
@@ -115,6 +122,42 @@ simpleNonMembershipRedeemer =
     , mnmInputKey = stringToBuiltinByteStringHex "cafe"
     , mnmInputProof = parseProofCBOR "9fd87b9f005820f3e925002fed7cc0ded46842569eb5c90c910c091d8d04a1bdf96e0db719fd915820888938a89cccc775894c0a433c2f7d7bfee5a7d64ac5563c22ca54b8a0cc4644ffff"
     }
+
+-- A terminal skip-1 Fork exercises both Aiken's neighbour ABI and its
+-- excluding arithmetic: the reconstructed prefix is just nibble : prefix.
+canonicalForkNonMembershipRedeemer :: BuiltinData
+canonicalForkNonMembershipRedeemer = forkNonMembershipRedeemer canonicalNeighbor
+
+obsoleteForkNonMembershipRedeemer :: BuiltinData
+obsoleteForkNonMembershipRedeemer = forkNonMembershipRedeemer obsoleteNeighbor
+
+forkNonMembershipRedeemer :: PD.Data -> BuiltinData
+forkNonMembershipRedeemer neighbor =
+  dataToBuiltinData $
+    PD.List
+      [ PD.B forkRoot
+      , PD.B "fork-key"
+      , PD.List [PD.Constr 1 [PD.I 1, neighbor]]
+      ]
+
+canonicalNeighbor, obsoleteNeighbor :: PD.Data
+canonicalNeighbor = PD.Constr 0 neighborFields
+obsoleteNeighbor = PD.List neighborFields
+
+neighborFields :: [PD.Data]
+neighborFields = [PD.I 2, PD.B "\xbb", PD.B nullHash]
+
+forkRoot, nullHash :: BS.ByteString
+forkRoot =
+  fromBuiltin $
+    Builtins.blake2b_256 $
+      toBuiltin ("\x02\xbb" <> nullHash)
+nullHash = BS.replicate 32 0
+
+runRawNonMembership :: BuiltinData -> Term s PUnit
+runRawNonMembership redeemer =
+  nonMembershipStakeValidator #$ pconstant . buildScriptContext $
+    withRewardingScript redeemer nonMembershipValidatorCredential 0
 
 -- | Given a hex string representing a CBOR encoded proof, parse it into the corresponding list of ProofSteps.
 parseProofCBOR :: String -> [ProofStep]
