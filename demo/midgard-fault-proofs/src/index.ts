@@ -1,6 +1,5 @@
 export * from "./aiken-blueprint-data.js";
 export * from "./canonical-decodability/index.js";
-export * from "./claim-registry-transaction-v1.js";
 export * from "./committed-field-shape/index.js";
 export * from "./cross-block-duplicate-event/index.js";
 export * from "./evidence/index.js";

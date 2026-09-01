@@ -2,7 +2,6 @@ use aiken/collection/dict
 use aiken/collection/list
 use cardano/assets.{AssetName, PolicyId, quantity_of}
 use cardano/transaction.{OutputReference, Transaction}
-use midgard/claim_registry_v1 as claim_registry
 use midgard/correction_lock
 
 pub fn hub_mint_set_is_exact(
@@ -12,7 +11,6 @@ pub fn hub_mint_set_is_exact(
 ) -> Bool {
   let qty = quantity_of(mint, policy_id, hub_oracle_asset_name)
   dict.to_pairs(assets.tokens(mint, policy_id)) == [
-    Pair(claim_registry.asset_name, qty),
     Pair(correction_lock.asset_name, qty),
     Pair(hub_oracle_asset_name, qty),
   ]
@@ -45,22 +43,16 @@ const test_policy: ByteArray =
 
 const test_hub_asset_name: ByteArray = "MIDGARD_HUB_ORACLE"
 
-test hub_policy_accepts_equal_claim_registry_correction_lock_and_hub_quantities() {
+test hub_policy_accepts_equal_correction_lock_and_hub_quantities() {
   and {
     hub_mint_set_is_exact(
-      assets.from_asset(test_policy, claim_registry.asset_name, 1)
-        |> assets.merge(
-            assets.from_asset(test_policy, correction_lock.asset_name, 1),
-          )
+      assets.from_asset(test_policy, correction_lock.asset_name, 1)
         |> assets.merge(assets.from_asset(test_policy, test_hub_asset_name, 1)),
       test_policy,
       test_hub_asset_name,
     ),
     hub_mint_set_is_exact(
-      assets.from_asset(test_policy, claim_registry.asset_name, -1)
-        |> assets.merge(
-            assets.from_asset(test_policy, correction_lock.asset_name, -1),
-          )
+      assets.from_asset(test_policy, correction_lock.asset_name, -1)
         |> assets.merge(assets.from_asset(test_policy, test_hub_asset_name, -1)),
       test_policy,
       test_hub_asset_name,
@@ -70,23 +62,16 @@ test hub_policy_accepts_equal_claim_registry_correction_lock_and_hub_quantities(
 
 test hub_policy_rejects_unequal_correction_lock_quantity() {
   !hub_mint_set_is_exact(
-    assets.from_asset(test_policy, claim_registry.asset_name, 1)
-      |> assets.merge(
-          assets.from_asset(test_policy, correction_lock.asset_name, 2),
-        )
+    assets.from_asset(test_policy, correction_lock.asset_name, 2)
       |> assets.merge(assets.from_asset(test_policy, test_hub_asset_name, 1)),
     test_policy,
     test_hub_asset_name,
   )
 }
 
-test hub_policy_rejects_unequal_claim_registry_quantity() {
+test hub_policy_rejects_missing_correction_lock() {
   !hub_mint_set_is_exact(
-    assets.from_asset(test_policy, claim_registry.asset_name, 2)
-      |> assets.merge(
-          assets.from_asset(test_policy, correction_lock.asset_name, 1),
-        )
-      |> assets.merge(assets.from_asset(test_policy, test_hub_asset_name, 1)),
+    assets.from_asset(test_policy, test_hub_asset_name, 1),
     test_policy,
     test_hub_asset_name,
   )
@@ -94,10 +79,7 @@ test hub_policy_rejects_unequal_claim_registry_quantity() {
 
 test hub_policy_rejects_extra_asset_name() {
   !hub_mint_set_is_exact(
-    assets.from_asset(test_policy, claim_registry.asset_name, 1)
-      |> assets.merge(
-          assets.from_asset(test_policy, correction_lock.asset_name, 1),
-        )
+    assets.from_asset(test_policy, correction_lock.asset_name, 1)
       |> assets.merge(assets.from_asset(test_policy, test_hub_asset_name, 1))
       |> assets.merge(assets.from_asset(test_policy, "EXTRA", 1)),
     test_policy,

@@ -24,11 +24,6 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  type PreparedClaimRegistryMutationV1,
-  prepareFamilyClaimRegistryMutationV1,
-  requirePreparedClaimRegistryMutationV1,
-} from "../claim-registry-transaction-v1.js";
-import {
   type FaultProofFieldOpeningPlanV1,
   faultProofFieldOpeningV1,
   publishFaultProofFieldCarriageV1,
@@ -152,7 +147,6 @@ export const submitNetworkIdStep02 = async ({
   outputsOpeningPlan,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  claimRegistryMutation,
   publishedPredecessorProofChunks,
   certificateUtxos = [],
   preSubmitBoundary,
@@ -173,7 +167,6 @@ export const submitNetworkIdStep02 = async ({
   /** Mandatory published Q35 step-02 reference script. */
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
   /** Optional published carriage for the predecessor proof. */
   readonly publishedPredecessorProofChunks?: readonly PublishedProofChunkV1[];
   /** Existing §8.6 certificate UTxOs, required only for tier 3. */
@@ -366,22 +359,6 @@ export const submitNetworkIdStep02 = async ({
     referenceUtxo: witnessReferenceScripts.fraudProofMint,
     label: `${STEP_LABEL} fraud-proof mint`,
   });
-  const resolvedClaimRegistryMutation = requirePreparedClaimRegistryMutationV1({
-    mutation:
-      claimRegistryMutation ??
-      (await prepareFamilyClaimRegistryMutationV1({
-        lucid,
-        claimRegistry: contracts.claimRegistry,
-        claimRegistryReferenceUtxo: witnessReferenceScripts.claimRegistrySpend,
-        hubOraclePolicyId: contracts.hubOraclePolicyId,
-        computationThreadPolicyId: contracts.computationThread.policyId,
-        claimId: threadToken.assetName,
-        kind: "close",
-      })),
-    kind: "close",
-    claimId: threadToken.assetName,
-    label: STEP_LABEL,
-  });
   // Every positional opening index is derived only after the transaction's
   // complete reference-input set has been assembled.
   const referenceInputs = uniqueUtxos([
@@ -392,7 +369,6 @@ export const submitNetworkIdStep02 = async ({
     ...(predecessorCarriage?.referenceInputs ?? []),
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
-    ...resolvedClaimRegistryMutation.referenceInputs,
   ]);
   const predecessorChunkIndices = derivedChunkReferenceIndices({
     referenceInputs,
@@ -610,7 +586,7 @@ export const submitNetworkIdStep02 = async ({
       },
     )
     .addSignerKey(signer.paymentKeyHash);
-  const claimBound = resolvedClaimRegistryMutation.apply(minted);
+  const claimBound = minted;
   const unsigned = await fraudProofMintCarriage
     .attach(
       computationThreadMintCarriage.attach(
@@ -656,11 +632,6 @@ export const submitNetworkIdStep02 = async ({
         role: "V1 fraud-proof token minting",
         utxo: witnessReferenceScripts.fraudProofMint,
         expectedScript: contracts.fraudProof.mintingScript,
-      }),
-      workflowReferenceScriptV1({
-        role: "claim-registry spending",
-        utxo: resolvedClaimRegistryMutation.referenceScriptUtxo,
-        expectedScript: resolvedClaimRegistryMutation.registryScript,
       }),
     ],
     boundary: preSubmitBoundary,

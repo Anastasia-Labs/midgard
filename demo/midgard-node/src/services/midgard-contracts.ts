@@ -1138,12 +1138,6 @@ export const midgardContractsFromDeploymentManifest = (
       sourcePath,
       "correctionLockSpend",
     ),
-    claimRegistry: spendingValidatorFromManifest(
-      network,
-      manifest,
-      sourcePath,
-      "claimRegistrySpend",
-    ),
     stateQueue: authenticatedValidatorFromManifest(
       network,
       manifest,
@@ -1274,10 +1268,6 @@ export const REAL_STATE_QUEUE_SCRIPT_TITLES = {
 
 export const REAL_CORRECTION_LOCK_SCRIPT_TITLES = {
   spend: "correction_lock.spend.spend",
-} as const;
-
-export const REAL_CLAIM_REGISTRY_SCRIPT_TITLES = {
-  spend: "claim_registry.spend.spend",
 } as const;
 
 export const REAL_DA_PARAMS_GOVERNOR_SCRIPT_TITLES = {
@@ -1677,7 +1667,6 @@ const buildRealComputationThreadValidator = (
       yield* applyBlueprintDeclaredParams(mintValidator, [
         contracts.fraudProofCatalogue.policyId,
         contracts.hubOracle.policyId,
-        contracts.claimRegistry.spendingScriptHash,
       ]),
     );
   });
@@ -2182,8 +2171,6 @@ const buildRealStateQueueValidator = (
       [
         contracts.hubOracle.policyId,
         contracts.correctionLock.spendingScriptHash,
-        contracts.claimRegistry.spendingScriptHash,
-        contracts.computationThread.policyId,
         contracts.activeOperators.policyId,
         activeOperatorsAddress,
         contracts.retiredOperators.policyId,
@@ -2218,22 +2205,6 @@ const buildRealCorrectionLockValidator = (
         hubOraclePolicyId,
         availabilityChallengePolicyId,
       ]),
-    );
-  });
-
-const buildRealClaimRegistryValidator = (
-  network: Network,
-  hubOraclePolicyId: string,
-): Effect.Effect<SDK.SpendingValidator, Error> =>
-  Effect.gen(function* () {
-    const blueprint = yield* loadRealBlueprint();
-    const spendValidator = yield* getBlueprintValidator(
-      blueprint,
-      REAL_CLAIM_REGISTRY_SCRIPT_TITLES.spend,
-    );
-    return makeSpendingValidator(
-      network,
-      yield* applyBlueprintDeclaredParams(spendValidator, [hubOraclePolicyId]),
     );
   });
 
@@ -2530,16 +2501,11 @@ export const withRealStateQueueAndOperatorContracts = (
       realHubOracle.policyId,
       realAvailabilityChallenge.policyId,
     );
-    const realClaimRegistry = yield* buildRealClaimRegistryValidator(
-      network,
-      realHubOracle.policyId,
-    );
     const withRealHubOracle: SDK.MidgardValidators = {
       ...baseContracts,
       referenceScriptAuth: deploymentParameters.referenceScriptAuth,
       hubOracle: realHubOracle,
       correctionLock: realCorrectionLock,
-      claimRegistry: realClaimRegistry,
       availabilityChallenge: realAvailabilityChallenge,
     };
 

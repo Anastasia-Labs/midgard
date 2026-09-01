@@ -1816,17 +1816,6 @@
       },
       "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
     },
-    "claimRegistrySpend": {
-      "refScriptUTxO": {
-        "txHash": "8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a",
-        "outputIndex": 0
-      },
-      "contract": {
-        "type": "PlutusV3",
-        "cborHex": "525101010023259800a518a4d136564004ae69"
-      },
-      "scriptHash": "bd3ae991b5aafccafe5ca70758bd36a9b2f872f57f6d3a1ffa0eb777"
-    },
     "fraudProofMinAdaStep03": {
       "refScriptUTxO": {
         "txHash": "8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b",

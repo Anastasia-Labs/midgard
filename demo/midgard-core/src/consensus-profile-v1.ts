@@ -115,12 +115,15 @@ export const MIDGARD_V1_ENVELOPE_MEASUREMENTS = Object.freeze({
   // regenerated blueprint by the three
   // demo/midgard-fault-proofs/tests/submit-init-emulator-option-b-*-v1
   // suites (7/7 green in the re-pin lane, at items 8,277 / 13,522 / 13,523 /
-  // 14,004 / 14,005 / 14,336).
+  // 14,058 / 14,059 / 14,336). Removing the claim-registry witness freed 56
+  // transaction bytes; 54 became item capacity after a CBOR framing-width
+  // crossing. The owner-signed 13,522 reserve cost steer intentionally did
+  // not move and therefore retained all 56 transaction bytes as headroom.
   //
   // Adjacent-item probe ledger (signed OBSERVE bytes; the frontier is the
   // largest item whose transaction the builder completes):
   //   item 13,522 -> 15,872 (= budget)   item 13,523 -> 15,888, completes
-  //   item 14,004 -> 16,369 (margin 15)  item 14,005 -> refused PRE-SIGN at
+  //   item 14,058 -> 16,369 (margin 15)  item 14,059 -> refused PRE-SIGN at
   //                                      a projected 16,385 > maxTxSize,
   //                                      auto-demoting to the publication
   //                                      fallback and completing by
@@ -128,22 +131,23 @@ export const MIDGARD_V1_ENVELOPE_MEASUREMENTS = Object.freeze({
   //
   // The two review-mandated caveats that must ride these numbers, verbatim
   // from the #622 owner sign-off table:
-  //   1. *Framing-relative*: 13,522/14,004 are measured under this fixture
+  //   1. *Framing-relative*: 13,522/14,058 are measured under this fixture
   //      family's journey framing (constant 1,926–1,927 bytes across all
   //      measured items). A different production framing shifts them by tens
   //      of bytes — a routing-cost effect only; the pre-sign projection +
   //      envelope gate are the operative guards and are proven live at
-  //      14,005.
+  //      14,059.
   //   2. *Quantization ladder*: signed observe size is nonmonotone near the
   //      envelope (CBOR integer-width crossings in fee/change, +16/−4
   //      jumps); **no in-family item signs at exactly 16,384** — the usable
-  //      frontier is the contiguous 14,004. The 512-byte reserve absorbs the
+  //      frontier is the contiguous 14,058. The 512-byte reserve plus the
+  //      retained 56-byte claim-registry-removal headroom absorbs the
   //      ≤16-byte wobble.
   //
   // The retired per-stage rows re-derive in the same pass, as the ruling
   // requires. At the reserve frontier the item-independent stages measure
-  // prepare-selected 1,864 / authenticate 2,656 / source 7,895 / proof 5,701
-  // / settle 5,064, byte-identical across every measured item from 8,277 to
+  // prepare-selected 1,808 / authenticate 2,600 / source 1,855 / proof 1,880
+  // / settle 623, byte-identical across every measured item from 8,277 to
   // 14,336 - which is exactly why rebinding these two frontiers changes
   // routing only inside the complete-item lane. The `...ProofTransaction`
   // row keeps its established reading (the largest transaction of the
@@ -151,25 +155,25 @@ export const MIDGARD_V1_ENVELOPE_MEASUREMENTS = Object.freeze({
   // places on the budget); post-Option-B that transaction is the observe
   // door rather than authenticate, which is the whole of the change to the
   // three per-stage rows below.
-  maxExactDirectCompleteItemBytes: 14_004,
+  maxExactDirectCompleteItemBytes: 14_058,
   maxReliableDirectCompleteItemBytes: 13_522,
-  maxReliableDirectCompleteItemProofTransactionBytes: 15_872,
-  maxReliableDirectCompleteItemAuthenticationTransactionBytes: 2_656,
-  maxReliableDirectCompleteItemObservationTransactionBytes: 15_872,
+  maxReliableDirectCompleteItemProofTransactionBytes: 15_816,
+  maxReliableDirectCompleteItemAuthenticationTransactionBytes: 2_600,
+  maxReliableDirectCompleteItemObservationTransactionBytes: 15_816,
   // Reference route, re-pinned from the same #622 table at that route's own
   // frontier: item 14,336, the measured tier-1 stageability boundary (14,336
   // stages, 14,337 refuses as tier-2 carriage). The `...ProofTransaction`
   // row names the transaction that carries the proof with the item resolved
   // by reference; post-Option-B the observe door IS that transaction, so it
-  // and the observation row are one and the same 1,959-byte measurement, and
+  // and the observation row are one and the same 1,903-byte measurement, and
   // its two reference inputs are its own reference script plus the published
   // proof item. Measured reference-input counts across the six-transaction
   // reference leg (publication, authenticate, source, observe, proof,
-  // settle): [0, 1, 0, 2, 0, 0]. The item itself rides the 15,135-byte
+  // settle): [0, 1, 1, 2, 1, 1]. The item itself rides the 15,107-byte
   // section 8 publication, pinned by the publication rows above.
-  referenceCompleteItemProofTransactionBytes: 1_959,
-  referenceCompleteItemAuthenticationTransactionBytes: 2_656,
-  referenceCompleteItemObservationTransactionBytes: 1_959,
+  referenceCompleteItemProofTransactionBytes: 1_903,
+  referenceCompleteItemAuthenticationTransactionBytes: 2_600,
+  referenceCompleteItemObservationTransactionBytes: 1_903,
   referenceCompleteItemProofReferenceInputCount: 2,
   maxGeneralFieldResolverArgumentsBytes: 14_082,
   maxLedgerOutputResolverArgumentsBytes: 13_459,

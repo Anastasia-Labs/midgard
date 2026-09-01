@@ -7,11 +7,7 @@ import {
   parseDeploymentManifestV1Economics,
   verifyFinalizedDeploymentManifestV1,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
-import {
-  buildClaimRegistrySpendingValidator,
-  type FraudProofCatalogueCategoryName,
-  parseFaultProofBlueprint,
-} from "@al-ft/midgard-sdk";
+import { type FraudProofCatalogueCategoryName } from "@al-ft/midgard-sdk";
 import {
   credentialToAddress,
   type Network,
@@ -20,17 +16,12 @@ import {
   validatorToAddress,
   validatorToScriptHash,
 } from "@lucid-evolution/lucid";
-import { Effect } from "effect";
 
-import type { FaultProofClaimRegistryContractV1 } from "../claim-registry-transaction-v1.js";
 import {
   type ContractDeploymentInfo,
   parseContractDeploymentInfo,
 } from "../inspect-contracts.js";
-import {
-  requireDeploymentScriptHash,
-  resolveFaultProofDeploymentContracts,
-} from "../runtime.js";
+import { resolveFaultProofDeploymentContracts } from "../runtime.js";
 import type { FraudProofRawL1FamilyDefinitionV1 } from "./raw-l1-family-derivation-v1.js";
 import {
   computeFraudProofReleaseEconomicsPolicyDigestV1,
@@ -128,13 +119,6 @@ export type FraudProofWorkflowDeploymentBindingV1<
   readonly resolvedContracts: Awaited<
     ReturnType<typeof resolveFaultProofDeploymentContracts>
   >;
-  /**
-   * The applied `claim_registry.spend` validator, derived from the manifest's
-   * own blueprint and cross-checked against the deployed script hash. Every
-   * arm of `computation_thread.mint` requires the claim-registry input, so the
-   * family contracts records this binding assembles carry it.
-   */
-  readonly claimRegistry: FaultProofClaimRegistryContractV1;
 };
 
 /** Closed authority view over the already verified finalized manifest. */
@@ -459,22 +443,6 @@ export const bindFraudProofWorkflowDeploymentV1 = async <
       );
     }
   }
-  const claimRegistry = await Effect.runPromise(
-    buildClaimRegistrySpendingValidator({
-      blueprint: parseFaultProofBlueprint(blueprint),
-      network: manifest.network,
-      hubOraclePolicyId: resolvedContracts.hubOraclePolicyId,
-    }),
-  );
-  const deployedClaimRegistryHash = requireDeploymentScriptHash(
-    deploymentInfo,
-    "claimRegistrySpend",
-  );
-  if (claimRegistry.spendingScriptHash !== deployedClaimRegistryHash) {
-    throw new Error(
-      `claim-registry script hash differs from the finalized manifest: manifest=${deployedClaimRegistryHash} derived=${claimRegistry.spendingScriptHash}`,
-    );
-  }
   const policies = releasePolicies(manifest);
   const fieldPreimageCertificateCandidate =
     "fieldPreimageCertificate" in resolvedContracts.contracts
@@ -597,6 +565,5 @@ export const bindFraudProofWorkflowDeploymentV1 = async <
       ),
     },
     resolvedContracts,
-    claimRegistry,
   };
 };

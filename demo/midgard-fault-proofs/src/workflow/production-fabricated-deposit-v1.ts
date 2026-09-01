@@ -4,21 +4,14 @@ import {
   FabricatedDepositStep04Datum,
   FraudProofComputationThreadStepDatum,
 } from "@al-ft/midgard-sdk";
-import {
-  credentialToAddress,
-  type LucidEvolution,
-  type UTxO,
-} from "@lucid-evolution/lucid";
+import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import {
   type StateQueueMutationLease,
   type StateQueueMutationLeaseCoordinator,
   submitRemoveFraudulentBlock,
 } from "../remove-fraudulent-block.js";
-import {
-  requireDeploymentScriptHash,
-  type ResolvedProverSigner,
-} from "../runtime.js";
+import { type ResolvedProverSigner } from "../runtime.js";
 import {
   type FabricatedDepositContractsV1,
   parseSubmitFabricatedDepositInclusion,
@@ -54,11 +47,6 @@ import {
   runFraudProofWorkflowFromRetainedDaV1,
 } from "./orchestrator-v1.js";
 import {
-  createProductionClaimRegistryPrerequisiteV1,
-  type ProductionClaimRegistryPrerequisiteV1,
-  type ProductionClaimRegistryPublicProofDeriverV1,
-} from "./production-claim-registry-prerequisite-v1.js";
-import {
   createProductionFabricatedDepositEvidenceAuthorityV1,
   type ProductionFabricatedDepositEvidenceAuthorityV1,
   requireProductionFabricatedDepositArtifactV1,
@@ -68,7 +56,6 @@ import {
   PRODUCTION_LINEAR_FAMILY_TRANSACTION_PORT_V1,
   type ProductionLinearFamilyTransactionPortV1,
 } from "./production-linear-family-adapter-v1.js";
-import { withProductionProofChunkPrerequisiteV1 } from "./production-proof-chunk-prerequisite-v1.js";
 import type { FraudProofReleaseFinalityAuthorityV1 } from "./release-finality-policy-v1.js";
 import {
   captureLocallyEvaluatedTransactionV1,
@@ -79,7 +66,6 @@ import {
 export type FabricatedDepositWorkflowReferenceScriptsV1 = Readonly<{
   steps: readonly [UTxO, UTxO, UTxO, UTxO];
   witnesses: FaultProofWitnessReferenceScriptsV1 & {
-    readonly claimRegistrySpend: UTxO;
     readonly computationThreadMint: UTxO;
     readonly fraudProofMint: UTxO;
   };
@@ -92,7 +78,6 @@ type BoundConfigV1 = Readonly<{
   contracts: FabricatedDepositContractsV1;
   references: FabricatedDepositWorkflowReferenceScriptsV1;
   evidence: ProductionFabricatedDepositEvidenceAuthorityV1;
-  claimRegistry: ProductionClaimRegistryPrerequisiteV1<"fabricatedDeposit">;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
@@ -219,11 +204,6 @@ const transactionPort = (
     );
     const input = actionInput(action);
     if (input.stage === "init") {
-      const mutation = await config.claimRegistry.resolveMutation({
-        headerHash: admitted.headerHash,
-        action,
-        artifact,
-      });
       return Object.freeze({
         transaction: await captureLocallyEvaluatedTransactionV1(
           async (preSubmitBoundary) => {
@@ -239,7 +219,6 @@ const transactionPort = (
                 "stateQueueBlockOutRef",
               ),
               fraudulentHeaderHash: admitted.headerHash,
-              preparedClaimRegistryMutation: mutation,
               witnessReferenceScripts: config.references.witnesses,
               preSubmitBoundary,
               awaitConfirmation: false,
@@ -323,11 +302,6 @@ const transactionPort = (
       });
     }
     if (input.stage === "step_04") {
-      const mutation = await config.claimRegistry.resolveMutation({
-        headerHash: admitted.headerHash,
-        action,
-        artifact,
-      });
       return Object.freeze({
         transaction: await captureLocallyEvaluatedTransactionV1(
           async (preSubmitBoundary) => {
@@ -338,7 +312,6 @@ const transactionPort = (
               threadOutRef: stringField(input, "threadOutRef"),
               referenceScriptUtxo: config.references.steps[3],
               witnessReferenceScripts: config.references.witnesses,
-              claimRegistryMutation: mutation,
               preSubmitBoundary,
               awaitConfirmation: false,
             });
@@ -364,7 +337,6 @@ export type ManifestBoundFabricatedDepositWorkflowConfigV1 = Readonly<{
   signer: ResolvedProverSigner;
   referenceScripts: FabricatedDepositWorkflowReferenceScriptsV1;
   source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
-  claimRegistryProofs: ProductionClaimRegistryPublicProofDeriverV1;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
@@ -431,7 +403,6 @@ export const createManifestBoundFabricatedDepositWorkflowV1 = async (
     {
       steps: Object.freeze(steps),
       witnesses: Object.freeze({
-        claimRegistrySpend: witness("claimRegistrySpend", "claimRegistrySpend"),
         computationThreadMint: witness(
           "computationThreadMint",
           "computationThreadMint",
@@ -451,7 +422,6 @@ export const createManifestBoundFabricatedDepositWorkflowV1 = async (
         binding.resolvedContracts.contracts.fraudProof.spendingScriptAddress,
     },
     hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
-    claimRegistry: binding.claimRegistry,
     stateQueuePolicyId,
     categoryId: binding.resolvedContracts.category.categoryId,
   });
@@ -472,39 +442,6 @@ export const createManifestBoundFabricatedDepositWorkflowV1 = async (
     hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
     minimumConfirmationDepth: binding.releaseFinality.policy.confirmationDepth,
   });
-  const claimRegistry = createProductionClaimRegistryPrerequisiteV1({
-    category: "fabricatedDeposit",
-    categoryId: binding.resolvedContracts.category.categoryId,
-    lucid: config.lucid,
-    blueprint: binding.blueprint,
-    deploymentInfo: binding.deploymentInfo,
-    network: binding.network,
-    signer: config.signer,
-    computationThreadPolicyId:
-      binding.resolvedContracts.contracts.computationThread.policyId,
-    claimRegistryAddress: credentialToAddress(binding.network, {
-      type: "Script",
-      hash: requireDeploymentScriptHash(
-        binding.deploymentInfo,
-        "claimRegistrySpend",
-      ),
-    }),
-    hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
-    rawL1: l1.rawL1,
-    releaseFinality: binding.releaseFinality,
-    publications: l1.publications,
-    proofs: config.claimRegistryProofs,
-    mutationForAction: ({ action }) => {
-      const stage = actionInput(action).stage;
-      return stage === "init"
-        ? { kind: "open" }
-        : stage === "step_04"
-          ? { kind: "close" }
-          : null;
-    },
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await l1.transactionConfirmed({ headerHash, txHash }),
-  });
   const transactions = transactionPort({
     binding,
     lucid: config.lucid,
@@ -512,7 +449,6 @@ export const createManifestBoundFabricatedDepositWorkflowV1 = async (
     contracts,
     references,
     evidence,
-    claimRegistry,
     stateQueueMutationLeaseCoordinator:
       config.stateQueueMutationLeaseCoordinator,
   });
@@ -522,11 +458,6 @@ export const createManifestBoundFabricatedDepositWorkflowV1 = async (
     transactions,
     stateQueueMutationLeaseCoordinator:
       config.stateQueueMutationLeaseCoordinator,
-  });
-  adapter = withProductionProofChunkPrerequisiteV1({
-    category: "fabricatedDeposit",
-    base: adapter,
-    prerequisite: claimRegistry.proofChunks,
   });
   return Object.freeze({
     binding,

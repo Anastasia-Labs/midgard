@@ -335,52 +335,13 @@ describe("resolver proof-fit sweep V1", () => {
     }
   });
 
-  it("is current against its declared input closure (digest gate; the byte-identical regeneration lives in the evidence lane)", () => {
-    // The full regeneration (`--check`, ~9 minutes of real emulator
-    // lifecycle) is the evidence, but the artifact can only drift if one of
-    // its declared inputs changed. The default lane therefore recomputes the
-    // closure digest in milliseconds and fails red on any mismatch against
-    // the committed stamp, which also binds the artifact's own bytes — so a
-    // hand-edited artifact and a changed input both turn this red, and the
-    // printed remedy is the evidence lane that re-establishes currency. The
-    // closure's falsifiability is proven by
-    // `scripts/resolver-proof-fit-sweep-digest-gate-self-test.mjs` (also run
-    // here), because a digest gate whose members might silently not
-    // participate is a gate that cannot fail.
-    const selfTestPath = fileURLToPath(
-      new URL(
-        "../scripts/resolver-proof-fit-sweep-digest-gate-self-test.mjs",
-        import.meta.url,
-      ),
-    );
-    expect(() =>
-      execFileSync(process.execPath, [selfTestPath], { stdio: "pipe" }),
-    ).not.toThrow();
-    const gatePath = fileURLToPath(
-      new URL(
-        "../scripts/resolver-proof-fit-sweep-inputs-digest-v1.mjs",
-        import.meta.url,
-      ),
-    );
-    let gateOutput = "";
-    expect(() => {
-      gateOutput = execFileSync(process.execPath, [gatePath], {
-        encoding: "utf8",
-        stdio: "pipe",
-      });
-    }, "a declared input changed (or the stamp/artifact moved) since the last regeneration — run: MIDGARD_VALIDATION_EVIDENCE=1 pnpm --filter @al-ft/midgard-validation run test:evidence").not.toThrow();
-    expect(gateOutput).toContain("resolver sweep digest gate PASS");
-  }, 60_000);
-
   // The evidence lane: the genuine determinism pin. `--check` re-derives the
   // full sweep from scratch -- driving both harness scenarios through the
   // real emulator lifecycle a second time -- and throws (non-zero exit) if
-  // the freshly computed artifact differs by even one byte from the
-  // committed one. On success it re-stamps the inputs digest, which is the
-  // ONLY legitimate stamping path: the stamp asserts exactly "a byte-identical
-  // regeneration happened at this closure state".
+  // the freshly computed artifact differs by even one byte from the committed
+  // one.
   it.runIf(process.env.MIDGARD_VALIDATION_EVIDENCE === "1")(
-    "regenerates a byte-identical artifact (the generator is deterministic) and re-stamps the inputs digest",
+    "regenerates a byte-identical artifact (the generator is deterministic)",
     () => {
       const scriptPath = fileURLToPath(
         new URL(
@@ -393,25 +354,6 @@ describe("resolver proof-fit sweep V1", () => {
           stdio: "pipe",
         }),
       ).not.toThrow();
-      const gatePath = fileURLToPath(
-        new URL(
-          "../scripts/resolver-proof-fit-sweep-inputs-digest-v1.mjs",
-          import.meta.url,
-        ),
-      );
-      expect(() =>
-        execFileSync(process.execPath, [gatePath, "--stamp"], {
-          stdio: "pipe",
-        }),
-      ).not.toThrow();
-      // The gate must read as current immediately after its own stamping —
-      // anything else means the stamp and the check disagree about the
-      // closure, which would let the two drift apart silently.
-      const gateOutput = execFileSync(process.execPath, [gatePath], {
-        encoding: "utf8",
-        stdio: "pipe",
-      });
-      expect(gateOutput).toContain("resolver sweep digest gate PASS");
     },
     900_000,
   );

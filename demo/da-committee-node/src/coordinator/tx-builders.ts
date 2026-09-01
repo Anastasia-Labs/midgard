@@ -223,8 +223,13 @@ export const buildApplyAttestationTx = async ({
   readonly daParamsUtxo: UTxO;
   readonly daParamsDatum: SDK.DaParamsDatum;
   readonly referenceScripts: DaAttestationReferenceScripts;
-}): Promise<TxSignBuilder> =>
-  completeWithLocalUplc(
+}): Promise<TxSignBuilder> => {
+  const validFrom = BigInt(lucid.slotToUnixTime(lucid.currentSlot()));
+  const deadline =
+    target.stateQueueNode.header.endTime + SDK.DA_ATTESTATION_TIMEOUT_MS;
+  const validTo =
+    validFrom + 120_000n < deadline ? validFrom + 120_000n : deadline;
+  return completeWithLocalUplc(
     await Effect.runPromise(
       SDK.incompleteApplyDaAttestationToStateQueueTxProgram(lucid, contracts, {
         hubOracleRefInput,
@@ -236,10 +241,12 @@ export const buildApplyAttestationTx = async ({
           datum: attestationDatum,
         },
         referenceScripts,
+        validityRange: { validFrom, validTo },
       }),
     ),
     "DA attestation apply",
   );
+};
 
 export const addSignaturesToDaAttestationDatum = (
   attestationDatum: SDK.DaAttestationDatum,

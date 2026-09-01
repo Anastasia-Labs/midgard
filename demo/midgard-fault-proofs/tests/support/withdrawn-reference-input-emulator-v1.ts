@@ -14,9 +14,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { prepareFamilyClaimRegistryMutationV1 } from "../../src/claim-registry-transaction-v1.js";
 import type { ResolvedProverSigner } from "../../src/runtime.js";
-import { excludeUtxo } from "../../src/spend-input-witness.js";
 import {
   nativeTxFromCoreCompact,
   selectFeeInput,
@@ -478,21 +476,7 @@ export const submitRawWithdrawnReferenceInputStep03V1 = async ({
       threadOutRef,
     });
   signer.selectWallet(lucid);
-  const claimRegistryMutation = await prepareFamilyClaimRegistryMutationV1({
-    lucid,
-    claimRegistry: contracts.claimRegistry,
-    claimRegistryReferenceUtxo: witnessReferenceScripts.claimRegistrySpend,
-    hubOraclePolicyId: contracts.hubOraclePolicyId,
-    computationThreadPolicyId: contracts.computationThread.policyId,
-    claimId: threadToken.assetName,
-    kind: "close",
-  });
-  const feeInput = selectFeeInput(
-    claimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
-      (utxos, reference) => excludeUtxo(utxos, reference),
-      await lucid.wallet().getUtxos(),
-    ),
-  );
+  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -593,7 +577,7 @@ export const submitRawWithdrawnReferenceInputStep03V1 = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const unsigned = await fraudProofCarriage
-    .attach(computationThreadCarriage.attach(claimRegistryMutation.apply(base)))
+    .attach(computationThreadCarriage.attach(base))
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
@@ -630,21 +614,7 @@ export const submitRawWithdrawnReferenceInputCancelV1 = async ({
       threadOutRef,
     });
   signer.selectWallet(lucid);
-  const claimRegistryMutation = await prepareFamilyClaimRegistryMutationV1({
-    lucid,
-    claimRegistry: contracts.claimRegistry,
-    claimRegistryReferenceUtxo: witnessReferenceScripts.claimRegistrySpend,
-    hubOraclePolicyId: contracts.hubOraclePolicyId,
-    computationThreadPolicyId: contracts.computationThread.policyId,
-    claimId: threadToken.assetName,
-    kind: "cancel",
-  });
-  const feeInput = selectFeeInput(
-    claimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
-      (utxos, reference) => excludeUtxo(utxos, reference),
-      await lucid.wallet().getUtxos(),
-    ),
-  );
+  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
   const spendRedeemer = ((ctx) => {
     SDK.requireOwnSpendPurpose(ctx, threadUtxo, "raw withdrawn cancel");
     return Data.to(
@@ -698,7 +668,7 @@ export const submitRawWithdrawnReferenceInputCancelV1 = async ({
     .mintAssets({ [threadToken.unit]: -1n }, threadBurn)
     .addSignerKey(signer.paymentKeyHash);
   const unsigned = await computationThreadCarriage
-    .attach(claimRegistryMutation.apply(base))
+    .attach(base)
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();

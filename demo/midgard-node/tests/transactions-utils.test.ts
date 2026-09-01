@@ -907,7 +907,7 @@ describe("sign/submit wrapper recovery options", () => {
         ),
       );
 
-      await vi.advanceTimersByTimeAsync(5_000);
+      await vi.advanceTimersByTimeAsync(0);
 
       await expect(confirmation).resolves.toBe("tx-emulator-confirmation");
       expect(awaitTx).toHaveBeenCalledWith("tx-emulator-confirmation", 100);

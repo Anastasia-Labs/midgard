@@ -21,11 +21,6 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  type PreparedClaimRegistryMutationV1,
-  prepareFamilyClaimRegistryMutationV1,
-  requirePreparedClaimRegistryMutationV1,
-} from "../claim-registry-transaction-v1.js";
-import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodePhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
@@ -80,7 +75,6 @@ export const submitWithdrawnInputInit = async ({
   fraudulentBlockOutRef,
   fraudulentHeaderHash,
   witnessReferenceScripts,
-  claimRegistryMutation,
   preSubmitBoundary,
   awaitConfirmation = true,
 }: {
@@ -98,7 +92,6 @@ export const submitWithdrawnInputInit = async ({
   readonly fraudulentBlockOutRef: string;
   readonly fraudulentHeaderHash?: string;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitWithdrawnInputInitResult> => {
@@ -226,27 +219,6 @@ export const submitWithdrawnInputInit = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  // The computation-thread `Init` arm requires the atomic claim-registry
-  // `OpenClaim` in the same transaction, so every family init opens its
-  // `(category, header)` claim here.
-  const resolvedClaimRegistryMutation = requirePreparedClaimRegistryMutationV1({
-    mutation:
-      claimRegistryMutation ??
-      (await prepareFamilyClaimRegistryMutationV1({
-        lucid,
-        claimRegistry: contracts.claimRegistry,
-        claimRegistryReferenceUtxo: witnessReferenceScripts.claimRegistrySpend,
-        hubOraclePolicyId: contracts.hubOraclePolicyId,
-        computationThreadPolicyId: contracts.computationThread.policyId,
-        categoryId: category.categoryId,
-        headerHash,
-        kind: "open",
-      })),
-    kind: "open",
-    claimId: computationThreadAssetName,
-    label: `${WITHDRAWN_INPUT_CATEGORY_LABEL} init`,
-  });
-
   signer.selectWallet(lucid);
   const base = lucid
     .newTx()
@@ -280,8 +252,8 @@ export const submitWithdrawnInputInit = async ({
       { [computationThreadUnit]: 1n },
     )
     .addSignerKey(signer.paymentKeyHash);
-  const tx = resolvedClaimRegistryMutation.apply(
-    membershipCarriage.attach(computationThreadMintCarriage.attach(base)),
+  const tx = membershipCarriage.attach(
+    computationThreadMintCarriage.attach(base),
   );
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (outputIndex === undefined) {
@@ -302,11 +274,6 @@ export const submitWithdrawnInputInit = async ({
           role: "membership proof withdrawal",
           utxo: witnessReferenceScripts?.phasMembershipWithdraw,
           expectedScript: membershipScript,
-        },
-        {
-          role: "claim-registry spending",
-          utxo: resolvedClaimRegistryMutation.referenceScriptUtxo,
-          expectedScript: resolvedClaimRegistryMutation.registryScript,
         },
       ],
     }),

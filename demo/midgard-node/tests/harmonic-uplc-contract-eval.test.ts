@@ -93,10 +93,10 @@ describe("@harmoniclabs/uplc evaluation against real Midgard contracts", () => {
   // correctly — the Midgard validator is fine, its evaluator is not.
   //
   // `hub-oracle.ak`'s `hub_mint_set_is_exact` now requires the policy's token
-  // dict to be EXACTLY claim-registry, correction-lock and hub-oracle at one
-  // shared quantity (the mint set below, in ascending asset-name order, which
-  // is what `dict.to_pairs` yields and what `incompleteHubOracleInitTxProgram`
-  // actually mints). Reading a quantity out of that three-entry dict makes the
+  // dict to be EXACTLY correction-lock and hub-oracle at one shared quantity
+  // (the mint set below, in ascending asset-name order, which is what
+  // `dict.to_pairs` yields and what `incompleteHubOracleInitTxProgram`
+  // actually mints). Reading a quantity out of that two-entry dict makes the
   // compiled `quantity_of` walk it with `lessThanEqualsByteString`, and
   // `@harmoniclabs/plutus-machine`'s implementation of that builtin is wrong:
   //
@@ -105,8 +105,8 @@ describe("@harmoniclabs/uplc evaluation against real Midgard contracts", () => {
   //
   // It orders by LENGTH first, where Plutus orders lexicographically. So the
   // machine answers `true` to both "MIDGARD_HUB_ORACLE" (18 bytes) <=
-  // "MIDGARD_CLAIM_REGISTRY" (22 bytes) AND its converse — not a total order at
-  // all. The dict walk therefore stops at the first key, reports quantity 0 for
+  // "MIDGARD_CORRECTION_LOCK" (23 bytes) AND its converse — not a total order
+  // at all. The dict walk therefore stops at the first key, reports quantity 0 for
   // the hub-oracle NFT, and `hub_mint_set_is_exact` compares the real dict
   // against a zero-quantity expectation and fails. The single-token mint this
   // test used before the exact-set rule never compared two different-length
@@ -117,7 +117,7 @@ describe("@harmoniclabs/uplc evaluation against real Midgard contracts", () => {
   // against a real ledger script context, by the real evaluator, in
   // `tests/initialization-emulator.test.ts` > "builds the hub-oracle mint
   // fragment in isolation" (`complete({ localUPLCEval: true })`), which passes
-  // with exactly this three-token mint. Re-enable this case (drop the `.skip`,
+  // with exactly this two-token mint. Re-enable this case (drop the `.skip`,
   // change nothing else) once the upstream builtin is fixed.
   it.skip("evaluates the real hub-oracle minting policy with a ledger-shaped script context", async () => {
     const contracts = await loadRealContracts();
@@ -125,7 +125,6 @@ describe("@harmoniclabs/uplc evaluation against real Midgard contracts", () => {
       [
         contracts.hubOracle.policyId,
         new Map([
-          [SDK.CLAIM_REGISTRY_ASSET_NAME, 1n],
           [SDK.CORRECTION_LOCK_ASSET_NAME, 1n],
           [SDK.HUB_ORACLE_ASSET_NAME, 1n],
         ]),

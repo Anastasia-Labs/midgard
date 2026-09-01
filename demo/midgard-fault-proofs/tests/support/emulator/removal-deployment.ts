@@ -29,7 +29,6 @@ import { type ValueNotPreservedContractsV1 } from "../../../src/value-not-preser
 import { type WithdrawalMistagContractsV1 } from "../../../src/withdrawal-mistag/index.js";
 import { type WithdrawnInputContractsV1 } from "../../../src/withdrawn-input/index.js";
 import { type WithdrawnReferenceInputContractsV1 } from "../../../src/withdrawn-reference-input/index.js";
-import { type FaultProofWitnessReferenceScriptsV1 } from "../../../src/witness-reference-scripts-v1.js";
 import { deploymentManifest } from "./header-fixtures.js";
 import {
   publishValidationDisputeReferenceScript,
@@ -131,14 +130,6 @@ export const buildRemovalDeploymentInfo = (
     readonly inputSetUniqueness?: InputSetUniquenessContractsV1;
     readonly valueNotPreserved?: ValueNotPreservedContractsV1;
     readonly mintAuthorization?: MintAuthorizationContractsV1;
-    /**
-     * The published fault-proof witness roster this deployment was staged
-     * with. The claim-registry mutation is witnessed by reference only, so
-     * every journey that opens, closes or cancels a claim needs the live
-     * out-ref rather than the hash-only record; carrying it on the contracts
-     * record keeps each call site from re-naming it.
-     */
-    readonly faultProofWitnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   },
   catalogue: FraudProofCatalogueDeploymentInfo,
   {
@@ -147,7 +138,6 @@ export const buildRemovalDeploymentInfo = (
     validationItemObserveReference,
     validationCanonicalDecodePrepareReference,
     removalReferenceScripts,
-    claimRegistrySpendReference,
     fraudProofReferenceScripts,
     validationValueAndMintSemanticReferences,
   }: {
@@ -158,11 +148,6 @@ export const buildRemovalDeploymentInfo = (
     readonly validationItemObserveReference?: RemovalDeploymentReference;
     readonly validationCanonicalDecodePrepareReference?: RemovalDeploymentReference;
     readonly removalReferenceScripts?: RemovalReferenceScriptPublications;
-    /**
-     * Published `claim_registry.spend` reference script, when the contracts
-     * record does not already carry the witness roster it was staged with.
-     */
-    readonly claimRegistrySpendReference?: UTxO;
     /**
      * Live canonical fraud-proof step publications keyed by their production
      * deployment-entry names. Hash-only catalogue records remain sufficient
@@ -183,9 +168,6 @@ export const buildRemovalDeploymentInfo = (
     })[];
   } = {},
 ) => {
-  const resolvedClaimRegistrySpendReference =
-    claimRegistrySpendReference ??
-    contracts.faultProofWitnessReferenceScripts?.claimRegistrySpend;
   const fraudProofChainEntries = Object.fromEntries(
     Object.entries(FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY).flatMap(
       ([category, entryNames]) => {
@@ -554,20 +536,6 @@ export const buildRemovalDeploymentInfo = (
         "schedulerSpend",
       ),
       settlementMint: { scriptHash: contracts.settlement.policyId },
-      claimRegistrySpend: {
-        scriptHash: contracts.claimRegistry.spendingScriptHash,
-        refScriptUTxO:
-          resolvedClaimRegistrySpendReference === undefined
-            ? null
-            : {
-                txHash: resolvedClaimRegistrySpendReference.txHash,
-                outputIndex: resolvedClaimRegistrySpendReference.outputIndex,
-              },
-        contract: {
-          type: contracts.claimRegistry.spendingScript.type,
-          cborHex: contracts.claimRegistry.spendingScript.script,
-        },
-      },
     },
     validationDisputePublication?.authPolicyDeploymentInfo ??
       referenceScriptAuthPolicyDeploymentInfo(

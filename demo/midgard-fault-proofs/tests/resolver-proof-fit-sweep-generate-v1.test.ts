@@ -340,14 +340,10 @@ const runResolverScenario = async ({
         contracts: baseContracts,
       }),
   };
-  // The init's claim-registry open sources claim_registry.spend from the
-  // published fault-proof witness roster, mirroring the dispute-scenario
-  // harness.
   const witnessReferenceScripts =
     await publishFaultProofWitnessReferenceScriptsV1({
       lucid: challengerLucid,
       realBlueprint,
-      claimRegistrySpendingScript: contracts.claimRegistry.spendingScript,
       computationThreadMintingScript: contracts.computationThread.mintingScript,
       fraudProofMintingScript: contracts.fraudProof.mintingScript,
     });

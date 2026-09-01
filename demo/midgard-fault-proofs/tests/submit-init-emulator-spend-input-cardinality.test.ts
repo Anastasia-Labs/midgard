@@ -232,18 +232,23 @@ const executionCeilings = () => ({
 
 /**
  * Pinned execution-memory ceiling for the binding steps of the routed
- * (`RawUtxo`) rows. The claim-registry close now runs `claim_registry.spend`
- * in the same transaction that burns the computation thread — a constant
- * addition that put these rows past the former `ceilings.memory / 10n` band,
- * so the "an order of magnitude clear" phrasing no longer holds and the band
- * is restated here as an exact pin.
+ * (`RawUtxo`) rows.
  *
- * Measured 2026-08-31, double-spend step-04: the inline rows bill 1,109,685
- * at cardinality 296 and 1,111,821 at cardinality 75 — flat across a 4x
- * change in item count, so the per-item cost this band exists to catch did
- * NOT come back. The routed rows bill 1,133,683 and 1,136,551, 24k-27k above
- * inline. The pin keeps roughly 5% of margin, so a per-item regression still
- * goes red here first.
+ * STALE-HIGH, PENDING RE-MEASUREMENT. This pin was raised because the
+ * claim-registry close ran `claim_registry.spend` in the same transaction that
+ * burned the computation thread — a constant addition that put these rows past
+ * the former `ceilings.memory / 10n` band. The claim registry has since been
+ * removed from the protocol entirely, so that constant addition is gone and the
+ * `/ 10n` band may well hold again. The pin is deliberately left at its old
+ * value rather than lowered by guess: re-measure and either restore the band or
+ * re-pin with the measured figure. Leaving it high only weakens this gate; it
+ * cannot produce a false red.
+ *
+ * Superseded measurement (2026-08-31, with the registry still present),
+ * double-spend step-04: the inline rows billed 1,109,685 at cardinality 296 and
+ * 1,111,821 at cardinality 75 — flat across a 4x change in item count, so the
+ * per-item cost this band exists to catch did NOT come back. The routed rows
+ * billed 1,133,683 and 1,136,551, 24k-27k above inline.
  */
 const ROUTED_BINDING_STEP_MEMORY_CEILING = 1_200_000n;
 
@@ -657,12 +662,6 @@ describe("fault-proof spend-input preimage cardinality", () => {
       fitting,
     );
 
-    // The former inline-witness boundary now has substantial byte headroom;
-    // execution stays inside the pinned binding-step band. The inline row
-    // measures 1,111,821 here, which sat within 8k of the former
-    // `ceilings.memory / 10n` band and crossed it once the claim-registry
-    // close was added, so it is restated against the same measured pin as the
-    // routed rows. See ROUTED_BINDING_STEP_MEMORY_CEILING.
     const boundaryStep04 = fitting["step-04"]!;
     expect(boundaryStep04.l1ByteMargin).toBeGreaterThanOrEqual(0);
     expect(boundaryStep04.l1ByteMargin).toBeGreaterThan(1_000);
@@ -765,13 +764,6 @@ describe("fault-proof spend-input preimage cardinality", () => {
     const ceilings = executionCeilings();
     const binding = [noInput["step-02"]!, doubleSpend["step-04"]!];
     for (const measurement of binding) {
-      // Execution: inside the pinned binding-step band, and steps still an
-      // order of magnitude inside the conservative emulator reserve. This is
-      // the assertion Q1X-F6's resolution rests on, and it is the one that
-      // would go red first if the per-item cost ever came back — the memory
-      // half is now pinned by measurement rather than by the 10x reserve,
-      // because the claim-registry close moved every step-04 row by a
-      // constant. See ROUTED_BINDING_STEP_MEMORY_CEILING.
       expect(
         measurement.executionMemory < ROUTED_BINDING_STEP_MEMORY_CEILING,
       ).toBe(true);
@@ -878,9 +870,6 @@ describe("fault-proof spend-input preimage cardinality", () => {
       }
     }
 
-    // Same pinned band as the routed row above: the size-selected journey
-    // reaches tier 2 the same way, so it bills the same constant
-    // claim-registry close on top of the same per-item work.
     for (const measurement of [
       noInput.stages["step-02"]!,
       doubleSpend.stages["step-04"]!,

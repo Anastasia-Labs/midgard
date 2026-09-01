@@ -276,9 +276,6 @@ export const makeAlwaysSucceedsContracts = (
     correctionLock: makeSpendingValidator(
       alwaysScript(blueprint, "midgard", "state_queue", "spend"),
     ),
-    claimRegistry: makeSpendingValidator(
-      alwaysScript(blueprint, "midgard", "state_queue", "spend"),
-    ),
     stateQueue: alwaysAuthenticated(blueprint, "state_queue"),
     scheduler: alwaysAuthenticated(blueprint, "scheduler"),
     registeredOperators: alwaysAuthenticated(blueprint, "registered_operators"),

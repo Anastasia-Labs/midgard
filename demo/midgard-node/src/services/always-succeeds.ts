@@ -219,7 +219,6 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     const scheduler = yield* mkAuthVal("scheduler");
     const stateQueue = yield* mkAuthVal("state_queue");
     const correctionLock = stateQueue;
-    const claimRegistry = stateQueue;
     const daParamsGovernor = stateQueue;
     const daAttestation = stateQueue;
     const availabilityChallenge = stateQueue;
@@ -420,7 +419,6 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       daAttestation,
       availabilityChallenge,
       correctionLock,
-      claimRegistry,
       stateQueue,
       scheduler,
       registeredOperators,

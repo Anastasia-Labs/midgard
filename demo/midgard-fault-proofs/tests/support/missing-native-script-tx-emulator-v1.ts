@@ -50,7 +50,6 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { prepareFamilyClaimRegistryMutationV1 } from "../../src/claim-registry-transaction-v1.js";
 import type { MissingNativeScriptTxContractsV1 } from "../../src/missing-native-script-tx/contracts-v1.js";
 import {
   requireMissingNativeScriptTxStepStateV1,
@@ -58,7 +57,6 @@ import {
 } from "../../src/missing-native-script-tx/submit-common-v1.js";
 import { submitMissingNativeScriptTxBindingV1 } from "../../src/missing-native-script-tx/submit-native-binding-v1.js";
 import { resolveProverSigner } from "../../src/runtime.js";
-import { excludeUtxo } from "../../src/spend-input-witness.js";
 import type { SubmitStep01TxInclusion } from "../../src/submit-step-01.js";
 import { selectFeeInput } from "../../src/submit-step-01.js";
 import {
@@ -650,21 +648,8 @@ export const submitRawMissingNativeScriptTxStep06V1 = async ({
     },
   });
   harness.proverSigner.selectWallet(harness.proverLucid);
-  const claimRegistryMutation = await prepareFamilyClaimRegistryMutationV1({
-    lucid: harness.proverLucid,
-    claimRegistry: harness.family.claimRegistry,
-    claimRegistryReferenceUtxo:
-      harness.witnessReferenceScripts.claimRegistrySpend,
-    hubOraclePolicyId: harness.family.hubOraclePolicyId,
-    computationThreadPolicyId: harness.family.computationThread.policyId,
-    claimId: threadToken.assetName,
-    kind: "close",
-  });
   const feeInput = selectFeeInput(
-    claimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
-      (utxos, reference) => excludeUtxo(utxos, reference),
-      await harness.proverLucid.wallet().getUtxos(),
-    ),
+    await harness.proverLucid.wallet().getUtxos(),
   );
   const fraudProofUnit = toUnit(
     harness.family.fraudProof.policyId,
@@ -773,7 +758,7 @@ export const submitRawMissingNativeScriptTxStep06V1 = async ({
     )
     .addSignerKey(harness.proverSigner.paymentKeyHash);
   const unsigned = await fraudProofCarriage
-    .attach(computationThreadCarriage.attach(claimRegistryMutation.apply(base)))
+    .attach(computationThreadCarriage.attach(base))
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
@@ -808,21 +793,8 @@ export const submitRawMissingNativeScriptTxOutsiderCancelV1 = async ({
       threadOutRef,
     });
   harness.outsiderSigner.selectWallet(harness.outsiderLucid);
-  const claimRegistryMutation = await prepareFamilyClaimRegistryMutationV1({
-    lucid: harness.outsiderLucid,
-    claimRegistry: harness.family.claimRegistry,
-    claimRegistryReferenceUtxo:
-      harness.witnessReferenceScripts.claimRegistrySpend,
-    hubOraclePolicyId: harness.family.hubOraclePolicyId,
-    computationThreadPolicyId: harness.family.computationThread.policyId,
-    claimId: threadToken.assetName,
-    kind: "cancel",
-  });
   const feeInput = selectFeeInput(
-    claimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
-      (utxos, reference) => excludeUtxo(utxos, reference),
-      await harness.outsiderLucid.wallet().getUtxos(),
-    ),
+    await harness.outsiderLucid.wallet().getUtxos(),
   );
   const spendRedeemer = ((ctx) => {
     requireOwnSpendPurpose(ctx, threadUtxo, "raw outsider cancel");
@@ -875,7 +847,7 @@ export const submitRawMissingNativeScriptTxOutsiderCancelV1 = async ({
     .mintAssets({ [threadToken.unit]: -1n }, burnRedeemer)
     .addSignerKey(harness.outsiderSigner.paymentKeyHash);
   const unsigned = await computationThreadCarriage
-    .attach(claimRegistryMutation.apply(base))
+    .attach(base)
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();

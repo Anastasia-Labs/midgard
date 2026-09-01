@@ -233,13 +233,6 @@ describe("fault-proof emulator integration", () => {
         "schedulerSpend",
       ),
       settlementMint: { scriptHash: contracts.settlement.policyId },
-      // Init opens a claim in the hub's claim registry; its reference script
-      // is consumed from the published witness roster, so the manifest only
-      // has to name the hash the submitter re-derives and checks.
-      claimRegistrySpend: deploymentEntry(
-        contracts.claimRegistry.spendingScriptHash,
-        contracts.claimRegistry.spendingScript,
-      ),
     });
 
     const proofFit: Record<string, CompleteSignedTransactionMeasurement> = {};

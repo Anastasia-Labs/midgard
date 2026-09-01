@@ -30,11 +30,6 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  type PreparedClaimRegistryMutationV1,
-  prepareFamilyClaimRegistryMutationV1,
-  requirePreparedClaimRegistryMutationV1,
-} from "./claim-registry-transaction-v1.js";
-import {
   faultProofFieldCarriageV1,
   type FaultProofFieldOpeningPlanV1,
   planFaultProofFieldOpeningV1,
@@ -156,7 +151,6 @@ export const submitMinFeeStep02 = async ({
   fieldItemCbors,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  claimRegistryMutation,
   certificateUtxos = [],
   existingPublicationUtxos = [],
   publishMissingCarriages = true,
@@ -177,7 +171,6 @@ export const submitMinFeeStep02 = async ({
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
   /** Existing §8.6 certificates, needed only when a field selects tier 3. */
   readonly certificateUtxos?: readonly UTxO[];
   /** Existing authenticated tier-2/tier-3 publication outputs. */
@@ -281,22 +274,6 @@ export const submitMinFeeStep02 = async ({
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: `${STEP_LABEL} fraud-proof mint`,
   });
-  const resolvedClaimRegistryMutation = requirePreparedClaimRegistryMutationV1({
-    mutation:
-      claimRegistryMutation ??
-      (await prepareFamilyClaimRegistryMutationV1({
-        lucid,
-        claimRegistry: contracts.claimRegistry,
-        claimRegistryReferenceUtxo: witnessReferenceScripts?.claimRegistrySpend,
-        hubOraclePolicyId: contracts.hubOraclePolicyId,
-        computationThreadPolicyId: contracts.computationThread.policyId,
-        claimId: threadToken.assetName,
-        kind: "close",
-      })),
-    kind: "close",
-    claimId: threadToken.assetName,
-    label: STEP_LABEL,
-  });
   // The complete reference-input set, built before the field carriages derive
   // any reference indices from it.
   const referenceInputs = uniqueUtxos([
@@ -305,7 +282,6 @@ export const submitMinFeeStep02 = async ({
     stepReference,
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
-    ...resolvedClaimRegistryMutation.referenceInputs,
   ]);
   const fieldCarriages = plans.map(
     (planned, fieldIndex): FieldCarriageV1 =>
@@ -426,9 +402,7 @@ export const submitMinFeeStep02 = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const tx = fraudProofMintCarriage.attach(
-    computationThreadMintCarriage.attach(
-      resolvedClaimRegistryMutation.apply(base),
-    ),
+    computationThreadMintCarriage.attach(base),
   );
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (
@@ -457,11 +431,6 @@ export const submitMinFeeStep02 = async ({
           role: "V1 fraud-proof token minting",
           utxo: witnessReferenceScripts?.fraudProofMint,
           expectedScript: contracts.fraudProof.mintingScript,
-        },
-        {
-          role: "claim-registry spending",
-          utxo: resolvedClaimRegistryMutation.referenceScriptUtxo,
-          expectedScript: resolvedClaimRegistryMutation.registryScript,
         },
       ],
     }),

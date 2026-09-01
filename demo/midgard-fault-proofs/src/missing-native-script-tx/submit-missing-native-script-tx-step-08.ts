@@ -21,15 +21,9 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  type PreparedClaimRegistryMutationV1,
-  prepareFamilyClaimRegistryMutationV1,
-  requirePreparedClaimRegistryMutationV1,
-} from "../claim-registry-transaction-v1.js";
-import {
   DEFAULT_CONFIRMATION_POLL_MS,
   type ResolvedProverSigner,
 } from "../runtime.js";
-import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import {
   computationThreadOutputPredicate,
@@ -98,7 +92,6 @@ export const submitMissingNativeScriptTxStep08V1 = async ({
   certificateUtxo,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  claimRegistryMutation,
   publicationPreSubmitBoundary,
   preSubmitBoundary,
   awaitConfirmation = true,
@@ -119,8 +112,6 @@ export const submitMissingNativeScriptTxStep08V1 = async ({
   readonly certificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  /** Required only for the terminal batch; atomically closes this live claim. */
-  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
   readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
@@ -203,28 +194,6 @@ export const submitMissingNativeScriptTxStep08V1 = async ({
       "the accused native script is present in the authenticated field-6 preimage.",
     );
   }
-  // Only the terminal fold burns the computation thread, so only the terminal
-  // fold has a claim to close; a resuming step never runs
-  // `computation_thread.mint` and must not touch the registry.
-  const terminalClaimRegistryMutation = finalizes
-    ? requirePreparedClaimRegistryMutationV1({
-        mutation:
-          claimRegistryMutation ??
-          (await prepareFamilyClaimRegistryMutationV1({
-            lucid,
-            claimRegistry: contracts.claimRegistry,
-            claimRegistryReferenceUtxo:
-              witnessReferenceScripts?.claimRegistrySpend,
-            hubOraclePolicyId: contracts.hubOraclePolicyId,
-            computationThreadPolicyId: contracts.computationThread.policyId,
-            claimId: threadToken.assetName,
-            kind: "close",
-          })),
-        kind: "close",
-        claimId: threadToken.assetName,
-        label: "step-08 terminal finalization",
-      })
-    : undefined;
   const checkpointBytes =
     encodeMissingNativeScriptTxSemanticCheckpointV1(next).toString("hex");
   const checkpointHash = hashMissingNativeScriptTxSemanticCheckpointV1(next);
@@ -261,25 +230,13 @@ export const submitMissingNativeScriptTxStep08V1 = async ({
     ...(publishedCarriageUtxos === undefined ? {} : { publishedCarriageUtxos }),
     ...(certificateUtxo === undefined ? {} : { certificateUtxo }),
     referenceScriptUtxo,
-    extraReferenceInputs: [
-      ...mintReferences,
-      ...(finalizes ? terminalClaimRegistryMutation!.referenceInputs : []),
-    ],
+    extraReferenceInputs: [...mintReferences],
     ...(publicationPreSubmitBoundary === undefined
       ? {}
       : { publicationPreSubmitBoundary }),
     label: `${STEP_LABEL} staged script witnesses`,
   });
-  // The claim-registry reference script is spent by nobody and must never be
-  // selected as a wallet input, so it leaves the usable set before both the
-  // fee choice and the preset coin selection below.
-  const usableWalletUtxos = (
-    terminalClaimRegistryMutation?.referenceInputs ?? []
-  ).reduce<readonly UTxO[]>(
-    (utxos, reference) => excludeUtxo(utxos, reference),
-    prepared.usableWalletUtxos,
-  );
-  const feeInput = selectFeeInput(usableWalletUtxos);
+  const feeInput = selectFeeInput(prepared.usableWalletUtxos);
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -437,17 +394,14 @@ export const submitMissingNativeScriptTxStep08V1 = async ({
         },
       );
   transaction = transaction.addSignerKey(signer.paymentKeyHash);
-  const claimBoundTransaction = finalizes
-    ? terminalClaimRegistryMutation!.apply(transaction)
-    : transaction;
   const completed = finalizes
     ? fraudProofMintCarriage!.attach(
-        computationThreadBurnCarriage!.attach(claimBoundTransaction),
+        computationThreadBurnCarriage!.attach(transaction),
       )
-    : claimBoundTransaction;
+    : transaction;
   const unsigned = await completed.complete({
     localUPLCEval: true,
-    presetWalletInputs: usableWalletUtxos as UTxO[],
+    presetWalletInputs: prepared.usableWalletUtxos as UTxO[],
   });
   if (
     layout === undefined ||
@@ -478,15 +432,7 @@ export const submitMissingNativeScriptTxStep08V1 = async ({
           utxo: witnessReferenceScripts?.fraudProofMint,
           expectedScript: contracts.fraudProof.mintingScript,
         },
-        ...(finalizes
-          ? [
-              {
-                role: "claim-registry spending",
-                utxo: terminalClaimRegistryMutation!.referenceScriptUtxo,
-                expectedScript: terminalClaimRegistryMutation!.registryScript,
-              },
-            ]
-          : []),
+        ...(finalizes ? [] : []),
       ],
     }),
     boundary: preSubmitBoundary,

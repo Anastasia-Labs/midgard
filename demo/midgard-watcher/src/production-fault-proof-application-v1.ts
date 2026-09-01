@@ -6,7 +6,6 @@ import {
   classifyProductionHeaderV1,
   COMMITTED_FIELD_SHAPE_COMPLETE_CANONICAL_REPLAY_V1,
   type CompleteCanonicalReplayContextV1,
-  createAuthenticatedPublicL1ClaimRegistryProofDeriverV1,
   createCanonicalDecodabilityProductionWorkflowRunnerV1,
   createCommittedFieldShapeProductionWorkflowRunnerV1,
   createCompleteCanonicalReplayUnionV1,
@@ -778,7 +777,6 @@ const referenceContracts = (
   category: WatcherInstalledProductionWorkflowCategoryV1,
 ): Readonly<Record<string, string>> => {
   const base = {
-    claimRegistrySpend: "claimRegistrySpend",
     computationThreadMint: "computationThreadMint",
     fraudProofMint: "fraudProofMint",
     phasMembershipWithdraw: "phasMembershipWithdraw",
@@ -1183,7 +1181,6 @@ const requiredReference = (
 };
 
 const baseWitnesses = (references: Readonly<Record<string, UTxO>>) => ({
-  claimRegistrySpend: requiredReference(references, "claimRegistrySpend"),
   computationThreadMint: requiredReference(references, "computationThreadMint"),
   fraudProofMint: requiredReference(references, "fraudProofMint"),
   phasMembershipWithdraw: requiredReference(
@@ -1315,8 +1312,6 @@ function taggedConfig(
     source: common.source,
     stateQueueMutationLeaseCoordinator:
       common.stateQueueMutationLeaseCoordinator,
-    claimRegistryProofs:
-      createAuthenticatedPublicL1ClaimRegistryProofDeriverV1(),
   };
   const reference = (name: string) =>
     requiredReference(common.references, name);

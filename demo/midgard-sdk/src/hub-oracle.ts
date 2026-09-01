@@ -15,10 +15,6 @@ import {
 import { Data as EffectData, Effect } from "effect";
 
 import {
-  CLAIM_REGISTRY_ASSET_NAME,
-  ClaimRegistryDatum,
-} from "@/claim-registry.js";
-import {
   addressDataFromBech32,
   AddressSchema,
   AuthenticatedValidator,
@@ -41,7 +37,6 @@ import {
   AuthenticUTxO,
   fetchSingleAuthenticUTxOProgram,
 } from "@/internals.js";
-import { EMPTY_MERKLE_TREE_ROOT } from "@/ledger-constants.js";
 
 export type HubOracleConfig = {
   hubOracleAddress: Address;
@@ -221,12 +216,6 @@ export const incompleteHubOracleInitTxProgram = (
           CORRECTION_LOCK_ASSET_NAME,
         )]: 1n,
       };
-      const claimRegistryAssets: Assets = {
-        [toUnit(
-          params.hubOracleMintValidator.policyId,
-          CLAIM_REGISTRY_ASSET_NAME,
-        )]: 1n,
-      };
 
       return lucid
         .newTx()
@@ -235,7 +224,6 @@ export const incompleteHubOracleInitTxProgram = (
           {
             ...hubOracleAssets,
             ...correctionLockAssets,
-            ...claimRegistryAssets,
           },
           Data.void(),
         )
@@ -251,21 +239,6 @@ export const incompleteHubOracleInitTxProgram = (
           params.validators.correctionLock.spendingScriptAddress,
           { kind: "inline", value: Data.to("Idle", CorrectionLockDatum) },
           correctionLockAssets,
-        )
-        .pay.ToContract(
-          params.validators.claimRegistry.spendingScriptAddress,
-          {
-            kind: "inline",
-            value: Data.to(
-              {
-                claims_root: EMPTY_MERKLE_TREE_ROOT,
-                computation_thread_policy_id:
-                  params.validators.computationThread.policyId,
-              },
-              ClaimRegistryDatum,
-            ),
-          },
-          claimRegistryAssets,
         )
         .attach.MintingPolicy(params.hubOracleMintValidator.mintingScript);
     } else {

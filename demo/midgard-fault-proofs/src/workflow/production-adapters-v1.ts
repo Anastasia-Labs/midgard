@@ -151,7 +151,6 @@ const productionWorkflowAdapterRegistrationRowsV1 = [
       "workflow/production-non-existent-input-v1.ts",
       "workflow/production-runtime-v1.ts#createNonExistentInputProductionWorkflowRunnerV1",
       "ne-submit-step-01.ts..ne-submit-step-04.ts",
-      "workflow/production-claim-registry-prerequisite-v1.ts",
       "remove-fraudulent-block.ts",
     ],
     requiredClosure:

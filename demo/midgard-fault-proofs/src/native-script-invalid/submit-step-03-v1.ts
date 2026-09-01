@@ -12,7 +12,6 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
-import type { PreparedClaimRegistryMutationV1 } from "../claim-registry-transaction-v1.js";
 import {
   faultProofFieldOpeningV1,
   planFaultProofFieldOpeningV1,
@@ -58,7 +57,6 @@ export const submitNativeScriptInvalidStep03 = async ({
   certificateUtxo,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  claimRegistryMutation,
   publicationPreSubmitBoundary,
   preSubmitBoundary,
   awaitConfirmation = true,
@@ -78,7 +76,6 @@ export const submitNativeScriptInvalidStep03 = async ({
   readonly certificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly claimRegistryMutation: PreparedClaimRegistryMutationV1;
   readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
@@ -178,7 +175,6 @@ export const submitNativeScriptInvalidStep03 = async ({
     extraReferenceInputs:
       certificateUtxo === undefined ? [] : [certificateUtxo],
     witnessReferenceScripts,
-    claimRegistryMutation,
     preSubmitBoundary,
     awaitConfirmation,
   });

@@ -51,7 +51,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { FaultProofClaimRegistryContractV1 } from "./claim-registry-transaction-v1.js";
 import { requireFabricatedReferenceScriptV1 } from "./fabricated-reference-script-v1.js";
 import { parseHex, readJsonFile, requireRecord } from "./json-file.js";
 import {
@@ -113,12 +112,6 @@ export type FabricatedDepositContractsV1 = {
     readonly spendingScriptAddress: string;
   };
   readonly hubOraclePolicyId: string;
-  /**
-   * The applied `claim_registry.spend` validator. Every arm of
-   * `computation_thread.mint` requires the claim-registry input in the same
-   * transaction, so each submitter resolves its mutation from here.
-   */
-  readonly claimRegistry: FaultProofClaimRegistryContractV1;
   readonly stateQueuePolicyId: string;
   /** Catalogue category id of `fabricatedDeposit`, as deployed. */
   readonly categoryId: string;

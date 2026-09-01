@@ -16,7 +16,6 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { type PreparedClaimRegistryMutationV1 } from "./claim-registry-transaction-v1.js";
 import {
   type LinearFaultStepContractV1,
   linearFaultStepLabelV1,
@@ -52,7 +51,6 @@ export const submitLinearFaultFinalizeV1 = async ({
   carriageUtxos = [],
   extraReferenceInputs = [],
   witnessReferenceScripts,
-  claimRegistryMutation,
   preSubmitBoundary,
   awaitConfirmation,
 }: {
@@ -89,7 +87,6 @@ export const submitLinearFaultFinalizeV1 = async ({
   readonly carriageUtxos?: readonly UTxO[];
   readonly extraReferenceInputs?: readonly UTxO[];
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly claimRegistryMutation: PreparedClaimRegistryMutationV1;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation: boolean;
 }) => {
@@ -123,12 +120,7 @@ export const submitLinearFaultFinalizeV1 = async ({
     (utxos, carriage) => excludeUtxo(utxos, carriage),
     walletUtxos,
   );
-  const usableWalletUtxos = claimRegistryMutation.referenceInputs.reduce<
-    readonly UTxO[]
-  >(
-    (utxos, reference) => excludeUtxo(utxos, reference),
-    nonCarriageWalletUtxos,
-  );
+  const usableWalletUtxos = nonCarriageWalletUtxos;
   const fraudProofUnit = toUnit(fraudProof.policyId, threadToken.assetName);
   const fraudProofDatum = Data.to(
     { fraud_prover: signer.paymentKeyHash },
@@ -188,24 +180,22 @@ export const submitLinearFaultFinalizeV1 = async ({
   const unsigned = await proofMint
     .attach(
       threadBurn.attach(
-        claimRegistryMutation.apply(
-          lucid
-            .newTx()
-            .collectFrom([selectFeeInput(usableWalletUtxos)])
-            .collectFrom([threadUtxo], spendRedeemer)
-            .readFrom(referenceInputs)
-            .mintAssets({ [threadToken.unit]: -1n }, threadBurnRedeemer)
-            .mintAssets({ [fraudProofUnit]: 1n }, proofMintRedeemer)
-            .pay.ToContract(
-              fraudProof.spendingScriptAddress,
-              { kind: "inline", value: fraudProofDatum },
-              {
-                lovelace: threadUtxo.assets.lovelace ?? 0n,
-                [fraudProofUnit]: 1n,
-              },
-            )
-            .addSignerKey(signer.paymentKeyHash),
-        ),
+        lucid
+          .newTx()
+          .collectFrom([selectFeeInput(usableWalletUtxos)])
+          .collectFrom([threadUtxo], spendRedeemer)
+          .readFrom(referenceInputs)
+          .mintAssets({ [threadToken.unit]: -1n }, threadBurnRedeemer)
+          .mintAssets({ [fraudProofUnit]: 1n }, proofMintRedeemer)
+          .pay.ToContract(
+            fraudProof.spendingScriptAddress,
+            { kind: "inline", value: fraudProofDatum },
+            {
+              lovelace: threadUtxo.assets.lovelace ?? 0n,
+              [fraudProofUnit]: 1n,
+            },
+          )
+          .addSignerKey(signer.paymentKeyHash),
       ),
     )
     .complete({
@@ -235,11 +225,6 @@ export const submitLinearFaultFinalizeV1 = async ({
         role: `${label}-proof-mint`,
         utxo: witnessReferenceScripts?.fraudProofMint,
         expectedScript: fraudProof.mintingScript,
-      }),
-      workflowReferenceScriptV1({
-        role: "claim-registry spending",
-        utxo: claimRegistryMutation.referenceScriptUtxo,
-        expectedScript: claimRegistryMutation.registryScript,
       }),
     ],
     boundary: preSubmitBoundary,

@@ -19,7 +19,6 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { prepareFamilyClaimRegistryMutationV1 } from "../src/claim-registry-transaction-v1.js";
 import type { DoubleWithdrawContractsV1 } from "../src/double-withdraw/contracts-v1.js";
 import {
   submitDoubleWithdrawCancel,
@@ -35,7 +34,6 @@ import {
 import { prepareDoubleWithdrawFromCommittedLeavesV1 } from "../src/prepare-double-withdraw.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { fetchUtxoByOutRef, parseOutRef } from "../src/runtime.js";
-import { excludeUtxo } from "../src/spend-input-witness.js";
 import {
   requireComputationThreadToken,
   selectFeeInput,
@@ -260,22 +258,7 @@ const submitRawTerminal = async ({
     inclusion,
   });
   signer.selectWallet(lucid);
-  const claimRegistryMutation = await prepareFamilyClaimRegistryMutationV1({
-    lucid,
-    claimRegistry: contracts.claimRegistry,
-    claimRegistryReferenceUtxo:
-      harness.witnessReferenceScripts.claimRegistrySpend,
-    hubOraclePolicyId: contracts.hubOraclePolicyId,
-    computationThreadPolicyId: contracts.computationThread.policyId,
-    claimId: threadToken.assetName,
-    kind: "close",
-  });
-  const feeInput = selectFeeInput(
-    claimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
-      (utxos, reference) => excludeUtxo(utxos, reference),
-      await lucid.wallet().getUtxos(),
-    ),
-  );
+  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -380,9 +363,7 @@ const submitRawTerminal = async ({
       },
     )
     .addSignerKey(signer.paymentKeyHash);
-  const unsigned = await claimRegistryMutation
-    .apply(terminalBase)
-    .complete({ localUPLCEval: true });
+  const unsigned = await terminalBase.complete({ localUPLCEval: true });
   if (outputIndex === undefined) throw new Error("raw terminal layout missing");
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
@@ -398,7 +379,6 @@ const submitRawCancel = async ({
   categoryId,
   referenceScript,
   computationThreadReference,
-  claimRegistryReference,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: DoubleWithdrawContractsV1;
@@ -407,7 +387,6 @@ const submitRawCancel = async ({
   readonly categoryId: string;
   readonly referenceScript: UTxO;
   readonly computationThreadReference: UTxO;
-  readonly claimRegistryReference: UTxO;
 }): Promise<string> => {
   const rawCancelSchema = SDK.faultProofStepRedeemerSchema(Data.Any());
   type RawCancelRedeemer = Data.Static<typeof rawCancelSchema>;
@@ -419,21 +398,7 @@ const submitRawCancel = async ({
     categoryLabel: "double-withdraw",
   });
   signer.selectWallet(lucid);
-  const claimRegistryMutation = await prepareFamilyClaimRegistryMutationV1({
-    lucid,
-    claimRegistry: contracts.claimRegistry,
-    claimRegistryReferenceUtxo: claimRegistryReference,
-    hubOraclePolicyId: contracts.hubOraclePolicyId,
-    computationThreadPolicyId: contracts.computationThread.policyId,
-    claimId: token.assetName,
-    kind: "cancel",
-  });
-  const fee = selectFeeInput(
-    claimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
-      (utxos, reference) => excludeUtxo(utxos, reference),
-      await lucid.wallet().getUtxos(),
-    ),
-  );
+  const fee = selectFeeInput(await lucid.wallet().getUtxos());
   const spend = ((ctx) =>
     Data.to(
       {
@@ -466,9 +431,7 @@ const submitRawCancel = async ({
     .readFrom([referenceScript, computationThreadReference])
     .mintAssets({ [token.unit]: -1n }, burn)
     .addSignerKey(signer.paymentKeyHash);
-  const unsigned = await claimRegistryMutation
-    .apply(cancelBase)
-    .complete({ localUPLCEval: true });
+  const unsigned = await cancelBase.complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
   await lucid.awaitTx(txHash);
@@ -786,8 +749,6 @@ describe("double-withdraw emulator lifecycle", () => {
           referenceScript: refs[1],
           computationThreadReference:
             harness.witnessReferenceScripts.computationThreadMint!,
-          claimRegistryReference:
-            harness.witnessReferenceScripts.claimRegistrySpend!,
         }),
       ),
     ).not.toBe("");

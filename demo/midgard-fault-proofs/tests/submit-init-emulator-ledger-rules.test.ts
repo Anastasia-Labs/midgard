@@ -119,8 +119,6 @@ describe("fault-proof emulator integration", () => {
 
     const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
       removalReferenceScripts: removalReferenceScriptPublications.published,
-      claimRegistrySpendReference:
-        harness.witnessReferenceScripts.claimRegistrySpend,
     });
     const proofFit: Record<string, CompleteSignedTransactionMeasurement> = {};
     const { maxTxExMem, maxTxExSteps } = emulator.protocolParameters;
@@ -426,8 +424,6 @@ describe("fault-proof emulator integration", () => {
 
     const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
       removalReferenceScripts: removalReferenceScriptPublications.published,
-      claimRegistrySpendReference:
-        harness.witnessReferenceScripts.claimRegistrySpend,
     });
     const proofFit: Record<string, CompleteSignedTransactionMeasurement> = {};
     const { maxTxExMem, maxTxExSteps } = emulator.protocolParameters;
@@ -723,10 +719,7 @@ describe("fault-proof emulator integration", () => {
       catalogue,
       header: fraudulentHeader,
     });
-    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
-      claimRegistrySpendReference:
-        harness.witnessReferenceScripts.claimRegistrySpend,
-    });
+    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {});
     const initResult = await submitInit({
       lucid: proverLucid,
       witnessReferenceScripts: harness.witnessReferenceScripts,
@@ -836,8 +829,6 @@ describe("fault-proof emulator integration", () => {
 
     const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
       removalReferenceScripts: removalReferenceScriptPublications.published,
-      claimRegistrySpendReference:
-        harness.witnessReferenceScripts.claimRegistrySpend,
     });
     const proofFit: Record<string, CompleteSignedTransactionMeasurement> = {};
     const { maxTxExMem, maxTxExSteps } = emulator.protocolParameters;

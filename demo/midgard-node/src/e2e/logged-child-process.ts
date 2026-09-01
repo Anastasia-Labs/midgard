@@ -92,6 +92,21 @@ export const runLoggedChildProcessAttempt = async ({
   ownership,
 }: LoggedChildProcessInput): Promise<LoggedChildProcessResult> => {
   const startedAt = startedAtDate.toISOString();
+  const monotonicStartedAt = process.hrtime.bigint();
+  const initialElapsedMs = Math.max(0, Date.now() - startedAtDate.getTime());
+  const coherentNow = (): {
+    readonly at: string;
+    readonly durationMs: number;
+  } => {
+    const monotonicElapsedMs = Number(
+      (process.hrtime.bigint() - monotonicStartedAt) / 1_000_000n,
+    );
+    const durationMs = initialElapsedMs + monotonicElapsedMs;
+    return {
+      at: new Date(startedAtDate.getTime() + durationMs).toISOString(),
+      durationMs,
+    };
+  };
   await mkdir(dirname(rawLogPath), { recursive: true });
   const log = createWriteStream(rawLogPath, { flags: "a" });
   let pid: number | null = null;
@@ -135,15 +150,14 @@ export const runLoggedChildProcessAttempt = async ({
       }
       settled = true;
       if (filePoll !== undefined) clearInterval(filePoll);
-      const finishedAtDate = new Date();
+      // Derive the persisted wall-clock tuple from monotonic elapsed time so a
+      // host clock correction cannot make an observation precede its attempt.
+      const finished = coherentNow();
       const result: LoggedChildProcessResult = {
         pid,
         startedAt,
-        finishedAt: finishedAtDate.toISOString(),
-        durationMs: Math.max(
-          0,
-          finishedAtDate.getTime() - startedAtDate.getTime(),
-        ),
+        finishedAt: finished.at,
+        durationMs: finished.durationMs,
         exitCode,
         signal,
         timedOut,
@@ -216,7 +230,7 @@ export const runLoggedChildProcessAttempt = async ({
                 JSON.stringify(
                   cleanupEvent({
                     cleanup,
-                    at: new Date().toISOString(),
+                    at: coherentNow().at,
                   }),
                 ) + "\n",
               );
@@ -236,7 +250,7 @@ export const runLoggedChildProcessAttempt = async ({
         fileTermination = {
           path: terminateOnFile.path,
           signal: terminateOnFile.signal,
-          at: new Date().toISOString(),
+          at: coherentNow().at,
         };
         cleanup = terminateChildProcessGroup({
           pid,
@@ -275,7 +289,7 @@ export const runLoggedChildProcessAttempt = async ({
           marker: matchedMarker,
           occurrence: outputMarkerOccurrences.get(matchedMarker) ?? 1,
           signal: terminateOnOutput.signal,
-          at: new Date().toISOString(),
+          at: coherentNow().at,
         };
         cleanup = terminateChildProcessGroup({
           pid,

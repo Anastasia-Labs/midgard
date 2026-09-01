@@ -149,8 +149,6 @@ const driveNoReferenceInputToStep04V1 = async ({
     ...(removalPublications === undefined
       ? {}
       : { removalReferenceScripts: removalPublications.published }),
-    claimRegistrySpendReference:
-      harness.witnessReferenceScripts.claimRegistrySpend,
   });
 
   const init = await submitInit({

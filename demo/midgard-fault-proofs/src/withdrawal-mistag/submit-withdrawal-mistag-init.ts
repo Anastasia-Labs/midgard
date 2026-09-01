@@ -25,7 +25,6 @@ const genericInitContracts = (
   computationThread: contracts.computationThread,
   fraudProof: contracts.fraudProof,
   hubOraclePolicyId: contracts.hubOraclePolicyId,
-  claimRegistry: contracts.claimRegistry,
   stateQueuePolicyId: contracts.stateQueuePolicyId,
   // Not read by the generic Init transaction.
   fieldPreimageCertificatePolicyId: "00".repeat(28),

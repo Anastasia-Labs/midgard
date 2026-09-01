@@ -6,7 +6,6 @@ import {
 } from "@al-ft/midgard-sdk";
 import { type UTxO } from "@lucid-evolution/lucid";
 
-import { resolveFaultProofClaimRegistryContractV1 } from "./claim-registry-transaction-v1.js";
 import { readJsonFile } from "./json-file.js";
 import {
   makeLucidForSubmit,
@@ -98,18 +97,11 @@ export const resolveFabricatedDepositCliContractsV1 = async ({
       "Deployment info resolved no stateQueueMint policy id for fabricated-deposit.",
     );
   }
-  const claimRegistry = await resolveFaultProofClaimRegistryContractV1({
-    blueprint,
-    network: config.network,
-    hubOraclePolicyId: resolved.hubOraclePolicyId,
-    deploymentInfo,
-  });
   const contracts: FabricatedDepositContractsV1 = {
     steps: chain.fabricatedDeposit.steps,
     computationThread: chain.computationThread,
     fraudProof: chain.fraudProof,
     hubOraclePolicyId: resolved.hubOraclePolicyId,
-    claimRegistry,
     stateQueuePolicyId: resolved.stateQueuePolicyId,
     categoryId: FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID_V1,
   };
@@ -149,18 +141,11 @@ export const resolveFabricatedWithdrawalCliContractsV1 = async ({
       "Deployment info resolved no stateQueueMint policy id for fabricated-withdrawal.",
     );
   }
-  const claimRegistry = await resolveFaultProofClaimRegistryContractV1({
-    blueprint,
-    network: config.network,
-    hubOraclePolicyId: resolved.hubOraclePolicyId,
-    deploymentInfo,
-  });
   const contracts: FabricatedWithdrawalContractsV1 = {
     steps: chain.fabricatedWithdrawal.steps,
     computationThread: chain.computationThread,
     fraudProof: chain.fraudProof,
     hubOraclePolicyId: resolved.hubOraclePolicyId,
-    claimRegistry,
     stateQueuePolicyId: resolved.stateQueuePolicyId,
     categoryId: FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1,
   };

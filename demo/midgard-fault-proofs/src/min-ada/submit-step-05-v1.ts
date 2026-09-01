@@ -4,7 +4,6 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
-import type { PreparedClaimRegistryMutationV1 } from "../claim-registry-transaction-v1.js";
 import {
   requireLinearFaultStepStateV1,
   requireLinearFaultThreadUtxoV1,
@@ -32,7 +31,6 @@ export const submitMinAdaStep05 = async ({
   threadOutRef,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  claimRegistryMutation,
   preSubmitBoundary,
   awaitConfirmation = true,
 }: {
@@ -43,7 +41,6 @@ export const submitMinAdaStep05 = async ({
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly claimRegistryMutation: PreparedClaimRegistryMutationV1;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }) => {
@@ -84,7 +81,6 @@ export const submitMinAdaStep05 = async ({
     }),
     referenceScriptUtxo,
     witnessReferenceScripts,
-    claimRegistryMutation,
     preSubmitBoundary,
     awaitConfirmation,
   });

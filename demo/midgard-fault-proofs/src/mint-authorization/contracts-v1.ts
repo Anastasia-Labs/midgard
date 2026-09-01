@@ -25,8 +25,6 @@
  */
 import type { Script } from "@lucid-evolution/lucid";
 
-import type { FaultProofClaimRegistryContractV1 } from "../claim-registry-transaction-v1.js";
-
 /** Human-readable family label used in every local failure message. */
 export const MINT_AUTHORIZATION_CATEGORY_LABEL = "mint-authorization";
 
@@ -73,12 +71,6 @@ export type MintAuthorizationContractsV1 = {
     readonly spendingScriptAddress: string;
   };
   readonly hubOraclePolicyId: string;
-  /**
-   * The applied `claim_registry.spend` validator. Every arm of
-   * `computation_thread.mint` requires the claim-registry input in the same
-   * transaction, so each submitter resolves its mutation from here.
-   */
-  readonly claimRegistry: FaultProofClaimRegistryContractV1;
   readonly stateQueuePolicyId: string;
   /**
    * Policy id steps 02–04 were parameterized with for §8.6 field-preimage

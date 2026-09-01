@@ -47,8 +47,6 @@ import {
   addressDataFromBech32,
   type AuthenticatedValidator,
   castConfirmedStateToData,
-  CLAIM_REGISTRY_ASSET_NAME,
-  ClaimRegistryDatum,
   ConfirmedState,
   CORRECTION_LOCK_ASSET_NAME,
   CorrectionLockDatum,
@@ -275,7 +273,6 @@ type Blueprint = {
 type StateQueueTestContracts = {
   readonly hubOracle: AuthenticatedValidator;
   readonly correctionLock: SdkSpendingValidator;
-  readonly claimRegistry: AuthenticatedValidator;
   readonly computationThread: AuthenticatedValidator;
   readonly daAttestation: AuthenticatedValidator;
   readonly stateQueue: AuthenticatedValidator;
@@ -398,7 +395,6 @@ const buildTestContracts = async (
       Effect.map((addressData) => Data.from(Data.to(addressData, AddressData))),
     ),
   );
-  const claimRegistry = alwaysAuthenticated(alwaysBlueprint, "deposit");
   const computationThread = alwaysAuthenticated(alwaysBlueprint, "payout");
   const availabilityChallenge = alwaysAuthenticated(
     alwaysBlueprint,
@@ -417,8 +413,6 @@ const buildTestContracts = async (
     [
       base.hubOracle.policyId,
       correctionLock.spendingScriptHash,
-      claimRegistry.spendingScriptHash,
-      computationThread.policyId,
       base.activeOperators.policyId,
       activeOperatorsAddressData,
       base.retiredOperators.policyId,
@@ -443,7 +437,6 @@ const buildTestContracts = async (
   return {
     ...base,
     correctionLock,
-    claimRegistry,
     computationThread,
     stateQueue: {
       ...stateQueueMinting,
@@ -653,9 +646,6 @@ const submitSetupTx = async ({
   const correctionLockAssets = {
     [toUnit(contracts.hubOracle.policyId, CORRECTION_LOCK_ASSET_NAME)]: 1n,
   };
-  const claimRegistryAssets = {
-    [toUnit(contracts.hubOracle.policyId, CLAIM_REGISTRY_ASSET_NAME)]: 1n,
-  };
   const schedulerAssets = {
     [toUnit(contracts.scheduler.policyId, SCHEDULER_ASSET_NAME)]: 1n,
   };
@@ -739,10 +729,7 @@ const submitSetupTx = async ({
     .validFrom(Number(initValidFrom))
     .validTo(Number(initValidTo))
     .collectFrom([nonceUtxo])
-    .mintAssets(
-      { ...hubOracleAssets, ...correctionLockAssets, ...claimRegistryAssets },
-      Data.void(),
-    )
+    .mintAssets({ ...hubOracleAssets, ...correctionLockAssets }, Data.void())
     .pay.ToAddressWithData(
       credentialToAddress(
         network,
@@ -814,20 +801,6 @@ const submitSetupTx = async ({
         value: Data.to({ fraud_prover: operator }, FraudProofTokenDatum),
       },
       fraudProofAssets,
-    )
-    .pay.ToContract(
-      contracts.claimRegistry.spendingScriptAddress,
-      {
-        kind: "inline",
-        value: Data.to(
-          {
-            claims_root: EMPTY_MERKLE_TREE_ROOT,
-            computation_thread_policy_id: contracts.computationThread.policyId,
-          },
-          ClaimRegistryDatum,
-        ),
-      },
-      claimRegistryAssets,
     )
     .attach.MintingPolicy(contracts.hubOracle.mintingScript)
     .attach.MintingPolicy(contracts.scheduler.mintingScript)

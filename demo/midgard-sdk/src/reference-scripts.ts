@@ -208,7 +208,6 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
   "V1 fraud-proof min-ada step-01": "V1FpMinAdaS01",
   "V1 fraud-proof min-ada step-02": "V1FpMinAdaS02",
   "correction-lock spending": "CorrectionLockSpend",
-  "claim-registry spending": "ClaimRegistrySpend",
   "V1 fraud-proof min-ada step-03": "V1FpMinAdaS03",
   "V1 fraud-proof min-ada step-04": "V1FpMinAdaS04",
   "V1 fraud-proof min-ada step-05": "V1FpMinAdaS05",

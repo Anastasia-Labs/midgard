@@ -66,7 +66,6 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { prepareDeploymentClaimRegistryMutationV1 } from "../../src/claim-registry-transaction-v1.js";
 import {
   faultProofFieldOpeningV1,
   planFaultProofFieldOpeningV1,
@@ -81,7 +80,6 @@ import {
   type ResolvedProverSigner,
   resolveReferenceInputNoIdxDeploymentContracts,
 } from "../../src/runtime.js";
-import { excludeUtxo } from "../../src/spend-input-witness.js";
 import {
   nativeTxFromCoreCompact,
   requireComputationThreadToken,
@@ -686,32 +684,15 @@ export const submitRawReferenceInputNoIdxStep04V1 = async ({
     expectedScriptHash: chain.steps[3].spendingScriptHash,
     label: "raw reference-input-no-idx step 04",
   });
-  const claimRegistryMutation = await prepareDeploymentClaimRegistryMutationV1({
-    lucid,
-    blueprint,
-    deploymentInfo,
-    network,
-    claimRegistryReferenceUtxo: witnessReferenceScripts.claimRegistrySpend,
-    computationThreadPolicyId: contracts.computationThread.policyId,
-    claimId: threadToken.assetName,
-    kind: "close",
-  });
-  const referenceInputs = [
-    ...published,
-    stepReference,
-    ...claimRegistryMutation.referenceInputs,
-  ];
+  const referenceInputs = [...published, stepReference];
   const outputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
     referenceInputs,
     label: "Raw reference-input-no-idx step 04 outputs",
   });
   const feeInput = selectFeeInput(
-    claimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
-      (utxos, reference) => excludeUtxo(utxos, reference),
-      (await lucid.wallet().getUtxos()).filter(
-        (utxo) => utxo.datum == null && utxo.datumHash == null,
-      ),
+    (await lucid.wallet().getUtxos()).filter(
+      (utxo) => utxo.datum == null && utxo.datumHash == null,
     ),
   );
   const fraudProofUnit = toUnit(
@@ -821,7 +802,7 @@ export const submitRawReferenceInputNoIdxStep04V1 = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const unsigned = await fraudProofCarriage
-    .attach(computationThreadCarriage.attach(claimRegistryMutation.apply(base)))
+    .attach(computationThreadCarriage.attach(base))
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();

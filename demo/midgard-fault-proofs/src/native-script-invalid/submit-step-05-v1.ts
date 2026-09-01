@@ -15,7 +15,6 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import type { PreparedClaimRegistryMutationV1 } from "../claim-registry-transaction-v1.js";
 import {
   linearFaultStepLabelV1,
   requireLinearFaultReferenceScriptV1,
@@ -74,7 +73,6 @@ export const submitNativeScriptInvalidStep05 = async ({
   nodeBudget = NATIVE_SCRIPT_INVALID_SCAN_BATCH_V1,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  claimRegistryMutation,
   preSubmitBoundary,
   awaitConfirmation = true,
 }: {
@@ -90,7 +88,6 @@ export const submitNativeScriptInvalidStep05 = async ({
   readonly nodeBudget?: number;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }) => {
@@ -172,9 +169,6 @@ export const submitNativeScriptInvalidStep05 = async ({
     signer_queries: signerQueries,
   };
   if (transition.complete) {
-    if (claimRegistryMutation === undefined) {
-      throw new Error(`${label}: terminal claim-registry mutation is required`);
-    }
     const result = await submitLinearFaultFinalizeV1({
       lucid,
       family: FAMILY,
@@ -210,7 +204,6 @@ export const submitNativeScriptInvalidStep05 = async ({
             },
       referenceScriptUtxo,
       witnessReferenceScripts,
-      claimRegistryMutation,
       preSubmitBoundary,
       awaitConfirmation,
     });

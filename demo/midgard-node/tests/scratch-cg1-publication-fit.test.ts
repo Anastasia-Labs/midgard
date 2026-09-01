@@ -134,23 +134,25 @@ describe.skipIf(!blueprintPresent)(
   () => {
     // SKIPPED, NOT DELETED, pending Anastasia-Labs/midgard#649.
     //
-    // The wave-current `state_queue.mint` compiles to 16,835 bytes unapplied,
-    // which is already over the 16,384-byte L1 transaction envelope before a
-    // single funding input, the auth mint or a signature is added. This driver
-    // therefore fails at its first assertion for that target with the real
-    // ledger rule, not an arithmetic one:
+    // `state_queue.mint` no longer blocks this gate. Removing the claim
+    // registry dropped two of its parameters (`claim_registry_script_hash` and
+    // `computation_thread_policy_id`) along with the InitV1/Deinit registry
+    // checks, taking it from 16,835 to 16,139 bytes unapplied — inside the
+    // 16,384-byte L1 transaction envelope.
     //
-    //   Failed to complete reference-script publication transaction for
-    //   state-queue minting: RunTimeError: Max transaction size of 16384
-    //   exceeded. Found: 17679
+    // `availability_challenge` is now the sole remaining blocker, at 19,956
+    // bytes unapplied for both its minting and spending legs, which is over the
+    // envelope before a single funding input, the auth mint or a signature is
+    // added. This driver therefore still fails at its first assertion for those
+    // targets with the real ledger rule, not an arithmetic one.
     //
-    // That is the expected observation of #649, not a defect in this
-    // measurement, so the assertions stay exactly as they are — no target is
-    // excluded from the re-derived roster and no bound is relaxed, because a
-    // roster that quietly skipped the one oversize validator would report green
-    // on precisely the condition CG1 exists to catch. Re-enable this test (drop
-    // the `.skip`) as the gate that proves #649 is fixed; it needs no other
-    // edit.
+    // That is the expected observation of the remaining half of #649, not a
+    // defect in this measurement, so the assertions stay exactly as they are —
+    // no target is excluded from the re-derived roster and no bound is relaxed,
+    // because a roster that quietly skipped the oversize validator would report
+    // green on precisely the condition CG1 exists to catch. Re-enable this test
+    // (drop the `.skip`) as the gate that proves #649 is fixed; it needs no
+    // other edit.
     it.skip("publishes every roster target under the real L1 envelope", async () => {
       const operator = generateEmulatorAccount({ lovelace: 30_000_000_000n });
       const referenceScripts = generateEmulatorAccount({

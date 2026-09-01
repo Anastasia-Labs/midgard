@@ -126,7 +126,7 @@ describe.skipIf(!optionB)(
       // (#622 ruling (b), re-pinned at the #617 wave sign-off) the heuristic
       // rides by reference (the recorded reference row does). The payload
       // tracks the pin — it stages an item just over 13,522 and well inside
-      // the contiguous 14,004 inline fit, so the flip below is a routing
+      // the contiguous 14,058 inline fit, so the flip below is a routing
       // choice rather than an envelope accident.
       expect(journey.completeItemBytes).toBeGreaterThan(RELIABLE_DIRECT_PIN);
 

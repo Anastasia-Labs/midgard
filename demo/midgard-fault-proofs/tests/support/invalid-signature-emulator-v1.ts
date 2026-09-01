@@ -34,7 +34,6 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { prepareDeploymentClaimRegistryMutationV1 } from "../../src/claim-registry-transaction-v1.js";
 import {
   faultProofFieldOpeningV1,
   planFaultProofFieldOpeningV1,
@@ -44,7 +43,6 @@ import {
   requireFaultProofStepReferenceScriptV1,
   resolveInvalidSignatureDeploymentContracts,
 } from "../../src/runtime.js";
-import { excludeUtxo } from "../../src/spend-input-witness.js";
 import type { SubmitStep01TxInclusion } from "../../src/submit-step-01.js";
 import {
   nativeTxFromCoreCompact,
@@ -442,35 +440,15 @@ export const submitRawInvalidSignatureStep02V1 = async ({
     expectedScriptHash: contracts.invalidSignature.steps[1].spendingScriptHash,
     label: "raw invalid-signature step 02",
   });
-  // `computation_thread.mint` requires the claim-registry input in every arm,
-  // so the raw driver closes the claim exactly as the submitter does.
-  const claimRegistryMutation = await prepareDeploymentClaimRegistryMutationV1({
-    lucid,
-    blueprint: harness.realBlueprint,
-    deploymentInfo,
-    network,
-    computationThreadPolicyId: contracts.computationThread.policyId,
-    claimRegistryReferenceUtxo:
-      harness.witnessReferenceScripts.claimRegistrySpend,
-    claimId: threadToken.assetName,
-    kind: "close",
-  });
-  const referenceInputs = [
-    ...published,
-    stepReference,
-    ...claimRegistryMutation.referenceInputs,
-  ];
+  const referenceInputs = [...published, stepReference];
   const addrTxWitsOpening = faultProofFieldOpeningV1({
     planned,
     referenceInputs,
     label: "Raw invalid-signature step 02",
   });
   const feeInput = selectFeeInput(
-    claimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
-      (utxos, reference) => excludeUtxo(utxos, reference),
-      (await lucid.wallet().getUtxos()).filter(
-        (utxo) => utxo.datum == null && utxo.datumHash == null,
-      ),
+    (await lucid.wallet().getUtxos()).filter(
+      (utxo) => utxo.datum == null && utxo.datumHash == null,
     ),
   );
   const fraudProofUnit = toUnit(
@@ -570,7 +548,7 @@ export const submitRawInvalidSignatureStep02V1 = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const unsigned = await fraudProofCarriage
-    .attach(computationThreadCarriage.attach(claimRegistryMutation.apply(base)))
+    .attach(computationThreadCarriage.attach(base))
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();

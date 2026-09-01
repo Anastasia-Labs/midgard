@@ -4,11 +4,7 @@ import {
   NoReferenceInputStep03Datum,
   NoReferenceInputStep04Datum,
 } from "@al-ft/midgard-sdk";
-import {
-  credentialToAddress,
-  type LucidEvolution,
-  type UTxO,
-} from "@lucid-evolution/lucid";
+import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import {
   type FaultProofFieldOpeningPlanV1,
@@ -20,10 +16,7 @@ import {
   type StateQueueMutationLeaseCoordinator,
   submitRemoveFraudulentBlock,
 } from "../remove-fraudulent-block.js";
-import {
-  requireDeploymentScriptHash,
-  type ResolvedProverSigner,
-} from "../runtime.js";
+import { type ResolvedProverSigner } from "../runtime.js";
 import { submitInit } from "../submit-init.js";
 import { submitNoReferenceInputStep01 } from "../submit-no-reference-input-step-01.js";
 import { submitNoReferenceInputStep02 } from "../submit-no-reference-input-step-02.js";
@@ -58,11 +51,6 @@ import {
   runFraudProofWorkflowFromRetainedDaV1,
 } from "./orchestrator-v1.js";
 import {
-  createProductionClaimRegistryPrerequisiteV1,
-  type ProductionClaimRegistryPrerequisiteV1,
-  type ProductionClaimRegistryPublicProofDeriverV1,
-} from "./production-claim-registry-prerequisite-v1.js";
-import {
   createAuthenticatedFieldCarriagePrerequisitePortV1,
   type ProductionFieldCarriageRequirementV1,
   withProductionFieldCarriagePrerequisiteV1,
@@ -91,7 +79,6 @@ import {
 export type NoReferenceInputWorkflowReferenceScriptsV1 = Readonly<{
   steps: readonly [UTxO, UTxO, UTxO, UTxO];
   witnesses: FaultProofWitnessReferenceScriptsV1 & {
-    readonly claimRegistrySpend: UTxO;
     readonly computationThreadMint: UTxO;
     readonly fraudProofMint: UTxO;
     readonly phasMembershipWithdraw: UTxO;
@@ -110,7 +97,6 @@ type BoundConfigV1 = Readonly<{
     FraudProofWorkflowDeploymentBindingV1<"noReferenceInput">["fieldPreimageCertificate"]
   >;
   replayContext?: CompleteCanonicalReplayContextV1;
-  claimRegistry: ProductionClaimRegistryPrerequisiteV1<"noReferenceInput">;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
@@ -280,11 +266,6 @@ const createTransactionPort = (
     }
     const input = actionInput(action);
     if (input.stage === "init") {
-      const claimRegistryMutation = await config.claimRegistry.resolveMutation({
-        headerHash: admitted.artifact.headerHash,
-        action,
-        artifact,
-      });
       return Object.freeze({
         transaction: await captureLocallyEvaluatedTransactionV1(
           async (preSubmitBoundary) => {
@@ -300,7 +281,6 @@ const createTransactionPort = (
                 "stateQueueBlockOutRef",
               ),
               fraudulentHeaderHash: admitted.artifact.headerHash,
-              preparedClaimRegistryMutation: claimRegistryMutation,
               witnessReferenceScripts: config.referenceScripts.witnesses,
               preSubmitBoundary,
               awaitConfirmation: false,
@@ -404,18 +384,11 @@ const createTransactionPort = (
       });
     }
     if (input.stage === "step_04") {
-      const [chunks, claimRegistryMutation] = await Promise.all([
-        resolveChunks({
-          action,
-          config,
-          proofCbor: admitted.artifact.txsNonMembershipProofCbor,
-        }),
-        config.claimRegistry.resolveMutation({
-          headerHash: admitted.artifact.headerHash,
-          action,
-          artifact,
-        }),
-      ]);
+      const chunks = await resolveChunks({
+        action,
+        config,
+        proofCbor: admitted.artifact.txsNonMembershipProofCbor,
+      });
       return Object.freeze({
         transaction: await captureLocallyEvaluatedTransactionV1(
           async (preSubmitBoundary) => {
@@ -431,7 +404,6 @@ const createTransactionPort = (
               publishedProofChunks: chunks,
               referenceScriptUtxo: config.referenceScripts.steps[3],
               witnessReferenceScripts: config.referenceScripts.witnesses,
-              claimRegistryMutation,
               preSubmitBoundary,
               awaitConfirmation: false,
             });
@@ -458,7 +430,6 @@ export type ManifestBoundNoReferenceInputWorkflowConfigV1 = Readonly<{
   referenceScripts: NoReferenceInputWorkflowReferenceScriptsV1;
   source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
   replayContext?: CompleteCanonicalReplayContextV1;
-  claimRegistryProofs: ProductionClaimRegistryPublicProofDeriverV1;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
@@ -525,7 +496,6 @@ export const createManifestBoundNoReferenceInputWorkflowV1 = async (
   const references: NoReferenceInputWorkflowReferenceScriptsV1 = Object.freeze({
     steps: Object.freeze(steps),
     witnesses: Object.freeze({
-      claimRegistrySpend: witness("claimRegistrySpend", "claimRegistrySpend"),
       computationThreadMint: witness(
         "computationThreadMint",
         "computationThreadMint",
@@ -558,39 +528,6 @@ export const createManifestBoundNoReferenceInputWorkflowV1 = async (
       "no-reference-input requires authenticated raw L1 and publication authorities",
     );
   }
-  const claimRegistry = createProductionClaimRegistryPrerequisiteV1({
-    category: "noReferenceInput",
-    categoryId: binding.resolvedContracts.category.categoryId,
-    lucid: config.lucid,
-    blueprint: binding.blueprint,
-    deploymentInfo: binding.deploymentInfo,
-    network: binding.network,
-    signer: config.signer,
-    computationThreadPolicyId:
-      binding.resolvedContracts.contracts.computationThread.policyId,
-    claimRegistryAddress: credentialToAddress(binding.network, {
-      type: "Script",
-      hash: requireDeploymentScriptHash(
-        binding.deploymentInfo,
-        "claimRegistrySpend",
-      ),
-    }),
-    hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
-    rawL1: l1.rawL1,
-    releaseFinality: binding.releaseFinality,
-    publications: l1.publications,
-    proofs: config.claimRegistryProofs,
-    mutationForAction: ({ action }) => {
-      const stage = actionInput(action).stage;
-      return stage === "init"
-        ? { kind: "open" }
-        : stage === "step_04"
-          ? { kind: "close" }
-          : null;
-    },
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await l1.transactionConfirmed({ headerHash, txHash }),
-  });
   const bound: BoundConfigV1 = {
     binding,
     lucid: config.lucid,
@@ -600,7 +537,6 @@ export const createManifestBoundNoReferenceInputWorkflowV1 = async (
     ...(config.replayContext === undefined
       ? {}
       : { replayContext: config.replayContext }),
-    claimRegistry,
     stateQueueMutationLeaseCoordinator:
       config.stateQueueMutationLeaseCoordinator,
   };
@@ -670,11 +606,6 @@ export const createManifestBoundNoReferenceInputWorkflowV1 = async (
     category: "noReferenceInput",
     base: adapter,
     prerequisite: proofPrerequisite,
-  });
-  adapter = withProductionProofChunkPrerequisiteV1({
-    category: "noReferenceInput",
-    base: adapter,
-    prerequisite: claimRegistry.proofChunks,
   });
   return Object.freeze({
     binding,

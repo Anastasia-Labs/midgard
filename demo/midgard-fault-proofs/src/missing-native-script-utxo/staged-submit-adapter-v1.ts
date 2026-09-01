@@ -25,7 +25,6 @@ export const missingNativeScriptUtxoStagedContractsV1 = (
     computationThread: contracts.computationThread,
     fraudProof: contracts.fraudProof,
     hubOraclePolicyId: contracts.hubOraclePolicyId,
-    claimRegistry: contracts.claimRegistry,
     stateQueuePolicyId: contracts.stateQueuePolicyId,
     fieldPreimageCertificatePolicyId:
       contracts.fieldPreimageCertificatePolicyId,

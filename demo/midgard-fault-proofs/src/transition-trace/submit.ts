@@ -28,11 +28,6 @@ import {
 import { Effect } from "effect";
 
 import {
-  type PreparedClaimRegistryMutationV1,
-  prepareDeploymentClaimRegistryMutationV1,
-  requirePreparedClaimRegistryMutationV1,
-} from "../claim-registry-transaction-v1.js";
-import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   makeLucidForSubmit,
@@ -46,7 +41,6 @@ import {
   resolveTransitionTraceDeploymentContracts,
   type SubmitProviderConfig,
 } from "../runtime.js";
-import { excludeUtxo } from "../spend-input-witness.js";
 import {
   requireComputationThreadToken,
   requireInitialStepDatum,
@@ -546,22 +540,7 @@ export const submitTransitionTraceProof = async ({
     );
   }
 
-  const closeMutation = await prepareDeploymentClaimRegistryMutationV1({
-    lucid,
-    blueprint,
-    deploymentInfo,
-    network,
-    computationThreadPolicyId: contracts.computationThread.policyId,
-    claimRegistryReferenceUtxo: witnessReferenceScripts?.claimRegistrySpend,
-    claimId: threadToken.assetName,
-    kind: "close",
-  });
-  const feeInput = selectFeeInput(
-    closeMutation.referenceInputs.reduce<readonly UTxO[]>(
-      (utxos, reference) => excludeUtxo(utxos, reference),
-      await lucid.wallet().getUtxos(),
-    ),
-  );
+  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -637,7 +616,7 @@ export const submitTransitionTraceProof = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const tx = fraudProofMintCarriage.attach(
-    computationThreadMintCarriage.attach(closeMutation.apply(base)),
+    computationThreadMintCarriage.attach(base),
   );
 
   const unsigned = await tx.complete({ localUPLCEval: true });
@@ -849,11 +828,9 @@ export const submitTransitionTraceFinalV1 = async ({
   proof,
   additionalReferenceInputs = [],
   witnessReferenceScripts,
-  claimRegistryMutation,
   preSubmitBoundary,
   awaitConfirmation = true,
 }: SubmitTransitionTraceProofConfig & {
-  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
 }): Promise<SubmitTransitionTraceFinalResultV1> => {
   const {
@@ -935,23 +912,6 @@ export const submitTransitionTraceFinalV1 = async ({
       "Transition-trace final proof targets another computation thread.",
     );
   }
-  const closeMutation = requirePreparedClaimRegistryMutationV1({
-    mutation:
-      claimRegistryMutation ??
-      (await prepareDeploymentClaimRegistryMutationV1({
-        lucid,
-        blueprint,
-        deploymentInfo,
-        network,
-        computationThreadPolicyId: contracts.computationThread.policyId,
-        claimRegistryReferenceUtxo: witnessReferenceScripts?.claimRegistrySpend,
-        claimId: threadToken.assetName,
-        kind: "close",
-      })),
-    kind: "close",
-    claimId: threadToken.assetName,
-    label: "transition-trace final",
-  });
   signer.selectWallet(lucid);
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
@@ -973,12 +933,7 @@ export const submitTransitionTraceFinalV1 = async ({
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: "transition-trace fraud-proof mint",
   });
-  const finalFeeInput = selectFeeInput(
-    closeMutation.referenceInputs.reduce<readonly UTxO[]>(
-      (utxos, reference) => excludeUtxo(utxos, reference),
-      await lucid.wallet().getUtxos(),
-    ),
-  );
+  const finalFeeInput = selectFeeInput(await lucid.wallet().getUtxos());
   const base = lucid
     .newTx()
     .collectFrom([finalFeeInput])
@@ -1031,7 +986,7 @@ export const submitTransitionTraceFinalV1 = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const unsigned = await fraudProofMintCarriage
-    .attach(computationThreadMintCarriage.attach(closeMutation.apply(base)))
+    .attach(computationThreadMintCarriage.attach(base))
     .complete({ localUPLCEval: true });
   if (
     spendLayout === undefined ||
@@ -1062,11 +1017,6 @@ export const submitTransitionTraceFinalV1 = async ({
           role: "V1 fraud-proof token minting",
           utxo: witnessReferenceScripts?.fraudProofMint,
           expectedScript: contracts.fraudProof.mintingScript,
-        },
-        {
-          role: "claim-registry spending",
-          utxo: closeMutation.referenceScriptUtxo,
-          expectedScript: closeMutation.registryScript,
         },
       ],
     }),

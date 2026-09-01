@@ -238,8 +238,6 @@ describe("fault-proof maximum proof fit", () => {
     const { headerHash } = setup;
     const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
       removalReferenceScripts: removalReferenceScriptPublications.published,
-      claimRegistrySpendReference:
-        harness.witnessReferenceScripts.claimRegistrySpend,
     });
 
     const proofFit: Record<string, CompleteSignedTransactionMeasurement> = {};
@@ -506,8 +504,6 @@ describe("fault-proof maximum proof fit", () => {
     const { headerHash } = setup;
     const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
       removalReferenceScripts: removalReferenceScriptPublications.published,
-      claimRegistrySpendReference:
-        harness.witnessReferenceScripts.claimRegistrySpend,
     });
 
     const proofFit: Record<string, CompleteSignedTransactionMeasurement> = {};
@@ -745,8 +741,6 @@ describe("fault-proof maximum proof fit", () => {
     const { headerHash } = setup;
     const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
       removalReferenceScripts: removalReferenceScriptPublications.published,
-      claimRegistrySpendReference:
-        harness.witnessReferenceScripts.claimRegistrySpend,
     });
 
     const proofFit: Record<string, CompleteSignedTransactionMeasurement> = {};
@@ -936,8 +930,6 @@ describe("fault-proof maximum proof fit", () => {
     const { headerHash } = setup;
     const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
       removalReferenceScripts: removalReferenceScriptPublications.published,
-      claimRegistrySpendReference:
-        harness.witnessReferenceScripts.claimRegistrySpend,
     });
 
     const proofFit: Record<string, CompleteSignedTransactionMeasurement> = {};

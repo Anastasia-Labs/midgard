@@ -4,9 +4,9 @@
  * inside the 16,384-byte L1 proof envelope at all — and the adjacent-item
  * probe one byte past it.
  *
- *   item 14,004 -> observe signs at 16,369 (fits; the last CONTIGUOUS fit —
+ *   item 14,058 -> observe signs at 16,369 (fits; the last CONTIGUOUS fit —
  *                  this file's first journey, projection == signed)
- *   item 14,005 -> projected 16,385: the builder refuses PRE-SIGN, records
+ *   item 14,059 -> projected 16,385: the builder refuses PRE-SIGN, records
  *                  the refusal, and completes the same staged thread by the
  *                  automatic §8 publication fallback — the exact frontier +1
  *                  is a route demotion since #621, not the stranding the
@@ -15,23 +15,24 @@
  *
  * A measurement note the campaign owes honesty about: near the envelope the
  * signed observe size is NOT monotone in item bytes. The measured ladder —
- * 14,004 -> 16,369; 14,005 -> 16,385; 14,006 -> 16,386; 14,007 -> 16,387;
- * 14,008 -> 16,388; 14,009 -> 16,385; 14,017 -> 16,394; 14,019 -> 16,396 —
+ * 14,058 -> 16,369; 14,059 -> 16,385; 14,060 -> 16,386; 14,061 -> 16,387;
+ * 14,062 -> 16,388; 14,063 -> 16,385; 14,071 -> 16,394; 14,073 -> 16,396 —
  * shows a +16 jump and a -4 drop, the transaction-balancing fixed point
  * quantizing across CBOR integer-width boundaries in the fee/change values.
  * Consequences pinned here: NO item in this fixture family signs at exactly
  * 16,384, and the frontier the routing table can actually use is the
- * CONTIGUOUS one — every item up to 14,004 measured or slope-implied inside
- * the envelope, 14,005 through 14,009 measured over it. Isolated larger
+ * CONTIGUOUS one — every item up to 14,058 measured or slope-implied inside
+ * the envelope, 14,059 through 14,063 measured over it. Isolated larger
  * fits, if any exist inside a later quantization dip, are unusable by a
  * threshold heuristic and are not claimed. Every pin in this file is a
  * measurement, not a model value.
  *
  * Together with file 1 this is the measured post-change frontier pair the
- * owner sign-off table carries: reserve 13,522 / exact 14,004, against the
+ * owner sign-off table carries: reserve 13,522 / exact 14,058, against the
  * owner-signed pre-change 12,810 / 13,294. The owner answered #619's
- * question (b) on 2026-08-22 and those pins now hold 13,522 / 14,004 in
- * `consensus-profile-v1.ts`, re-pinned at the #617 wave sign-off.
+ * question (b) on 2026-08-22. Removing the claim-registry witness retained
+ * the reserve cost steer; 56 freed transaction bytes became 54 item bytes at
+ * the exact frontier because the larger item crossed a CBOR framing width.
  *
  * Two journeys per file for the wasm32-heap reason; see
  * tests/support/uplc-heap-guard.ts.
@@ -59,21 +60,21 @@ const MAX_L1_TX_BYTES = PROTOCOL_PARAMETERS_DEFAULT.maxTxSize;
  * The measured post-Option-B direct-route exact frontier: the largest §5.1
  * complete-item preimage below which every observe transaction signs inside
  * the 16,384-byte L1 proof envelope (the contiguous frontier; see the file
- * header for the measured quantization ladder above it). Payload 13,529
+ * header for the measured quantization ladder above it). Payload 13,582
  * stages exactly this preimage (fixture map: item = datumSize(payload)+49).
  */
-const EXACT_FRONTIER_ITEM_BYTES = 14_004;
-const EXACT_FRONTIER_PAYLOAD_BYTES = 13_529;
+const EXACT_FRONTIER_ITEM_BYTES = 14_058;
+const EXACT_FRONTIER_PAYLOAD_BYTES = 13_582;
 /** The measured signed observe size at the exact frontier (margin 15). */
 const EXACT_FRONTIER_OBSERVE_BYTES = 16_369;
 
 /** File 1's item-size-independent six-stage rows, re-pinned at these items. */
 const SIX_STAGE_CONSTANT_ROW_BYTES_V1 = {
-  prepareSelected: 1_864,
-  authenticate: 2_656,
-  source: 1_911,
-  proof: 1_936,
-  settle: 679,
+  prepareSelected: 1_808,
+  authenticate: 2_600,
+  source: 1_855,
+  proof: 1_880,
+  settle: 623,
 } as const;
 
 const stageBytesByKind = (
@@ -171,7 +172,7 @@ if (!optionB) {
 describe.skipIf(!optionB)(
   "post-Option-B direct-route exact frontier (#622)",
   () => {
-    it("signs the observe door at the measured 16,369 bytes at the contiguous exact frontier, item 14,004", async () => {
+    it("signs the observe door at the measured 16,369 bytes at the contiguous exact frontier, item 14,058", async () => {
       const journey = await prepareRouteFreedomJourneyV1({
         inlineDatumPayloadBytes: EXACT_FRONTIER_PAYLOAD_BYTES,
         minimumCompleteItemBytes: EXACT_FRONTIER_ITEM_BYTES - 1,
@@ -182,7 +183,7 @@ describe.skipIf(!optionB)(
         proofItemDelivery: "inline",
       });
       printRouteFreedomCampaignTableV1(
-        "#622 exact-frontier item 14,004",
+        "#622 exact-frontier item 14,058",
         journey,
         semantic,
       );
@@ -212,14 +213,14 @@ describe.skipIf(!optionB)(
 
       const award = await journey.submitAward(result.nextThreadOutRef);
       expectWholeJourneyProofFit(
-        "#622 exact-frontier item 14,004",
+        "#622 exact-frontier item 14,058",
         journey,
         semantic.measurements,
         award.measurement,
       );
     }, 900_000);
 
-    it("refuses item 14,005 pre-sign at a projected 16,385 bytes and completes by automatic publication fallback — demotion, not stranding", async () => {
+    it("refuses item 14,059 pre-sign at a projected 16,385 bytes and completes by automatic publication fallback — demotion, not stranding", async () => {
       const journey = await prepareRouteFreedomJourneyV1({
         inlineDatumPayloadBytes: EXACT_FRONTIER_PAYLOAD_BYTES + 1,
         minimumCompleteItemBytes: EXACT_FRONTIER_ITEM_BYTES,
@@ -235,7 +236,7 @@ describe.skipIf(!optionB)(
         proofItemDelivery: "inline",
       });
       printRouteFreedomCampaignTableV1(
-        "#622 exact-frontier+1 item 14,005",
+        "#622 exact-frontier+1 item 14,059",
         journey,
         semantic,
       );
@@ -284,7 +285,7 @@ describe.skipIf(!optionB)(
 
       const award = await journey.submitAward(result.nextThreadOutRef);
       expectWholeJourneyProofFit(
-        "#622 exact-frontier+1 item 14,005",
+        "#622 exact-frontier+1 item 14,059",
         journey,
         semantic.measurements,
         award.measurement,

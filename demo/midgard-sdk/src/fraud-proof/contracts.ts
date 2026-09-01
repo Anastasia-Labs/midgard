@@ -503,7 +503,6 @@ export const CEK_PROGRAM_MATERIAL_SPEND_TITLE_V1 =
 export const VALIDATION_TRACE_RESOLVER_COUNT_V1 = 14;
 
 export const FAULT_PROOF_SHARED_TITLES = {
-  claimRegistrySpend: "claim_registry.spend.spend",
   computationThreadMint: "computation_thread.mint.mint",
   fraudProofMint: "fraud_proof.mint.mint",
   fraudProofSpend: "fraud_proof.spend.else",
@@ -1491,30 +1490,6 @@ const tryBuild = <A>(
       ),
   });
 
-/**
- * Deterministically derives the deployment-bound claim-registry validator.
- * Kept as a narrow public builder so one-category submitters can authenticate
- * the shared singleton without constructing every fraud-proof family.
- */
-export const buildClaimRegistrySpendingValidator = ({
-  blueprint,
-  network,
-  hubOraclePolicyId,
-}: Pick<
-  BuildFaultProofContractsParams,
-  "blueprint" | "network" | "hubOraclePolicyId"
->): Effect.Effect<SpendingValidator, Error> =>
-  tryBuild("Failed to build claim-registry spending validator", () =>
-    makeSpendingValidator(
-      network,
-      applyBlueprintParams(
-        blueprint,
-        FAULT_PROOF_SHARED_TITLES.claimRegistrySpend,
-        [hubOraclePolicyId],
-      ),
-    ),
-  );
-
 const buildSharedFaultProofContracts = ({
   blueprint,
   network,
@@ -1525,11 +1500,6 @@ const buildSharedFaultProofContracts = ({
   Error
 > =>
   Effect.gen(function* () {
-    const claimRegistry = yield* buildClaimRegistrySpendingValidator({
-      blueprint,
-      network,
-      hubOraclePolicyId,
-    });
     const computationThread = yield* tryBuild(
       "Failed to build computation-thread minting policy",
       () =>
@@ -1537,11 +1507,7 @@ const buildSharedFaultProofContracts = ({
           applyBlueprintParams(
             blueprint,
             FAULT_PROOF_SHARED_TITLES.computationThreadMint,
-            [
-              fraudProofCataloguePolicyId,
-              hubOraclePolicyId,
-              claimRegistry.spendingScriptHash,
-            ],
+            [fraudProofCataloguePolicyId, hubOraclePolicyId],
           ),
         ),
     );

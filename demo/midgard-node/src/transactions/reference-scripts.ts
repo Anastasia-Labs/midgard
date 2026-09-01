@@ -1533,10 +1533,6 @@ export const nodeRuntimeReferenceScriptTargets = (
     name: "correction-lock spending",
     script: contracts.correctionLock.spendingScript,
   },
-  {
-    name: "claim-registry spending",
-    script: contracts.claimRegistry.spendingScript,
-  },
 ];
 
 export const referenceScriptTargetsByCommand = (
@@ -1636,10 +1632,6 @@ export const referenceScriptTargetsByCommand = (
     {
       name: "correction-lock spending",
       script: contracts.correctionLock.spendingScript,
-    },
-    {
-      name: "claim-registry spending",
-      script: contracts.claimRegistry.spendingScript,
     },
   ],
   scheduler: [

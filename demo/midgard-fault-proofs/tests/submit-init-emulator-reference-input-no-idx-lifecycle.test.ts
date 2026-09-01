@@ -136,8 +136,6 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
 
     const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
       removalReferenceScripts: removalReferenceScriptPublications.published,
-      claimRegistrySpendReference:
-        harness.witnessReferenceScripts.claimRegistrySpend,
     });
 
     // ## init
@@ -442,10 +440,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
       catalogue,
       fixture,
     });
-    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
-      claimRegistrySpendReference:
-        harness.witnessReferenceScripts.claimRegistrySpend,
-    });
+    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {});
     const initResult = await submitInit({
       lucid: proverLucid,
       witnessReferenceScripts: harness.witnessReferenceScripts,
@@ -629,10 +624,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
       catalogue,
       fixture,
     });
-    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
-      claimRegistrySpendReference:
-        harness.witnessReferenceScripts.claimRegistrySpend,
-    });
+    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {});
     const initResult = await submitInit({
       lucid: proverLucid,
       witnessReferenceScripts: harness.witnessReferenceScripts,
@@ -789,10 +781,7 @@ describe("reference-input-no-idx fault-proof emulator lifecycle", () => {
       catalogue,
       fixture,
     });
-    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
-      claimRegistrySpendReference:
-        harness.witnessReferenceScripts.claimRegistrySpend,
-    });
+    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {});
     const initResult = await submitInit({
       lucid: proverLucid,
       witnessReferenceScripts: harness.witnessReferenceScripts,

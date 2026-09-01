@@ -623,10 +623,32 @@ test cek_single_and_multi_reference_routes_verify_typed_material() {
 // ScriptSources prepare validators to these exact semantic groups. These are
 // parameterized production-builder fixture identities, not a claim about a
 // live deployment.
+//
+// Re-derived 2026-08-31 (claim-registry removal), both groups together. Only
+// the SDK test cross-checks these — `aiken check` cannot, because nothing on
+// this side applies parameters — so they are exactly the kind of pin that goes
+// stale silently, and both groups were re-derived rather than only the one
+// whose assertion happened to fail first.
+//
+// Cause, measured rather than assumed. Building HEAD 38ef102b with the same
+// `aiken build --env testnet` and diffing it against the current tree
+// title-by-title: two validators are gone (`claim_registry.spend` and its
+// `.else`) and exactly six compiled bodies changed — `hub_oracle.mint`,
+// `computation_thread.mint`, `state_queue.mint`, each with its `.else`. Every
+// semantic resolver named below is byte-identical across the two, so none of
+// them was recompiled and every hash here moved through an applied parameter.
+// The parameter is `computation_thread_policy_id`, which each of these
+// resolvers declares: the baseline blueprint declares
+// `computation_thread.mint.mint(fraud_proof_catalogue_script_hash,
+// hub_oracle_script_hash, claim_registry_script_hash)` and the current one
+// declares the first two only, so that policy id necessarily moved.
+// Hub-oracle is ruled OUT rather than assumed away: the SDK test builds these
+// with a fixed placeholder `hubOraclePolicyId` of "bb" x 28, so a hub-oracle
+// policy id that never changed cannot be what moved them.
 fn phase_a_script_precondition_resolvers() -> List<ScriptHash> {
   [
-    #"6d62d600f5f1bf6ee2b9ab1c9744265c4b410720872eda0c48982a98",
-    #"b709c4431d67b89143490e040f6b9c920f1c5fd297ee7d99a7aba22f",
+    #"42dd563871048269b44fcb4ee7a754ff2903288d0ff52cf5dd7f4125",
+    #"6410fbd57f282ae40f181a0e9b44a24502b2e8f1a882b1b88e3e530f",
   ]
 }
 
@@ -636,35 +658,35 @@ fn input_sets_resolvers() -> List<ScriptHash> {
 
 fn script_source_resolvers() -> List<ScriptHash> {
   [
-    #"5cc2452ae49a982c9ecb64ec352b94778f95abe3986760807af6bd88",
-    #"bac7473af7b6adb5a7fbbd8ec40a1c35ce25545c6f159f90a937a0a7",
-    #"1e745ee645da4a3442fdecc0402287e8354f474d139a6a790426cbff",
-    #"0cfe1ef6c73ba62b85a6b8478b9ae55aac951587ed8fdd9dc921fcf3",
-    #"a525ce13a8b03837ad8cd2052b87c43459129d70359d38adb84b299a",
-    #"8b72709a9c5672083094ccf6c1368e99b6d47772788bf4f06d651e38",
-    #"5264a26a8be58352ca279dae473b25dc9b84ead318e73f801d00fcbc",
-    #"7696d789331169fa2428407459f8174cebdbc3fd04fed218126d9386",
-    #"93e0307fbedb1f6003f772fedadba44a506eff509c1edbfbb8574b49",
-    #"56c6bae049cab7d4dcd443da3bc62eeac60f3a7f99150f8b610b7eb9",
-    #"beed2f919a33d48accd101a003bc4696fd53ef3a1e30997c7255e3b1",
-    #"d7c81068e355e87a634fc822cfdd7c23303bcfb33f3df672a80be423",
-    #"b95c90f49b744571aa49a6d6ef8d48be6b0fa1a705ac2799e95209ae",
-    #"117397ff7192f23f85e04e2a23b72402d2bdff0e7386d69cea986ec2",
-    #"fb5481d67bff6d720c52079456f968ca7757ccde21816d649a5d9786",
-    #"b7710d849fed272497299a16f91b2326ef098545ffb67f00644b4918",
-    #"6cbf362da9fe7d0b3734af2e165196d99f26aa1b942a46b04279908c",
-    #"6bd432c90e5478c503a65a3ef9ab05059c0c2769a2c4b14312016f49",
-    #"5f3e7b1cc60e82df5d8d2daaf539b79558ed07e9b085b917a10079e7",
-    #"31849f05530f6ee4159868b3f4f30651f1425597291cd71e3a43a409",
-    #"dbc08b6f782eb3e21909e3c8a19a5e8e22110c883556b9942f1a7269",
-    #"ed63cb23bcb5b6745cd9d66f15199e3a9d065a232b5951f6915ff30f",
-    #"0bc6e0f4029faf97e5899d803280cb2d2602c45a934a12808884806b",
-    #"6acbe046afaf89e95bb9b3a109c5d1e5e0792615c55993f6a1e24fec",
-    #"ba3a1aa790df7421cf4b7e1d909cf6276b30738acaf3d115490be380",
-    #"527cbb0b7fee489a6f3b0b7968b0d7ccc74139aff3db2fae17372bde",
-    #"376093896b9947f311ac4fbdd621703f7bec76157db21824e79bcce4",
-    #"9c3fe208d795c56eccb5f330d375657902ca62436ba18104e2bbc045",
-    #"5db49979a2e3327fedfb41287c8103ccfb917d788ea1ef7292eb2500",
+    #"44a2bf70483b46e9476f8a589332cd23ab65d225375b2bbc729c8783",
+    #"d86f961069972d60f3f20dd20f349de0189f5b2951031ec5eb3eb4fd",
+    #"1b43b1f2f7c4a42ca89a5f95c6fa4025b3d715454f70527c68d00b17",
+    #"3cec2efea6c0f96c4f1e4004de8da87b1756dd7130bcdf76ea4d09e3",
+    #"92b21e330d897b6baaaf2052696d59004b17beb13518a5e9d1d10bde",
+    #"05402402eb8a9ed1ec3c70837d2e9cbaded501b374d75b71fa22b222",
+    #"271c86e0247cc2ad2f0b5c6ed82c12f7b724409e5427be291029edcc",
+    #"c0b373b0176ddfb5adf584bbbf19043e2d529cc246efb348e28a59f0",
+    #"0237d54ab4f9ba85ab59e4eedbda709cf5d856ebfa9652cad0286ce5",
+    #"55b04fd3665cb2e801eeb2460aa5b21ca1cda97498ac6bc82e43affd",
+    #"3b9e5a173088ce51a68fdb0c37be93f4207c2472cf68e74eb3227fdd",
+    #"34f7f6a9a310934a643bf3b3bd3b8a9787c810d8ad60d2639482cd25",
+    #"2342031d8cd1d4e29781639b192bc2354f68b32d67a3e7b80b4599d1",
+    #"445c098e6d60bfb47484533709ba9ba4acd2da3c041f410b8c871925",
+    #"291f44a6312b0126cb4fed3e55c4526a8f026db6aa8304a1bdb81aae",
+    #"8c3d948dd69e293aa9f2f6e77941ffc99416df4215da35dd85192e97",
+    #"33b6c722dbef58d79b6a892130b1f265a8aaf87cb974d1036fbd37db",
+    #"f6348a331626d8adb17f8843ec0a9077865d53e61f1ec79d94c2f10a",
+    #"be53fa1d070bc94c0062c0bdd1840baa504a3b3e733c568138c69a4c",
+    #"e34b1823bbd79eb4ab7bc75e562883f28aee2ec9e3e90ef61b78f98c",
+    #"1a111503c94440a96d7f3d52bec7594ca664870f618a92fafe5676d9",
+    #"63fbe274b696120f18073c27de2e658e252beb743d530a6c1cd93b66",
+    #"ad7c6a56fb3ea5a0e4503dd134e196c5834971d80c2346950b8f1b46",
+    #"73878ad796a6f17a6e8013ad0e5f4be439a835508f462393ed7bba19",
+    #"93feb4ced583996897edff9420af195de9b6e276726baa573e74d319",
+    #"8cdd9844f0b282a07aa27480bce1d066f196061090a53dc36fd45033",
+    #"5d2db0fc3bc1b31d6aa1ac4bec08e2e9a834b55b5324366f69e92984",
+    #"a96b8323cd7636db7d4ee0a236f72f0f4b323f7754515875674235a3",
+    #"b24e81d83b0787c05fe7b1da59976afd4d4e2a227955721b14e9ad07",
   ]
 }
 

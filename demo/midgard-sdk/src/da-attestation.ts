@@ -38,7 +38,12 @@ import {
   encodeLinkedListNodeView,
   type LinkedListNodeView,
 } from "@/linked-list.js";
-import { StateQueueSpendRedeemer, type StateQueueUTxO } from "@/state-queue.js";
+import { MAX_VALIDITY_RANGE_LENGTH_MS } from "@/protocol-parameters.js";
+import {
+  DA_ATTESTATION_TIMEOUT_MS,
+  StateQueueSpendRedeemer,
+  type StateQueueUTxO,
+} from "@/state-queue.js";
 import {
   requireInputIndex,
   requireMintRedeemerIndex,
@@ -732,9 +737,31 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
     readonly target: DaAttestationStateQueueTarget;
     readonly attestation: DaAttestationUtxo;
     readonly referenceScripts: DaAttestationReferenceScripts;
+    readonly validityRange: {
+      readonly validFrom: bigint;
+      readonly validTo: bigint;
+    };
   },
 ): Effect.Effect<TxBuilder, DaAttestationBuildError> =>
   Effect.gen(function* () {
+    if (
+      config.validityRange.validTo < config.validityRange.validFrom ||
+      config.validityRange.validTo - config.validityRange.validFrom >
+        MAX_VALIDITY_RANGE_LENGTH_MS
+    ) {
+      return yield* failBuild(
+        "DA attestation apply requires a short closed validity range",
+        `valid_from=${config.validityRange.validFrom.toString()},valid_to=${config.validityRange.validTo.toString()},max_length=${MAX_VALIDITY_RANGE_LENGTH_MS.toString()}`,
+      );
+    }
+    const attestationDeadline =
+      config.target.stateQueueNode.header.endTime + DA_ATTESTATION_TIMEOUT_MS;
+    if (config.validityRange.validTo > attestationDeadline) {
+      return yield* failBuild(
+        "DA attestation apply validity range exceeds the attestation deadline",
+        `valid_to=${config.validityRange.validTo.toString()},deadline=${attestationDeadline.toString()}`,
+      );
+    }
     // Decision row D-DA4: committee rotation is retroactive, so apply now reads
     // the current governed params on-chain and requires the attestation's
     // frozen pair to still equal them. Refusing to build the transaction here
@@ -945,6 +972,8 @@ export const incompleteApplyDaAttestationToStateQueueTxProgram = (
 
     return lucid
       .newTx()
+      .validFrom(Number(config.validityRange.validFrom))
+      .validTo(Number(config.validityRange.validTo))
       .readFrom([
         config.hubOracleRefInput,
         config.daParamsUtxo,

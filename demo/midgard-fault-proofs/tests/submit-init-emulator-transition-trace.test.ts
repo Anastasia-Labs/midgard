@@ -112,7 +112,6 @@ describe("fault-proof emulator integration", () => {
       await publishFaultProofWitnessReferenceScriptsV1({
         lucid: proverLucid,
         realBlueprint,
-        claimRegistrySpendingScript: contracts.claimRegistry.spendingScript,
         computationThreadMintingScript:
           contracts.computationThread.mintingScript,
         fraudProofMintingScript: contracts.fraudProof.mintingScript,
@@ -170,7 +169,6 @@ describe("fault-proof emulator integration", () => {
     const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
       removalReferenceScripts: removalReferenceScriptPublications.published,
       fraudProofReferenceScripts: transitionTraceReferenceScripts,
-      claimRegistrySpendReference: witnessReferenceScripts.claimRegistrySpend,
     });
     const initResult = await submitInit({
       lucid: proverLucid,

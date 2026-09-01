@@ -12,11 +12,7 @@ import {
   NativeScriptInvalidStep04DatumSchema,
   NativeScriptInvalidStep05DatumSchema,
 } from "@al-ft/midgard-sdk";
-import {
-  credentialToAddress,
-  type LucidEvolution,
-  type UTxO,
-} from "@lucid-evolution/lucid";
+import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import {
   planFaultProofFieldOpeningV1,
@@ -25,10 +21,7 @@ import {
 } from "../field-opening-v1.js";
 import { resolvePublishedProofChunksV1 } from "../publish-proof-chunks.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
-import {
-  requireDeploymentScriptHash,
-  type ResolvedProverSigner,
-} from "../runtime.js";
+import { type ResolvedProverSigner } from "../runtime.js";
 import { parseSubmitStep01TxInclusion } from "../submit-step-01.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
@@ -54,11 +47,6 @@ import {
   type FraudProofWorkflowTerminalVerifierV1,
   runFraudProofWorkflowFromRetainedDaV1,
 } from "../workflow/orchestrator-v1.js";
-import {
-  createProductionClaimRegistryPrerequisiteV1,
-  type ProductionClaimRegistryPrerequisiteV1,
-  type ProductionClaimRegistryPublicProofDeriverV1,
-} from "../workflow/production-claim-registry-prerequisite-v1.js";
 import {
   createProductionCursorFamilyWorkflowAdapterV1,
   PRODUCTION_CURSOR_FAMILY_TRANSACTION_PORT_V1,
@@ -106,7 +94,6 @@ type BoundConfigV1 = Readonly<{
   signer: ResolvedProverSigner;
   contracts: NativeScriptInvalidContractsV1;
   references: NativeScriptInvalidWorkflowReferenceScriptsV1;
-  claimRegistry: ProductionClaimRegistryPrerequisiteV1<"nativeScriptInvalid">;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
@@ -234,11 +221,6 @@ const transactionPort = (
       awaitConfirmation: false,
     } as const;
     if (stage === "init") {
-      const mutation = await config.claimRegistry.resolveMutation({
-        headerHash: admitted.artifact.headerHash,
-        action,
-        artifact,
-      });
       return Object.freeze({
         transaction: await captureLocallyEvaluatedTransactionV1(
           async (preSubmitBoundary) => {
@@ -253,7 +235,6 @@ const transactionPort = (
                 "stateQueueBlockOutRef",
               ),
               fraudulentHeaderHash: admitted.artifact.headerHash,
-              preparedClaimRegistryMutation: mutation,
               witnessReferenceScripts: config.references.witnesses,
               preSubmitBoundary,
               awaitConfirmation: false,
@@ -330,13 +311,6 @@ const transactionPort = (
         plan: signerFieldPlan(admitted, config.signer.paymentKeyHash),
       });
       const direct = isDirect(admitted);
-      const mutation = direct
-        ? await config.claimRegistry.resolveMutation({
-            headerHash: admitted.artifact.headerHash,
-            action,
-            artifact,
-          })
-        : undefined;
       return Object.freeze({
         transaction: await captureLocallyEvaluatedTransactionV1(
           async (preSubmitBoundary) => {
@@ -368,7 +342,6 @@ const transactionPort = (
                       ).verificationKey,
                   ),
                 witnessReferenceScripts: config.references.witnesses,
-                claimRegistryMutation: mutation!,
               });
             } else {
               await submitNativeScriptInvalidStep03StartSignerScan(args);
@@ -403,11 +376,6 @@ const transactionPort = (
       });
     }
     if (stage === "step_05") {
-      const mutation = await config.claimRegistry.resolveMutation({
-        headerHash: admitted.artifact.headerHash,
-        action,
-        artifact,
-      });
       return Object.freeze({
         transaction: await captureLocallyEvaluatedTransactionV1(
           async (preSubmitBoundary) => {
@@ -426,7 +394,6 @@ const transactionPort = (
               ),
               referenceScriptUtxo: config.references.steps[4],
               witnessReferenceScripts: config.references.witnesses,
-              claimRegistryMutation: mutation,
               preSubmitBoundary,
               awaitConfirmation: false,
             });
@@ -464,7 +431,6 @@ export type ManifestBoundNativeScriptInvalidWorkflowConfigV1 = Readonly<{
   signer: ResolvedProverSigner;
   referenceScripts: NativeScriptInvalidWorkflowReferenceScriptsV1;
   source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
-  claimRegistryProofs: ProductionClaimRegistryPublicProofDeriverV1;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
@@ -539,7 +505,6 @@ export const createManifestBoundNativeScriptInvalidWorkflowV1 = async (
     Object.freeze({
       steps: Object.freeze(steps),
       witnesses: Object.freeze({
-        claimRegistrySpend: witness("claimRegistrySpend", "claimRegistrySpend"),
         computationThreadMint: witness(
           "computationThreadMint",
           "computationThreadMint",
@@ -584,52 +549,12 @@ export const createManifestBoundNativeScriptInvalidWorkflowV1 = async (
   if (l1.rawL1 === undefined) {
     throw new Error("native-script-invalid raw L1 authority is unavailable");
   }
-  const claimRegistry = createProductionClaimRegistryPrerequisiteV1({
-    category: "nativeScriptInvalid",
-    categoryId: binding.resolvedContracts.category.categoryId,
-    lucid: config.lucid,
-    blueprint: binding.blueprint,
-    deploymentInfo: binding.deploymentInfo,
-    network: binding.network,
-    signer: config.signer,
-    computationThreadPolicyId:
-      binding.resolvedContracts.contracts.computationThread.policyId,
-    claimRegistryAddress: credentialToAddress(binding.network, {
-      type: "Script",
-      hash: requireDeploymentScriptHash(
-        binding.deploymentInfo,
-        "claimRegistrySpend",
-      ),
-    }),
-    hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
-    rawL1: l1.rawL1,
-    releaseFinality: binding.releaseFinality,
-    publications: l1.publications,
-    proofs: config.claimRegistryProofs,
-    mutationForAction: ({ action, artifact }) => {
-      const input = productionCursorFamilyActionInputV1({
-        category: "nativeScriptInvalid",
-        action,
-      });
-      if (input.stage === "init") return { kind: "open" };
-      if (input.stage === "step_05") return { kind: "close" };
-      if (input.stage === "step_03") {
-        return isDirect(admitProductionNativeScriptInvalidArtifactV1(artifact))
-          ? { kind: "close" }
-          : null;
-      }
-      return null;
-    },
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await l1.transactionConfirmed({ headerHash, txHash }),
-  });
   const bound: BoundConfigV1 = {
     binding,
     lucid: config.lucid,
     signer: config.signer,
     contracts,
     references,
-    claimRegistry,
     stateQueueMutationLeaseCoordinator:
       config.stateQueueMutationLeaseCoordinator,
   };
@@ -696,11 +621,6 @@ export const createManifestBoundNativeScriptInvalidWorkflowV1 = async (
     category: "nativeScriptInvalid",
     base: adapter,
     prerequisite: txProofPrerequisite,
-  });
-  adapter = withProductionProofChunkPrerequisiteV1({
-    category: "nativeScriptInvalid",
-    base: adapter,
-    prerequisite: claimRegistry.proofChunks,
   });
   return Object.freeze({
     binding,

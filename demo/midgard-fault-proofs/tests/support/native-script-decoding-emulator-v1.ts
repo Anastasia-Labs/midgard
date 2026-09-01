@@ -82,7 +82,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { prepareFamilyClaimRegistryMutationV1 } from "../../src/claim-registry-transaction-v1.js";
 import type { NativeScriptDecodingContractsV1 } from "../../src/native-script-decoding/contracts-v1.js";
 import type { NativeScriptDecodingLedgerTrieHandleV1 } from "../../src/native-script-decoding/evidence-v1.js";
 import { nativeScriptDecodingOutpointKeyV1 } from "../../src/native-script-decoding/evidence-v1.js";
@@ -1119,7 +1118,6 @@ export const submitRawDecodingCancelV1 = async ({
   threadAssetName,
   referenceScriptUtxo,
   computationThreadReferenceUtxo,
-  claimRegistryReference,
 }: {
   readonly lucid: LucidEvolution;
   readonly contracts: NativeScriptDecodingContractsV1;
@@ -1130,25 +1128,9 @@ export const submitRawDecodingCancelV1 = async ({
   readonly threadAssetName: string;
   readonly referenceScriptUtxo: UTxO;
   readonly computationThreadReferenceUtxo: UTxO;
-  /** Published `claim_registry.spend` reference script from the harness roster. */
-  readonly claimRegistryReference: UTxO;
 }): Promise<string> => {
   signer.selectWallet(lucid);
-  const claimRegistryMutation = await prepareFamilyClaimRegistryMutationV1({
-    lucid,
-    claimRegistry: contracts.claimRegistry,
-    claimRegistryReferenceUtxo: claimRegistryReference,
-    hubOraclePolicyId: contracts.hubOraclePolicyId,
-    computationThreadPolicyId: contracts.computationThread.policyId,
-    claimId: threadAssetName,
-    kind: "cancel",
-  });
-  const feeInput = selectFeeInput(
-    claimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
-      (utxos, reference) => excludeUtxo(utxos, reference),
-      await lucid.wallet().getUtxos(),
-    ),
-  );
+  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
   const spendRedeemer = ((ctx) => {
     requireOwnSpendPurpose(ctx, threadUtxo, "raw decoding cancel");
     return Data.to(
@@ -1204,9 +1186,7 @@ export const submitRawDecodingCancelV1 = async ({
     .mintAssets({ [threadUnit]: -1n }, burnRedeemer)
     .addSignerKey(signer.paymentKeyHash)
     .readFrom([stepReference, ...computationThreadCarriage.referenceInputs]);
-  const tx = computationThreadCarriage.attach(
-    claimRegistryMutation.apply(base),
-  );
+  const tx = computationThreadCarriage.attach(base);
   const unsigned = await tx.complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();

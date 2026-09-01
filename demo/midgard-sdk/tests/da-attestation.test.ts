@@ -65,6 +65,10 @@ type Recording = {
   readonly mints: { readonly assets: Assets; readonly redeemer: unknown }[];
   readonly payments: RecordedPayment[];
   readonly signerKeys: string[];
+  readonly validityRanges: {
+    readonly validFrom: number;
+    readonly validTo: number;
+  }[];
 };
 
 const makeRecordingLucid = (): {
@@ -77,10 +81,25 @@ const makeRecordingLucid = (): {
     mints: [],
     payments: [],
     signerKeys: [],
+    validityRanges: [],
   };
   const lucid = {
     newTx: () => {
       const tx = {
+        validFrom: (validFrom: number) => {
+          record.validityRanges.push({ validFrom, validTo: Number.NaN });
+          return tx;
+        },
+        validTo: (validTo: number) => {
+          const latest = record.validityRanges.at(-1);
+          if (latest !== undefined) {
+            record.validityRanges[record.validityRanges.length - 1] = {
+              validFrom: latest.validFrom,
+              validTo,
+            };
+          }
+          return tx;
+        },
         readFrom: (inputs: UTxO[]) => {
           record.reads.push(inputs);
           return tx;
@@ -247,6 +266,7 @@ const makeFixture = () => {
     attestationUnit,
     referenceScripts,
     hubOracleRefInput: makeUtxo(9),
+    applyValidityRange: { validFrom: 1_000n, validTo: 2_000n },
   };
 };
 
@@ -462,6 +482,7 @@ describe("DA attestation SDK builders", () => {
           target: fixture.target,
           attestation: thresholdAttestation,
           referenceScripts: fixture.referenceScripts,
+          validityRange: fixture.applyValidityRange,
         },
       ),
     );
@@ -484,6 +505,9 @@ describe("DA attestation SDK builders", () => {
     expect(record.mints[0]?.assets).toEqual({
       [fixture.attestationUnit]: -1n,
     });
+    expect(record.validityRanges).toEqual([
+      { validFrom: 1_000, validTo: 2_000 },
+    ]);
     expect(record.payments[0]?.address).toBe(
       fixture.contracts.stateQueue.spendingScriptAddress,
     );
@@ -526,6 +550,7 @@ describe("DA attestation SDK builders", () => {
           target: fixture.target,
           attestation: fixture.attestation,
           referenceScripts: fixture.referenceScripts,
+          validityRange: fixture.applyValidityRange,
         },
       ),
     );
@@ -550,6 +575,7 @@ describe("DA attestation SDK builders", () => {
             },
           },
           referenceScripts: fixture.referenceScripts,
+          validityRange: fixture.applyValidityRange,
         },
       ),
     );

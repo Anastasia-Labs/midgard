@@ -120,12 +120,12 @@ describe("node-runtime reference-script registry", () => {
     );
     // Every `V1 fraud-proof ` role in
     // `DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE` — 114 of the
-    // canonical 156 roles. This is a coverage count, not a free constant: a
+    // canonical 155 roles. This is a coverage count, not a free constant: a
     // manifest is only valid when `validateReferenceScripts` finds a confirmed
     // reference script for every declared role, so node-runtime has to publish
     // the whole set. The previous 111 predated the `min-ada` step-03/04/05
     // roles, which the state-correction wave appended after
-    // `correctionLockSpend`/`claimRegistrySpend` in the same vector.
+    // `correctionLockSpend` in the same vector.
     expect(registeredFraudProofNames).toHaveLength(114);
     expect(registeredFraudProofNames).toContain(
       "V1 fraud-proof missing-signature step-04",

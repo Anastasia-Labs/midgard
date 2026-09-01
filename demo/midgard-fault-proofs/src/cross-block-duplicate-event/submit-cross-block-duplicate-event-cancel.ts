@@ -30,18 +30,12 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  type PreparedClaimRegistryMutationV1,
-  prepareFamilyClaimRegistryMutationV1,
-  requirePreparedClaimRegistryMutationV1,
-} from "../claim-registry-transaction-v1.js";
-import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   outRefLabel,
   parseOutRef,
   type ResolvedProverSigner,
 } from "../runtime.js";
-import { excludeUtxo } from "../spend-input-witness.js";
 import {
   requireComputationThreadToken,
   selectFeeInput,
@@ -113,7 +107,6 @@ export const submitCrossBlockDuplicateEventCancel = async ({
   threadOutRef,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  claimRegistryMutation,
   awaitConfirmation = true,
 }: {
   readonly lucid: LucidEvolution;
@@ -123,7 +116,6 @@ export const submitCrossBlockDuplicateEventCancel = async ({
   /** Mandatory published reference script for the step being cancelled. */
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitCrossBlockDuplicateEventCancelResult> => {
   const threadUtxo = await fetchUtxoByOutRef({
@@ -158,28 +150,7 @@ export const submitCrossBlockDuplicateEventCancel = async ({
   }
 
   signer.selectWallet(lucid);
-  const resolvedClaimRegistryMutation = requirePreparedClaimRegistryMutationV1({
-    mutation:
-      claimRegistryMutation ??
-      (await prepareFamilyClaimRegistryMutationV1({
-        lucid,
-        claimRegistry: contracts.claimRegistry,
-        claimRegistryReferenceUtxo: witnessReferenceScripts?.claimRegistrySpend,
-        hubOraclePolicyId: contracts.hubOraclePolicyId,
-        computationThreadPolicyId: contracts.computationThread.policyId,
-        claimId: threadToken.assetName,
-        kind: "cancel",
-      })),
-    kind: "cancel",
-    claimId: threadToken.assetName,
-    label: `${CROSS_BLOCK_DUPLICATE_EVENT_CATEGORY_LABEL} cancel`,
-  });
-  const feeInput = selectFeeInput(
-    resolvedClaimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
-      (utxos, reference) => excludeUtxo(utxos, reference),
-      await lucid.wallet().getUtxos(),
-    ),
-  );
+  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
   let inputIndex: bigint | undefined;
   let mintRedeemerIndex: bigint | undefined;
 
@@ -244,9 +215,7 @@ export const submitCrossBlockDuplicateEventCancel = async ({
     .mintAssets({ [threadToken.unit]: -1n }, threadBurnRedeemer)
     .addSignerKey(signer.paymentKeyHash)
     .readFrom(referenceInputs);
-  const tx = computationThreadMintCarriage.attach(
-    resolvedClaimRegistryMutation.apply(base),
-  );
+  const tx = computationThreadMintCarriage.attach(base);
 
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (inputIndex === undefined || mintRedeemerIndex === undefined) {

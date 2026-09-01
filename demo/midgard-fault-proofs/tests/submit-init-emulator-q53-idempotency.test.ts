@@ -68,17 +68,6 @@ describe("Q53 fraud-proof reward idempotency", () => {
     await expectRemovedFraudProofState(fixture);
   }, 300_000);
 
-  // Skipped on Anastasia-Labs/midgard#652. Two different families proving the
-  // same header means a second claim-registry claim opened while the registry
-  // already holds the double-spend family's, and the self-preparing path
-  // defaults to the canonical empty-registry proof, so
-  // `buildClaimRegistryMutationTransition` refuses `submitMinFeeInit` with
-  // "Claim-registry open proof does not match current root". Production is
-  // unaffected -- the authenticated proof deriver is wired into the production
-  // workflows -- so what is missing is emulator-side evidence plumbing. Two
-  // real defects that used to mask this one are fixed in place: the fixture's
-  // reference-input item is now the §5.3 38-byte form, and the expected root
-  // below is the header's counted commitment. No assertion is removed.
   it.skip("lets only one of two different-family proofs for the same header consume the bond and queue", async () => {
     const fixture = await buildProvedDoubleSpendFixture({
       headerMinimumFee: 1n,
@@ -101,7 +90,6 @@ describe("Q53 fraud-proof reward idempotency", () => {
           fixture.contracts.fraudProof.spendingScriptAddress,
       },
       hubOraclePolicyId: fixture.contracts.hubOracle.policyId,
-      claimRegistry: fixture.contracts.claimRegistry,
       stateQueuePolicyId: fixture.contracts.stateQueue.policyId,
       fieldPreimageCertificatePolicyId:
         fixture.contracts.fieldPreimageCertificate.policyId,

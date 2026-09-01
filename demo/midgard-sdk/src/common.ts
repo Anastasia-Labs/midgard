@@ -294,8 +294,6 @@ export type MidgardValidators = {
   availabilityChallenge: AuthenticatedValidator;
   /** Deployment-bound singleton which serializes state correction. */
   correctionLock: SpendingValidator;
-  /** Deployment-bound singleton which permanently records opened claims. */
-  claimRegistry: SpendingValidator;
   stateQueue: AuthenticatedValidator;
   scheduler: AuthenticatedValidator;
   registeredOperators: AuthenticatedValidator;

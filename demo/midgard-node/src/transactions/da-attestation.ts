@@ -91,7 +91,7 @@ const completeWithLocalUplc = (
     try: () => tx.complete({ localUPLCEval: true }),
     catch: (cause) =>
       new SDK.LucidError({
-        message: `Failed to build ${label} transaction with local UPLC evaluation`,
+        message: `Failed to build ${label} transaction with local UPLC evaluation: ${String(cause)}`,
         cause,
       }),
   });
@@ -572,6 +572,13 @@ const attestHeader = ({
       "threshold-signed",
       daAttestationReachedThreshold,
     );
+    const applyValidFrom = BigInt(lucid.slotToUnixTime(lucid.currentSlot()));
+    const applyDeadline =
+      target.stateQueueNode.header.endTime + SDK.DA_ATTESTATION_TIMEOUT_MS;
+    const applyValidTo =
+      applyValidFrom + 120_000n < applyDeadline
+        ? applyValidFrom + 120_000n
+        : applyDeadline;
     const applyTx =
       yield* SDK.incompleteApplyDaAttestationToStateQueueTxProgram(
         lucid,
@@ -583,6 +590,10 @@ const attestHeader = ({
           target,
           attestation: signedAttestation,
           referenceScripts,
+          validityRange: {
+            validFrom: applyValidFrom,
+            validTo: applyValidTo,
+          },
         },
       );
     const applyTxHash = yield* submitCompletedTx(

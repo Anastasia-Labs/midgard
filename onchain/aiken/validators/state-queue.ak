@@ -12,7 +12,6 @@ use cardano/transaction.{
 }
 use env
 use midgard/availability_challenge as availability
-use midgard/claim_registry_v1 as claim_registry
 use midgard/common/utils
 use midgard/correction_lock
 use midgard/da_attestation_types as da_attestation
@@ -970,8 +969,6 @@ pub fn remove_unavailable_head_v1(
 validator mint(
   hub_oracle_script_hash: PolicyId,
   correction_lock_script_hash: ByteArray,
-  claim_registry_script_hash: ByteArray,
-  computation_thread_policy_id: PolicyId,
   active_operators_script_hash: PolicyId,
   active_operators_addr: Address,
   retired_operators_script_hash: PolicyId,
@@ -983,7 +980,6 @@ validator mint(
 ) {
   mint(redeemer: MintRedeemer, own_policy_id: PolicyId, self: Transaction) {
     let correction_lock_address = from_script(correction_lock_script_hash)
-    let claim_registry_address = from_script(claim_registry_script_hash)
     when redeemer is {
       InitV1 { output_index } -> {
         let Transaction { outputs, mint, validity_range, .. } = self
@@ -998,19 +994,6 @@ validator mint(
           correction_lock.decode_datum(correction_lock_output) == correction_lock.Idle
         expect
           quantity_of(mint, hub_oracle_script_hash, correction_lock.asset_name) == 1
-        let claim_registry_output = claim_registry.unique_output(
-          outputs,
-          hub_oracle_script_hash,
-          claim_registry_address,
-        )
-        expect
-          claim_registry.decode_datum(claim_registry_output) == claim_registry.Datum {
-            claims_root: claim_registry.empty_claims_root,
-            computation_thread_policy_id,
-          }
-        expect
-          quantity_of(mint, hub_oracle_script_hash, claim_registry.asset_name) == 1
-
         let (_current_time_lower, current_time_upper) = utils.get_inclusive_bounds_of_a_short_validity_range(
           validity_range,
         )
@@ -1056,16 +1039,6 @@ validator mint(
         expect
           quantity_of(mint, hub_oracle_script_hash, correction_lock.asset_name) == -1
         expect correction_lock.has_no_output(outputs, hub_oracle_script_hash)
-        let claim_registry_input = claim_registry.unique_input(
-          inputs,
-          hub_oracle_script_hash,
-          claim_registry_address,
-        )
-        expect
-          claim_registry.decode_datum(claim_registry_input.output).computation_thread_policy_id == computation_thread_policy_id
-        expect
-          quantity_of(mint, hub_oracle_script_hash, claim_registry.asset_name) == -1
-        expect claim_registry.has_no_output(outputs, hub_oracle_script_hash)
         // 2. Linked list de-initialization must be valid. No other validations
         //    required.
         expect

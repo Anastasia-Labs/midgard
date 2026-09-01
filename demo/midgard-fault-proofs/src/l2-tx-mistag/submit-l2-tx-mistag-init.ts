@@ -21,11 +21,6 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  type PreparedClaimRegistryMutationV1,
-  prepareFamilyClaimRegistryMutationV1,
-  requirePreparedClaimRegistryMutationV1,
-} from "../claim-registry-transaction-v1.js";
-import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodePhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
@@ -87,7 +82,6 @@ export const submitL2TxMistagInit = async ({
   fraudulentBlockOutRef,
   fraudulentHeaderHash,
   witnessReferenceScripts,
-  claimRegistryMutation,
   preSubmitBoundary,
   awaitConfirmation = true,
 }: {
@@ -106,7 +100,6 @@ export const submitL2TxMistagInit = async ({
   readonly fraudulentHeaderHash?: string;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitL2TxMistagInitResult> => {
@@ -240,27 +233,6 @@ export const submitL2TxMistagInit = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  // The computation-thread `Init` arm requires the atomic claim-registry
-  // `OpenClaim` in the same transaction, so every family init opens its
-  // `(category, header)` claim here.
-  const resolvedClaimRegistryMutation = requirePreparedClaimRegistryMutationV1({
-    mutation:
-      claimRegistryMutation ??
-      (await prepareFamilyClaimRegistryMutationV1({
-        lucid,
-        claimRegistry: contracts.claimRegistry,
-        claimRegistryReferenceUtxo: witnessReferenceScripts?.claimRegistrySpend,
-        hubOraclePolicyId: contracts.hubOraclePolicyId,
-        computationThreadPolicyId: contracts.computationThread.policyId,
-        categoryId: category.categoryId,
-        headerHash: resolvedHeaderHash,
-        kind: "open",
-      })),
-    kind: "open",
-    claimId: computationThreadAssetName,
-    label: `${L2_TX_MISTAG_CATEGORY_LABEL} init`,
-  });
-
   signer.selectWallet(lucid);
   const tx = lucid
     .newTx()
@@ -296,11 +268,7 @@ export const submitL2TxMistagInit = async ({
     .addSignerKey(signer.paymentKeyHash);
 
   const unsigned = await phasMembershipCarriage
-    .attach(
-      computationThreadMintCarriage.attach(
-        resolvedClaimRegistryMutation.apply(tx),
-      ),
-    )
+    .attach(computationThreadMintCarriage.attach(tx))
     .complete({ localUPLCEval: true });
   if (firstStepOutputIndex === undefined) {
     throw l2TxMistagSubmitError("init output index was not resolved.");
@@ -320,11 +288,6 @@ export const submitL2TxMistagInit = async ({
           role: "membership proof withdrawal",
           utxo: witnessReferenceScripts?.phasMembershipWithdraw,
           expectedScript: phasMembershipScript,
-        },
-        {
-          role: "claim-registry spending",
-          utxo: resolvedClaimRegistryMutation.referenceScriptUtxo,
-          expectedScript: resolvedClaimRegistryMutation.registryScript,
         },
       ],
     }),

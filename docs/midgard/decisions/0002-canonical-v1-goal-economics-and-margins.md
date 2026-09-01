@@ -1,7 +1,8 @@
 # 0002 — Canonical V1 Goal economics and margin decision record (F04)
 
 - **Status:** ACCEPTED. CG5 may bind these values into the release identity
-  after the named consumers pass.
+  after the named consumers pass. Amended 2026-08-31: §2.4 superseded by
+  §2.4a (claim registry removed; concurrent fraud proofs permitted).
 - **Owner/approver:** repository owner (Philip DiSarro).
 - **Consumers:** Q53, Q54, Q61, Q63, W04, W12, W31, C74, C80, and W46 (production
   hardware floor, §5.2) (`GOAL_SPEC.md` §3.3, §7). No task may invent a value
@@ -113,7 +114,11 @@ The public-profile full/partial allocations are therefore
 acceptance allocations are `900_000_000 = 400_000_000 + 500_000_000` and
 `800_000_000 = 400_000_000 + 400_000_000` lovelace.
 
-### 2.4 Duplicate-token and duplicate-reward prevention (ACCEPTED)
+### 2.4 Duplicate-token and duplicate-reward prevention (SUPERSEDED 2026-08-31 by §2.4a)
+
+> **This subsection is retained for history only. Its claim-registry
+> requirement was reversed by the owner on 2026-08-31; see §2.4a for the
+> governing rule.**
 
 The deterministic claim identity is
 `(deployment identity, fraud category ID, fraudulent header hash)`. Q53 must
@@ -136,6 +141,47 @@ authorization. The singleton operator node plus the closed claim gives two
 independent idempotency boundaries: at most one terminal proof token per
 claim, and at most one reward from an operator's slashable bond.
 
+### 2.4a Concurrent fraud proofs are permitted; the bond is the reward boundary (ACCEPTED 2026-08-31)
+
+Duplicate fraud-proof activity against the same fault is **permitted, not
+prevented**. Independent provers may run concurrent computation threads
+against the same `(fraud category ID, fraudulent header hash)`, and the
+resulting fraud-proof success tokens may co-exist indefinitely.
+
+The single boundary that matters is economic, and it already exists
+independently of any claim bookkeeping: the reward is payable only out of the
+accused operator's bond, the bond lives in that operator's singleton
+directory node, and that node is consumed exactly once. The first pruning
+transaction that carries the slash pays the one reward; every later path
+reaches `OperatorAlreadySlashed` or a no-bond arm and pays none (§2.3, §2.5).
+Extra fraud-proof tokens for the same header are therefore harmless but
+unrewarded — they authorize removal of a block that is already removed.
+
+Consequently the claim registry is removed from the protocol. Its
+`MIDGARD_CLAIM_REGISTRY` hub-policy token, its validator, its Merkle root, and
+the `OpenClaim`/`CloseClaim`/`CancelClaim` couplings in computation-thread
+`Init`/`Success`/`BurnForCancellation` no longer exist. The hub one-shot policy
+now mints exactly two assets, `MIDGARD_HUB_ORACLE` and
+`MIDGARD_CORRECTION_LOCK`.
+
+Rationale for the reversal:
+
+- The second idempotency boundary §2.4 claimed was not independent of the
+  first in any way that changed an outcome. It suppressed duplicate _tokens_,
+  never duplicate _rewards_ — those were already impossible.
+- The registry made `Init` a globally serialized, permissioned step while the
+  expensive `Continue` steps stayed permissionless. A prover could open a claim
+  for a real fault and abandon it, and because a live claim had no timeout and
+  only its opener could `Cancel`, no other prover could open one. Requiring
+  registry consensus to start a fraud proof is strictly worse for censorship
+  resistance than allowing redundant proofs.
+- Redundancy is the desired property for a fraud-proof system: more independent
+  provers racing the same fault raises the probability the fault is proven at
+  all, which is the property the protocol actually depends on.
+
+The correction lock is unaffected and remains the mutual-exclusion mechanism
+for multi-transaction state-queue corrections.
+
 ### 2.5 Current implementation boundary for Q53
 
 Exact fraud-prover reward routing is implemented in the current state-queue
@@ -155,10 +201,12 @@ Q53 is still not complete:
 - operator registration and slash accounting still accept lower-bound rather
   than exact bond/fee preservation, so the complete tranche conservation rules
   in §2.3 are not yet enforced;
-- computation-thread Init has no deployment-bound singleton claim lock, so a
-  later duplicate terminal mint is not prevented by a one-shot registry; and
 - the accepted public and bounded profiles have not been deployed and measured
   through live/preprod acceptance.
+
+Duplicate terminal mints are no longer an open item: under §2.4a they are
+permitted, and the single-consumption of the operator's directory node is the
+whole reward boundary.
 
 The settlement remainder helper and unrelated SDK penalty constants are not
 economics authorities. Until the remaining items above close, an F04-approved

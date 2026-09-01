@@ -55,11 +55,37 @@ const placeholderZeroInput = "03".repeat(28);
 // four, and was re-derived independently from the same producer line rather
 // than assumed — a stale pin hiding behind another failing pin is how #579
 // lost one.
+// Re-pinned 2026-08-31 (claim-registry removal). Attribution here is a
+// measured blueprint diff, not a story about what probably recompiled. The
+// baseline is HEAD 38ef102b built with the same `aiken build --env testnet`
+// (md5 d3b62a45621157177bb0ef6039d15071, 555 validators); the current tree is
+// md5 c2339794ca6f4ac637fc295a98a104ab, 553 validators, aiken v1.1.23+5adf783.
+// Comparing compiled code title-by-title across the two: exactly two
+// validators are gone (`claim_registry.spend.spend` and its `.else`) and
+// exactly SIX compiled bodies changed — `hub_oracle.mint`,
+// `computation_thread.mint` and `state_queue.mint`, each with its `.else`.
+// Every other validator in the blueprint is byte-identical. So no step in this
+// family was recompiled, and every applied hash that moved did so through an
+// applied PARAMETER.
+// Which parameter: all four of these steps apply
+// `computation_thread_token_policy_id`, and steps 01 and 03 also apply
+// `hub_oracle` (read off the blueprint's own declared parameter titles). Both
+// of those policy ids moved — `computation_thread.mint` because it lost its
+// `claim_registry_script_hash` parameter (3 -> 2) and recompiled, `hub_oracle`
+// because its mint set went from three assets to two — so both reach this
+// family and the move is overdetermined rather than isolable to one.
+// Derived by running this suite's own producer with
+// `MIDGARD_PRINT_PROOF_FIT=1` (the `q13AppliedIdentities.stepHashes` line),
+// not read off an assertion diff.
+// `Q13_CATALOGUE_ROOT` below moves with these four and was re-derived from the
+// same producer line rather than assumed — it was still passing only because
+// the assertion above it failed first, which is exactly the stale-pin trap
+// the #579 note describes.
 const Q13_APPLIED_STEP_HASHES = [
-  "bf69e5586f8e48812cba8a3149b9645e40c1e35cd284a54592d7ebcb",
-  "3871229d7b951d75261fb5a9ad3b74d4cef7691da42e0798e59075c2",
-  "cf16984c587118b05e6ae7e3bcac8118435f18dbdb5395a65475331c",
-  "1e0a104867231dddb650385d3e1c14644e4f8d74441e52fe87c503fe",
+  "eef050f25ab9183890e1283c2942d6d4e546928b9e015da0e219b170",
+  "f4715dfd8f163df3b73b88ffc04336c24637b546108bbdecca8bfd6a",
+  "afdd997b50324a138014e3e9fc180790e29d1da026c5028b3ad54388",
+  "e05cfc9368b5851b68ddb37cab8ca8b5c45da673c7c1acdabc17b85c",
 ] as const;
 // Re-pinned 2026-08-05 (#544): the original-epoch root d88f9829…bcca394
 // (blueprint f5ae651e…, 380 validators) moved with the #521 renames — the
@@ -128,8 +154,17 @@ const Q13_APPLIED_STEP_HASHES = [
 // Derived by this suite's own producer with `MIDGARD_PRINT_PROOF_FIT=1`
 // (`q13AppliedIdentities.catalogueRoot`), and it agrees with the live
 // catalogue derivation asserted on the preceding line.
+// Re-pinned 2026-08-31 alongside `Q13_APPLIED_STEP_HASHES` again, for the
+// claim-registry removal's hub-oracle recompile cascade: the root folds every
+// category's applied step-01 hash, so it moves with them. No category was
+// added, removed or renumbered — the registry was never a catalogue category,
+// and `FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER` is measured unchanged at 32.
+// Derived by this suite's own producer with `MIDGARD_PRINT_PROOF_FIT=1`
+// (`q13AppliedIdentities.catalogueRoot`), and it agrees with the live
+// catalogue derivation asserted on the preceding line.
+// `914d498f…` -> `85ecf82f…`.
 const Q13_CATALOGUE_ROOT =
-  "914d498f053a2c9477cde569e7d5ac1b6fb2789f1c3a66feebebb026a63cb1bc";
+  "85ecf82f70e409621d5324c54ae8e2deedbb7c37698e28ba7d76481c17bb6e90";
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,

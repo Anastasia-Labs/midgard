@@ -1,7 +1,6 @@
 export * from "./active-operators.js";
 export * from "./availability-challenge-v1.js";
 export * from "./cbor.js";
-export * from "./claim-registry.js";
 export * from "./common.js";
 export * from "./correction-lock.js";
 export * from "./da-attestation.js";

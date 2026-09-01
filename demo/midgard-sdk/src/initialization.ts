@@ -19,10 +19,6 @@ import {
   ActiveOperatorMintRedeemer,
 } from "@/active-operators.js";
 import {
-  CLAIM_REGISTRY_ASSET_NAME,
-  ClaimRegistryDatum,
-} from "@/claim-registry.js";
-import {
   Bech32DeserializationError,
   MidgardValidators,
   UnspecifiedNetworkError,
@@ -46,7 +42,6 @@ import {
   HubOracleDatum,
   makeHubOracleDatum,
 } from "@/hub-oracle.js";
-import { EMPTY_MERKLE_TREE_ROOT } from "@/ledger-constants.js";
 import {
   castConfirmedStateToData,
   makeGenesisConfirmedStateV1,
@@ -155,10 +150,6 @@ export const incompleteInitializationTxProgram = (
       midgardValidators.hubOracle.policyId,
       CORRECTION_LOCK_ASSET_NAME,
     );
-    const claimRegistryUnit = toUnit(
-      midgardValidators.hubOracle.policyId,
-      CLAIM_REGISTRY_ASSET_NAME,
-    );
     const schedulerUnit = toUnit(
       midgardValidators.scheduler.policyId,
       SCHEDULER_ASSET_NAME,
@@ -189,11 +180,9 @@ export const incompleteInitializationTxProgram = (
 
     const hubOracleAssets = { [hubOracleUnit]: 1n };
     const correctionLockAssets = { [correctionLockUnit]: 1n };
-    const claimRegistryAssets = { [claimRegistryUnit]: 1n };
     const hubPolicyMintAssets = {
       ...hubOracleAssets,
       ...correctionLockAssets,
-      ...claimRegistryAssets,
     };
     const schedulerAssets = { [schedulerUnit]: 1n };
     const stateQueueAssets = { [stateQueueUnit]: 1n };
@@ -300,21 +289,6 @@ export const incompleteInitializationTxProgram = (
           value: Data.to("Idle", CorrectionLockDatum),
         },
         correctionLockAssets,
-      )
-      .pay.ToContract(
-        midgardValidators.claimRegistry.spendingScriptAddress,
-        {
-          kind: "inline",
-          value: Data.to(
-            {
-              claims_root: EMPTY_MERKLE_TREE_ROOT,
-              computation_thread_policy_id:
-                midgardValidators.computationThread.policyId,
-            },
-            ClaimRegistryDatum,
-          ),
-        },
-        claimRegistryAssets,
       );
 
     if (params.referenceScripts !== undefined) {

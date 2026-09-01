@@ -64,8 +64,8 @@ export default defineConfig({
     // ~155 files touch Postgres and each of those is pinned to its worker's
     // own database shard, so file parallelism is safe. A 2-core runner sets
     // `MIDGARD_NODE_TEST_FORKS=1` rather than forcing every machine down to
-    // one file at a time. If a run dies under a memory cap, LOWER the fork
-    // count — each fork carries its own multi-GB emulator heap.
+    // one file at a time. If a run dies on memory, LOWER the fork count — each
+    // fork carries its own multi-GB emulator heap.
     pool: "forks",
     poolOptions: {
       forks: {
@@ -73,6 +73,13 @@ export default defineConfig({
         singleFork: false,
         minForks: 1,
         maxForks: testMaxForks(),
+        // Bound each worker's V8 heap here rather than exporting a blanket
+        // NODE_OPTIONS from the lane runner, which would also hit pnpm, vitest's
+        // own main process and every unrelated tool in the lane. This bounds the
+        // JS heap only: the emulator's wasm evaluator allocates outside it,
+        // which is why the fork count — not this number — is the knob that
+        // actually caps a run's footprint.
+        execArgv: ["--max-old-space-size=4096"],
       },
     },
     // Creates and migrates one database per worker shard before any file runs.

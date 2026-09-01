@@ -46,11 +46,6 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  type PreparedClaimRegistryMutationV1,
-  prepareFamilyClaimRegistryMutationV1,
-  requirePreparedClaimRegistryMutationV1,
-} from "../claim-registry-transaction-v1.js";
-import {
   faultProofFieldOpeningV1,
   publishFaultProofFieldCarriageV1,
 } from "../field-opening-v1.js";
@@ -135,7 +130,6 @@ export const submitMissingSignatureStep04 = async ({
   certificateUtxo,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  claimRegistryMutation,
   preSubmitBoundary,
   awaitConfirmation = true,
 }: {
@@ -158,7 +152,6 @@ export const submitMissingSignatureStep04 = async ({
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitMissingSignatureStep04Result> => {
@@ -245,30 +238,6 @@ export const submitMissingSignatureStep04 = async ({
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: `${STEP_LABEL} fraud-proof mint`,
   });
-  // The computation-thread mint runs on the finalize branch alone, so only
-  // that branch carries the claim-registry mutation: an interior scan batch
-  // mints nothing and must not close the claim.
-  const resolvedClaimRegistryMutation = willFinalize
-    ? requirePreparedClaimRegistryMutationV1({
-        mutation:
-          claimRegistryMutation ??
-          (await prepareFamilyClaimRegistryMutationV1({
-            lucid,
-            claimRegistry: contracts.claimRegistry,
-            claimRegistryReferenceUtxo:
-              witnessReferenceScripts?.claimRegistrySpend,
-            hubOraclePolicyId: contracts.hubOraclePolicyId,
-            computationThreadPolicyId: contracts.computationThread.policyId,
-            claimId: threadToken.assetName,
-            kind: "close",
-          })),
-        kind: "close",
-        claimId: threadToken.assetName,
-        label: STEP_LABEL,
-      })
-    : undefined;
-  // The mint witnesses execute on the finalize branch alone; a scan batch
-  // must not reference them, or the §8.7 opening indices would drift.
   const referenceInputs = [
     ...fieldReferenceInputs,
     requireMissingSignatureReferenceScriptV1({
@@ -280,7 +249,6 @@ export const submitMissingSignatureStep04 = async ({
       ? [
           ...computationThreadBurnCarriage.referenceInputs,
           ...fraudProofMintCarriage.referenceInputs,
-          ...(resolvedClaimRegistryMutation?.referenceInputs ?? []),
         ]
       : []),
   ];
@@ -294,10 +262,7 @@ export const submitMissingSignatureStep04 = async ({
   });
 
   const walletUtxos = await lucid.wallet().getUtxos();
-  const walletUtxosSansCarriage = [
-    ...carriageUtxos,
-    ...(resolvedClaimRegistryMutation?.referenceInputs ?? []),
-  ].reduce<readonly UTxO[]>(
+  const walletUtxosSansCarriage = [...carriageUtxos].reduce<readonly UTxO[]>(
     (candidates, utxo) => excludeUtxo(candidates, utxo),
     walletUtxos,
   );
@@ -441,20 +406,18 @@ export const submitMissingSignatureStep04 = async ({
   const completed = willFinalize
     ? fraudProofMintCarriage.attach(
         computationThreadBurnCarriage.attach(
-          resolvedClaimRegistryMutation!.apply(
-            withReferences
-              .mintAssets(
-                { [threadToken.unit]: -1n },
-                computationThreadBurnRedeemer,
-              )
-              .mintAssets({ [fraudProofUnit]: 1n }, fraudProofMintRedeemer)
-              .pay.ToContract(
-                contracts.fraudProof.spendingScriptAddress,
-                { kind: "inline", value: fraudProofDatum },
-                fraudProofAssets,
-              )
-              .addSignerKey(signer.paymentKeyHash),
-          ),
+          withReferences
+            .mintAssets(
+              { [threadToken.unit]: -1n },
+              computationThreadBurnRedeemer,
+            )
+            .mintAssets({ [fraudProofUnit]: 1n }, fraudProofMintRedeemer)
+            .pay.ToContract(
+              contracts.fraudProof.spendingScriptAddress,
+              { kind: "inline", value: fraudProofDatum },
+              fraudProofAssets,
+            )
+            .addSignerKey(signer.paymentKeyHash),
         ),
       )
     : withReferences.pay
@@ -502,15 +465,6 @@ export const submitMissingSignatureStep04 = async ({
           utxo: witnessReferenceScripts?.fraudProofMint,
           expectedScript: contracts.fraudProof.mintingScript,
         },
-        ...(resolvedClaimRegistryMutation === undefined
-          ? []
-          : [
-              {
-                role: "claim-registry spending",
-                utxo: resolvedClaimRegistryMutation.referenceScriptUtxo,
-                expectedScript: resolvedClaimRegistryMutation.registryScript,
-              },
-            ]),
       ],
     }),
     boundary: preSubmitBoundary,

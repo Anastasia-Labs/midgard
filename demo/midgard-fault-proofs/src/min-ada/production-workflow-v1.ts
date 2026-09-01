@@ -10,11 +10,7 @@ import {
   MinAdaStep04DatumSchema,
   MinAdaStep05DatumSchema,
 } from "@al-ft/midgard-sdk";
-import {
-  credentialToAddress,
-  type LucidEvolution,
-  type UTxO,
-} from "@lucid-evolution/lucid";
+import { type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import { fetchCanonicalBlockEvidenceV1 } from "../evidence/canonical-block-evidence-v1.js";
 import {
@@ -24,10 +20,7 @@ import {
 } from "../field-opening-v1.js";
 import { resolvePublishedProofChunksV1 } from "../publish-proof-chunks.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
-import {
-  requireDeploymentScriptHash,
-  type ResolvedProverSigner,
-} from "../runtime.js";
+import { type ResolvedProverSigner } from "../runtime.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
 import {
@@ -55,11 +48,6 @@ import {
   type FraudProofWorkflowTerminalVerifierV1,
   runFraudProofWorkflowV1,
 } from "../workflow/orchestrator-v1.js";
-import {
-  createProductionClaimRegistryPrerequisiteV1,
-  type ProductionClaimRegistryPrerequisiteV1,
-  type ProductionClaimRegistryPublicProofDeriverV1,
-} from "../workflow/production-claim-registry-prerequisite-v1.js";
 import {
   createProductionCursorFamilyWorkflowAdapterV1,
   PRODUCTION_CURSOR_FAMILY_TRANSACTION_PORT_V1,
@@ -123,7 +111,6 @@ type BoundConfigV1 = Readonly<{
   contracts: MinAdaContractsV1;
   references: MinAdaWorkflowReferenceScriptsV1;
   historicalCorpus(): ProductionHistoricalNativeScriptCorpusV1;
-  claimRegistry: ProductionClaimRegistryPrerequisiteV1<"minAda">;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
@@ -216,11 +203,6 @@ const transactionPort = (
     const threadOutRef = () =>
       productionCursorStringFieldV1(input, "threadOutRef");
     if (input.stage === "init") {
-      const mutation = await config.claimRegistry.resolveMutation({
-        headerHash: admitted.artifact.headerHash,
-        action,
-        artifact,
-      });
       return Object.freeze({
         transaction: await captureLocallyEvaluatedTransactionV1(
           async (preSubmitBoundary) => {
@@ -235,7 +217,6 @@ const transactionPort = (
                 "stateQueueBlockOutRef",
               ),
               fraudulentHeaderHash: admitted.artifact.headerHash,
-              preparedClaimRegistryMutation: mutation,
               witnessReferenceScripts: config.references.witnesses,
               preSubmitBoundary,
               awaitConfirmation: false,
@@ -401,11 +382,6 @@ const transactionPort = (
       });
     }
     if (input.stage === "step_05") {
-      const mutation = await config.claimRegistry.resolveMutation({
-        headerHash: admitted.artifact.headerHash,
-        action,
-        artifact,
-      });
       return Object.freeze({
         transaction: await captureLocallyEvaluatedTransactionV1(
           async (preSubmitBoundary) => {
@@ -417,7 +393,6 @@ const transactionPort = (
               threadOutRef: threadOutRef(),
               referenceScriptUtxo: config.references.steps[4],
               witnessReferenceScripts: config.references.witnesses,
-              claimRegistryMutation: mutation,
               preSubmitBoundary,
               awaitConfirmation: false,
             });
@@ -459,7 +434,6 @@ export type ManifestBoundMinAdaWorkflowConfigV1 = Readonly<{
   source: Omit<LocalKupmiosHttpOgmiosSourceConfigV1, "releaseFinality">;
   historicalNativeScriptCheckpointStore: ProductionHistoricalNativeScriptCheckpointStoreV1;
   historicalNativeScriptHistorySource: ProductionHistoricalNativeScriptHistorySourceV1;
-  claimRegistryProofs: ProductionClaimRegistryPublicProofDeriverV1;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
 }>;
 
@@ -544,7 +518,6 @@ export const createManifestBoundMinAdaWorkflowV1 = async (
   const references: MinAdaWorkflowReferenceScriptsV1 = Object.freeze({
     steps: Object.freeze(steps),
     witnesses: Object.freeze({
-      claimRegistrySpend: witness("claimRegistrySpend", "claimRegistrySpend"),
       computationThreadMint: witness(
         "computationThreadMint",
         "computationThreadMint",
@@ -588,42 +561,6 @@ export const createManifestBoundMinAdaWorkflowV1 = async (
   });
   if (l1.rawL1 === undefined)
     throw new Error("min-ada raw L1 authority is unavailable");
-  const claimRegistry = createProductionClaimRegistryPrerequisiteV1({
-    category: "minAda",
-    categoryId: binding.resolvedContracts.category.categoryId,
-    lucid: config.lucid,
-    blueprint: binding.blueprint,
-    deploymentInfo: binding.deploymentInfo,
-    network: binding.network,
-    signer: config.signer,
-    computationThreadPolicyId:
-      binding.resolvedContracts.contracts.computationThread.policyId,
-    claimRegistryAddress: credentialToAddress(binding.network, {
-      type: "Script",
-      hash: requireDeploymentScriptHash(
-        binding.deploymentInfo,
-        "claimRegistrySpend",
-      ),
-    }),
-    hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
-    rawL1: l1.rawL1,
-    releaseFinality: binding.releaseFinality,
-    publications: l1.publications,
-    proofs: config.claimRegistryProofs,
-    mutationForAction: ({ action }) => {
-      const stage = productionCursorFamilyActionInputV1({
-        category: "minAda",
-        action,
-      }).stage;
-      return stage === "init"
-        ? { kind: "open" }
-        : stage === "step_05"
-          ? { kind: "close" }
-          : null;
-    },
-    transactionConfirmed: async ({ headerHash, txHash }) =>
-      await l1.transactionConfirmed({ headerHash, txHash }),
-  });
   const corpusCell: HistoricalCorpusCellV1 = {};
   const bound: BoundConfigV1 = {
     binding,
@@ -640,7 +577,6 @@ export const createManifestBoundMinAdaWorkflowV1 = async (
       }
       return corpus;
     },
-    claimRegistry,
     stateQueueMutationLeaseCoordinator:
       config.stateQueueMutationLeaseCoordinator,
   };
@@ -703,11 +639,6 @@ export const createManifestBoundMinAdaWorkflowV1 = async (
     category: "minAda",
     base: adapter,
     prerequisite: proofPrerequisite,
-  });
-  adapter = withProductionProofChunkPrerequisiteV1({
-    category: "minAda",
-    base: adapter,
-    prerequisite: claimRegistry.proofChunks,
   });
   const workflow = Object.freeze({
     binding,

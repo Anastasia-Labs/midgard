@@ -21,7 +21,6 @@ import {
   toUnit,
 } from "@lucid-evolution/lucid";
 
-import { prepareBlueprintClaimRegistryMutationV1 } from "../claim-registry-transaction-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodePhasMembershipProofRedeemer,
@@ -237,21 +236,6 @@ export const submitCanonicalDecodabilityInit = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  // The computation-thread `Init` arm requires the atomic claim-registry
-  // `OpenClaim` in the same transaction, so every family init opens its
-  // `(category, header)` claim here.
-  const claimRegistryMutation = await prepareBlueprintClaimRegistryMutationV1({
-    lucid,
-    blueprint,
-    network,
-    hubOraclePolicyId: contracts.hubOraclePolicyId,
-    claimRegistryReferenceUtxo: witnessReferenceScripts?.claimRegistrySpend,
-    computationThreadPolicyId: contracts.computationThread.policyId,
-    categoryId: category.categoryId,
-    headerHash: resolvedHeaderHash,
-    kind: "open",
-  });
-
   signer.selectWallet(lucid);
   const chainedTx = lucid
     .newTx()
@@ -285,12 +269,8 @@ export const submitCanonicalDecodabilityInit = async ({
       { [computationThreadUnit]: 1n },
     )
     .addSignerKey(signer.paymentKeyHash);
-  const unsigned = await claimRegistryMutation
-    .apply(
-      phasMembershipCarriage.attach(
-        computationThreadMintCarriage.attach(chainedTx),
-      ),
-    )
+  const unsigned = await phasMembershipCarriage
+    .attach(computationThreadMintCarriage.attach(chainedTx))
     .complete({ localUPLCEval: true });
   if (firstStepOutputIndex === undefined) {
     throw canonicalDecodabilitySubmitError(
@@ -310,11 +290,6 @@ export const submitCanonicalDecodabilityInit = async ({
         role: "canonical-decodability-init-phas-membership",
         utxo: witnessReferenceScripts?.phasMembershipWithdraw,
         expectedScript: phasMembershipScript,
-      }),
-      workflowReferenceScriptV1({
-        role: "canonical-decodability-init-claim-registry-spend",
-        utxo: claimRegistryMutation.referenceScriptUtxo,
-        expectedScript: claimRegistryMutation.registryScript,
       }),
     ],
     boundary: preSubmitBoundary,

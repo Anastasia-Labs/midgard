@@ -427,7 +427,6 @@ describe("fault-proof emulator integration", () => {
         await publishFaultProofWitnessReferenceScriptsV1({
           lucid: challengerLucid,
           realBlueprint,
-          claimRegistrySpendingScript: contracts.claimRegistry.spendingScript,
           computationThreadMintingScript:
             contracts.computationThread.mintingScript,
           fraudProofMintingScript: contracts.fraudProof.mintingScript,
@@ -639,7 +638,6 @@ describe("fault-proof emulator integration", () => {
         );
       const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
         validationDisputePublication,
-        claimRegistrySpendReference: witnessReferenceScripts.claimRegistrySpend,
         validationItemSemanticReference: {
           scriptHash: itemSemanticContract.spendingScriptHash,
           utxo: itemSemanticPublication.utxo,

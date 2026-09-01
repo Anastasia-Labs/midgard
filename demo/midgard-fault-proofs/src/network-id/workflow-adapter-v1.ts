@@ -767,7 +767,6 @@ export const createManifestBoundNetworkIdWorkflowV1 = async (
           resolved.contracts.fraudProof.spendingScriptAddress,
       },
       hubOraclePolicyId: resolved.hubOraclePolicyId,
-      claimRegistry: binding.claimRegistry,
       stateQueuePolicyId: binding.definition.stateQueue.policyId,
       fieldPreimageCertificatePolicyId: certificate.policyId,
       fieldPreimageCertificateMintingScript: certificate.mintingScript,

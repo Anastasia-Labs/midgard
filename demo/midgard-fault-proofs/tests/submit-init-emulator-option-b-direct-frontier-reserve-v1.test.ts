@@ -11,20 +11,16 @@
  * the measured frontier against the 15,872-byte reliability budget
  * (16,384 − 512, `proofItemEnvelopeReliabilityReserveBytes`):
  *
- *   item 13,522 -> observe 15,872 (= budget, this file's first journey)
- *   item 13,523 -> observe 15,873 (budget + 1, second journey — and the
- *                  journey still completes to award, because since Option B
- *                  the reserve line is a COST line, not a liveness cliff;
- *                  contrast the retired pre-change direct route, where the
- *                  binder was the authenticate stage and its exact frontier
- *                  +1 was builder-refused outright)
+ *   item 13,522 -> observe 15,816 (= budget - 56 after claim-registry removal)
+ *   item 13,523 -> observe 15,817 (one byte larger, second journey)
  *
  * Measured observe shape on this fixture family: item bytes + 64-byte
  * Plutus-data chunk headers + framing, where the framing is quantized by
  * the transaction-balancing fixed point (file 2's header carries the
  * measured ladder near the envelope). Both of this file's pins are direct
- * measurements — the adjacent pair 13,522 -> 15,872 / 13,523 -> 15,873 is
- * the contiguous reserve frontier, model-free. The pre-change binder was
+ * measurements — the adjacent pair 13,522 -> 15,816 / 13,523 -> 15,817
+ * proves the owner-signed policy threshold now retains 56 extra bytes of
+ * headroom. The pre-change binder was
  * authenticate (which double-carried the item; owner-signed reserve
  * 12,810); post-change authenticate is item-size-independent, measured
  * byte-identical across this file's two item sizes and files 2-3's probes.
@@ -34,8 +30,9 @@
  * deliberately, never absorbed. The consensus-profile pins this suite
  * measured (12,810 / 13,294) were NOT rebound by this file: #619's question
  * (b) went to the owner, who approved the lane-level rebind to 13,522 /
- * 14,004 on 2026-08-22, executed at the #617 wave sign-off. This suite
- * remains the measured table behind those pins.
+ * 14,004 on 2026-08-22, executed at the #617 wave sign-off. Removing the
+ * claim-registry witness subsequently moved that exact frontier to 14,058;
+ * this suite remains the measured table behind the reliability pin.
  *
  * Lives in its own file (two journeys) for the same wasm32-heap reason as
  * the #621 route-freedom split; see tests/support/uplc-heap-guard.ts.
@@ -61,6 +58,7 @@ const MAX_L1_TX_BYTES = PROTOCOL_PARAMETERS_DEFAULT.maxTxSize;
 const RELIABILITY_BUDGET_BYTES =
   MAX_L1_TX_BYTES -
   MIDGARD_V1_ENVELOPE_MEASUREMENTS.proofItemEnvelopeReliabilityReserveBytes;
+const CLAIM_REGISTRY_REMOVAL_HEADROOM_BYTES = 56;
 
 /**
  * The measured post-Option-B direct-route reserve frontier: the largest §5.1
@@ -75,16 +73,16 @@ const RESERVE_FRONTIER_PAYLOAD_BYTES = 13_062;
 /**
  * The item-size-INDEPENDENT rows of the measured six-stage table, identical
  * at items 13,522 and 13,523 here and re-pinned identically in files 2-3 at
- * 14,004 / 14,005 / 14,336 / 8,277 — the measured form of #619's "prepare
+ * 14,058 / 14,059 / 14,336 / 8,277 — the measured form of #619's "prepare
  * and authenticate become item-size-independent". Observe, the sole
  * item-bound stage, is pinned per journey.
  */
 const SIX_STAGE_CONSTANT_ROW_BYTES_V1 = {
-  prepareSelected: 1_864,
-  authenticate: 2_656,
-  source: 1_911,
-  proof: 1_936,
-  settle: 679,
+  prepareSelected: 1_808,
+  authenticate: 2_600,
+  source: 1_855,
+  proof: 1_880,
+  settle: 623,
 } as const;
 
 const stageBytesByKind = (
@@ -198,7 +196,7 @@ if (!optionB) {
 describe.skipIf(!optionB)(
   "post-Option-B direct-route reserve frontier (#622)",
   () => {
-    it("signs the observe door exactly on the 15,872-byte reliability budget at the measured frontier item 13,522", async () => {
+    it("keeps 56 bytes of added headroom at the owner-signed 13,522-byte direct threshold", async () => {
       const journey = await prepareRouteFreedomJourneyV1({
         inlineDatumPayloadBytes: RESERVE_FRONTIER_PAYLOAD_BYTES,
         minimumCompleteItemBytes: RESERVE_FRONTIER_ITEM_BYTES - 1,
@@ -221,10 +219,14 @@ describe.skipIf(!optionB)(
       expect(stageTransactions).toHaveLength(5);
       expect(semantic.measurements).toHaveLength(5);
 
-      // The frontier claim itself: the door signs exactly on the budget, and
-      // the pre-sign projection measured the same bytes signing produced.
+      // Removing the claim-registry reference from the deployment reduced the
+      // signed observe transaction by 56 bytes without rebinding the
+      // owner-signed direct-route threshold. The pre-sign projection must
+      // still measure the exact bytes signing produced.
       const observeBytes = stageBytesByKind(stageTransactions, "observe");
-      expect(observeBytes).toBe(RELIABILITY_BUDGET_BYTES);
+      expect(observeBytes).toBe(
+        RELIABILITY_BUDGET_BYTES - CLAIM_REGISTRY_REMOVAL_HEADROOM_BYTES,
+      );
       const observeStage = stageTransactions.find(
         (stage) => stage.kind === "observe",
       );
@@ -244,8 +246,8 @@ describe.skipIf(!optionB)(
         2,
         "observe",
       );
-      expect(observeMeasurement.executionMemory).toBe(876_778n);
-      expect(observeMeasurement.executionSteps).toBe(304_965_155n);
+      expect(observeMeasurement.executionMemory).toBe(878_878n);
+      expect(observeMeasurement.executionSteps).toBe(305_301_155n);
       const authenticateMeasurement = semanticMeasurementAt(
         semantic.measurements,
         0,
@@ -269,7 +271,7 @@ describe.skipIf(!optionB)(
       );
     }, 900_000);
 
-    it("crosses the budget by exactly the one probed byte at item 13,523 and still completes — a cost line, not a cliff", async () => {
+    it("measures the adjacent 13,523-byte direct probe one byte larger and still completes", async () => {
       const journey = await prepareRouteFreedomJourneyV1({
         inlineDatumPayloadBytes: RESERVE_FRONTIER_PAYLOAD_BYTES + 1,
         minimumCompleteItemBytes: RESERVE_FRONTIER_ITEM_BYTES,
@@ -291,11 +293,11 @@ describe.skipIf(!optionB)(
 
       // The adjacent-item probe: one more preimage byte is one more signed
       // observe byte (no 64-byte chunk boundary sits between 13,522 and
-      // 13,523), landing one byte over the reliability budget — and nothing
-      // refuses, because the budget is reserve policy while the pre-sign
-      // envelope gate sits at 16,384.
+      // 13,523). The journey is forced down the direct route to prove the
+      // owner-signed threshold remains a cost steer rather than a liveness
+      // cliff.
       expect(stageBytesByKind(stageTransactions, "observe")).toBe(
-        RELIABILITY_BUDGET_BYTES + 1,
+        RELIABILITY_BUDGET_BYTES - CLAIM_REGISTRY_REMOVAL_HEADROOM_BYTES + 1,
       );
 
       // Item-size independence, measured: every non-observe stage signs at

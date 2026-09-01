@@ -237,7 +237,6 @@ export const makeNetworkIdEmulatorHarnessV1 = async () => {
     computationThread: harness.contracts.computationThread,
     fraudProof: harness.contracts.fraudProof,
     hubOraclePolicyId: harness.contracts.hubOracle.policyId,
-    claimRegistry: harness.contracts.claimRegistry,
     stateQueuePolicyId: harness.contracts.stateQueue.policyId,
     fieldPreimageCertificatePolicyId:
       harness.contracts.fieldPreimageCertificate.policyId,

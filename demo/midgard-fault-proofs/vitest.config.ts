@@ -44,9 +44,8 @@ export default defineConfig({
     // runner pins `MIDGARD_FAULT_PROOF_FORKS=1` (or 2) instead of forcing
     // every machine down to one file at a time.
     //
-    // If a run dies under the 12G memory scope, LOWER `maxForks` — each fork
-    // carries its own multi-GB uplc heap. Raising the memory ceiling only
-    // moves the wall.
+    // If a run dies on memory, LOWER `maxForks` — each fork carries its own
+    // multi-GB uplc heap. Raising the heap bound below only moves the wall.
     pool: "forks",
     poolOptions: {
       forks: {
@@ -54,6 +53,13 @@ export default defineConfig({
         singleFork: false,
         minForks: 1,
         maxForks,
+        // Bound each worker's V8 heap here rather than exporting a blanket
+        // NODE_OPTIONS from the lane runner, which would also hit pnpm, vitest's
+        // own main process and every unrelated tool in the lane. This bounds the
+        // JS heap only: the uplc/wasm evaluators allocate outside it, which is
+        // why `maxForks` — not this number — is the knob that actually caps a
+        // run's footprint.
+        execArgv: ["--max-old-space-size=4096"],
       },
     },
   },

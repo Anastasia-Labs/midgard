@@ -1868,7 +1868,6 @@ export const buildProvedDoubleSpendFixture = async ({
     await publishFaultProofWitnessReferenceScriptsV1({
       lucid: proverLucid,
       realBlueprint,
-      claimRegistrySpendingScript: contracts.claimRegistry.spendingScript,
       computationThreadMintingScript: contracts.computationThread.mintingScript,
       fraudProofMintingScript: contracts.fraudProof.mintingScript,
     });
@@ -1948,7 +1947,6 @@ export const buildProvedDoubleSpendFixture = async ({
 
   const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
     removalReferenceScripts: removalReferenceScriptPublications.published,
-    claimRegistrySpendReference: witnessReferenceScripts.claimRegistrySpend,
   });
   const fraudulentBlockOutRef =
     successors[0]?.continuedAnchorOutRef ?? setup.fraudulentBlockOutRef;

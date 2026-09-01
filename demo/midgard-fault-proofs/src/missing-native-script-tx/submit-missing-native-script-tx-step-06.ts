@@ -25,11 +25,6 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  type PreparedClaimRegistryMutationV1,
-  prepareFamilyClaimRegistryMutationV1,
-  requirePreparedClaimRegistryMutationV1,
-} from "../claim-registry-transaction-v1.js";
-import {
   faultProofFieldOpeningV1,
   planFaultProofFieldOpeningV1,
   publishFaultProofFieldCarriageV1,
@@ -89,7 +84,6 @@ export const submitMissingNativeScriptTxStep06 = async ({
   certificateUtxo,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  claimRegistryMutation,
   publicationPreSubmitBoundary,
   preSubmitBoundary,
   awaitConfirmation = true,
@@ -111,8 +105,6 @@ export const submitMissingNativeScriptTxStep06 = async ({
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  /** Production finalization atomically closes the live claim. */
-  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
   /** Durable subaction seam for each prerequisite field-carriage publication. */
   readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
@@ -197,25 +189,6 @@ export const submitMissingNativeScriptTxStep06 = async ({
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: `${STEP_LABEL} fraud-proof mint`,
   });
-  // This step always burns the computation thread, so the claim-registry
-  // close is unconditional: `computation_thread.mint`'s Success arm requires
-  // the registry input whether or not the caller resolved one for us.
-  const closeMutation = requirePreparedClaimRegistryMutationV1({
-    mutation:
-      claimRegistryMutation ??
-      (await prepareFamilyClaimRegistryMutationV1({
-        lucid,
-        claimRegistry: contracts.claimRegistry,
-        claimRegistryReferenceUtxo: witnessReferenceScripts?.claimRegistrySpend,
-        hubOraclePolicyId: contracts.hubOraclePolicyId,
-        computationThreadPolicyId: contracts.computationThread.policyId,
-        claimId: threadToken.assetName,
-        kind: "close",
-      })),
-    kind: "close",
-    claimId: threadToken.assetName,
-    label: `${STEP_LABEL} direct finalization`,
-  });
   // The complete final reference-input set MUST stand before the field
   // opening derives its §8.7 indices (bug fc635c8f).
   const referenceInputs = [
@@ -224,7 +197,6 @@ export const submitMissingNativeScriptTxStep06 = async ({
     stepReference,
     ...computationThreadBurnCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
-    ...closeMutation.referenceInputs,
   ];
   const opening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
@@ -233,10 +205,7 @@ export const submitMissingNativeScriptTxStep06 = async ({
     label: `${STEP_LABEL} script witnesses`,
   });
   const walletUtxos = await lucid.wallet().getUtxos();
-  const usableWalletUtxos = [
-    ...carriageUtxos,
-    ...closeMutation.referenceInputs,
-  ].reduce<readonly UTxO[]>(
+  const usableWalletUtxos = [...carriageUtxos].reduce<readonly UTxO[]>(
     (utxos, carriage) => excludeUtxo(utxos, carriage),
     walletUtxos,
   );
@@ -343,9 +312,8 @@ export const submitMissingNativeScriptTxStep06 = async ({
       },
     )
     .addSignerKey(signer.paymentKeyHash);
-  const claimBound = closeMutation.apply(paid);
   const completed = fraudProofMintCarriage.attach(
-    computationThreadBurnCarriage.attach(claimBound),
+    computationThreadBurnCarriage.attach(paid),
   );
   const unsigned = await completed.complete({
     localUPLCEval: true,
@@ -381,11 +349,6 @@ export const submitMissingNativeScriptTxStep06 = async ({
           role: "V1 fraud-proof token minting",
           utxo: witnessReferenceScripts?.fraudProofMint,
           expectedScript: contracts.fraudProof.mintingScript,
-        },
-        {
-          role: "claim-registry spending",
-          utxo: closeMutation.referenceScriptUtxo,
-          expectedScript: closeMutation.registryScript,
         },
       ],
     }),

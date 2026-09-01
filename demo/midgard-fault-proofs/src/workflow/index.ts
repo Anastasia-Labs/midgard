@@ -12,7 +12,6 @@ export * from "./production-actuation-permit-v1.js";
 export * from "./production-adapters-v1.js";
 export * from "./production-authenticated-replay-artifact-v1.js";
 export * from "./production-canonical-decodability-v1.js";
-export * from "./production-claim-registry-prerequisite-v1.js";
 export * from "./production-committed-field-shape-v1.js";
 export * from "./production-cursor-family-adapter-v1.js";
 export * from "./production-cursor-family-runtime-v1.js";

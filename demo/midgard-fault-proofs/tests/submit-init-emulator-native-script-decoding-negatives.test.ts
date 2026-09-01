@@ -269,8 +269,6 @@ describe("native-script-decoding aborts, refusals and resume", () => {
       referenceScriptUtxo: step01Ref,
       computationThreadReferenceUtxo:
         harness.witnessReferenceScripts.computationThreadMint!,
-      claimRegistryReference:
-        harness.witnessReferenceScripts.claimRegistrySpend!,
     });
     for (const step of decoding.steps) {
       await expect(

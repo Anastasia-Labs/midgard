@@ -26,17 +26,11 @@ import {
 import { Effect } from "effect";
 
 import {
-  type PreparedClaimRegistryMutationV1,
-  prepareFamilyClaimRegistryMutationV1,
-  requirePreparedClaimRegistryMutationV1,
-} from "../claim-registry-transaction-v1.js";
-import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
   parseOutRef,
   type ResolvedProverSigner,
 } from "../runtime.js";
-import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
@@ -77,7 +71,6 @@ export const submitCrossBlockDuplicateEventStep02 = async ({
   settledEvent,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  claimRegistryMutation,
   preSubmitBoundary,
   awaitConfirmation = true,
 }: {
@@ -91,7 +84,6 @@ export const submitCrossBlockDuplicateEventStep02 = async ({
   /** Mandatory published step-02 reference script. */
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitCrossBlockDuplicateEventStep02Result> => {
@@ -172,28 +164,7 @@ export const submitCrossBlockDuplicateEventStep02 = async ({
   }
 
   signer.selectWallet(lucid);
-  const resolvedClaimRegistryMutation = requirePreparedClaimRegistryMutationV1({
-    mutation:
-      claimRegistryMutation ??
-      (await prepareFamilyClaimRegistryMutationV1({
-        lucid,
-        claimRegistry: contracts.claimRegistry,
-        claimRegistryReferenceUtxo: witnessReferenceScripts.claimRegistrySpend,
-        hubOraclePolicyId: contracts.hubOraclePolicyId,
-        computationThreadPolicyId: contracts.computationThread.policyId,
-        claimId: threadToken.assetName,
-        kind: "close",
-      })),
-    kind: "close",
-    claimId: threadToken.assetName,
-    label: "cross-block-duplicate-event step 02",
-  });
-  const feeInput = selectFeeInput(
-    resolvedClaimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
-      (utxos, reference) => excludeUtxo(utxos, reference),
-      await lucid.wallet().getUtxos(),
-    ),
-  );
+  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -324,9 +295,7 @@ export const submitCrossBlockDuplicateEventStep02 = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const tx = fraudProofMintCarriage.attach(
-    computationThreadMintCarriage.attach(
-      resolvedClaimRegistryMutation.apply(base),
-    ),
+    computationThreadMintCarriage.attach(base),
   );
   const unsigned = await tx.complete({ localUPLCEval: true });
   if (layout === undefined || threadMintRedeemerIndex === undefined) {
@@ -354,11 +323,6 @@ export const submitCrossBlockDuplicateEventStep02 = async ({
           role: "V1 fraud-proof token minting",
           utxo: witnessReferenceScripts?.fraudProofMint,
           expectedScript: contracts.fraudProof.mintingScript,
-        },
-        {
-          role: "claim-registry spending",
-          utxo: resolvedClaimRegistryMutation.referenceScriptUtxo,
-          expectedScript: resolvedClaimRegistryMutation.registryScript,
         },
       ],
     }),

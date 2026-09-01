@@ -44,7 +44,6 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { prepareFamilyClaimRegistryMutationV1 } from "../../src/claim-registry-transaction-v1.js";
 import type { CommittedFieldShapeContractsV1 } from "../../src/committed-field-shape/contracts-v1.js";
 import type { PreparedCommittedFieldShapeV1 } from "../../src/committed-field-shape/prepare-committed-field-shape-v1.js";
 import {
@@ -63,7 +62,6 @@ import {
   resolveFraudulentHeaderHash,
   resolveProverSigner,
 } from "../../src/runtime.js";
-import { excludeUtxo } from "../../src/spend-input-witness.js";
 import {
   nativeTxFromCoreCompact,
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
@@ -549,24 +547,8 @@ export const submitRawCommittedFieldShapeStep02V1 = async ({
       threadOutRef,
     });
   harness.proverSigner.selectWallet(harness.proverLucid);
-  // `computation_thread.mint` requires the claim-registry input in every arm,
-  // so the raw finalizer closes the claim exactly as the submitter does.
-  const claimRegistryMutation = await prepareFamilyClaimRegistryMutationV1({
-    lucid: harness.proverLucid,
-    claimRegistry: harness.committedFieldShape.claimRegistry,
-    claimRegistryReferenceUtxo:
-      harness.witnessReferenceScripts.claimRegistrySpend,
-    hubOraclePolicyId: harness.committedFieldShape.hubOraclePolicyId,
-    computationThreadPolicyId:
-      harness.committedFieldShape.computationThread.policyId,
-    claimId: threadToken.assetName,
-    kind: "close",
-  });
   const feeInput = selectFeeInput(
-    claimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
-      (utxos, reference) => excludeUtxo(utxos, reference),
-      await harness.proverLucid.wallet().getUtxos(),
-    ),
+    await harness.proverLucid.wallet().getUtxos(),
   );
   const fraudProofUnit = toUnit(
     harness.committedFieldShape.fraudProof.policyId,
@@ -672,7 +654,7 @@ export const submitRawCommittedFieldShapeStep02V1 = async ({
     )
     .addSignerKey(harness.proverSigner.paymentKeyHash);
   const unsigned = await fraudProofCarriage
-    .attach(computationThreadCarriage.attach(claimRegistryMutation.apply(base)))
+    .attach(computationThreadCarriage.attach(base))
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();
@@ -710,23 +692,7 @@ export const submitRawCommittedFieldShapeCancelV1 = async ({
     throw new Error("raw cancel thread is not at the named family step");
   }
   signer.selectWallet(lucid);
-  // `computation_thread.mint` requires the claim-registry input in every arm,
-  // so the raw cancel deletes the live claim exactly as the submitter does.
-  const claimRegistryMutation = await prepareFamilyClaimRegistryMutationV1({
-    lucid,
-    claimRegistry: contracts.claimRegistry,
-    claimRegistryReferenceUtxo: witnessReferenceScripts.claimRegistrySpend,
-    hubOraclePolicyId: contracts.hubOraclePolicyId,
-    computationThreadPolicyId: contracts.computationThread.policyId,
-    claimId: threadAssetName,
-    kind: "cancel",
-  });
-  const feeInput = selectFeeInput(
-    claimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
-      (utxos, reference) => excludeUtxo(utxos, reference),
-      await lucid.wallet().getUtxos(),
-    ),
-  );
+  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
   const spendRedeemer = ((ctx) => {
     requireOwnSpendPurpose(ctx, threadUtxo, "raw committed-field-shape cancel");
     return Data.to(
@@ -774,7 +740,7 @@ export const submitRawCommittedFieldShapeCancelV1 = async ({
     .mintAssets({ [threadUnit]: -1n }, burnRedeemer)
     .addSignerKey(signer.paymentKeyHash);
   const unsigned = await computationThreadCarriage
-    .attach(claimRegistryMutation.apply(base))
+    .attach(base)
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();

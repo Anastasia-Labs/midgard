@@ -7,8 +7,6 @@ import {
   ActiveOperatorSpendRedeemer,
   buildActivateOperatorTx,
   buildRegisterOperatorTx,
-  CLAIM_REGISTRY_ASSET_NAME,
-  ClaimRegistryDatum,
   ConfirmedState,
   CORRECTION_LOCK_ASSET_NAME,
   CorrectionLockDatum,
@@ -91,10 +89,6 @@ const setupUnits = (
   correctionLock: toUnit(
     contracts.hubOracle.policyId,
     CORRECTION_LOCK_ASSET_NAME,
-  ),
-  claimRegistry: toUnit(
-    contracts.hubOracle.policyId,
-    CLAIM_REGISTRY_ASSET_NAME,
   ),
   fraudProofCatalogue: toUnit(
     contracts.fraudProofCatalogue.policyId,
@@ -182,13 +176,12 @@ const submitInitialMintTx = async ({
     .validFrom(Number(header.startTime - 120_000n))
     .validTo(Number(header.startTime + 1n))
     .collectFrom([nonceUtxo])
-    // `hub_oracle.mint` requires the exact hub-policy set — hub oracle,
-    // correction lock and claim registry — at equal quantities.
+    // `hub_oracle.mint` requires the exact hub-policy set — hub oracle and
+    // correction lock — at equal quantities.
     .mintAssets(
       {
         [units.hubOracle]: 1n,
         [units.correctionLock]: 1n,
-        [units.claimRegistry]: 1n,
       },
       Data.void(),
     )
@@ -314,23 +307,6 @@ const submitInitialMintTx = async ({
         value: Data.to(catalogue.root, FraudProofCatalogueDatum),
       },
       { [units.fraudProofCatalogue]: 1n },
-    )
-    // Appended after the indexed roots so `SETUP_OUTPUT_INDEX` stays valid;
-    // `state_queue.mint` InitV1 locates this output by its hub-policy token,
-    // not by index.
-    .pay.ToContract(
-      contracts.claimRegistry.spendingScriptAddress,
-      {
-        kind: "inline",
-        value: Data.to(
-          {
-            claims_root: EMPTY_MERKLE_TREE_ROOT,
-            computation_thread_policy_id: contracts.computationThread.policyId,
-          },
-          ClaimRegistryDatum,
-        ),
-      },
-      { [units.claimRegistry]: 1n },
     )
     .attach.MintingPolicy(contracts.hubOracle.mintingScript)
     .attach.MintingPolicy(contracts.fraudProofCatalogue.mintingScript)

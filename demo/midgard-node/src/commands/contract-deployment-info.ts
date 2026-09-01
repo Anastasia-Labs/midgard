@@ -809,11 +809,6 @@ const collectScriptDescriptors = (
     "correction-lock spending",
   ),
   spendDescriptor(
-    "claimRegistrySpend",
-    contracts.claimRegistry,
-    "claim-registry spending",
-  ),
-  spendDescriptor(
     "availabilityChallengeSpend",
     contracts.availabilityChallenge,
     "availability-challenge spending",

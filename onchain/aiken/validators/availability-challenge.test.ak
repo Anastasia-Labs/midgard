@@ -2042,6 +2042,19 @@ test q58_mint_bond_accepts_exact_attestation_and_queue_transition() {
   validates_close(mint_bond_transaction(bond_owner, hub_policy, 0, 1), redeemer)
 }
 
+test q58_mint_bond_accepts_wallet_fee_input_and_change_output() {
+  let redeemer = mint_bond_redeemer(0, 1)
+  let tx = mint_bond_transaction(bond_owner, hub_policy, 0, 1)
+  validates_close(
+    Transaction {
+      ..tx,
+      inputs: list.concat(tx.inputs, [challenger_input(bond_owner)]),
+      outputs: list.concat(tx.outputs, [challenger_input(bond_owner).output]),
+    },
+    redeemer,
+  )
+}
+
 test q58_mint_bond_rejects_substituted_deployment_identity() fail {
   let redeemer = mint_bond_redeemer(0, 1)
   validates_close(

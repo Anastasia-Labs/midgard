@@ -23,7 +23,6 @@ export type FraudProofRawL1ComputationStepRoleV1 =
 
 export type FraudProofRawL1ScopeRoleV1 =
   | "state_queue"
-  | "claim_registry"
   | FraudProofRawL1ComputationStepRoleV1
   | "permanent_proof_token"
   | "active_operator_directory"
@@ -128,7 +127,6 @@ const UNIT = /^[0-9a-f]{56}(?:[0-9a-f]{2}){0,32}$/u;
 const MAX_COLLECTION_SIZE = 100_000;
 const RAW_L1_SCOPE_ROLES = new Set<FraudProofRawL1ScopeRoleV1>([
   "state_queue",
-  "claim_registry",
   "computation_thread_step_01",
   "computation_thread_step_02",
   "computation_thread_step_03",

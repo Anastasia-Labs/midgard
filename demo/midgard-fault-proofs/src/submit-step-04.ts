@@ -35,11 +35,6 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import {
-  type PreparedClaimRegistryMutationV1,
-  prepareDeploymentClaimRegistryMutationV1,
-  requirePreparedClaimRegistryMutationV1,
-} from "./claim-registry-transaction-v1.js";
 import { parseDoubleSpentInputIndex } from "./double-spend-inputs.js";
 import {
   faultProofFieldOpeningV1,
@@ -315,7 +310,6 @@ export const submitStep04 = async ({
   certificatePolicyId,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  claimRegistryMutation,
   preSubmitBoundary,
   awaitConfirmation = true,
 }: {
@@ -345,8 +339,6 @@ export const submitStep04 = async ({
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  /** Pre-prepared claim-registry `CloseClaim`; self-prepared when omitted. */
-  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
   /** Production workflow seam for carriage and proof-step submissions. */
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
@@ -442,36 +434,19 @@ export const submitStep04 = async ({
     referenceUtxo: witnessReferenceScripts?.fraudProofMint,
     label: "double-spend step 04 fraud-proof mint",
   });
-  const resolvedClaimRegistryMutation = requirePreparedClaimRegistryMutationV1({
-    mutation:
-      claimRegistryMutation ??
-      (await prepareDeploymentClaimRegistryMutationV1({
-        lucid,
-        claimRegistryReferenceUtxo: witnessReferenceScripts?.claimRegistrySpend,
-        blueprint,
-        deploymentInfo,
-        network,
-        computationThreadPolicyId: contracts.computationThread.policyId,
-        claimId: threadToken.assetName,
-        kind: "close",
-      })),
-    kind: "close",
-    claimId: threadToken.assetName,
-    label: "double-spend step 04",
-  });
   const referenceInputs = [
     ...carriageUtxos,
     ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
     ...stepScriptCarriage.referenceInputs,
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
-    ...resolvedClaimRegistryMutation.referenceInputs,
   ];
   const walletUtxos = await lucid.wallet().getUtxos();
   const feeInput = selectFeeInput(
-    [...carriageUtxos, ...resolvedClaimRegistryMutation.referenceInputs].reduce<
-      readonly UTxO[]
-    >((candidates, utxo) => excludeUtxo(candidates, utxo), walletUtxos),
+    carriageUtxos.reduce<readonly UTxO[]>(
+      (candidates, utxo) => excludeUtxo(candidates, utxo),
+      walletUtxos,
+    ),
   );
   const tx2SpendInputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
@@ -545,9 +520,7 @@ export const submitStep04 = async ({
       )
       .addSignerKey(signer.paymentKeyHash);
     return fraudProofMintCarriage.attach(
-      computationThreadMintCarriage.attach(
-        stepScriptCarriage.attach(resolvedClaimRegistryMutation.apply(chained)),
-      ),
+      computationThreadMintCarriage.attach(stepScriptCarriage.attach(chained)),
     );
   };
 
@@ -593,11 +566,6 @@ export const submitStep04 = async ({
         role: "V1 fraud-proof token minting",
         utxo: witnessReferenceScripts?.fraudProofMint,
         expectedScript: contracts.fraudProof.mintingScript,
-      }),
-      workflowReferenceScriptV1({
-        role: "claim-registry spending",
-        utxo: resolvedClaimRegistryMutation.referenceScriptUtxo,
-        expectedScript: resolvedClaimRegistryMutation.registryScript,
       }),
     ],
     boundary: preSubmitBoundary,

@@ -39,14 +39,16 @@ const loadContracts = (
 ) => loadRealMidgardContractsForTest(oneShotOutRef, referenceScriptAuth);
 
 // The real-envelope pin (`maxTxSize: PROTOCOL_PARAMETERS_DEFAULT.maxTxSize`)
-// is SUSPENDED until the state-queue minting validator shrinks, per
-// Anastasia-Labs/midgard#649: `state_queue.mint` compiles to 16,835 bytes
-// unapplied, over the 16,384-byte L1 envelope before a funding input, the auth
-// mint or a signature, so publishing it as a reference script fails at fixture
-// bring-up and blocks every atomic-initialization assertion in this file. The
-// fit property is not lost — `tests/scratch-cg1-publication-fit.test.ts` stays
-// pinned at the real envelope and is skipped with the same #649 citation, and
-// un-skipping it is what proves #649 fixed. Restore the pin then.
+// is SUSPENDED per Anastasia-Labs/midgard#649. `state_queue.mint` is no longer
+// the blocker: removing the claim registry dropped two of its parameters and
+// the InitV1/Deinit registry checks, taking it from 16,835 to 16,139 bytes
+// unapplied, inside the 16,384-byte L1 envelope. `availability_challenge`
+// remains over at 19,956 bytes unapplied on both legs, so publishing the roster
+// as reference scripts still fails at fixture bring-up and would block every
+// atomic-initialization assertion in this file. The fit property is not lost —
+// `tests/scratch-cg1-publication-fit.test.ts` stays pinned at the real envelope
+// and is skipped with the same #649 citation, and un-skipping it is what proves
+// #649 fixed. Restore the pin then.
 const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
   maxTxSize: 65_536,
@@ -270,14 +272,14 @@ describe("initialization emulator", () => {
       expect(calls.validFrom).toBe(Number(validFrom));
       expect(calls.validTo).toBe(Number(validTo));
       expect(calls.collected).toEqual([nonceUtxo]);
-      // Ten protocol-root outputs, one per NFT the atomic init mints:
+      // Nine protocol-root outputs, one per NFT the atomic init mints:
       // da-params governor, hub oracle, scheduler, state-queue root, the three
       // operator-set roots, the fraud-proof catalogue, and — under the same hub
-      // oracle policy — the correction lock and the claim registry. The old pin
-      // of 8 predates those last two, which `src/transactions/initialization.ts`
-      // already requires (it reports a deployment missing them as
-      // "correction-lock"/"claim-registry" roots).
-      expect(outputAssets).toHaveLength(10);
+      // oracle policy — the correction lock. The old pin of 8 predates the
+      // correction lock, which `src/transactions/initialization.ts` already
+      // requires (it reports a deployment missing it as a "correction-lock"
+      // root); removing the claim registry from the protocol dropped the tenth.
+      expect(outputAssets).toHaveLength(9);
       expect(outputAssets.every((assets) => !("lovelace" in assets))).toBe(
         true,
       );

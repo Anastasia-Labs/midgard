@@ -406,7 +406,6 @@ export const publishHarnessFaultProofReferenceScriptsV1 = async ({
 export const publishFaultProofWitnessReferenceScriptsV1 = async ({
   lucid,
   realBlueprint,
-  claimRegistrySpendingScript,
   computationThreadMintingScript,
   fraudProofMintingScript,
   includeChunkedVerify = false,
@@ -414,7 +413,6 @@ export const publishFaultProofWitnessReferenceScriptsV1 = async ({
 }: {
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
   readonly realBlueprint: unknown;
-  readonly claimRegistrySpendingScript?: Script;
   readonly computationThreadMintingScript?: Script;
   readonly fraudProofMintingScript?: Script;
   readonly includeChunkedVerify?: boolean;
@@ -449,7 +447,6 @@ export const publishFaultProofWitnessReferenceScriptsV1 = async ({
           }
         : undefined,
     ],
-    ["claimRegistrySpend", claimRegistrySpendingScript],
   ];
   const published: Partial<
     Record<keyof FaultProofWitnessReferenceScriptsV1, UTxO>

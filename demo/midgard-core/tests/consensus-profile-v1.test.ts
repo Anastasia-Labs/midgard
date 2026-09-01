@@ -167,16 +167,16 @@ describe("canonical V1 consensus profile", () => {
 
     // Anchored to the deployed five-stage measurement, OBSERVE limiting.
     // Lane-level re-pin 2026-08-23 at the #617 wave sign-off (owner ruling
-    // (b) on the #622 sign-off table, 2026-08-22): measured exact 14,004 /
-    // reserve 13,522 on the post-Option-B production route, replacing the
-    // 13,294 / 12,810 pair measured while the item still rode the
-    // authenticate redeemer.
+    // (b) on the #622 sign-off table, 2026-08-22): the reserve cost steer
+    // remains 13,522. Removing the claim-registry witness added 56 bytes of
+    // transaction headroom and moved the measured exact frontier from 14,004
+    // to 14,058 after the larger item crossed a CBOR framing width.
     expect(reserve).toBe(512);
     expect(budget).toBe(15_872);
     expect(frontier).toBe(13_522);
     expect(
       MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxExactDirectCompleteItemBytes,
-    ).toBe(14_004);
+    ).toBe(14_058);
 
     // Mirrors `selectValidationCompleteItemCarriageV1`. The production selector
     // lives in `@al-ft/midgard-fault-proofs` (importing it here would invert the
@@ -193,7 +193,7 @@ describe("canonical V1 consensus profile", () => {
     // steers cost rather than soundness — #622 measured item 13,523
     // completing to award past it, "a cost line, not a cliff" — but the
     // builder still refuses to widen it on its own: the pre-sign projection
-    // and the envelope gate are the operative guards, proven live at 14,005.
+    // and the envelope gate are the operative guards, proven live at 14,059.
     expect(carriage(13_523)).toBe("reference");
     // The retired single-transaction by-reference frontiers (13,282 from the
     // necessity evidence, 13,998 from the measurement script's counted-shape
@@ -206,12 +206,11 @@ describe("canonical V1 consensus profile", () => {
     expect(frontier).toBeGreaterThan(13_282);
     expect(frontier).toBeLessThan(13_998);
 
-    // Why one byte over cannot fit: the limiting direct transaction already
-    // sits exactly on the reliability budget at the frontier item size, and
-    // item bytes expand at least 1:1 into it.
+    // The owner-signed cost steer intentionally retained the 56 bytes freed by
+    // claim-registry removal instead of widening the direct route.
     expect(
       MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemProofTransactionBytes,
-    ).toBe(budget);
+    ).toBe(budget - 56);
     expect(
       Math.max(
         MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemAuthenticationTransactionBytes,
@@ -223,7 +222,7 @@ describe("canonical V1 consensus profile", () => {
     // Observation, not authentication, is the stage that governs the bound
     // since Option B (#620) made the canonical-decode item semantic
     // transition-only: the item preimage left the authenticate redeemer, so
-    // authenticate became item-size-independent (2,656 bytes at every
+    // authenticate became item-size-independent (2,600 bytes at every
     // measured item) and the observe door became the stage that grows with
     // the item. Re-pinned at the #617 wave sign-off from the #622 measured
     // table, under the owner's 2026-08-22 ruling (b).
@@ -233,13 +232,13 @@ describe("canonical V1 consensus profile", () => {
       MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemAuthenticationTransactionBytes,
     );
 
-    // The zero-reserve frontier may exceed the reliable one by at most the
-    // reserve itself, because item bytes cannot expand sub-1:1.
+    // The zero-reserve frontier may exceed the reliable one by the reserve
+    // plus the deliberately retained 56-byte claim-registry headroom.
     const slack =
       MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxExactDirectCompleteItemBytes -
       frontier;
     expect(slack).toBeGreaterThan(0);
-    expect(slack).toBeLessThanOrEqual(reserve);
+    expect(slack).toBeLessThanOrEqual(reserve + 56);
 
     // Carrying the whole item preimage inline in the redeemer is what makes
     // direct carriage expensive: the identical proof resolved by reference to

@@ -311,23 +311,13 @@ describe("DeploymentManifestV1 shared identity", () => {
       "nativeScriptInvalid",
       "minAda",
     ]);
-    expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toHaveLength(163);
+    expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toHaveLength(162);
     expect(
       Object.keys(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE),
-    ).toHaveLength(156);
+    ).toHaveLength(155);
     expect(
       Object.keys(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES),
-    ).toHaveLength(157);
-    expect(
-      DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
-        "claim-registry spending"
-      ],
-    ).toBe("claimRegistrySpend");
-    expect(
-      DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES[
-        "claim-registry spending"
-      ],
-    ).toBe("ClaimRegistrySpend");
+    ).toHaveLength(156);
     expect(
       DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
         "V1 fraud-proof withdrawn-input step-03"

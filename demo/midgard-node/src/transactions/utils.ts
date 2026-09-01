@@ -1261,9 +1261,15 @@ export const awaitSubmittedTransactionConfirmation = (
     yield* awaitWithTimeout;
     yield* reconcileWalletUtxosFromSignedTx(lucid, submission);
     yield* Effect.logInfo(`🎉 Transaction confirmed: ${txHash}`);
-    yield* Effect.logInfo(`⌛ Pausing for ${PAUSE_DURATION}...`);
-    yield* Effect.sleep(PAUSE_DURATION);
-    yield* Effect.logInfo("✅ Pause ended.");
+    // A remote provider can lag briefly after reporting confirmation, so keep
+    // the historical propagation pause there. Lucid's in-memory emulator has
+    // already advanced and reconciled its wallet state at this point; sleeping
+    // in that case only adds five seconds to every submitted test transaction.
+    if (emulatorTimeProvider(lucid) === null) {
+      yield* Effect.logInfo(`⌛ Pausing for ${PAUSE_DURATION}...`);
+      yield* Effect.sleep(PAUSE_DURATION);
+      yield* Effect.logInfo("✅ Pause ended.");
+    }
     return txHash;
   });
 

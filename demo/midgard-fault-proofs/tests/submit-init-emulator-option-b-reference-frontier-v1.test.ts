@@ -69,6 +69,7 @@ const MAX_TIER1_PAYLOAD_BYTES = 13_851;
  */
 const SWEEP_PAYLOAD_BYTES = 7_976;
 const SWEEP_ITEM_BYTES = 8_277;
+const CLAIM_REGISTRY_REMOVAL_HEADROOM_BYTES = 56;
 const PRE_CHANGE_SWEEP_ROWS = {
   prepare: { bytes: 10_409, mem: 613_326n, cpu: 544_789_001n },
   authenticate: { bytes: 11_197, mem: 179_092n, cpu: 341_706_855n },
@@ -80,11 +81,11 @@ const PRE_CHANGE_SWEEP_ROWS = {
 
 /** Files 1-2's item-size-independent six-stage rows, re-pinned here. */
 const SIX_STAGE_CONSTANT_ROW_BYTES_V1 = {
-  prepareSelected: 1_864,
-  authenticate: 2_656,
-  source: 1_911,
-  proof: 1_936,
-  settle: 679,
+  prepareSelected: 1_808,
+  authenticate: 2_600,
+  source: 1_855,
+  proof: 1_880,
+  settle: 623,
 } as const;
 
 const stageBytesByKind = (
@@ -269,8 +270,8 @@ describe.skipIf(!optionB)(
         0,
         "publication",
       );
-      expect(publication.completeSignedBytes).toBe(15_135);
-      expect(stageBytesByKind(stageTransactions, "observe")).toBe(1_959);
+      expect(publication.completeSignedBytes).toBe(15_107);
+      expect(stageBytesByKind(stageTransactions, "observe")).toBe(1_903);
       const observeStage = stageTransactions.find(
         (stage) => stage.kind === "observe",
       );
@@ -299,10 +300,10 @@ describe.skipIf(!optionB)(
       // End-to-end: every transaction this dispute cost L1, from the four
       // reference-script publications through init, open, the bisection, the
       // semantic leg (publication included), and the by-reference award.
-      expect(award.measurement.completeSignedBytes).toBe(945);
+      expect(award.measurement.completeSignedBytes).toBe(889);
       expect(
         totalJourneyBytes(journey, semantic.measurements, award.measurement),
-      ).toBe(126_929);
+      ).toBe(125_474);
       expectWholeJourneyProofFit(
         "#622 reference-frontier item 14,336",
         journey,
@@ -311,7 +312,7 @@ describe.skipIf(!optionB)(
       );
     }, 900_000);
 
-    it("bills strictly below the pre-change sweep rows at the sweep's own shape, byte-identically where nothing changed", async () => {
+    it("bills strictly below the pre-change sweep rows at the sweep's own shape and records the removed claim-registry witness headroom", async () => {
       const journey = await prepareRouteFreedomJourneyV1({
         inlineDatumPayloadBytes: SWEEP_PAYLOAD_BYTES,
         minimumCompleteItemBytes: 0,
@@ -341,10 +342,12 @@ describe.skipIf(!optionB)(
         ),
       ).toEqual([1, 1, 1, 1, 1]);
 
-      // The observe wire is unchanged; the source, proof, and settlement
-      // rows shrink because their validators now arrive by reference.
+      // Every dispute-stage row is 56 bytes smaller after removing the
+      // claim-registry witness; source, proof, and settlement retain the
+      // additional savings from their validators arriving by reference.
       expect(stageBytesByKind(stageTransactions, "observe")).toBe(
-        PRE_CHANGE_SWEEP_ROWS.observe.bytes,
+        PRE_CHANGE_SWEEP_ROWS.observe.bytes -
+          CLAIM_REGISTRY_REMOVAL_HEADROOM_BYTES,
       );
       expect(stageBytesByKind(stageTransactions, "source")).toBe(
         SIX_STAGE_CONSTANT_ROW_BYTES_V1.source,
@@ -390,8 +393,8 @@ describe.skipIf(!optionB)(
         2,
         "observe",
       );
-      expect(observeMeasurement.executionMemory).toBe(876_778n);
-      expect(observeMeasurement.executionSteps).toBe(299_480_995n);
+      expect(observeMeasurement.executionMemory).toBe(878_878n);
+      expect(observeMeasurement.executionSteps).toBe(299_816_995n);
       expect(
         observeMeasurement.executionMemory < PRE_CHANGE_SWEEP_ROWS.observe.mem,
       ).toBe(true);

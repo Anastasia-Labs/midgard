@@ -1,7 +1,5 @@
 import type { MintingPolicy, Script } from "@lucid-evolution/lucid";
 
-import type { FaultProofClaimRegistryContractV1 } from "../claim-registry-transaction-v1.js";
-
 export const NETWORK_ID_CATEGORY_LABEL = "network-id";
 
 /** Human-readable family label; the canonical SDK catalogue key is networkId. */
@@ -34,12 +32,6 @@ export type NetworkIdContractsV1 = {
     readonly spendingScriptAddress: string;
   };
   readonly hubOraclePolicyId: string;
-  /**
-   * The applied `claim_registry.spend` validator. Every arm of
-   * `computation_thread.mint` requires the claim-registry input in the same
-   * transaction, so each submitter resolves its mutation from here.
-   */
-  readonly claimRegistry: FaultProofClaimRegistryContractV1;
   readonly stateQueuePolicyId: string;
   readonly fieldPreimageCertificatePolicyId: string;
   readonly fieldPreimageCertificateMintingScript: MintingPolicy;

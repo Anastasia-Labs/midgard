@@ -1231,13 +1231,10 @@ describe("fault-proof published-chunk proof carriage", () => {
       initResult.computationThreadAssetName,
     );
     expect(step04Result.proofCarriage).toBe("published-chunks");
-    // Chunks plus the step, pexcludes, computation-thread, fraud-proof and
-    // claim-registry scripts: this step reads no oracle or state-queue node.
-    // The claim-registry reference script joined the count when the terminal
-    // began closing its live claim atomically with the conviction; measured
-    // 2026-08-31.
+    // Chunks plus the step, pexcludes, computation-thread, and fraud-proof
+    // scripts: this step reads no oracle or state-queue node.
     expect(step04Capture.measurement.referenceInputCount).toBe(
-      5 + EXPECTED_CHUNK_COUNT,
+      4 + EXPECTED_CHUNK_COUNT,
     );
 
     const removeNow = BigInt(emulator.now());

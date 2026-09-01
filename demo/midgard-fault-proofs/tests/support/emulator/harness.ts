@@ -30,7 +30,6 @@ import {
 } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import { prepareFamilyClaimRegistryMutationV1 } from "../../../src/claim-registry-transaction-v1.js";
 import {
   encodePhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
@@ -265,18 +264,6 @@ export const submitFabricatedFamilyInitV1 = async ({
     referenceUtxo: witnessReferenceScripts?.phasMembershipWithdraw,
     label: `${familyLabel} init phas membership withdrawal`,
   });
-  // The `Init` arm of `computation_thread.mint` requires the atomic
-  // claim-registry `OpenClaim` in the same transaction.
-  const claimRegistryMutation = await prepareFamilyClaimRegistryMutationV1({
-    lucid,
-    claimRegistry: family.claimRegistry,
-    claimRegistryReferenceUtxo: witnessReferenceScripts?.claimRegistrySpend,
-    hubOraclePolicyId: family.hubOraclePolicyId,
-    computationThreadPolicyId: family.computationThread.policyId,
-    categoryId: category.categoryId,
-    headerHash: fraudulentHeaderHash,
-    kind: "open",
-  });
   const chainedTx = lucid
     .newTx()
     .readFrom([
@@ -304,11 +291,7 @@ export const submitFabricatedFamilyInitV1 = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const unsigned = await phasMembershipCarriage
-    .attach(
-      computationThreadMintCarriage.attach(
-        claimRegistryMutation.apply(chainedTx),
-      ),
-    )
+    .attach(computationThreadMintCarriage.attach(chainedTx))
     .complete({ localUPLCEval: true });
   if (firstStepOutputIndex === undefined) {
     throw new Error(
@@ -446,16 +429,12 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
     await publishFaultProofWitnessReferenceScriptsV1({
       lucid: proverLucid,
       realBlueprint,
-      claimRegistrySpendingScript: stagedContracts.claimRegistry.spendingScript,
       computationThreadMintingScript:
         stagedContracts.computationThread.mintingScript,
       fraudProofMintingScript: stagedContracts.fraudProof.mintingScript,
       includeChunkedVerify: true,
       includePexcludes: true,
     });
-  // The published witness roster travels with the contracts record so the
-  // removal manifests can name the claim-registry reference script without
-  // every call site re-threading it.
   const contracts = {
     ...stagedContracts,
     faultProofWitnessReferenceScripts: witnessReferenceScripts,

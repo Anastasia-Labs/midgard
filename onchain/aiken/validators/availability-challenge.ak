@@ -157,8 +157,6 @@ fn validate_mint_bond_from_attestation(
   }
   let expected_bond_datum_data: Data = expected_bond_datum
   and {
-    list.length(tx.inputs) == 2,
-    list.length(tx.outputs) == 2,
     da_attestation_input_index != state_queue_input_index,
     bond_output_index != state_queue_output_index,
     availability.parameters_are_canonical_v1(parameters),

@@ -753,7 +753,6 @@ export const createManifestBoundWithdrawnInputWorkflowV1 = async (
         binding.resolvedContracts.contracts.fraudProof.spendingScriptAddress,
     },
     hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
-    claimRegistry: binding.claimRegistry,
     stateQueuePolicyId,
     fieldPreimageCertificatePolicyId: certificate.policyId,
   });

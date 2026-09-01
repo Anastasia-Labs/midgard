@@ -139,7 +139,6 @@ export const runForcedValidationDisputeScenario = async (
     await publishFaultProofWitnessReferenceScriptsV1({
       lucid: challengerLucid,
       realBlueprint,
-      claimRegistrySpendingScript: contracts.claimRegistry.spendingScript,
       computationThreadMintingScript: contracts.computationThread.mintingScript,
       fraudProofMintingScript: contracts.fraudProof.mintingScript,
     });
@@ -201,7 +200,6 @@ export const runForcedValidationDisputeScenario = async (
   );
   const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
     validationDisputePublication,
-    claimRegistrySpendReference: witnessReferenceScripts.claimRegistrySpend,
   });
   const initResult = await runEmulatorLifecycleStage("init", () =>
     submitInit({
@@ -434,8 +432,6 @@ export const runForcedValidationDisputeScenario = async (
       ? deploymentInfo
       : buildRemovalDeploymentInfo(contracts, catalogue, {
           validationDisputePublication,
-          claimRegistrySpendReference:
-            witnessReferenceScripts.claimRegistrySpend,
           validationValueAndMintSemanticReferences: [
             {
               semanticResolverIndex: stagedSemanticIndex,
@@ -546,7 +542,6 @@ export const runForcedValidationDisputeScenario = async (
     {
       validationDisputePublication,
       removalReferenceScripts: removalReferenceScriptPublications.published,
-      claimRegistrySpendReference: witnessReferenceScripts.claimRegistrySpend,
     },
   );
   const removeNow = BigInt(emulator.now());

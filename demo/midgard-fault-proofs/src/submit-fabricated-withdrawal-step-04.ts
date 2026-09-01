@@ -40,11 +40,6 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import {
-  type PreparedClaimRegistryMutationV1,
-  prepareFamilyClaimRegistryMutationV1,
-  requirePreparedClaimRegistryMutationV1,
-} from "./claim-registry-transaction-v1.js";
 import { requireFabricatedReferenceScriptV1 } from "./fabricated-reference-script-v1.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -56,7 +51,6 @@ import {
   resolveProverSigner,
   type SubmitProviderConfig,
 } from "./runtime.js";
-import { excludeUtxo } from "./spend-input-witness.js";
 import {
   FABRICATED_WITHDRAWAL_CATEGORY_LABEL,
   type FabricatedWithdrawalContractsV1,
@@ -173,7 +167,6 @@ export const submitFabricatedWithdrawalStep04 = async ({
   threadOutRef,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  claimRegistryMutation,
   preSubmitBoundary,
   awaitConfirmation = true,
 }: {
@@ -184,7 +177,6 @@ export const submitFabricatedWithdrawalStep04 = async ({
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitFabricatedWithdrawalStep04Result> => {
@@ -211,28 +203,7 @@ export const submitFabricatedWithdrawalStep04 = async ({
   });
 
   signer.selectWallet(lucid);
-  const resolvedClaimRegistryMutation = requirePreparedClaimRegistryMutationV1({
-    mutation:
-      claimRegistryMutation ??
-      (await prepareFamilyClaimRegistryMutationV1({
-        lucid,
-        claimRegistry: contracts.claimRegistry,
-        claimRegistryReferenceUtxo: witnessReferenceScripts?.claimRegistrySpend,
-        hubOraclePolicyId: contracts.hubOraclePolicyId,
-        computationThreadPolicyId: contracts.computationThread.policyId,
-        claimId: threadToken.assetName,
-        kind: "close",
-      })),
-    kind: "close",
-    claimId: threadToken.assetName,
-    label: `${FABRICATED_WITHDRAWAL_CATEGORY_LABEL} step 04`,
-  });
-  const feeInput = selectFeeInput(
-    resolvedClaimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
-      (utxos, reference) => excludeUtxo(utxos, reference),
-      await lucid.wallet().getUtxos(),
-    ),
-  );
+  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -352,9 +323,7 @@ export const submitFabricatedWithdrawalStep04 = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const tx = fraudProofMintCarriage.attach(
-    computationThreadMintCarriage.attach(
-      resolvedClaimRegistryMutation.apply(base),
-    ),
+    computationThreadMintCarriage.attach(base),
   );
 
   const unsigned = await tx.complete({ localUPLCEval: true });
@@ -386,11 +355,6 @@ export const submitFabricatedWithdrawalStep04 = async ({
           role: "V1 fraud-proof token minting",
           utxo: witnessReferenceScripts?.fraudProofMint,
           expectedScript: contracts.fraudProof.mintingScript,
-        },
-        {
-          role: "claim-registry spending",
-          utxo: resolvedClaimRegistryMutation.referenceScriptUtxo,
-          expectedScript: resolvedClaimRegistryMutation.registryScript,
         },
       ],
     }),

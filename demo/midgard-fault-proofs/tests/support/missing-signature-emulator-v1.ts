@@ -23,7 +23,6 @@ import {
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 import { Effect } from "effect";
 
-import { prepareFamilyClaimRegistryMutationV1 } from "../../src/claim-registry-transaction-v1.js";
 import {
   faultProofFieldOpeningV1,
   publishFaultProofFieldCarriageV1,
@@ -472,25 +471,11 @@ export const submitRawMissingSignatureStep04V1 = async ({
     referenceUtxo: harness.witnessReferenceScripts.fraudProofMint,
     label: "raw missing-signature step-04 fraud-proof mint",
   });
-  // `computation_thread.mint` requires the claim-registry input in every arm,
-  // so the raw finalizer closes the claim exactly as the submitter does.
-  const claimRegistryMutation = await prepareFamilyClaimRegistryMutationV1({
-    lucid: harness.proverLucid,
-    claimRegistry: harness.missingSignature.claimRegistry,
-    claimRegistryReferenceUtxo:
-      harness.witnessReferenceScripts.claimRegistrySpend,
-    hubOraclePolicyId: harness.missingSignature.hubOraclePolicyId,
-    computationThreadPolicyId:
-      harness.missingSignature.computationThread.policyId,
-    claimId: threadToken.assetName,
-    kind: "close",
-  });
   const referenceInputs = [
     referenceScriptUtxo,
     ...computationThreadCarriage.referenceInputs,
     ...fraudProofCarriage.referenceInputs,
     ...carriageUtxos,
-    ...claimRegistryMutation.referenceInputs,
   ];
   const opening = faultProofFieldOpeningV1({
     planned,
@@ -501,10 +486,7 @@ export const submitRawMissingSignatureStep04V1 = async ({
   });
   harness.proverSigner.selectWallet(harness.proverLucid);
   const walletUtxos = await harness.proverLucid.wallet().getUtxos();
-  const candidates = [
-    ...carriageUtxos,
-    ...claimRegistryMutation.referenceInputs,
-  ].reduce<readonly UTxO[]>(
+  const candidates = [...carriageUtxos].reduce<readonly UTxO[]>(
     (utxos, carriage) => excludeUtxo(utxos, carriage),
     walletUtxos,
   );
@@ -591,7 +573,7 @@ export const submitRawMissingSignatureStep04V1 = async ({
     )
     .addSignerKey(harness.proverSigner.paymentKeyHash);
   const unsigned = await fraudProofCarriage
-    .attach(computationThreadCarriage.attach(claimRegistryMutation.apply(base)))
+    .attach(computationThreadCarriage.attach(base))
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();

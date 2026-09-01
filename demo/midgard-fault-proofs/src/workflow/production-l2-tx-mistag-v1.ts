@@ -654,7 +654,6 @@ export const createManifestBoundL2TxMistagWorkflowV1 = async (
         binding.resolvedContracts.contracts.fraudProof.spendingScriptAddress,
     },
     hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
-    claimRegistry: binding.claimRegistry,
     stateQueuePolicyId,
   });
   const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPortV1({

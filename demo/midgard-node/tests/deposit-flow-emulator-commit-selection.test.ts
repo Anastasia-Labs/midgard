@@ -69,9 +69,9 @@ import {
 } from "./deposit-flow-emulator-shared.js";
 
 describe.sequential("deposit flow emulator", () => {
-  // 900s: each protocol bring-up publishes the wave-grown 152-target
-  // reference-script roster (38 batches, ~200s measured), which alone
-  // exceeded this test's previous budget.
+  // 900s leaves headroom for the full real-contract workflow. Protocol
+  // bring-up publishes the 153-target reference-script roster in 39 planned
+  // batches (with size-driven splits where required).
   it("hydrates periodic and off commit candidates when stateful work is selected", async () => {
     await configureEmulatorDaRuntimeManifest();
 
@@ -469,9 +469,9 @@ describe.sequential("deposit flow emulator", () => {
     }
   }, 900_000);
 
-  // 900s: each protocol bring-up publishes the wave-grown 152-target
-  // reference-script roster (38 batches, ~200s measured), which alone
-  // exceeded this test's previous budget.
+  // 900s leaves headroom for the full real-contract workflow. Protocol
+  // bring-up publishes the 153-target reference-script roster in 39 planned
+  // batches (with size-driven splits where required).
   it("commits the globally oldest transactions from a backlog deeper than three retrieval pages and anchors max endTime", async () => {
     const previousPageSize = process.env.MEMPOOL_RETRIEVE_PAGE_SIZE;
     process.env.MEMPOOL_RETRIEVE_PAGE_SIZE = "2";

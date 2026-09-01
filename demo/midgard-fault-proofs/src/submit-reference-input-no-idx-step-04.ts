@@ -47,11 +47,6 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  type PreparedClaimRegistryMutationV1,
-  prepareDeploymentClaimRegistryMutationV1,
-  requirePreparedClaimRegistryMutationV1,
-} from "./claim-registry-transaction-v1.js";
-import {
   faultProofFieldOpeningV1,
   parseNativeTxCompactCborV1,
   planFaultProofFieldOpeningV1,
@@ -71,7 +66,6 @@ import {
   resolveReferenceInputNoIdxDeploymentContracts,
   type SubmitProviderConfig,
 } from "./runtime.js";
-import { excludeUtxo } from "./spend-input-witness.js";
 import {
   requireComputationThreadToken,
   selectFeeInput,
@@ -352,7 +346,6 @@ export const submitReferenceInputNoIdxStep04 = async ({
   certificateUtxo,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  claimRegistryMutation,
   publicationPreSubmitBoundary,
   preSubmitBoundary,
   awaitConfirmation = true,
@@ -372,8 +365,6 @@ export const submitReferenceInputNoIdxStep04 = async ({
   readonly referenceScriptUtxo?: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  /** Pre-prepared claim-registry `CloseClaim`; self-prepared when omitted. */
-  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
   readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
@@ -433,23 +424,6 @@ export const submitReferenceInputNoIdxStep04 = async ({
       label: "Reference-input-no-idx step 04 outputs field",
       preSubmitBoundary: publicationPreSubmitBoundary,
     }));
-  const resolvedClaimRegistryMutation = requirePreparedClaimRegistryMutationV1({
-    mutation:
-      claimRegistryMutation ??
-      (await prepareDeploymentClaimRegistryMutationV1({
-        lucid,
-        claimRegistryReferenceUtxo: witnessReferenceScripts?.claimRegistrySpend,
-        blueprint,
-        deploymentInfo,
-        network,
-        computationThreadPolicyId: contracts.computationThread.policyId,
-        claimId: threadToken.assetName,
-        kind: "close",
-      })),
-    kind: "close",
-    claimId: threadToken.assetName,
-    label: "reference-input-no-idx step 04",
-  });
   const stepScriptCarriage = witnessSpendingValidatorCarriageV1({
     script: chain.steps[3].spendingScript,
     referenceUtxo: referenceScriptUtxo,
@@ -473,7 +447,6 @@ export const submitReferenceInputNoIdxStep04 = async ({
     ...stepScriptCarriage.referenceInputs,
     ...computationThreadMintCarriage.referenceInputs,
     ...fraudProofMintCarriage.referenceInputs,
-    ...resolvedClaimRegistryMutation.referenceInputs,
   ];
   const outputsOpening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
@@ -499,11 +472,8 @@ export const submitReferenceInputNoIdxStep04 = async ({
   // (and its min-ADA), so it tops the fee selector's descending-lovelace sort;
   // exclude datum-carrying UTxOs so the referenced publication is never spent.
   const feeInput = selectFeeInput(
-    resolvedClaimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
-      (utxos, reference) => excludeUtxo(utxos, reference),
-      (await lucid.wallet().getUtxos()).filter(
-        (utxo) => utxo.datum == null && utxo.datumHash == null,
-      ),
+    (await lucid.wallet().getUtxos()).filter(
+      (utxo) => utxo.datum == null && utxo.datumHash == null,
     ),
   );
   const fraudProofUnit = toUnit(
@@ -571,9 +541,7 @@ export const submitReferenceInputNoIdxStep04 = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const completedTx = fraudProofMintCarriage.attach(
-    computationThreadMintCarriage.attach(
-      stepScriptCarriage.attach(resolvedClaimRegistryMutation.apply(tx)),
-    ),
+    computationThreadMintCarriage.attach(stepScriptCarriage.attach(tx)),
   );
 
   const unsigned = await completedTx.complete({ localUPLCEval: true });
@@ -609,11 +577,6 @@ export const submitReferenceInputNoIdxStep04 = async ({
           role: "V1 fraud-proof token minting",
           utxo: witnessReferenceScripts?.fraudProofMint,
           expectedScript: contracts.fraudProof.mintingScript,
-        },
-        {
-          role: "claim-registry spending",
-          utxo: resolvedClaimRegistryMutation.referenceScriptUtxo,
-          expectedScript: resolvedClaimRegistryMutation.registryScript,
         },
       ],
     }),

@@ -1,7 +1,5 @@
 import type { Script } from "@lucid-evolution/lucid";
 
-import type { FaultProofClaimRegistryContractV1 } from "../claim-registry-transaction-v1.js";
-
 export const CROSS_BLOCK_DUPLICATE_EVENT_CATEGORY_LABEL =
   "cross-block-duplicate-event";
 
@@ -32,11 +30,5 @@ export type CrossBlockDuplicateEventContractsV1 = {
     readonly spendingScriptAddress: string;
   };
   readonly hubOraclePolicyId: string;
-  /**
-   * The applied `claim_registry.spend` validator. Every arm of
-   * `computation_thread.mint` requires the claim-registry input in the same
-   * transaction, so each submitter resolves its mutation from here.
-   */
-  readonly claimRegistry: FaultProofClaimRegistryContractV1;
   readonly stateQueuePolicyId: string;
 };

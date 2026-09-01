@@ -9,10 +9,6 @@ import {
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import {
-  type PreparedClaimRegistryMutationV1,
-  requirePreparedClaimRegistryMutationV1,
-} from "../claim-registry-transaction-v1.js";
-import {
   faultProofFieldOpeningV1,
   planFaultProofFieldOpeningV1,
   publishFaultProofFieldCarriageV1,
@@ -55,7 +51,6 @@ export const submitMissingNativeScriptUtxoStep05 = async ({
   certificateUtxo,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  claimRegistryMutation,
   publicationPreSubmitBoundary,
   preSubmitBoundary,
   awaitConfirmation = true,
@@ -73,7 +68,6 @@ export const submitMissingNativeScriptUtxoStep05 = async ({
   readonly certificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly claimRegistryMutation: PreparedClaimRegistryMutationV1;
   readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
@@ -141,12 +135,6 @@ export const submitMissingNativeScriptUtxoStep05 = async ({
     certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
     label: `${FAMILY} final field 6`,
   });
-  const closeMutation = requirePreparedClaimRegistryMutationV1({
-    mutation: claimRegistryMutation,
-    kind: "close",
-    claimId: threadToken.assetName,
-    label: `${FAMILY} direct finalize`,
-  });
   return await submitLinearFaultFinalizeV1({
     lucid,
     family: FAMILY,
@@ -171,7 +159,6 @@ export const submitMissingNativeScriptUtxoStep05 = async ({
     extraReferenceInputs:
       certificateUtxo === undefined ? [] : [certificateUtxo],
     witnessReferenceScripts,
-    claimRegistryMutation: closeMutation,
     preSubmitBoundary,
     awaitConfirmation,
   });

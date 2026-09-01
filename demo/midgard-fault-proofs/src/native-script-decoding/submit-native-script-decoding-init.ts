@@ -31,11 +31,6 @@ import {
 } from "@lucid-evolution/lucid";
 
 import {
-  type PreparedClaimRegistryMutationV1,
-  prepareFamilyClaimRegistryMutationV1,
-  requirePreparedClaimRegistryMutationV1,
-} from "../claim-registry-transaction-v1.js";
-import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodePhasMembershipProofRedeemer,
   fetchUtxoByOutRef,
@@ -109,7 +104,6 @@ export const submitNativeScriptDecodingInit = async ({
   fraudulentBlockOutRef,
   fraudulentHeaderHash,
   witnessReferenceScripts,
-  claimRegistryMutation,
   preSubmitBoundary,
   awaitConfirmation = true,
 }: {
@@ -129,7 +123,6 @@ export const submitNativeScriptDecodingInit = async ({
   readonly fraudulentHeaderHash?: string;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
-  readonly claimRegistryMutation?: PreparedClaimRegistryMutationV1;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }): Promise<SubmitNativeScriptDecodingInitResult> => {
@@ -261,27 +254,6 @@ export const submitNativeScriptDecodingInit = async ({
     );
   }) satisfies BuildTxWithRedeemer;
 
-  // The computation-thread `Init` arm requires the atomic claim-registry
-  // `OpenClaim` in the same transaction, so every family init opens its
-  // `(category, header)` claim here.
-  const resolvedClaimRegistryMutation = requirePreparedClaimRegistryMutationV1({
-    mutation:
-      claimRegistryMutation ??
-      (await prepareFamilyClaimRegistryMutationV1({
-        lucid,
-        claimRegistry: contracts.claimRegistry,
-        claimRegistryReferenceUtxo: witnessReferenceScripts?.claimRegistrySpend,
-        hubOraclePolicyId: contracts.hubOraclePolicyId,
-        computationThreadPolicyId: contracts.computationThread.policyId,
-        categoryId: category.categoryId,
-        headerHash: resolvedHeaderHash,
-        kind: "open",
-      })),
-    kind: "open",
-    claimId: computationThreadAssetName,
-    label: `${NATIVE_SCRIPT_DECODING_CATEGORY_LABEL} init`,
-  });
-
   signer.selectWallet(lucid);
   const chainedTx = lucid
     .newTx()
@@ -316,9 +288,7 @@ export const submitNativeScriptDecodingInit = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const tx = phasMembershipCarriage.attach(
-    computationThreadMintCarriage.attach(
-      resolvedClaimRegistryMutation.apply(chainedTx),
-    ),
+    computationThreadMintCarriage.attach(chainedTx),
   );
 
   const unsigned = await tx.complete({ localUPLCEval: true });
@@ -342,11 +312,6 @@ export const submitNativeScriptDecodingInit = async ({
           role: "membership proof withdrawal",
           utxo: witnessReferenceScripts?.phasMembershipWithdraw,
           expectedScript: phasMembershipScript,
-        },
-        {
-          role: "claim-registry spending",
-          utxo: resolvedClaimRegistryMutation.referenceScriptUtxo,
-          expectedScript: resolvedClaimRegistryMutation.registryScript,
         },
       ],
     }),

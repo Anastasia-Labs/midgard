@@ -550,14 +550,8 @@ describe("Q35 network-id real-fault lifecycle", () => {
       expect(measured.executionSteps).toBeLessThanOrEqual(maxTxExSteps);
       expect(measured.plutusV3ScriptCount).toBe(0);
     }
-    // The two stages no longer share a reference-input count. Step 01 is a
-    // continuation: it neither mints nor burns the computation thread, so
-    // `computation_thread.mint` never runs and no claim-registry input is
-    // required. Step 02 closes the claim in the same transaction as the burn,
-    // and carries `claim_registry.spend` by published reference script — one
-    // more reference input than step 01.
     expect(step01.measurement.referenceInputCount).toBe(8);
-    expect(step02.measurement.referenceInputCount).toBe(9);
+    expect(step02.measurement.referenceInputCount).toBe(8);
     expect(step02.result.fraudProofUnit).toBe(
       toUnit(
         harness.networkId.fraudProof.policyId,

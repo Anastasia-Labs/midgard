@@ -51,7 +51,6 @@ import {
   requireCanonicalDecodabilityReferenceScriptV1,
   requireCanonicalDecodabilityThreadUtxoV1,
 } from "../../src/canonical-decodability/index.js";
-import { prepareFamilyClaimRegistryMutationV1 } from "../../src/claim-registry-transaction-v1.js";
 import { encodeL2TransactionSourceValueV1 } from "../../src/prepare-double-spend.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -63,7 +62,6 @@ import {
   requireSingletonUtxo,
   type ResolvedProverSigner,
 } from "../../src/runtime.js";
-import { excludeUtxo } from "../../src/spend-input-witness.js";
 import {
   nativeTxFromCoreCompact,
   PHAS_MEMBERSHIP_WITHDRAW_TITLE,
@@ -539,23 +537,7 @@ export const submitCanonicalDecodabilityStep02RawV1 = async ({
     stepIndex: 1,
   });
   signer.selectWallet(lucid);
-  // `computation_thread.mint` requires the claim-registry input in every arm,
-  // so the raw finalizer closes the claim exactly as the submitter does.
-  const claimRegistryMutation = await prepareFamilyClaimRegistryMutationV1({
-    lucid,
-    claimRegistry: contracts.claimRegistry,
-    claimRegistryReferenceUtxo: witnessReferenceScripts.claimRegistrySpend,
-    hubOraclePolicyId: contracts.hubOraclePolicyId,
-    computationThreadPolicyId: contracts.computationThread.policyId,
-    claimId: threadToken.assetName,
-    kind: "close",
-  });
-  const feeInput = selectFeeInput(
-    claimRegistryMutation.referenceInputs.reduce<readonly UTxO[]>(
-      (utxos, reference) => excludeUtxo(utxos, reference),
-      await lucid.wallet().getUtxos(),
-    ),
-  );
+  const feeInput = selectFeeInput(await lucid.wallet().getUtxos());
   const fraudProofUnit = toUnit(
     contracts.fraudProof.policyId,
     threadToken.assetName,
@@ -656,7 +638,7 @@ export const submitCanonicalDecodabilityStep02RawV1 = async ({
     )
     .addSignerKey(signer.paymentKeyHash);
   const unsigned = await fraudProofCarriage
-    .attach(computationThreadCarriage.attach(claimRegistryMutation.apply(base)))
+    .attach(computationThreadCarriage.attach(base))
     .complete({ localUPLCEval: true });
   const signed = await unsigned.sign.withWallet().complete();
   const txHash = await signed.submit();

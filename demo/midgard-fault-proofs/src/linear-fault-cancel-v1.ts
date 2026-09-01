@@ -15,7 +15,6 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { type PreparedClaimRegistryMutationV1 } from "./claim-registry-transaction-v1.js";
 import {
   linearFaultStepLabelV1,
   requireLinearFaultReferenceScriptV1,
@@ -27,7 +26,6 @@ import {
   parseOutRef,
   type ResolvedProverSigner,
 } from "./runtime.js";
-import { excludeUtxo } from "./spend-input-witness.js";
 import {
   requireComputationThreadToken,
   selectFeeInput,
@@ -56,7 +54,6 @@ export const submitLinearFaultCancelV1 = async ({
   threadOutRef,
   referenceScriptUtxo,
   witnessReferenceScripts,
-  claimRegistryMutation,
   preSubmitBoundary,
   awaitConfirmation = true,
 }: {
@@ -76,7 +73,6 @@ export const submitLinearFaultCancelV1 = async ({
   readonly threadOutRef: string;
   readonly referenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
-  readonly claimRegistryMutation: PreparedClaimRegistryMutationV1;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }) => {
@@ -147,20 +143,16 @@ export const submitLinearFaultCancelV1 = async ({
     );
   }) satisfies BuildTxWithRedeemer;
   const walletUtxos = await lucid.wallet().getUtxos();
-  const usableWalletUtxos = claimRegistryMutation.referenceInputs.reduce<
-    readonly UTxO[]
-  >((utxos, reference) => excludeUtxo(utxos, reference), walletUtxos);
+  const usableWalletUtxos = walletUtxos;
   const unsigned = await burn
     .attach(
-      claimRegistryMutation.apply(
-        lucid
-          .newTx()
-          .collectFrom([selectFeeInput(usableWalletUtxos)])
-          .collectFrom([threadUtxo], spendRedeemer)
-          .readFrom([stepReference, ...burn.referenceInputs])
-          .mintAssets({ [token.unit]: -1n }, burnRedeemer)
-          .addSignerKey(signer.paymentKeyHash),
-      ),
+      lucid
+        .newTx()
+        .collectFrom([selectFeeInput(usableWalletUtxos)])
+        .collectFrom([threadUtxo], spendRedeemer)
+        .readFrom([stepReference, ...burn.referenceInputs])
+        .mintAssets({ [token.unit]: -1n }, burnRedeemer)
+        .addSignerKey(signer.paymentKeyHash),
     )
     .complete({ localUPLCEval: true });
   if (inputIndex === undefined || mintRedeemerIndex === undefined) {
@@ -179,11 +171,6 @@ export const submitLinearFaultCancelV1 = async ({
         role: `${label}-cancel-burn`,
         utxo: witnessReferenceScripts.computationThreadMint,
         expectedScript: computationThread.mintingScript,
-      }),
-      workflowReferenceScriptV1({
-        role: "claim-registry spending",
-        utxo: claimRegistryMutation.referenceScriptUtxo,
-        expectedScript: claimRegistryMutation.registryScript,
       }),
     ],
     boundary: preSubmitBoundary,
