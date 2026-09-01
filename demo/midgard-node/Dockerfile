@@ -32,7 +32,11 @@ COPY midgard-validation ./midgard-validation
 COPY midgard-sdk ./midgard-sdk
 COPY midgard-node ./midgard-node
 RUN pnpm --filter midgard-node build
-RUN pnpm --filter midgard-node deploy --prod /prod/midgard-node
+# Git-hosted dependencies run their prepare scripts while pnpm assembles the
+# production deployment. Let those transient npm installs include their build
+# tools; --prod still limits the deployed Midgard package dependencies.
+RUN npm_config_production=false npm_config_include=dev \
+  pnpm --filter midgard-node deploy --prod /prod/midgard-node
 
 FROM base AS final
 WORKDIR /app

@@ -1,16 +1,24 @@
-import { computeDaSha256Hash } from "@al-ft/midgard-core/da-transport";
+import {
+  computeDaSha256Hash,
+  DA_TRANSPORT_LIMITS_V1,
+  DaRequestResponseProtocol,
+  encodeDaAttestationsByHeaderRequestV1Cbor,
+} from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it } from "vitest";
 
 import {
   type DaAttestationExchange,
+  createDaLibp2pAttestationRequestHandlers,
   DaLibp2pAttestationExchange,
   decodeDaAttestationGossip,
   encodeDaAttestationGossip,
   StoreBackedDaAttestationProtocol,
 } from "../src/da/libp2p/attestations.js";
 import { DaPeerRegistry } from "../src/da/libp2p/DaPeerRegistry.js";
+import { createDaProtocolAllowlist } from "../src/da/libp2p/DaProtocols.js";
+import { encodeDaStreamFrame } from "../src/da/libp2p/DaStreamCodec.js";
 import type {
   DaPayloadRecord,
   DaSignatureRecordV1,
@@ -495,6 +503,42 @@ describe("PeerSignatureCoordinator", () => {
       committeeValidation,
       store: localStore,
     });
+    const protocolId = createDaProtocolAllowlist(
+      deploymentFingerprint,
+    ).protocolIdByName.get(DaRequestResponseProtocol.attestationsByHeader)!;
+    const handler = createDaLibp2pAttestationRequestHandlers({
+      deploymentFingerprint,
+      protocol: receiverProtocol,
+      limits: DA_TRANSPORT_LIMITS_V1,
+    }).get(protocolId)!;
+    let responseClosed = false;
+    await handler({
+      protocolId,
+      protocolName: DaRequestResponseProtocol.attestationsByHeader,
+      stream: {
+        async *[Symbol.asyncIterator](): AsyncGenerator<Buffer> {
+          yield encodeDaStreamFrame(
+            encodeDaAttestationsByHeaderRequestV1Cbor({
+              deploymentFingerprint: Buffer.from(
+                deploymentFingerprint,
+                "hex",
+              ),
+              headerHash: Buffer.from(headerHash, "hex"),
+              acceptedSignerIndexes: null,
+              maxAttestations: null,
+            }),
+            { maxFrameBytes: DA_TRANSPORT_LIMITS_V1.maxPayloadBytes },
+          );
+        },
+        send: () => true,
+        close: () => {
+          responseClosed = true;
+        },
+      },
+      connection: {},
+      remotePeerId: "local-peer",
+    });
+    expect(responseClosed).toBe(true);
     const exchange = new DaLibp2pAttestationExchange({
       deploymentFingerprint,
       localPeerId: "local-peer",

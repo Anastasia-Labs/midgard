@@ -122,12 +122,12 @@ describe("canonical V1 consensus profile", () => {
       0xffff_ffff,
     );
     expect(MIDGARD_CONSENSUS_LIMITS_V1.validationDisputeResponseWindowMs).toBe(
-      300_000,
+      1_000,
     );
     expect(MIDGARD_CONSENSUS_LIMITS_V1.minValidationDisputeMaturityMs).toBe(
-      39_600_000,
+      132_000,
     );
-    expect(MIDGARD_CONSENSUS_LIMITS_V1.blockMaturityMs).toBe(604_800_000);
+    expect(MIDGARD_CONSENSUS_LIMITS_V1.blockMaturityMs).toBe(180_000);
   });
 
   // Regression pin for C21-CORE-ENVELOPE.
@@ -376,5 +376,41 @@ describe("canonical V1 consensus profile", () => {
   it("fails closed until validator-hash-bound L1 release evidence is compiled in", () => {
     expect(MIDGARD_V1_RELEASE_EVIDENCE_DIGEST).toBeNull();
     expect(assertMidgardConsensusV1ReleaseReady).toThrow(/not activated/u);
+  });
+
+  it("allows an explicit unreleased Preprod E2E smoke run only", () => {
+    const previousAllow =
+      process.env.MIDGARD_ALLOW_UNRELEASED_CANONICAL_V1_FOR_PREPROD_E2E;
+    const previousNetwork = process.env.NETWORK;
+    const previousMidgardNetwork = process.env.MIDGARD_NETWORK;
+    try {
+      process.env.MIDGARD_ALLOW_UNRELEASED_CANONICAL_V1_FOR_PREPROD_E2E =
+        "YES";
+      process.env.NETWORK = "Preprod";
+      delete process.env.MIDGARD_NETWORK;
+      expect(assertMidgardConsensusV1ReleaseReady).not.toThrow();
+
+      process.env.NETWORK = "Mainnet";
+      expect(assertMidgardConsensusV1ReleaseReady).toThrow(/not activated/u);
+
+      process.env.NETWORK = "Preprod";
+      process.env.MIDGARD_ALLOW_UNRELEASED_CANONICAL_V1_FOR_PREPROD_E2E =
+        "true";
+      expect(assertMidgardConsensusV1ReleaseReady).toThrow(/not activated/u);
+    } finally {
+      if (previousAllow === undefined) {
+        delete process.env.MIDGARD_ALLOW_UNRELEASED_CANONICAL_V1_FOR_PREPROD_E2E;
+      } else {
+        process.env.MIDGARD_ALLOW_UNRELEASED_CANONICAL_V1_FOR_PREPROD_E2E =
+          previousAllow;
+      }
+      if (previousNetwork === undefined) delete process.env.NETWORK;
+      else process.env.NETWORK = previousNetwork;
+      if (previousMidgardNetwork === undefined) {
+        delete process.env.MIDGARD_NETWORK;
+      } else {
+        process.env.MIDGARD_NETWORK = previousMidgardNetwork;
+      }
+    }
   });
 });

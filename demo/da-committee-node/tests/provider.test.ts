@@ -9,6 +9,7 @@ import {
   assertOgmiosNetworkMagic,
   type CanonicalChainPoint,
   type ChainSyncEventBatch,
+  type ChainSyncCursorStore,
   fetchKupoCheckpoint,
   FileChainSyncConsumerCursorStore,
   FileChainSyncCursorStore,
@@ -116,7 +117,8 @@ describe("L1 provider adapters", () => {
       sourceMode: "external_providers",
     });
 
-    await expect(provider.fetchStateQueueNodes()).resolves.toMatchObject([
+    const nodes = await provider.fetchStateQueueNodes();
+    expect(nodes).toMatchObject([
       {
         outRef: "ab".repeat(32) + "#0",
         chainPoint: {
@@ -125,6 +127,11 @@ describe("L1 provider adapters", () => {
         },
       },
     ]);
+    expect(nodes[0]?.chainPoint).not.toHaveProperty("network");
+    expect(nodes[0]?.chainPoint).not.toHaveProperty("canonicalSlot");
+    expect(nodes[0]?.chainPoint).not.toHaveProperty("canonicalBlockHash");
+    expect(nodes[0]?.chainPoint).not.toHaveProperty("chainSyncSequence");
+    expect(nodes[0]?.chainPoint).not.toHaveProperty("rollbackGeneration");
   });
 
   it("accepts one local chain authority plus aligned query surfaces without treating them as independent providers", async () => {
@@ -202,6 +209,37 @@ describe("L1 provider adapters", () => {
       { direction: "roll_forward", point: { slot: 1 } },
       { direction: "roll_forward", point: { slot: 2 } },
     ]);
+    const consumerStore = new FileChainSyncConsumerCursorStore(
+      `${dir}/consumer.json`,
+      "11".repeat(32),
+    );
+    const localProvider = new LocalNodeStateQueueProvider(
+      initial,
+      [
+        {
+          fetchStateQueueNodes: async () => [],
+          currentChainPoint: async () => point2,
+        },
+      ],
+      ["query:node-a"],
+      consumerStore,
+    );
+    const processedPrefix = {
+      sequence: 0,
+      point: point1,
+      rollbackGeneration: 0,
+    };
+    await expect(
+      localProvider.acknowledgeChainSyncCursor(processedPrefix),
+    ).resolves.toBeUndefined();
+    await expect(consumerStore.load()).resolves.toEqual(processedPrefix);
+    await expect(
+      localProvider.acknowledgeChainSyncCursor({
+        sequence: 2,
+        point: point2,
+        rollbackGeneration: 0,
+      }),
+    ).rejects.toThrow(/stale local-node chain-sync cursor/u);
 
     const point3 = point(3, "c");
     let resumedCalls = 0;
@@ -236,6 +274,49 @@ describe("L1 provider adapters", () => {
       { direction: "roll_backward", point: { slot: 1 } },
       { direction: "roll_forward", point: { slot: 3 } },
     ]);
+  });
+
+  it("catches up beyond the former 4096-event startup limit", async () => {
+    const eventCount = 4_097;
+    let persistedCursor:
+      | Awaited<ReturnType<ChainSyncCursorStore["load"]>>
+      | undefined;
+    const store: ChainSyncCursorStore = {
+      load: async () => persistedCursor,
+      append: async (_event, cursor) => {
+        persistedCursor = cursor;
+      },
+      replay: async () => [],
+    };
+    const point = (slot: number): CanonicalChainPoint => ({
+      network: "Preview",
+      slot,
+      blockHash: slot.toString(16).padStart(64, "0"),
+      providerSource: "chain-sync:node-a",
+      observedAt: "2026-08-29T00:00:00.000Z",
+    });
+    const tip = point(eventCount);
+    const authority = new LocalNodeChainAuthority(
+      "node-a",
+      "Preview",
+      {
+        next: async (cursor) => {
+          const nextSlot = (cursor?.point.slot ?? 0) + 1;
+          const nextPoint = point(nextSlot);
+          return {
+            event: { direction: "roll_forward", point: nextPoint },
+            tip,
+          };
+        },
+      },
+      store,
+    );
+
+    await expect(authority.synchronizeToTip()).resolves.toEqual(tip);
+    await expect(authority.currentCursor()).resolves.toMatchObject({
+      sequence: eventCount - 1,
+      point: { slot: eventCount },
+    });
   });
 
   it("recovers a valid journal append that reached disk before its cursor metadata", async () => {

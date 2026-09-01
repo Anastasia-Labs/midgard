@@ -133,6 +133,7 @@ export type ReferenceScriptSweepSummary = {
   readonly returnAddress: string;
   readonly burnAddress?: string;
   readonly includePlainUtxos: boolean;
+  readonly maxInputs?: number;
   readonly sweepableUtxoCount: number;
   readonly retainedUtxoCount: number;
   readonly inputLovelace: bigint;
@@ -160,6 +161,7 @@ export type ReferenceScriptSweepOptions = {
   readonly includePlainUtxos?: boolean;
   readonly tokenOutputLovelace?: bigint;
   readonly maxAssetsPerTokenOutput?: number;
+  readonly maxInputs?: number;
 };
 
 export const isSameScriptRef = SDK.isSameScriptRef;
@@ -432,6 +434,7 @@ export const buildReferenceScriptSweepPlan = ({
   includePlainUtxos = false,
   tokenOutputLovelace = REFERENCE_SCRIPT_SWEEP_DEFAULT_TOKEN_OUTPUT_LOVELACE,
   maxAssetsPerTokenOutput = REFERENCE_SCRIPT_SWEEP_DEFAULT_MAX_ASSETS_PER_TOKEN_OUTPUT,
+  maxInputs,
 }: {
   readonly utxos: readonly UTxO[];
   readonly referenceScriptsAddress: string;
@@ -441,6 +444,7 @@ export const buildReferenceScriptSweepPlan = ({
   readonly includePlainUtxos?: boolean;
   readonly tokenOutputLovelace?: bigint;
   readonly maxAssetsPerTokenOutput?: number;
+  readonly maxInputs?: number;
 }): ReferenceScriptSweepPlan => {
   if (tokenOutputLovelace <= 0n) {
     throw new Error("tokenOutputLovelace must be greater than zero");
@@ -451,11 +455,21 @@ export const buildReferenceScriptSweepPlan = ({
   ) {
     throw new Error("maxAssetsPerTokenOutput must be a safe positive integer");
   }
-  const sweepableUtxos = [...utxos]
+  if (
+    maxInputs !== undefined &&
+    (!Number.isSafeInteger(maxInputs) || maxInputs <= 0)
+  ) {
+    throw new Error("maxInputs must be a safe positive integer");
+  }
+  const allSweepableUtxos = [...utxos]
     .filter((utxo) =>
       includePlainUtxos ? true : isReferenceScriptSweepCandidate(utxo),
     )
     .sort(compareOutRefs);
+  const sweepableUtxos =
+    maxInputs === undefined
+      ? allSweepableUtxos
+      : allSweepableUtxos.slice(0, maxInputs);
   const sweepableOutRefs = new Set(sweepableUtxos.map(utxoOutRefKey));
   const retainedUtxos = [...utxos]
     .filter((utxo) => !sweepableOutRefs.has(utxoOutRefKey(utxo)))
@@ -479,6 +493,7 @@ export const buildReferenceScriptSweepPlan = ({
       returnAddress,
       ...(burnAddress === undefined ? {} : { burnAddress }),
       includePlainUtxos,
+      ...(maxInputs === undefined ? {} : { maxInputs }),
       sweepableUtxoCount: sweepableUtxos.length,
       retainedUtxoCount: retainedUtxos.length,
       inputLovelace: sumWalletLovelace(sweepableUtxos),
@@ -1876,6 +1891,7 @@ export const sweepReferenceScriptWalletProgram = (
       includePlainUtxos: options.includePlainUtxos,
       tokenOutputLovelace: options.tokenOutputLovelace,
       maxAssetsPerTokenOutput: options.maxAssetsPerTokenOutput,
+      maxInputs: options.maxInputs,
     });
 
     if (!execute || plan.sweepableUtxos.length === 0) {

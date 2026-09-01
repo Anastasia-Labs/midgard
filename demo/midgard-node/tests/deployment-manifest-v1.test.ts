@@ -291,7 +291,7 @@ describe("V1 deployment manifest", () => {
   //     `c9cb35df...` -> `28ac3909...`.
   it("accepts the sole exact authenticated V1 manifest", () => {
     expect(canonicalManifest().manifestId).toBe(
-      "28ac3909dff13b37a817b01071cb30b1c371d53e688c58cee17adfa1ea4697c0",
+      "b1153b4fc8587f040f0bc2d21bcb40068f1a5b5e185d5e175db31bde5dd7019e",
     );
     expect(parseDeploymentManifestV1Value(canonicalManifest())).toEqual(
       canonicalManifest(),

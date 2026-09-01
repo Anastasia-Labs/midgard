@@ -480,9 +480,11 @@ export const buildDeterministicCommitTxBuilder = ({
         ),
       catch: (cause) =>
         new StateQueueError({
-          message: `Failed to build block header commitment transaction with final redeemer context: ${formatUnknownError(
-            cause,
-          )}`,
+          message: `Failed to build block header commitment transaction with final redeemer context (commit_layout=${
+            commitLayout === undefined
+              ? "unresolved"
+              : formatCommitLayout(commitLayout)
+          }): ${formatUnknownError(cause)}`,
           cause,
         }),
     });

@@ -11,6 +11,11 @@ pub const max_tokens_allowed_in_deposits: Int = 10
 
 pub const event_wait_duration: Int = 60_000
 
+// Fast Preprod E2E profile. Never use this environment for production builds.
+pub const block_maturity_duration_v1: PosixTimeDuration = 3 * 60 * 1000
+
+pub const validation_dispute_response_window_milliseconds: Int = 1_000
+
 pub const shift_duration: PosixTimeDuration = 60 * 60 * 1000
 
 pub const registration_duration: PosixTimeDuration = 30

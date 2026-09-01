@@ -302,8 +302,14 @@ const parseDaLibp2pRuntimeProfile = (
 const parseDaLibp2pCommitteeMember = (
   value: string,
 ): DaLibp2pRuntimeManifestOptions["committeeMembers"][number] => {
-  const [signerIndexRaw, daVkey, keySource, rolesRaw, ...extra] =
-    value.split(",");
+  const [
+    signerIndexRaw,
+    daVkey,
+    keySource,
+    rolesRaw,
+    watcherPortRaw,
+    ...extra
+  ] = value.split(",");
   if (
     signerIndexRaw === undefined ||
     daVkey === undefined ||
@@ -312,7 +318,7 @@ const parseDaLibp2pCommitteeMember = (
     extra.length > 0
   ) {
     throw new Error(
-      "--committee-member must use signerIndex,daVkey,libp2pKeySource,role+role",
+      "--committee-member must use signerIndex,daVkey,libp2pKeySource,role+role[,watcherPort]",
     );
   }
   const roles = rolesRaw
@@ -330,6 +336,14 @@ const parseDaLibp2pCommitteeMember = (
     daVkey,
     libp2pPrivateKeySource: keySource,
     roles,
+    ...(watcherPortRaw === undefined || watcherPortRaw.trim().length === 0
+      ? {}
+      : {
+          watcherPort: parsePositiveIntegerOption(
+            watcherPortRaw,
+            "--committee-member watcherPort",
+          ),
+        }),
   };
 };
 
@@ -3013,7 +3027,7 @@ program
   .requiredOption("--threshold <n>", "DA committee threshold")
   .option(
     "--committee-member <spec>",
-    "Committee member as signerIndex,daVkey,libp2pKeySource,role+role; repeatable",
+    "Committee member as signerIndex,daVkey,libp2pKeySource,role+role[,watcherPort]; repeatable",
     collectStringOption,
     [],
   )
@@ -3717,6 +3731,11 @@ program
       parsePositiveIntegerOption(value, "--max-assets-per-token-output"),
     REFERENCE_SCRIPT_SWEEP_DEFAULT_MAX_ASSETS_PER_TOKEN_OUTPUT,
   )
+  .option(
+    "--max-inputs <count>",
+    "Maximum reference-script UTxOs collected in one sweep transaction",
+    (value) => parsePositiveIntegerOption(value, "--max-inputs"),
+  )
   .action(async (_args, options) => {
     const opts = options.opts() as {
       readonly burnAddress?: string;
@@ -3725,6 +3744,7 @@ program
       readonly includePlain?: boolean;
       readonly tokenOutputLovelace: string;
       readonly maxAssetsPerTokenOutput: number;
+      readonly maxInputs?: number;
     };
     const mainEffect = provideLucidOnlyServices(
       Effect.gen(function* () {
@@ -3768,6 +3788,7 @@ program
             includePlainUtxos: opts.includePlain === true,
             tokenOutputLovelace,
             maxAssetsPerTokenOutput: opts.maxAssetsPerTokenOutput,
+            maxInputs: opts.maxInputs,
           },
         );
       }).pipe(

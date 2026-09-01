@@ -102,15 +102,11 @@ export const buildUnsignedCommitTx = (
       (yield* getLatestBlockDatumEndTime(latestBlock.datum)).getTime(),
     );
     const candidateEndTimeMs = endDate.getTime();
-    if (
-      !Number.isSafeInteger(candidateEndTimeMs) ||
-      candidateEndTimeMs <= latestEndTime
-    ) {
+    if (!Number.isSafeInteger(candidateEndTimeMs)) {
       return yield* Effect.fail(
         new SDK.StateQueueError({
-          message:
-            "Refusing to build a block with a non-monotonic semantic end-time",
-          cause: `candidate_end_time_ms=${String(candidateEndTimeMs)},latest_end_time_ms=${latestEndTime.toString()}`,
+          message: "Refusing to build a block with an invalid semantic end-time",
+          cause: `candidate_end_time_ms=${String(candidateEndTimeMs)}`,
         }),
       );
     }

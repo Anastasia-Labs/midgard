@@ -35,9 +35,10 @@ import type {
   StateQueueHeaderRecord,
 } from "./domain.js";
 import type { DaAttestationChainReader } from "./l1/da-attestation-reader.js";
-import type {
-  ChainSyncCursor,
-  ChainSyncReplayProvider,
+import {
+  RetryableL1SourceObservationError,
+  type ChainSyncCursor,
+  type ChainSyncReplayProvider,
 } from "./l1/provider.js";
 import {
   scanStateQueue,
@@ -523,6 +524,10 @@ export class WatcherService {
         consensusProfile: this.deps.config.consensusProfile,
       });
     } catch (error) {
+      if (error instanceof RetryableL1SourceObservationError) {
+        // Indexer lag is unavailable evidence, not conflicting evidence.
+        return retryableL1ObservationTickResult(error);
+      }
       const reason = `l1_source_observation_failed: ${
         error instanceof Error ? error.message : String(error)
       }`;
@@ -605,10 +610,12 @@ export class WatcherService {
             record.status,
           )
         ) {
-          const published = await this.publishSignatureWithOutbox(
-            record,
+          const published = this.signatureMatchesDecisionRecord(
             existingSignature,
-          );
+            record,
+          )
+            ? await this.publishSignatureWithOutbox(record, existingSignature)
+            : await this.republishDurableSignature(existingSignature);
           if (published.broadcastStatus === "post_failed") {
             errors.push(
               published.error ??
@@ -737,11 +744,12 @@ export class WatcherService {
             : { blockHash: record.observedChainPoint.blockHash }),
           finalized: record.finalized,
           hasPersistedDecision:
-            submittedHeaders.has(record.headerHash) ||
-            (await this.deps.store.listDaSignatures(record.headerHash)).length >
-              0 ||
-            (await this.deps.store.listDecisionOutbox(record.headerHash))
-              .length > 0,
+            record.status !== "attested" &&
+            (submittedHeaders.has(record.headerHash) ||
+              (await this.deps.store.listDaSignatures(record.headerHash))
+                .length > 0 ||
+              (await this.deps.store.listDecisionOutbox(record.headerHash))
+                .length > 0),
         }),
       ),
     );
@@ -1138,6 +1146,28 @@ export class WatcherService {
     return published;
   }
 
+  private async republishDurableSignature(
+    signature: DaSignatureRecord,
+  ): Promise<CoordinatorPublishResult> {
+    const published = await this.publishSignature(signature);
+    await this.deps.store.saveDaSignature({
+      ...signature,
+      broadcastStatus: published.broadcastStatus,
+    });
+    return published;
+  }
+
+  private signatureMatchesDecisionRecord(
+    signature: DaSignatureRecord,
+    record: StateQueueHeaderRecord,
+  ): boolean {
+    return (
+      signature.validation.stateQueueOutRef === record.stateQueueOutRef &&
+      signature.l1ChainPoint.slot === record.observedChainPoint.slot &&
+      signature.l1ChainPoint.blockHash === record.observedChainPoint.blockHash
+    );
+  }
+
   private async decisionOutboxFor(
     record: StateQueueHeaderRecord,
     effectKind: DecisionOutboxRecord["effectKind"],
@@ -1401,25 +1431,45 @@ const l1ObservationTransitionFailure = (
     if (observed === undefined) {
       return `l1_source_decision_disappeared:${prior.headerHash}`;
     }
-    const expectedAttestationAdvance =
+    const expectedAttestationReplacement =
       (prior.stateQueueStatus === "unattested" ||
         prior.stateQueueStatus === "attesting") &&
       observed.status === "attested" &&
       prior.slot !== undefined &&
       observed.observedChainPoint.slot !== undefined &&
       observed.observedChainPoint.slot > prior.slot &&
-      observed.stateQueueOutRef !== prior.stateQueueOutRef &&
+      observed.stateQueueOutRef !== prior.stateQueueOutRef;
+    const pendingAttestationAdvance =
+      expectedAttestationReplacement && !observed.finalized;
+    const expectedAttestationAdvance =
+      expectedAttestationReplacement && observed.finalized;
+    const expectedStableDecisionAdvance =
+      observed.stateQueueOutRef === prior.stateQueueOutRef &&
+      observed.status === prior.stateQueueStatus &&
+      prior.slot !== undefined &&
+      observed.observedChainPoint.slot !== undefined &&
+      observed.observedChainPoint.slot > prior.slot &&
       observed.finalized;
     if (
       !expectedAttestationAdvance &&
+      !pendingAttestationAdvance &&
+      !expectedStableDecisionAdvance &&
       (observed.stateQueueOutRef !== prior.stateQueueOutRef ||
         observed.status !== prior.stateQueueStatus ||
         observed.observedChainPoint.slot !== prior.slot ||
         observed.observedChainPoint.blockHash !== prior.blockHash)
     ) {
-      return `l1_source_decision_forked:${prior.headerHash}`;
+      return [
+        `l1_source_decision_forked:${prior.headerHash}`,
+        `prior=${prior.stateQueueOutRef},${prior.stateQueueStatus},${prior.slot?.toString() ?? "unknown"},${prior.blockHash ?? "unknown"}`,
+        `observed=${observed.stateQueueOutRef},${observed.status},${observed.observedChainPoint.slot?.toString() ?? "unknown"},${observed.observedChainPoint.blockHash ?? "unknown"}`,
+      ].join(":");
     }
-    if (!expectedAttestationAdvance && !observed.finalized) {
+    if (
+      !expectedAttestationAdvance &&
+      !pendingAttestationAdvance &&
+      !observed.finalized
+    ) {
       return `l1_source_decision_lost_finality:${prior.headerHash}`;
     }
   }
@@ -1556,6 +1606,19 @@ const quarantinedTickResult = (state: L1SourceState): WatcherTickResult => ({
   payloadFetches: [],
   errors: [
     `L1 source quarantined: ${state.quarantineReason ?? "unknown reason"}`,
+  ],
+});
+
+const retryableL1ObservationTickResult = (
+  error: RetryableL1SourceObservationError,
+): WatcherTickResult => ({
+  scannedHeaders: 0,
+  signedHeaders: 0,
+  reconciledHeaders: 0,
+  skippedHeaders: 0,
+  payloadFetches: [],
+  errors: [
+    `L1 source observation is temporarily unavailable: ${error.message}`,
   ],
 });
 

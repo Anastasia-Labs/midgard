@@ -126,7 +126,7 @@ const asWireValue = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const EMPTY_ROOT =
   "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8";
 const operator = h28("aa");
-const maturity = 604_800_000n;
+const maturity = 180_000n;
 
 const canonicalJson = (value: unknown): string => {
   if (

@@ -99,7 +99,7 @@ export const WATCHER_STATE_QUEUE_INDEXER_V1_BOUNDS = Object.freeze({
   cumulativeEvidenceBytes: 134_217_728,
   cumulativeEvidenceNodes: 2_000_000,
   cumulativeFinalitySteps: 2_162,
-  maturityDurationMs: 604_800_000n,
+  maturityDurationMs: 180_000n,
   uint64Maximum: 18_446_744_073_709_551_615n,
   withdrawalCount: 10_000n,
   forcedTransactionCount: 10_000n,

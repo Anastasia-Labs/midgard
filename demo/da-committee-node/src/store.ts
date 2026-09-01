@@ -1304,19 +1304,43 @@ const mergePersistedDecisionObservations = (
       observations.set(prior.headerHash, prior);
       continue;
     }
-    const expectedAttestationAdvance =
+    const expectedAttestationReplacement =
       (prior.stateQueueStatus === "unattested" ||
         prior.stateQueueStatus === "attesting") &&
       next.stateQueueStatus === "attested" &&
       prior.slot !== undefined &&
       next.slot !== undefined &&
       next.slot > prior.slot &&
-      next.stateQueueOutRef !== prior.stateQueueOutRef &&
+      next.stateQueueOutRef !== prior.stateQueueOutRef;
+    const pendingAttestationAdvance =
+      expectedAttestationReplacement && !next.finalized;
+    const expectedAttestationAdvance =
+      expectedAttestationReplacement && next.finalized;
+    const expectedStableDecisionAdvance =
+      next.stateQueueOutRef === prior.stateQueueOutRef &&
+      next.stateQueueStatus === prior.stateQueueStatus &&
+      prior.slot !== undefined &&
+      next.slot !== undefined &&
+      next.slot > prior.slot &&
       next.finalized;
+    const expectedAttestedDecisionRetirement =
+      prior.stateQueueStatus === "attested" &&
+      next.stateQueueStatus === "attested" &&
+      next.stateQueueOutRef === prior.stateQueueOutRef &&
+      next.slot === prior.slot &&
+      next.blockHash === prior.blockHash &&
+      next.finalized &&
+      !next.hasPersistedDecision;
     if (
       (!expectedAttestationAdvance &&
+        !pendingAttestationAdvance &&
+        !expectedStableDecisionAdvance &&
+        !expectedAttestedDecisionRetirement &&
         next.stateQueueOutRef !== prior.stateQueueOutRef) ||
       (!expectedAttestationAdvance &&
+        !pendingAttestationAdvance &&
+        !expectedStableDecisionAdvance &&
+        !expectedAttestedDecisionRetirement &&
         (next.stateQueueStatus !== prior.stateQueueStatus ||
           next.slot !== prior.slot ||
           next.blockHash !== prior.blockHash))
@@ -1325,10 +1349,17 @@ const mergePersistedDecisionObservations = (
         "persisted L1 decision changed canonical output or chain point",
       );
     }
-    observations.set(prior.headerHash, {
-      ...next,
-      hasPersistedDecision: true,
-    });
+    observations.set(
+      prior.headerHash,
+      expectedStableDecisionAdvance || pendingAttestationAdvance
+        ? prior
+        : expectedAttestedDecisionRetirement
+          ? next
+          : {
+              ...next,
+              hasPersistedDecision: !expectedAttestationAdvance,
+            },
+    );
   }
   return [...observations.values()].sort((left, right) =>
     left.headerHash.localeCompare(right.headerHash),

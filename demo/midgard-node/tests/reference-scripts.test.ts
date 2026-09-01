@@ -357,6 +357,34 @@ describe("reference-script wallet sweep planner", () => {
     expect(plan.summary.inputLovelace).toEqual(16_000_000n);
   });
 
+  it("limits sweep inputs while retaining the remaining reference scripts", () => {
+    const roleUnit = `${"c".repeat(56)}04`;
+    const utxos = ["13", "11", "12"].map((txHash) =>
+      mkUtxo({
+        txHash,
+        assets: { lovelace: 4_000_000n, [roleUnit]: 1n },
+        scriptRef: true,
+      }),
+    );
+
+    const plan = buildReferenceScriptSweepPlan({
+      utxos,
+      referenceScriptsAddress: REFERENCE_SCRIPT_ADDRESS,
+      returnAddress: RETURN_ADDRESS,
+      dryRun: true,
+      maxInputs: 2,
+    });
+
+    expect(plan.summary.maxInputs).toEqual(2);
+    expect(plan.summary.sweepableOutRefs).toEqual([
+      `${"11".padStart(64, "0")}#0`,
+      `${"12".padStart(64, "0")}#0`,
+    ]);
+    expect(plan.summary.retainedOutRefs).toEqual([
+      `${"13".padStart(64, "0")}#0`,
+    ]);
+  });
+
   it("chunks token quarantine outputs by configured non-ADA asset count", () => {
     const units = [
       `${"d".repeat(56)}00`,

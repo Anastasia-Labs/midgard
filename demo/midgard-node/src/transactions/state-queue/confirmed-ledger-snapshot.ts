@@ -17,6 +17,7 @@ import {
 } from "@/database/utils/common.js";
 import * as Ledger from "@/database/utils/ledger.js";
 import { Database } from "@/services/index.js";
+import { findSpentAndProducedUTxOs } from "@/utils.js";
 import { computeLedgerMpfRootFromLedgerEntries } from "@/workers/utils/mpf.js";
 
 export type ConfirmedLedgerSnapshot = {
@@ -97,6 +98,7 @@ const computeRecoveredRoot = (entries: readonly Ledger.Entry[]) =>
 const applyDeltaToEntries = (
   entries: readonly Ledger.Entry[],
   delta: DecodedConfirmedLedgerDelta,
+  allowedEphemeralSpends: ReadonlySet<string>,
 ): Effect.Effect<readonly Ledger.Entry[], DatabaseError> =>
   Effect.try({
     try: () => {
@@ -108,7 +110,10 @@ const applyDeltaToEntries = (
       );
       for (const outref of delta.spent) {
         const outrefHex = outref.toString("hex");
-        if (!byOutref.delete(outrefHex)) {
+        if (
+          !byOutref.delete(outrefHex) &&
+          !allowedEphemeralSpends.has(outrefHex)
+        ) {
           throw new Error(
             `ledger delta spends an outref absent from its authenticated base: ${outrefHex}`,
           );
@@ -133,6 +138,32 @@ const applyDeltaToEntries = (
         cause,
       }),
   });
+
+const txMemberProducedOutrefs = (
+  record: PendingBlockFinalizationsDB.Record,
+): Effect.Effect<ReadonlySet<string>, DatabaseError> =>
+  Effect.forEach(
+    record.txMembers,
+    (member) =>
+      findSpentAndProducedUTxOs(
+        member[PendingBlockFinalizationsDB.MemberColumns.PAYLOAD_CBOR],
+        member[PendingBlockFinalizationsDB.MemberColumns.MEMBER_ID],
+      ).pipe(
+        Effect.map(({ produced }) =>
+          produced.map((entry) => entry[Ledger.Columns.OUTREF].toString("hex")),
+        ),
+        Effect.mapError(
+          (cause) =>
+            new DatabaseError({
+              table: PendingBlockFinalizationsDB.tableName,
+              message:
+                "Failed to authenticate an intra-block pending-finalization spend",
+              cause: formatUnknownError(cause),
+            }),
+        ),
+      ),
+    { concurrency: 1 },
+  ).pipe(Effect.map((outrefs) => new Set(outrefs.flat())));
 
 const materializeFromBase = <R>({
   record,
@@ -229,7 +260,20 @@ const materializeFromBase = <R>({
       baseDeltaChain = baseSnapshot.deltaChain;
     }
 
-    const entries = yield* applyDeltaToEntries(baseEntries, delta);
+    const baseOutrefs = new Set(
+      baseEntries.map((entry) => entry[Ledger.Columns.OUTREF].toString("hex")),
+    );
+    const hasAbsentSpend = delta.spent.some(
+      (outref) => !baseOutrefs.has(outref.toString("hex")),
+    );
+    const allowedEphemeralSpends = hasAbsentSpend
+      ? yield* txMemberProducedOutrefs(record)
+      : new Set<string>();
+    const entries = yield* applyDeltaToEntries(
+      baseEntries,
+      delta,
+      allowedEphemeralSpends,
+    );
     const root = yield* computeRecoveredRoot(entries);
     const expectedRoot =
       record[PendingBlockFinalizationsDB.Columns.EXPECTED_UTXOS_ROOT];

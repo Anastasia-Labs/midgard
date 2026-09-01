@@ -6,9 +6,11 @@ import {
 } from "@lucid-evolution/lucid";
 import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
 
+import { createProviderBackedEvaluator } from "./provider-backed-evaluator.js";
+
 type CardanoNetwork = "Mainnet" | "Preprod" | "Preview" | "Custom";
 
-const lucidOptions = {
+const scalusLucidOptions = {
   evaluator: createScalusEvaluator(),
 };
 
@@ -25,18 +27,21 @@ export const lucidFromProviderUrl = async (
       lucid: await Lucid(
         new Blockfrost(apiUrl, projectId),
         normalizeNetwork(network),
-        lucidOptions,
+        scalusLucidOptions,
       ),
       providerSource: `blockfrost:${apiUrl}`,
     };
   }
   if (url.startsWith("kupmios:")) {
     const { kupoUrl, ogmiosUrl, headers } = parseKupmiosUrl(url);
+    const provider = new Kupmios(kupoUrl, ogmiosUrl, headers);
     return {
       lucid: await Lucid(
-        new Kupmios(kupoUrl, ogmiosUrl, headers),
+        provider,
         normalizeNetwork(network),
-        lucidOptions,
+        {
+          evaluator: createProviderBackedEvaluator(ogmiosUrl),
+        },
       ),
       providerSource: `kupmios:${kupoUrl}|${ogmiosUrl}`,
     };

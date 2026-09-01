@@ -192,8 +192,9 @@ pub fn confirmed_state_next_header_protocol_version_v1(
   }
 }
 
-/// Seven-day maturity for the canonical V1 deployment.
-pub const block_maturity_duration_v1: Int = 7 * 24 * 60 * 60 * 1000
+/// Environment-selected maturity. The default environment remains the
+/// canonical seven-day V1 deployment; testnet uses the explicit fast E2E value.
+pub const block_maturity_duration_v1: Int = env.block_maturity_duration_v1
 
 pub const transition_step_schema_version_v1: Int = 1
 

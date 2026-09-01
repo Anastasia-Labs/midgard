@@ -21,7 +21,6 @@ import {
   MIDGARD_VALIDATION_TRACE_DESCRIPTOR_V1_VERSION,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
-import { encodeMidgardValidationTraceDescriptorV1 } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 
@@ -109,16 +108,19 @@ const transactionSourceV1 = (
 };
 
 const acceptedTraceDescriptor = (seed: number): string =>
-  encodeMidgardValidationTraceDescriptorV1({
-    schemaVersion: MIDGARD_VALIDATION_TRACE_DESCRIPTOR_V1_VERSION,
-    machineVersion: MIDGARD_VALIDATION_MACHINE_V1_VERSION,
-    traceRoot: Buffer.alloc(32, seed),
-    stepCount: 0,
-    initialStateHash: Buffer.alloc(32, seed + 1),
-    terminalStateHash: Buffer.alloc(32, seed + 1),
-    verdict: "accepted",
-    rejectionCodeHash: Buffer.alloc(32),
-  }).toString("hex");
+  LucidData.to(
+    {
+      schema_version: BigInt(MIDGARD_VALIDATION_TRACE_DESCRIPTOR_V1_VERSION),
+      machine_version: BigInt(MIDGARD_VALIDATION_MACHINE_V1_VERSION),
+      trace_root: Buffer.alloc(32, seed).toString("hex"),
+      step_count: 0n,
+      initial_state_hash: Buffer.alloc(32, seed + 1).toString("hex"),
+      terminal_state_hash: Buffer.alloc(32, seed + 1).toString("hex"),
+      verdict: "Accepted",
+      rejection_code_hash: Buffer.alloc(32).toString("hex"),
+    } as never,
+    SDK.ValidationTraceDescriptorV1Schema as never,
+  );
 
 export const makePayloadFixture = async (
   transactionCount = 3,

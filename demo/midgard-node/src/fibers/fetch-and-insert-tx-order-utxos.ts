@@ -111,6 +111,12 @@ export type PublishedProgramMaterialSnapshot = {
   readonly sourceStatus: "clean" | "malformed";
 };
 
+export const skipSharedCekProgramMaterialForPreprodSmoke = (
+  env: NodeJS.ProcessEnv = process.env,
+): boolean =>
+  env.MIDGARD_SKIP_SHARED_CEK_PROGRAM_MATERIAL_FOR_PREPROD_SMOKE === "YES" &&
+  (env.NETWORK === "Preprod" || env.MIDGARD_NETWORK === "Preprod");
+
 export const isDeferrablePublishedProgramMaterialError = (
   snapshot: PublishedProgramMaterialSnapshot,
   cause: unknown,
@@ -767,14 +773,26 @@ export const reconcileVisibleTxOrderUTxOs = (
       txOrderFieldReceipt,
       cekProgramMaterial,
     } = yield* MidgardContracts;
-    const materialEntries = yield* Effect.tryPromise({
-      try: () => lucid.utxosAt(cekProgramMaterial.spendingScriptAddress),
-      catch: (cause) =>
-        new SDK.LucidError({
-          message: "Failed to resolve V1 L1 CEK program material",
-          cause,
-        }),
-    }).pipe(Effect.map(publishedProgramMaterialEntries));
+    const skipSharedMaterial = skipSharedCekProgramMaterialForPreprodSmoke();
+    if (skipSharedMaterial) {
+      yield* Effect.logWarning(
+        "Preprod smoke run is skipping the shared CEK program-material address; forced transactions requiring L1 program material are unavailable.",
+      );
+    }
+    const materialEntries = skipSharedMaterial
+      ? {
+          entries: Object.freeze([]),
+          malformedCount: 0,
+          sourceStatus: "clean" as const,
+        }
+      : yield* Effect.tryPromise({
+          try: () => lucid.utxosAt(cekProgramMaterial.spendingScriptAddress),
+          catch: (cause) =>
+            new SDK.LucidError({
+              message: "Failed to resolve V1 L1 CEK program material",
+              cause,
+            }),
+        }).pipe(Effect.map(publishedProgramMaterialEntries));
     const material = {
       ...materialEntries,
       sourceAddress: cekProgramMaterial.spendingScriptAddress,

@@ -200,25 +200,43 @@ export const ledgerPayloadAggregateFromEntries = (
     })),
   );
 
-const collapseLedgerDelta = (
+export const collapseLedgerDelta = (
   ops: readonly MpfBatchOp[],
   insertedValues: ReadonlyMap<string, Buffer>,
 ): LedgerDelta => {
-  const finalByOutref = new Map<string, MpfBatchOp>();
-  for (const op of ops) finalByOutref.set(op.key.toString("hex"), op);
+  const transitionsByOutref = new Map<
+    string,
+    { readonly first: MpfBatchOp; readonly last: MpfBatchOp }
+  >();
+  for (const op of ops) {
+    const outref = op.key.toString("hex");
+    const existing = transitionsByOutref.get(outref);
+    transitionsByOutref.set(outref, {
+      first: existing?.first ?? op,
+      last: op,
+    });
+  }
   const spent: Buffer[] = [];
   const produced: UtxoPayloadEntry[] = [];
-  for (const op of finalByOutref.values()) {
-    if (op.type === "delete") spent.push(Buffer.from(op.key));
+  for (const { first, last } of transitionsByOutref.values()) {
+    if (first.type === "insert" && last.type === "delete") {
+      continue;
+    }
+    if (first.type === "delete" && last.type === "insert") {
+      throw new Error(
+        `Ledger delta cannot replace an authenticated UTxO at ${last.key.toString("hex")}`,
+      );
+    }
+    if (last.type === "delete") spent.push(Buffer.from(last.key));
     else {
-      const output = insertedValues.get(op.key.toString("hex"));
+      const output = insertedValues.get(last.key.toString("hex"));
       if (output === undefined) {
         throw new Error(
-          `Missing full output bytes for ledger delta insertion ${op.key.toString("hex")}`,
+          `Missing full output bytes for ledger delta insertion ${last.key.toString("hex")}`,
         );
       }
       produced.push({
-        outref: Buffer.from(op.key),
+        outref: Buffer.from(last.key),
         output: Buffer.from(output),
       });
     }

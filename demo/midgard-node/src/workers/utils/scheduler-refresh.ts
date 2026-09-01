@@ -534,10 +534,13 @@ export const resolveSchedulerFirstAppointmentValidityWindow = (
     );
   }
   const maxRefreshValidTo = validFrom + SCHEDULER_TRANSITION_VALIDITY_WINDOW_MS;
-  const validTo =
+  const requestedValidTo =
     targetCommitEndTime < maxRefreshValidTo
       ? targetCommitEndTime
       : maxRefreshValidTo;
+  const validTo = BigInt(
+    alignUnixTimeToSlotBoundary(lucid, Number(requestedValidTo)),
+  );
   if (
     targetCommitEndTime - validFrom <
       SCHEDULER_FIRST_APPOINTMENT_MIN_VALIDITY_GAP_MS ||

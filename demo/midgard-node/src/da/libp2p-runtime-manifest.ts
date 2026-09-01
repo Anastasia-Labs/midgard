@@ -29,6 +29,7 @@ export type DaLibp2pRuntimeCommitteeMemberInput = {
   readonly daVkey: string;
   readonly libp2pPrivateKeySource: string;
   readonly roles: readonly string[];
+  readonly watcherPort?: number;
 };
 
 export type DaLibp2pRuntimeManifestOptions = {
@@ -104,6 +105,14 @@ export const generateDaLibp2pRuntimeManifest = async (
   validatePort(ports.producer, "producer port");
   validatePort(ports.watcher, "watcher port");
   validatePort(ports.publicRetainedDa, "public retained DA port");
+  for (const member of members) {
+    if (member.watcherPort !== undefined) {
+      validatePort(
+        member.watcherPort,
+        `watcher port for signer ${member.signerIndex.toString()}`,
+      );
+    }
+  }
   const hosts = hostsForProfile(options);
   if (options.profile === "public") {
     rejectLocalRuntimeHost(hosts.producer, "producer public host");
@@ -127,24 +136,44 @@ export const generateDaLibp2pRuntimeManifest = async (
     ports.producer,
     producerIdentity.peerId,
   );
-  const memberMultiaddrs = members.map((member) =>
-    isProducerMember(member, producerIdentity.peerId)
+  const memberMultiaddrs = members.map((member) => {
+    const advertised = isProducerMember(member, producerIdentity.peerId)
       ? producerAddr
-      : multiaddrForHost(hosts.watcher, ports.watcher, member.peerId),
-  );
+      : multiaddrForHost(
+          hosts.watcher,
+          member.watcherPort ?? ports.watcher,
+          member.peerId,
+        );
+    if (
+      options.target !== "watcher" ||
+      options.profile !== "producer-container-watcher-host" ||
+      isProducerMember(member, producerIdentity.peerId)
+    ) {
+      return [advertised];
+    }
+    return [
+      multiaddrForHost(
+        "127.0.0.1",
+        member.watcherPort ?? ports.watcher,
+        member.peerId,
+      ),
+      advertised,
+    ];
+  });
+  const localWatcherPort = localMember?.watcherPort ?? ports.watcher;
   const localListen =
     options.target === "producer"
       ? listenAddr(listenHostForProfile(options.profile), ports.producer)
-      : listenAddr(listenHostForProfile(options.profile), ports.watcher);
+      : listenAddr(listenHostForProfile(options.profile), localWatcherPort);
   const localAnnounce =
     options.target === "producer"
       ? producerAddr
-      : multiaddrForHost(hosts.watcher, ports.watcher, localMember!.peerId);
+      : multiaddrForHost(hosts.watcher, localWatcherPort, localMember!.peerId);
   const bootstrapMultiaddrs =
     options.target === "producer"
       ? memberMultiaddrs.filter(
           (_addr, index) => members[index]!.peerId !== producerIdentity.peerId,
-        )
+        ).flat()
       : [producerAddr];
   const publicRetainedDaHost =
     options.profile === "public"
@@ -230,7 +259,7 @@ export const generateDaLibp2pRuntimeManifest = async (
         signer_index: member.signerIndex,
         da_vkey: normalizeHex(member.daVkey, 32, "da_vkey"),
         peer_id: member.peerId,
-        multiaddrs: [memberMultiaddrs[index]!],
+        multiaddrs: memberMultiaddrs[index]!,
         roles: [...member.roles].sort(),
       })),
     },

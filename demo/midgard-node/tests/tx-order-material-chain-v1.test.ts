@@ -31,6 +31,7 @@ import {
   publishedProgramMaterialEntries,
   publishedProgramMaterialSnapshotError,
   reconstructTxOrderMaterialV1,
+  skipSharedCekProgramMaterialForPreprodSmoke,
 } from "@/fibers/fetch-and-insert-tx-order-utxos.js";
 
 const FIELD_PREIMAGE_ADDRESS = "addr_test1vfieldpreimage";
@@ -400,6 +401,30 @@ describe("V1 CEK program-material publication ingestion", () => {
       assets: { lovelace: 2_000_000n },
       datum,
     }) as UTxO;
+
+  it("permits the shared-address bypass only for an explicit Preprod smoke run", () => {
+    expect(
+      skipSharedCekProgramMaterialForPreprodSmoke({
+        MIDGARD_SKIP_SHARED_CEK_PROGRAM_MATERIAL_FOR_PREPROD_SMOKE: "YES",
+        NETWORK: "Preprod",
+      }),
+    ).toBe(true);
+    expect(
+      skipSharedCekProgramMaterialForPreprodSmoke({
+        MIDGARD_SKIP_SHARED_CEK_PROGRAM_MATERIAL_FOR_PREPROD_SMOKE: "YES",
+        NETWORK: "Mainnet",
+      }),
+    ).toBe(false);
+    expect(
+      skipSharedCekProgramMaterialForPreprodSmoke({
+        MIDGARD_SKIP_SHARED_CEK_PROGRAM_MATERIAL_FOR_PREPROD_SMOKE: "yes",
+        NETWORK: "Preprod",
+      }),
+    ).toBe(false);
+    expect(
+      skipSharedCekProgramMaterialForPreprodSmoke({ NETWORK: "Preprod" }),
+    ).toBe(false);
+  });
 
   it("accepts one exact typed hash and rejects wrong roots, kinds, and encodings", () => {
     const preimage = encodeMidgardCekBlobChunkV1(Buffer.from("material"));

@@ -401,6 +401,36 @@ describe("scheduler refresh witness selection", () => {
     );
   });
 
+  it("aligns the first appointment upper bound before deriving the scheduler start", () => {
+    const window = resolveSchedulerFirstAppointmentValidityWindow(
+      customSlotLucid as never,
+      500_337n,
+      {
+        currentSlot: 100,
+        currentSlotStartMs: 100_000,
+        observedAtMs: 100_500,
+      },
+    );
+    const selection = {
+      kind: "AppointFirst" as const,
+      activeNode: activeTail,
+      registeredWitnessNode: mkNode("66".repeat(32), 0, {
+        key: "Empty",
+        next: "Empty",
+        data: "00" as SDK.LinkedListNodeView["data"],
+      }),
+    };
+
+    expect(window).toEqual({ validFrom: 70_000n, validTo: 500_000n });
+    expect(
+      resolveRefreshedSchedulerStartTime({
+        selection,
+        currentSchedulerState: undefined,
+        ...window,
+      }),
+    ).toBe(499_999n);
+  });
+
   it("keeps scheduler refresh confirmation wait tolerant of live preprod confirmation latency", () => {
     expect(SCHEDULER_SUBMISSION_CONFIRMATION_TIMEOUT_MS).toBe(5 * 60_000);
     expect(SCHEDULER_SUBMISSION_CONFIRMATION_TIMEOUT_MS).toBeLessThan(

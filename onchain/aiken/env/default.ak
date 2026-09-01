@@ -12,6 +12,11 @@ pub const max_tokens_allowed_in_deposits: Int = 10
 
 pub const event_wait_duration: Int = 60_000
 
+pub const block_maturity_duration_v1: PosixTimeDuration =
+  7 * 24 * 60 * 60 * 1000
+
+pub const validation_dispute_response_window_milliseconds: Int = 300_000
+
 pub const shift_duration: PosixTimeDuration = 30
 
 pub const registration_duration: PosixTimeDuration = 30

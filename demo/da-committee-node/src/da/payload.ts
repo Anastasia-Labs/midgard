@@ -27,7 +27,10 @@ import {
   collectMidgardV1AttachedProgramEnvelopes,
   collectMidgardV1ReferencedProgramEnvelopes,
 } from "@al-ft/midgard-core/script-proof";
-import { decodeMidgardValidationTraceDescriptorV1 } from "@al-ft/midgard-core/validation-trace";
+import {
+  decodeMidgardValidationTraceDescriptorV1,
+  encodeMidgardValidationTraceDescriptorV1,
+} from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
 import { buildCanonicalMidgardLedgerEntryOutputMaterialV1 } from "@al-ft/midgard-validation";
 import { Data as LucidData } from "@lucid-evolution/lucid";
@@ -1291,8 +1294,15 @@ const validateProofTraceCoverageV1 = (payload: SDK.DaPayloadV1): void => {
     }
     let descriptor;
     try {
+      const descriptorData = decodeCanonicalData<SDK.ValidationTraceDescriptorV1>(
+        valueHex,
+        SDK.ValidationTraceDescriptorV1Schema as never,
+        `validation_traces[${index.toString()}].value`,
+      );
       descriptor = decodeMidgardValidationTraceDescriptorV1(
-        hexToBytes(valueHex, `validation_traces[${index.toString()}].value`),
+        encodeMidgardValidationTraceDescriptorV1(
+          SDK.validationTraceDescriptorCoreFromData(descriptorData),
+        ),
       );
     } catch (cause) {
       throw new DaPayloadValidationError(

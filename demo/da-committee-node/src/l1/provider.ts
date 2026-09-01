@@ -32,6 +32,10 @@ export type CanonicalChainPoint = ChainPoint & {
   readonly observedAt: string;
 };
 
+export class RetryableL1SourceObservationError extends Error {
+  override readonly name = "RetryableL1SourceObservationError";
+}
+
 export type ChainSyncCursor = {
   readonly sequence: number;
   readonly point: CanonicalChainPoint;
@@ -421,7 +425,9 @@ export class LocalNodeChainAuthority {
     private readonly store: ChainSyncCursorStore,
   ) {}
 
-  async synchronizeToTip(maxEvents = 4096): Promise<CanonicalChainPoint> {
+  async synchronizeToTip(
+    maxEvents = Number.POSITIVE_INFINITY,
+  ): Promise<CanonicalChainPoint> {
     let result: CanonicalChainPoint | undefined;
     const run = this.operation.then(async () => {
       await this.loadCursor();
@@ -824,7 +830,7 @@ export class LocalNodeStateQueueProvider
         const nodes = await provider.fetchStateQueueNodes();
         const after = await provider.currentChainPoint();
         if (!sameCanonicalPoint(before, after)) {
-          throw new Error(
+          throw new RetryableL1SourceObservationError(
             `local_node query surface ${this.queryIdentities[index]!} changed chain point while its snapshot was read`,
           );
         }
@@ -834,7 +840,7 @@ export class LocalNodeStateQueueProvider
     );
     const canonicalAfter = await this.authority.currentPoint();
     if (!sameCanonicalPoint(canonicalBefore, canonicalAfter)) {
-      throw new Error(
+      throw new RetryableL1SourceObservationError(
         "local node chain authority changed while query snapshots were being collected",
       );
     }
@@ -851,21 +857,15 @@ export class LocalNodeStateQueueProvider
       sortedResults,
       this.queryIdentities,
     );
-    const cursor = await this.authority.currentCursor();
     return merged.map((node) => ({
       ...node,
       chainPoint: {
         ...node.chainPoint,
-        network: canonicalAfter.network,
         providerSource: [
           canonicalAfter.providerSource,
           ...this.queryIdentities,
         ].join(","),
         observedAt: new Date().toISOString(),
-        canonicalSlot: canonicalAfter.slot,
-        canonicalBlockHash: canonicalAfter.blockHash,
-        chainSyncSequence: cursor.sequence,
-        rollbackGeneration: cursor.rollbackGeneration,
       },
     }));
   }
@@ -890,7 +890,13 @@ export class LocalNodeStateQueueProvider
 
   async acknowledgeChainSyncCursor(cursor: ChainSyncCursor): Promise<void> {
     const current = await this.authority.currentCursor();
-    if (!samePersistedCursor(current, cursor)) {
+    if (
+      cursor.point.network !== current.point.network ||
+      cursor.sequence > current.sequence ||
+      cursor.rollbackGeneration > current.rollbackGeneration ||
+      (cursor.sequence === current.sequence &&
+        !samePersistedCursor(current, cursor))
+    ) {
       throw new Error(
         "refusing to acknowledge a stale local-node chain-sync cursor",
       );
@@ -1465,7 +1471,7 @@ export const kupmiosChainPointResolver = (
       _fetchFn,
     );
     if (!sameCanonicalPoint(before, after)) {
-      throw new Error(
+      throw new RetryableL1SourceObservationError(
         "Kupmios chain point changed while deriving block confirmations",
       );
     }
@@ -1575,10 +1581,12 @@ const alignedKupmiosTip = async (
     requestOgmiosTip(ogmiosUrl),
   ]);
   assertNetworkMagic(network, ogmiosTip.networkMagic, "Ogmios");
-  if (
-    kupoPoint.slot !== ogmiosTip.slot ||
-    kupoPoint.blockHash !== ogmiosTip.blockHash
-  ) {
+  if (kupoPoint.slot !== ogmiosTip.slot) {
+    throw new RetryableL1SourceObservationError(
+      `Kupmios query surfaces are temporarily at different slots: Kupo=${kupoPoint.slot.toString()}:${kupoPoint.blockHash}, Ogmios=${ogmiosTip.slot.toString()}:${ogmiosTip.blockHash}`,
+    );
+  }
+  if (kupoPoint.blockHash !== ogmiosTip.blockHash) {
     throw new Error(
       `Kupmios query surfaces are not aligned: Kupo=${kupoPoint.slot.toString()}:${kupoPoint.blockHash}, Ogmios=${ogmiosTip.slot.toString()}:${ogmiosTip.blockHash}`,
     );
@@ -2221,7 +2229,7 @@ const requestOgmiosDescendantDepth = async ({
       );
     }
     if (!sameCanonicalPoint(tip, expectedTip)) {
-      throw new Error(
+      throw new RetryableL1SourceObservationError(
         "local-node tip changed before confirmation depth derivation",
       );
     }
@@ -2242,7 +2250,7 @@ const requestOgmiosDescendantDepth = async ({
         "confirmation-depth response tip",
       );
       if (!sameCanonicalPoint(responseTip, expectedTip)) {
-        throw new Error(
+        throw new RetryableL1SourceObservationError(
           "local-node tip changed while deriving confirmation depth",
         );
       }

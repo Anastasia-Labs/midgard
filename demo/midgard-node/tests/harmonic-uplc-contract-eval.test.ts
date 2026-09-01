@@ -1,4 +1,5 @@
 import * as SDK from "@al-ft/midgard-sdk";
+import { inspect } from "node:util";
 import { dataFromCbor } from "@harmoniclabs/plutus-data";
 import { CEKConst, Machine } from "@harmoniclabs/plutus-machine";
 import { Application, parseUPLC, UPLCConst } from "@harmoniclabs/uplc";
@@ -67,7 +68,10 @@ const expectScriptContextEvaluatesToCekConst = (
   const applied_1 = new Application(uplc, dataEncodedScriptContext);
   const result_1 = Machine.eval(applied_1);
 
-  expect(result_1.result instanceof CEKConst).toBe(true);
+  expect(
+    result_1.result instanceof CEKConst,
+    `${inspect(result_1.result, { depth: 8 })}\n${result_1.logs.join("\n")}`,
+  ).toBe(true);
 };
 
 const loadRealContracts = () =>

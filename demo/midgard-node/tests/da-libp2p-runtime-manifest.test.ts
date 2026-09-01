@@ -43,6 +43,7 @@ import {
 const PRODUCER_KEY = `seed:${"00".repeat(31)}01`;
 const WATCHER_KEY = `seed:${"00".repeat(31)}02`;
 const PUBLIC_RETAINED_DA_KEY = `seed:${"00".repeat(31)}03`;
+const SECOND_WATCHER_KEY = `seed:${"00".repeat(31)}04`;
 const DA_VKEY = "11".repeat(32);
 const PRODUCER_DA_VKEY = "22".repeat(32);
 const CARDANO_PARAMETERS = normalizeDeploymentManifestV1JsonValue({
@@ -158,6 +159,68 @@ describe("DA libp2p runtime manifest profiles", () => {
     });
 
     expect(JSON.stringify(manifest)).toContain("/dns4/watcher-a/tcp/39001/");
+  });
+
+  it("assigns distinct ports to multiple host watchers", async () => {
+    const deploymentInfo = await writeFinalizedDeploymentInfo();
+    const committeeMembers = [
+      {
+        signerIndex: 0,
+        daVkey: DA_VKEY,
+        libp2pPrivateKeySource: WATCHER_KEY,
+        roles: ["committee", "retrieval"],
+        watcherPort: 39001,
+      },
+      {
+        signerIndex: 1,
+        daVkey: PRODUCER_DA_VKEY,
+        libp2pPrivateKeySource: SECOND_WATCHER_KEY,
+        roles: ["committee", "retrieval"],
+        watcherPort: 39004,
+      },
+    ];
+    const producer = await generateDaLibp2pRuntimeManifest({
+      target: "producer",
+      profile: "producer-container-watcher-host",
+      contractDeploymentInfoPath: deploymentInfo.path,
+      network: "Preprod",
+      producerPrivateKeySource: PRODUCER_KEY,
+      publicRetainedDaPrivateKeySource: PUBLIC_RETAINED_DA_KEY,
+      threshold: 2,
+      committeeMembers,
+    });
+    const watcher = await generateDaLibp2pRuntimeManifest({
+      target: "watcher",
+      profile: "producer-container-watcher-host",
+      contractDeploymentInfoPath: deploymentInfo.path,
+      network: "Preprod",
+      producerPrivateKeySource: PRODUCER_KEY,
+      publicRetainedDaPrivateKeySource: PUBLIC_RETAINED_DA_KEY,
+      threshold: 2,
+      localSignerIndex: 1,
+      committeeMembers,
+    });
+
+    expect(producer.da_committee.members[0]?.multiaddrs[0]).toContain(
+      "/tcp/39001/",
+    );
+    expect(producer.da_committee.members[1]?.multiaddrs[0]).toContain(
+      "/tcp/39004/",
+    );
+    expect(watcher.da_transport.listen_multiaddrs).toEqual([
+      "/ip4/0.0.0.0/tcp/39004",
+    ]);
+    expect(watcher.da_transport.announce_multiaddrs[0]).toContain(
+      "/tcp/39004/",
+    );
+    expect(watcher.da_committee.members[0]?.multiaddrs).toEqual([
+      expect.stringContaining("/ip4/127.0.0.1/tcp/39001/"),
+      expect.stringContaining("/dns4/host.docker.internal/tcp/39001/"),
+    ]);
+    expect(watcher.da_committee.members[1]?.multiaddrs).toEqual([
+      expect.stringContaining("/ip4/127.0.0.1/tcp/39004/"),
+      expect.stringContaining("/dns4/host.docker.internal/tcp/39004/"),
+    ]);
   });
 
   it("persists the exact runtime manifest atomically", async () => {

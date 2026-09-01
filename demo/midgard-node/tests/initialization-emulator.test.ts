@@ -11,6 +11,8 @@ import {
   toUnit,
   UTxO,
 } from "@lucid-evolution/lucid";
+import { createScalusEvaluator } from "@lucid-evolution/scalus-uplc";
+import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
@@ -63,9 +65,12 @@ const TEST_DA_COSIGNER_SEED_PHRASE =
  * sorted-unique because `valid_datum` measures them with its `sorted_unique_*`
  * walkers.
  */
+const TEST_DA_COMMITTEE = "00".repeat(32) + "01".repeat(32);
 const TEST_DA_PARAMS: SDK.DaParamsDatum = {
-  committee: "00".repeat(32) + "01".repeat(32),
-  committee_signers_hash: "11".repeat(32),
+  committee: TEST_DA_COMMITTEE,
+  committee_signers_hash: Buffer.from(
+    blake2b(Buffer.from(TEST_DA_COMMITTEE, "hex"), { dkLen: 32 }),
+  ).toString("hex"),
   da_threshold: 2n,
   owners: ["22".repeat(28), "33".repeat(28)],
   update_threshold: 2n,
@@ -116,8 +121,11 @@ const initEmulatorLucid = async () => {
     [operator, referenceScripts],
     EMULATOR_PROTOCOL_PARAMETERS,
   );
-  const lucid = await Lucid(emulator, "Custom");
-  const referenceScriptsLucid = await Lucid(emulator, "Custom");
+  const lucidOptions = {
+    evaluator: createScalusEvaluator({ protocolMajorVersion: 11 }),
+  };
+  const lucid = await Lucid(emulator, "Custom", lucidOptions);
+  const referenceScriptsLucid = await Lucid(emulator, "Custom", lucidOptions);
   lucid.selectWallet.fromSeed(operator.seedPhrase);
   referenceScriptsLucid.selectWallet.fromSeed(referenceScripts.seedPhrase);
   const nonceUtxo = (await lucid.wallet().getUtxos())[0];
@@ -296,7 +304,6 @@ describe("initialization emulator", () => {
       },
       referenceScriptAuth,
     );
-
     const initTx = await buildAtomicInitializationTx(
       lucid,
       referenceScriptsLucid,

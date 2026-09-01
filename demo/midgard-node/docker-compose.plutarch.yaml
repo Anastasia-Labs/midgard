@@ -1,0 +1,14 @@
+services:
+  midgard-node:
+    build:
+      additional_contexts:
+        - onchain=../../onchain/plutarch
+    environment:
+      MIDGARD_REAL_BLUEPRINT_PATH: /onchain/aiken/plutus.json
+
+  midgard-node-migrate:
+    build:
+      additional_contexts:
+        - onchain=../../onchain/plutarch
+    environment:
+      MIDGARD_REAL_BLUEPRINT_PATH: /onchain/aiken/plutus.json

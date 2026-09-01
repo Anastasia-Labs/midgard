@@ -135,9 +135,10 @@ const MAX_OUTPUT_COUNT = MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT;
 const MAX_ADDRESS_WITNESS_COUNT = MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT;
 const MAX_REQUIRED_SIGNER_COUNT = MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT;
 const MAX_REQUIRED_OBSERVER_COUNT = MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT;
-const VALIDATION_DISPUTE_RESPONSE_WINDOW_MS = 300_000;
+// Temporary fast Preprod E2E profile. Keep aligned with env/testnet.ak.
+const VALIDATION_DISPUTE_RESPONSE_WINDOW_MS = 1_000;
 const MAX_VALIDATION_BISECTION_ROUNDS = 32;
-const PROOF_BLOCK_MATURITY_MS = 7 * 24 * 60 * 60 * 1000;
+const PROOF_BLOCK_MATURITY_MS = 3 * 60 * 1000;
 // Opening, two moves per round, and settlement must fit in the first half of
 // maturity even if every party uses its complete response window.
 const MIN_VALIDATION_DISPUTE_MATURITY_MS =
@@ -290,8 +291,17 @@ export const MIDGARD_V1_REQUIRED_PROOF_FAMILIES = Object.freeze([
  */
 export const MIDGARD_V1_RELEASE_EVIDENCE_DIGEST: string | null = null;
 
+const allowUnreleasedCanonicalV1ForPreprodE2e = (): boolean =>
+  process.env.MIDGARD_ALLOW_UNRELEASED_CANONICAL_V1_FOR_PREPROD_E2E ===
+    "YES" &&
+  (process.env.NETWORK === "Preprod" ||
+    process.env.MIDGARD_NETWORK === "Preprod");
+
 export const assertMidgardConsensusV1ReleaseReady = (): void => {
   if (MIDGARD_V1_RELEASE_EVIDENCE_DIGEST === null) {
+    // Explicit smoke-only escape hatch for a live Preprod deployment. This
+    // does not activate canonical V1 and cannot be selected on Mainnet.
+    if (allowUnreleasedCanonicalV1ForPreprodE2e()) return;
     throw new Error(
       "midgard-consensus-v1 is not activated: the compiled L1 verifier and validator-hash-bound release evidence are incomplete",
     );

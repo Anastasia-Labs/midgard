@@ -396,6 +396,7 @@ export const createDaLibp2pAttestationRequestHandlers = ({
           await protocol.handleAttestationsByHeaderRequest(requestCbor);
         await writeDaStreamFrame(stream, responseCbor, {
           maxFrameBytes: limits.maxPayloadBytes,
+          close: true,
         });
       },
     ],

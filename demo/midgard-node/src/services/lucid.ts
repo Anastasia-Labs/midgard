@@ -10,6 +10,7 @@ import { customSlotConfigFromShelleyGenesis } from "@/lucid-time.js";
 import { providerRouteSummary } from "@/provider-diagnostics.js";
 
 import { ConfigError, NodeConfig } from "./config.js";
+import { createProviderBackedEvaluator } from "./provider-backed-evaluator.js";
 
 /**
  * Builds the Lucid service bundle used by the node, including reference-script
@@ -82,6 +83,16 @@ const makeLucid: Effect.Effect<
         }),
     });
   }
+  const kupmiosProvider = new LE.Kupmios(
+    nodeConfig.L1_KUPO_KEY,
+    nodeConfig.L1_OGMIOS_KEY,
+  );
+  const lucidOptions: LE.LucidOptions = {
+    evaluator: createProviderBackedEvaluator((tx, additionalUTxOs) =>
+      kupmiosProvider.evaluateTx(tx, additionalUTxOs),
+    ),
+    ...(slotConfig === undefined ? {} : { slotConfig }),
+  };
   const operatorMainAddress = LE.walletFromSeed(
     nodeConfig.L1_OPERATOR_SEED_PHRASE,
     {
@@ -104,17 +115,7 @@ const makeLucid: Effect.Effect<
     )}`,
   );
   const lucid: LE.LucidEvolution = yield* Effect.tryPromise({
-    try: () => {
-      const kupmiosProvider = new LE.Kupmios(
-        nodeConfig.L1_KUPO_KEY,
-        nodeConfig.L1_OGMIOS_KEY,
-      );
-      return LE.Lucid(
-        kupmiosProvider,
-        nodeConfig.NETWORK,
-        slotConfig === undefined ? undefined : { slotConfig },
-      );
-    },
+    try: () => LE.Lucid(kupmiosProvider, nodeConfig.NETWORK, lucidOptions),
     catch: (e) =>
       new ConfigError({
         message: `An error occurred on lucid initialization`,
@@ -130,11 +131,7 @@ const makeLucid: Effect.Effect<
   );
   const referenceScriptsApi: LE.LucidEvolution = yield* Effect.tryPromise({
     try: () =>
-      LE.Lucid(
-        lucid.config().provider,
-        nodeConfig.NETWORK,
-        slotConfig === undefined ? undefined : { slotConfig },
-      ),
+      LE.Lucid(lucid.config().provider, nodeConfig.NETWORK, lucidOptions),
     catch: (e) =>
       new ConfigError({
         message: "An error occurred while initializing reference-scripts Lucid",
