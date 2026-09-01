@@ -7,6 +7,27 @@ work.
 
 Last reviewed: 2026-08-23
 
+## Off-chain blueprint
+
+The node consumes an Aiken-blueprint-shaped `validators` array even when the
+script compiler is Plutarch. Build the deterministic compatibility artifact
+from the individual files in `generated/` with:
+
+```bash
+node scripts/build-offchain-blueprint.mjs
+```
+
+This writes the ignored `plutus.json` artifact. For the demo node, add
+`docker-compose.plutarch.yaml` after the base Compose file so both the runtime
+and migration images copy that artifact instead of the Aiken blueprint. Do not
+mix images or deployment manifests produced from different contract sources.
+
+The current Plutarch build targets the experimental `plutus-core 1.65` WSC/Van
+Rossem implementation. The official Cardano node 11.0.1 release uses
+`plutus-core 1.63`, so these artifacts cannot initialize on that node even when
+the network reports protocol version 11. Run the real-contract UPLC evaluation
+test against the target node stack before publishing reference scripts.
+
 ## Code map
 
 - `src/MerkleTree/`: the MPF membership and non-membership validators and their

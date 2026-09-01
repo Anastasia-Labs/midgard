@@ -11,3 +11,7 @@ dist-newstyle/
 result
 result-*
 .direnv
+
+# Deterministic off-chain compatibility artifact. Rebuild with
+# `node scripts/build-offchain-blueprint.mjs`.
+plutus.json

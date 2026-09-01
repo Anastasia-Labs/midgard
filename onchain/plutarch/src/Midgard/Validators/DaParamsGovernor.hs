@@ -25,6 +25,7 @@ A duplicate would otherwise let one key count twice towards a threshold.
 module Midgard.Validators.DaParamsGovernor (
   daParamsGovernorMintValidator,
   daParamsGovernorSpendValidator,
+  daParamsGovernorValidator,
   pvalidDatum,
   pgovernedThresholdFloor,
   psortedUniquePackedLenAtMost,
@@ -256,58 +257,59 @@ pvalidDatum ::
   forall (s :: S).
   Term s (PDaParamsDatum :--> PInteger :--> PInteger :--> PBool)
 pvalidDatum = phoistAcyclic $
-  plam $ \datum maxCommitteeSize maxOwnerCount -> pmatch datum $
-    \PDaParamsDatum
-      { pdaParams'committee
-      , pdaParams'committeeSignersHash
-      , pdaParams'daThreshold
-      , pdaParams'owners
-      , pdaParams'updateThreshold
-      } -> P.do
-        _ <-
-          plet $
-            pif
-              ( pand'List
-                  [ 0 #< maxCommitteeSize
-                  , maxCommitteeSize #<= pmaxIndexedSignerCount
-                  , 0 #< maxOwnerCount
-                  ]
-              )
-              (pconstant @PUnit ())
-              perror
-        committee <- plet $ pfromData pdaParams'committee
-        committeeLen <-
-          plet $
-            psortedUniquePackedLenAtMost
-              # committee
-              # maxCommitteeSize
-              # pverificationKeyByteCount
-        ownerLen <-
-          plet $
-            psortedUniqueLenAtMost
-              # pfromData pdaParams'owners
-              # maxOwnerCount
-              # pverificationKeyHashByteCount
-        daThreshold <- plet $ pfromData pdaParams'daThreshold
-        updateThreshold <- plet $ pfromData pdaParams'updateThreshold
-        -- Aiken writes every one of these as an `expect`, so `valid_datum`
-        -- either returns True or fails; it never returns False. Both handlers
-        -- call it under an `expect` too, so the two shapes agree at the
-        -- validator level — but the exported predicate must reject the same way
-        -- the original does, or a future caller reading it as a boolean would
-        -- silently get a different contract.
-        pif
-          ( pand'List
-              [ pfromData pdaParams'committeeSignersHash #== (pblake2b_256 # committee)
-              , (pgovernedThresholdFloor # committeeLen) #<= daThreshold
-              , daThreshold #<= committeeLen
-              , pminOwnerCount #<= ownerLen
-              , (pgovernedThresholdFloor # ownerLen) #<= updateThreshold
-              , updateThreshold #<= ownerLen
-              ]
-          )
-          (pconstant True)
-          perror
+  plam $ \datum maxCommitteeSize maxOwnerCount ->
+    pmatch datum $
+      \PDaParamsDatum
+         { pdaParams'committee
+         , pdaParams'committeeSignersHash
+         , pdaParams'daThreshold
+         , pdaParams'owners
+         , pdaParams'updateThreshold
+         } -> P.do
+          _ <-
+            plet $
+              pif
+                ( pand'List
+                    [ 0 #< maxCommitteeSize
+                    , maxCommitteeSize #<= pmaxIndexedSignerCount
+                    , 0 #< maxOwnerCount
+                    ]
+                )
+                (pconstant @PUnit ())
+                perror
+          committee <- plet $ pfromData pdaParams'committee
+          committeeLen <-
+            plet $
+              psortedUniquePackedLenAtMost
+                # committee
+                # maxCommitteeSize
+                # pverificationKeyByteCount
+          ownerLen <-
+            plet $
+              psortedUniqueLenAtMost
+                # pfromData pdaParams'owners
+                # maxOwnerCount
+                # pverificationKeyHashByteCount
+          daThreshold <- plet $ pfromData pdaParams'daThreshold
+          updateThreshold <- plet $ pfromData pdaParams'updateThreshold
+          -- Aiken writes every one of these as an `expect`, so `valid_datum`
+          -- either returns True or fails; it never returns False. Both handlers
+          -- call it under an `expect` too, so the two shapes agree at the
+          -- validator level — but the exported predicate must reject the same way
+          -- the original does, or a future caller reading it as a boolean would
+          -- silently get a different contract.
+          pif
+            ( pand'List
+                [ pfromData pdaParams'committeeSignersHash #== (pblake2b_256 # committee)
+                , (pgovernedThresholdFloor # committeeLen) #<= daThreshold
+                , daThreshold #<= committeeLen
+                , pminOwnerCount #<= ownerLen
+                , (pgovernedThresholdFloor # ownerLen) #<= updateThreshold
+                , updateThreshold #<= ownerLen
+                ]
+            )
+            (pconstant True)
+            perror
 
 {- | Aiken @owner_quorum_met@.
 
@@ -475,13 +477,15 @@ daParamsGovernorMintValidator ::
   Term
     s
     ( PAsData PTxOutRef -- init ref
-        :--> PInteger -- max committee size
-        :--> PInteger -- max owner count
+        :--> PAsData PInteger -- max committee size
+        :--> PAsData PInteger -- max owner count
         :--> PScriptContext
         :--> PUnit
     )
 daParamsGovernorMintValidator = plam $
   \initRef maxCommitteeSize maxOwnerCount ctx -> P.do
+    maxCommitteeSize' <- plet $ pfromData maxCommitteeSize
+    maxOwnerCount' <- plet $ pfromData maxOwnerCount
     PScriptContext {pscriptContext'txInfo, pscriptContext'scriptInfo} <- pmatch ctx
     policyId <-
       plet $ pmatch pscriptContext'scriptInfo $ \case
@@ -505,8 +509,8 @@ daParamsGovernorMintValidator = plam $
                   PScriptCredential h -> pto (pfromData h) #== pto (pfromData policyId)
                   PPubKeyCredential _ -> pconstant False
           )
-          maxCommitteeSize
-          maxOwnerCount
+          maxCommitteeSize'
+          maxOwnerCount'
     pif
       ( pand'List
           [ pfstBuiltin # mintEntry #== pdaParamsAssetName
@@ -538,12 +542,14 @@ daParamsGovernorSpendValidator ::
   forall (s :: S).
   Term
     s
-    ( PInteger -- max committee size
-        :--> PInteger -- max owner count
+    ( PAsData PInteger -- max committee size
+        :--> PAsData PInteger -- max owner count
         :--> PScriptContext
         :--> PUnit
     )
 daParamsGovernorSpendValidator = plam $ \maxCommitteeSize maxOwnerCount ctx -> P.do
+  maxCommitteeSize' <- plet $ pfromData maxCommitteeSize
+  maxOwnerCount' <- plet $ pfromData maxOwnerCount
   PScriptContext {pscriptContext'txInfo, pscriptContext'scriptInfo} <- pmatch ctx
   ownRef <-
     plet $ pmatch pscriptContext'scriptInfo $ \case
@@ -559,8 +565,8 @@ daParamsGovernorSpendValidator = plam $ \maxCommitteeSize maxOwnerCount ctx -> P
   PTxInfo {ptxInfo'inputs, ptxInfo'outputs, ptxInfo'signatories} <- pmatch pscriptContext'txInfo
 
   ownInput <-
-    plet $
-      pmatch
+    plet
+      $ pmatch
         ( pfoldr
             # plam
               ( \input found ->
@@ -570,9 +576,9 @@ daParamsGovernorSpendValidator = plam $ \maxCommitteeSize maxOwnerCount ctx -> P
             # pcon PNothing
             # pfromData ptxInfo'inputs
         )
-        $ \case
-          PNothing -> perror
-          PJust resolved -> resolved
+      $ \case
+        PNothing -> perror
+        PJust resolved -> resolved
   PTxOut
     { ptxOut'address = inputAddress
     , ptxOut'value = inputValue
@@ -591,13 +597,13 @@ daParamsGovernorSpendValidator = plam $ \maxCommitteeSize maxOwnerCount ctx -> P
       pparamsOutputDatum
         continuedOutput
         (\address -> pdata address #== pdata inputAddress)
-        maxCommitteeSize
-        maxOwnerCount
+        maxCommitteeSize'
+        maxOwnerCount'
   PTxOut {ptxOut'value = outputValue} <- pmatch continuedOutput
 
   pif
     ( pand'List
-        [ pvalidDatum # inputDatum # maxCommitteeSize # maxOwnerCount
+        [ pvalidDatum # inputDatum # maxCommitteeSize' # maxOwnerCount'
         , -- The resolved input's datum must be the one the ledger handed us.
           pmatch inputOutputDatum $ \case
             POutputDatum {poutputDatum'outputDatum} ->
@@ -617,3 +623,34 @@ daParamsGovernorSpendValidator = plam $ \maxCommitteeSize maxOwnerCount ctx -> P
     )
     (pconstant ())
     perror
+
+{- | The deployable Aiken validator is one multi-purpose program, so its mint
+and spend handlers share a script hash. Keep the same three deployment
+parameters on both branches even though the spend handler does not inspect the
+one-shot reference.
+-}
+daParamsGovernorValidator ::
+  forall (s :: S).
+  Term
+    s
+    ( PAsData PTxOutRef
+        :--> PAsData PInteger
+        :--> PAsData PInteger
+        :--> PScriptContext
+        :--> PUnit
+    )
+daParamsGovernorValidator = plam $ \initRef maxCommitteeSize maxOwnerCount ctx -> P.do
+  PScriptContext {pscriptContext'scriptInfo} <- pmatch ctx
+  pmatch pscriptContext'scriptInfo $ \case
+    PMintingScript _ ->
+      daParamsGovernorMintValidator
+        # initRef
+        # maxCommitteeSize
+        # maxOwnerCount
+        # ctx
+    PSpendingScript _ _ ->
+      daParamsGovernorSpendValidator
+        # maxCommitteeSize
+        # maxOwnerCount
+        # ctx
+    _ -> perror

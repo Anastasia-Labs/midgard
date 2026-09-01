@@ -37,15 +37,15 @@ import Plutarch.LedgerApi.Utils (PMaybeData (..))
 import Plutarch.LedgerApi.V3 (
   PAddress (..),
   PCredential,
-  PTxInInfo (..),
-  PTxOutRef,
   PCurrencySymbol,
   PLedgerValue,
   PMintValue,
   POutputDatum (..),
   PScriptHash,
   PTokenName,
+  PTxInInfo (..),
   PTxOut (..),
+  PTxOutRef,
  )
 import Plutarch.LedgerApi.Value (padaSymbol)
 import Plutarch.Monadic qualified as P
@@ -375,7 +375,11 @@ pvalidateSingularAuthenticInputHelper inputs nftPolicyId return_ =
           valuePairs <- plet $ pto (pto (pto (pto (pfromData ptxOut'value))))
           nonAda <- plet $ ptail # valuePairs
           isSingleNonAda <-
-            plet $ pand' # (pnot # (pnull # nonAda)) # (pnull # (ptail # nonAda))
+            plet $
+              pif
+                (pnull # nonAda)
+                (pconstant False)
+                (pnull # (ptail # nonAda))
           pif
             inputFound
             -- Already found: a later single-non-Ada-policy input must not be
@@ -472,7 +476,11 @@ pvalidateDualAuthenticInputsHelper anchorInputOutref inputs nftPolicyId with_ =
               pmatch st $ \case
                 PNoneFound ->
                   pif
-                    (pand' # (pnot # (pnull # nonAda)) # (pnull # (ptail # nonAda)))
+                    ( pif
+                        (pnull # nonAda)
+                        (pconstant False)
+                        (pnull # (ptail # nonAda))
+                    )
                     ( pif
                         (pfstBuiltin # (phead # nonAda) #== nftPolicyId)
                         ( pinternalInputProcessor

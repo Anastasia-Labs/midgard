@@ -28,6 +28,7 @@ however many further signatures arrive.
 module Midgard.Validators.DaAttestation (
   daAttestationMintValidator,
   daAttestationSpendValidator,
+  daAttestationValidator,
   pvalidateBurnBinding,
 ) where
 
@@ -425,3 +426,30 @@ daAttestationSpendValidator = plam $ \daParamsPolicyId ctx -> P.do
         $ \case
           PNothing -> perror
           PJust resolved -> resolved
+
+{- | The deployable Aiken validator is one multi-purpose program, so its mint
+and spend handlers share a script hash. Keep the reference-script auth policy
+parameter on the spend branch even though that handler does not inspect it.
+-}
+daAttestationValidator ::
+  forall (s :: S).
+  Term
+    s
+    ( PAsData PCurrencySymbol
+        :--> PAsData PCurrencySymbol
+        :--> PScriptContext
+        :--> PUnit
+    )
+daAttestationValidator = plam $ \daParamsPolicyId refScriptAuthPolicyId ctx -> P.do
+  PScriptContext {pscriptContext'scriptInfo} <- pmatch ctx
+  pmatch pscriptContext'scriptInfo $ \case
+    PMintingScript _ ->
+      daAttestationMintValidator
+        # daParamsPolicyId
+        # refScriptAuthPolicyId
+        # ctx
+    PSpendingScript _ _ ->
+      daAttestationSpendValidator
+        # daParamsPolicyId
+        # ctx
+    _ -> perror

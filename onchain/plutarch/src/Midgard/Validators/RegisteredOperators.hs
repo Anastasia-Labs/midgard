@@ -29,9 +29,9 @@ import Plutarch.LedgerApi.V3 (
   PScriptInfo (..),
   PScriptPurpose (..),
   PTxInInfo (..),
+  PTxInfo (..),
   PTxOut,
   PTxOutRef,
-  PTxInfo (..),
  )
 import Plutarch.Monadic qualified as P
 import Plutarch.Prelude

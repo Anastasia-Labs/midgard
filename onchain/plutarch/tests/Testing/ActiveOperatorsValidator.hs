@@ -205,12 +205,12 @@ activeRootName = TokenName "MIDGARD_ACTIVE_OPERATORS"
 operator :: BS.ByteString
 operator = "bb"
 
-{- | @block_maturity_duration_v1@ — seven days in milliseconds.
+{- | Testnet @block_maturity_duration_v1@ — three minutes in milliseconds.
 
 The fresh hold is the validity range's upper bound plus this.
 -}
 blockMaturityDuration :: Integer
-blockMaturityDuration = 7 * 24 * 60 * 60 * 1000
+blockMaturityDuration = 3 * 60 * 1000
 
 validUpperBound :: Integer
 validUpperBound = 1_000
