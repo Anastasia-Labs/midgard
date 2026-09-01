@@ -29,13 +29,17 @@ multi-step machine (`step-0N.ak`). The categories present in the source are:
 plus a `transition-trace` proof.
 
 <Callout type="warn" title="Source files are not deployed coverage">
-  The eleven deployed catalogue categories, in immutable ID order, are
+  The 32 deployed catalogue categories, in immutable ID order, are
   `doubleSpend`, `nonExistentInput`, `nonExistentInputNoIndex`, `invalidRange`,
   `transitionTrace`, `zeroInput`, `validationTraceDispute`, `daHashPreimage`,
-  `noReferenceInput`, `referenceInputNoIdx`, and `invalidSignature`. Other
-  compiled source directories are not registered coverage, and the minimum-fee
-  proof contains a stubbed check. Treat the [fault-proof
-  audit](/docs/fault-proofs/overview), not the source-directory list, as the
+  `noReferenceInput`, `referenceInputNoIdx`, `invalidSignature`,
+  `fabricatedDeposit`, `fabricatedWithdrawal`, `nativeScriptDecoding`,
+  `missingSignature`, `missingNativeScriptTx`, `withdrawnReferenceInput`,
+  `canonicalDecodability`, `committedFieldShape`, `minFee`, `withdrawalMistag`,
+  `doubleWithdraw`, `crossBlockDuplicateEvent`, `l2TxMistag`, `withdrawnInput`,
+  `valueNotPreserved`, `inputSetUniqueness`, `mintAuthorization`, `networkId`,
+  `missingNativeScriptUtxo`, `nativeScriptInvalid`, and `minAda`. Treat this
+  catalogue order, rather than the source-directory list alone, as the deployed
   coverage statement.
 </Callout>
 

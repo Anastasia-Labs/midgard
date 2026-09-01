@@ -403,6 +403,8 @@ describe("watcher production fault-proof application V1", () => {
                           chunkedVerifyWithdraw: true,
                           pexcludesWithdraw: true,
                           fieldPreimageCertificateMint: true,
+                          txYield: true,
+                          utxoYield: true,
                         }
                       : category === "fabricatedDeposit" ||
                           category === "fabricatedWithdrawal"

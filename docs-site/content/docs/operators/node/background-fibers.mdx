@@ -1,15 +1,15 @@
 ---
 title: "Background Fibers"
-description: "The fifteen long-running fibers exported by the Midgard node, what each one drives, when conditional fibers start, and how a stalled fiber shows up in readiness and logs."
+description: "The sixteen long-running fibers exported by the Midgard node, what each one drives, when conditional fibers start, and how a stalled fiber shows up in readiness and logs."
 ---
 
 When the node runs `listen`, it starts a set of **background fibers** that drive the
-protocol forward without manual intervention. The fifteen long-running fibers
+protocol forward without manual intervention. The sixteen long-running fibers
 documented here are defined in `src/fibers/`, exported through
 `src/fibers/index.ts`, and launched together near the end of
 `src/commands/listen.ts`.
 
-Twelve run on every node. `monitor-mempool` runs only when the node is started
+Thirteen run on every node. `monitor-mempool` runs only when the node is started
 with `-m` / `--with-monitoring`. `speculative-commit-builder` and
 `user-event-barrier-refresher` run only with `SPECULATIVE_COMMIT_BUILD=true`;
 that setting is disabled by default and cannot be combined with the legacy MPF
@@ -18,23 +18,24 @@ under the same flag.
 
 ## The fibers
 
-| Fiber | Drives | One-shot equivalent |
-| --- | --- | --- |
-| `admission-backlog-gauge` | Refreshes the hybrid durable-admission backlog count used for admission-cap decisions and metrics. | None |
-| `block-commitment` | Batches mempool activity and commits a block header to the L1 state queue. | `commit-explicit-block-header` |
-| `block-confirmation` | Advances committed block headers through confirmation. | `block-committed` |
-| `da-publication-reconciler` | Seeds and retries durable per-peer DA payload deliveries, then publishes announcements after the committee threshold accepts the payload. It remains idle when no DA publication manifest is configured. | None |
-| `merge` | Merges matured, DA-attested blocks into confirmed state. | `merge-complete` |
-| `tx-queue-processor` | Drains the durable admission queue into validation and the mempool. | None |
-| `fetch-and-insert-deposit-utxos` | Reads L1 deposit UTxOs and records them locally. | None |
-| `fetch-and-insert-withdrawal-utxos` | Reads L1 withdrawal-order UTxOs and records them locally. | `fetch-withdrawals-once` |
-| `fetch-and-insert-tx-order-utxos` | Reads L1 transaction-order UTxOs and records them locally. | None |
-| `project-deposits-to-mempool-ledger` | Projects confirmed deposits into the mempool ledger once their inclusion time is due. | `project-deposits-once` |
-| `retention-sweeper` | Removes retention-expired data, subject to the DA retention guards. | None |
-| `monitor-mempool` | Emits mempool metrics. Started only with `--with-monitoring`. | None |
-| `mpf-payload-audit` | Runs a confirmed-ledger MPF root audit when its block-or-time interval is due; a divergence records the sticky commit halt. Legacy-engine audits are skipped. | `mpf-audit` |
-| `speculative-commit-builder` | With `SPECULATIVE_COMMIT_BUILD=true`, prebuilds the next block candidate while the current block confirms; its companion submitter uses the normal mutation lease after confirmation. | None |
-| `user-event-barrier-refresher` | With `SPECULATIVE_COMMIT_BUILD=true`, reconciles deposits, withdrawals, and transaction orders into monotone barrier watermarks used by speculative builds. | None |
+| Fiber                                | Drives                                                                                                                                                                                                   | One-shot equivalent            |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| `admission-backlog-gauge`            | Refreshes the hybrid durable-admission backlog count used for admission-cap decisions and metrics.                                                                                                       | None                           |
+| `attestation-timeout-correction`     | Observes unattested state-queue heads, submits timeout correction when due, and reconciles finalized or retracted correction transitions.                                                                | None                           |
+| `block-commitment`                   | Batches mempool activity and commits a block header to the L1 state queue.                                                                                                                               | `commit-explicit-block-header` |
+| `block-confirmation`                 | Advances committed block headers through confirmation.                                                                                                                                                   | `block-committed`              |
+| `da-publication-reconciler`          | Seeds and retries durable per-peer DA payload deliveries, then publishes announcements after the committee threshold accepts the payload. It remains idle when no DA publication manifest is configured. | None                           |
+| `merge`                              | Merges matured, DA-attested blocks into confirmed state.                                                                                                                                                 | `merge-complete`               |
+| `tx-queue-processor`                 | Drains the durable admission queue into validation and the mempool.                                                                                                                                      | None                           |
+| `fetch-and-insert-deposit-utxos`     | Reads L1 deposit UTxOs and records them locally.                                                                                                                                                         | None                           |
+| `fetch-and-insert-withdrawal-utxos`  | Reads L1 withdrawal-order UTxOs and records them locally.                                                                                                                                                | `fetch-withdrawals-once`       |
+| `fetch-and-insert-tx-order-utxos`    | Reads L1 transaction-order UTxOs and records them locally.                                                                                                                                               | None                           |
+| `project-deposits-to-mempool-ledger` | Projects confirmed deposits into the mempool ledger once their inclusion time is due.                                                                                                                    | `project-deposits-once`        |
+| `retention-sweeper`                  | Removes retention-expired data, subject to the DA retention guards.                                                                                                                                      | None                           |
+| `monitor-mempool`                    | Emits mempool metrics. Started only with `--with-monitoring`.                                                                                                                                            | None                           |
+| `mpf-payload-audit`                  | Runs a confirmed-ledger MPF root audit when its block-or-time interval is due; a divergence records the sticky commit halt. Legacy-engine audits are skipped.                                            | `mpf-audit`                    |
+| `speculative-commit-builder`         | With `SPECULATIVE_COMMIT_BUILD=true`, prebuilds the next block candidate while the current block confirms; its companion submitter uses the normal mutation lease after confirmation.                    | None                           |
+| `user-event-barrier-refresher`       | With `SPECULATIVE_COMMIT_BUILD=true`, reconciles deposits, withdrawals, and transaction orders into monotone barrier watermarks used by speculative builds.                                              | None                           |
 
 Each fiber runs on its own schedule, configured through the node's environment (for
 example `WAIT_BETWEEN_MERGE_TXS` for `merge`). By default,
@@ -46,16 +47,17 @@ audit time interval and the block-commitment interval, then audits only when the
 configured block-or-time threshold is due.
 
 <Callout type="warn" title="attest-state-queue-once is not a fiber">
-DA attestation is not driven by a background fiber. `attest-state-queue-once` is an
-operator-local shortcut that signs, submits, and applies an attestation with a
-single-key committee. It is not the acceptance path: a real deployment attests
-through the [DA committee node](/docs/watchers/da-committee-node). See the
-[end-to-end testing flow](/docs/operators/node/e2e-testing-flow).
+  DA attestation is not driven by a background fiber. `attest-state-queue-once`
+  is an operator-local shortcut that signs, submits, and applies an attestation
+  with a single-key committee. It is not the acceptance path: a real deployment
+  attests through the [DA committee node](/docs/watchers/da-committee-node). See
+  the [end-to-end testing flow](/docs/operators/node/e2e-testing-flow).
 </Callout>
 
 ## How the fibers relate
 
-<Mermaid chart={`flowchart LR
+<Mermaid
+  chart={`flowchart LR
   Q["durable admission queue"] --> TQ["tx-queue-processor"]
   TQ --> MP["mempool"]
   MP --> C["block-commitment"]
@@ -67,7 +69,8 @@ through the [DA committee node](/docs/watchers/da-committee-node). See the
   PD --> MP
   W["L1 withdrawal orders"] --> FW["fetch-and-insert-withdrawal-utxos"]
   T["L1 tx orders"] --> FT["fetch-and-insert-tx-order-utxos"]
-  RS["retention-sweeper"] --> PG[("PostgreSQL")]`} />
+  RS["retention-sweeper"] --> PG[("PostgreSQL")]`}
+/>
 
 ## When a fiber stalls
 

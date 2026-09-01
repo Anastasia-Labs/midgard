@@ -492,6 +492,7 @@ const stateQueueMergeRedeemer = (
   return Data.to(
     {
       MergeToConfirmedStateV1: {
+        yield_to_ref_input_index: 0n,
         header_node_key: settlementAsset,
         confirmed_state_input_outref: {
           transactionId: transactionId!,

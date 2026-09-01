@@ -58,7 +58,13 @@ jobs:
           cache-dependency-path: demo/pnpm-lock.yaml
       - name: Install workspace
         run: pnpm --dir demo install --frozen-lockfile
-      - name: Watcher static and focused gates
+      - name: Build watcher workspace dependencies
+        run: >-
+          pnpm --dir demo/midgard-core run build &&
+          pnpm --dir demo/midgard-sdk run build &&
+          pnpm --dir demo/midgard-validation run build &&
+          pnpm --dir demo/midgard-fault-proofs run build
+      - name: Watcher static checks and full test suite
         run: |
           pnpm --dir demo --filter midgard-watcher typecheck
           pnpm --dir demo --filter midgard-watcher lint

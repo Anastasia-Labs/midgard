@@ -8,10 +8,8 @@
  * `assertSecurityGradeEvidenceV1` rejects it and no canonical builder can
  * consume it by accident.
  *
- * The rejected surfaces are the ones named in
- * `docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json`
- * (`explicitlyRejectedDependencies`), in particular
- * `--midgard-node-url evidence preparation`.
+ * Operator-private node and file surfaces, including `--midgard-node-url`
+ * evidence preparation, remain diagnostic-only.
  */
 import {
   admitEvidenceProvenanceV1,

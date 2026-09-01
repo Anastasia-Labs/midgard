@@ -1081,6 +1081,8 @@ const referenceContracts = (
         chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
         pexcludesWithdraw: "pexcludesWithdraw",
         fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+        txYield: "fraudProofMinAdaStep02TxWithdraw",
+        utxoYield: "fraudProofMinAdaStep02UtxoWithdraw",
       });
   }
 };
@@ -1886,6 +1888,10 @@ function taggedConfig(
               chunkedVerifyWithdraw: reference("chunkedVerifyWithdraw"),
               pexcludesWithdraw: reference("pexcludesWithdraw"),
             }),
+            yields: Object.freeze({
+              tx: reference("txYield"),
+              utxo: reference("utxoYield"),
+            }),
             fieldPreimageCertificateMint: reference(
               "fieldPreimageCertificateMint",
             ),
@@ -1964,11 +1970,17 @@ const taggedReferenceOutRefs = (
         ];
       case "nativeScriptInvalid":
       case "missingNativeScriptUtxo":
+        return [
+          ...tagged.config.referenceScripts.steps,
+          ...Object.values(tagged.config.referenceScripts.witnesses),
+          tagged.config.referenceScripts.fieldPreimageCertificateMint,
+        ];
       case "minAda":
         return [
           ...tagged.config.referenceScripts.steps,
           ...Object.values(tagged.config.referenceScripts.witnesses),
           tagged.config.referenceScripts.fieldPreimageCertificateMint,
+          ...Object.values(tagged.config.referenceScripts.yields),
         ];
       case "invalidRange":
       case "zeroInput":

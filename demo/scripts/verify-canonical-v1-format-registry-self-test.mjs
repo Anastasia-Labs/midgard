@@ -210,12 +210,9 @@ mustReject(
 );
 
 // #532 (residual of #519). The mutation above is the only one that opts into
-// `--allow-incomplete`, and CI's named format-registry step
-// (.github/workflows/evidence-integrity-ci.yml) passes that same flag. Nothing
-// asserted that the strict mode CI does NOT run would reject a demoted row, so
-// F02's published "132 PASS and 0 UNVERIFIED" rested on a gate invocation that
-// tolerates UNVERIFIED. The same seeded demotion is now replayed WITHOUT the
-// flag, which pins strict rejection as an executed property of this suite.
+// `--allow-incomplete`. The same seeded demotion is replayed WITHOUT the flag
+// here, which keeps strict rejection available to anyone running this retired
+// registry's standalone self-test.
 mustReject(
   "N05 is demoted to UNVERIFIED and strict mode must reject it",
   /- N05\.auditStatus must be PASS/u,

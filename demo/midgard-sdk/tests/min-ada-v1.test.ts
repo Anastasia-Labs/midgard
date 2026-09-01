@@ -67,6 +67,7 @@ describe("Q27 min-Ada wire codec", () => {
         {
           input_index: 0n,
           output_index: 0n,
+          yield_to_ref_input_index: 0n,
           outputs_opening: null,
           post_membership: {
             PublishedChunkMembership: [

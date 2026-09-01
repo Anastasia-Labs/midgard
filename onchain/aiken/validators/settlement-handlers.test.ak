@@ -1340,8 +1340,8 @@ test settlement_handler_mint_spawn_rejects_non_merge_state_queue_redeemer() fail
 
 test settlement_handler_mint_spawn_rejects_merge_redeemer_of_the_wrong_arity() fail {
   let tx = honest_spawn_tx()
-  // Constructor tag 6 (`MergeToConfirmedStateV1`) with 17 fields instead of 18.
-  let short_merge = builtin.constr_data(6, list.repeat(builtin.i_data(0), 17))
+  // Constructor tag 6 (`MergeToConfirmedStateV1`) with 18 fields instead of 19.
+  let short_merge = builtin.constr_data(6, list.repeat(builtin.i_data(0), 18))
   run_mint(
     spawn_redeemer(),
     Transaction {

@@ -351,6 +351,7 @@ const appendFixture = ({
   const redeemerCbor = Data.to(
     {
       CommitBlockHeader: {
+        yield_to_ref_input_index: 0n,
         new_block_output_index: 1n,
         continued_latest_block_output_index: 0n,
         operator: nodeHeader.operatorVkey,

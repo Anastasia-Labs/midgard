@@ -12,10 +12,8 @@
  * `@al-ft/midgard-fault-proofs` (`src/evidence/**`) and in the watcher, and
  * both must route every security input through the admission functions here.
  *
- * The admitted/prohibited class lists are the exact `trustPolicy` lists of
- * `docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json`, whose
- * `unknownBehavior` is `fail_closed`. Anything not enumerated is rejected; an
- * unknown class is never treated as admitted.
+ * The admitted/prohibited class lists below are the authority. Anything not
+ * enumerated is rejected; an unknown class is never treated as admitted.
  */
 import { Effect } from "effect";
 

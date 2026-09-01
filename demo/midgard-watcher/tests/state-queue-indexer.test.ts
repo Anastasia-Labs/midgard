@@ -1474,6 +1474,7 @@ const recoveryAppendBundle = (
         bytesHex: Data.to(
           {
             CommitBlockHeader: {
+              yield_to_ref_input_index: 0n,
               new_block_output_index: 1n,
               continued_latest_block_output_index: 0n,
               operator,
@@ -2878,6 +2879,7 @@ describe("authenticated state-queue indexer", () => {
         bytesHex: Data.to(
           {
             CommitBlockHeader: {
+              yield_to_ref_input_index: 0n,
               new_block_output_index: 1n,
               continued_latest_block_output_index: 0n,
               operator,
@@ -3154,6 +3156,7 @@ describe("authenticated state-queue indexer", () => {
         bytesHex: Data.to(
           {
             MergeToConfirmedStateV1: {
+              yield_to_ref_input_index: 0n,
               header_node_key: headerBase.headerHash,
               confirmed_state_input_outref: {
                 transactionId: block.txHash,
@@ -4205,6 +4208,7 @@ describe("authenticated state-queue indexer", () => {
           bytesHex: Data.to(
             {
               RemoveFraudulentBlockHeader: {
+                yield_to_ref_input_index: 0n,
                 fraudulent_operator: second.operatorVkey,
                 fraudulent_blocks_header_hash: first.headerHash,
                 slashing_approach: {
@@ -4303,6 +4307,7 @@ describe("authenticated state-queue indexer", () => {
           bytesHex: Data.to(
             {
               RemoveUnattestedBlockAfterTimeout: {
+                yield_to_ref_input_index: 0n,
                 timed_out_header_hash: first.headerHash,
                 removal_approach: {
                   PruneTimedOutBlockDescendant: {

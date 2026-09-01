@@ -371,30 +371,30 @@ validator mint(hub_oracle: ScriptHash) {
         let Pair(state_queue_redeemer_constructor, state_queue_redeemer_fields)
           = builtin.un_constr_data(state_queue_redeemer_data)
         expect state_queue_redeemer_constructor == 6
-        expect list.length(state_queue_redeemer_fields) == 18
+        expect list.length(state_queue_redeemer_fields) == 19
         expect Some(header_node_key_data) = list.at(
           state_queue_redeemer_fields,
-          0,
+          1,
         )
         expect Some(settlement_redeemer_index_option_data) = list.at(
           state_queue_redeemer_fields,
-          3,
+          4,
         )
         expect Some(merged_block_withdrawals_root_data) = list.at(
           state_queue_redeemer_fields,
-          4,
+          5,
         )
         expect Some(merged_block_forced_transactions_root_data) = list.at(
           state_queue_redeemer_fields,
-          5,
+          6,
         )
         expect Some(merged_block_transactions_root_data) = list.at(
           state_queue_redeemer_fields,
-          6,
+          7,
         )
         expect Some(merged_block_deposits_root_data) = list.at(
           state_queue_redeemer_fields,
-          7,
+          8,
         )
         let header_node_key = builtin.un_b_data(header_node_key_data)
         let merged_block_withdrawals_root = builtin.un_b_data(

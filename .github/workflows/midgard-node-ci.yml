@@ -11,10 +11,7 @@ on:
       - "demo/midgard-core/**"
       - "demo/da-committee-node/**"
       - "demo/midgard-watcher/**"
-      - "demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs"
-      - "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs"
       - "demo/midgard-validation/**"
-      - "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json"
       - "onchain/aiken/**"
       - "demo/pnpm-lock.yaml"
       - "demo/pnpm-workspace.yaml"
@@ -22,7 +19,6 @@ on:
       - "demo/.nvmrc"
       - "demo/patches/**"
       - "scripts/ci/**"
-      - ".github/workflows/evidence-integrity-ci.yml"
       - ".github/workflows/midgard-node-ci.yml"
   pull_request:
     paths:
@@ -33,10 +29,7 @@ on:
       - "demo/midgard-core/**"
       - "demo/da-committee-node/**"
       - "demo/midgard-watcher/**"
-      - "demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs"
-      - "demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs"
       - "demo/midgard-validation/**"
-      - "docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json"
       - "onchain/aiken/**"
       - "demo/pnpm-lock.yaml"
       - "demo/pnpm-workspace.yaml"
@@ -44,7 +37,6 @@ on:
       - "demo/.nvmrc"
       - "demo/patches/**"
       - "scripts/ci/**"
-      - ".github/workflows/evidence-integrity-ci.yml"
       - ".github/workflows/midgard-node-ci.yml"
 
 # THE COMPILER PIN. Issue #579, rider 1, and the owner's 2026-08-13 ruling A:
@@ -128,19 +120,11 @@ jobs:
       TESTNET_GENESIS_WALLET_SEED_PHRASE_C: "cactus chalk grit reopen true slight whale sand law sibling silver fringe cement twist process bracket history leopard churn federal coral three hockey fossil"
     steps:
       - uses: actions/checkout@v4
-        with:
-          # #537: the watcher dependency-map verifier now resolves the map's
-          # §0 provenance and its W13-W17/W23 review records against git —
-          # ancestry, the published merge's exact parent list, and byte-exact
-          # `git show <rev>:<path>` digests. All of that needs real history;
-          # actions/checkout defaults to a depth-1 shallow clone, in which
-          # every such check fails regardless of correctness.
-          fetch-depth: 0
       # No `setup-aiken` step: the fork is the compiler here for the reason
       # given at the top of this file, and it is installed exactly the way
-      # `aiken-ci` and `evidence-integrity-ci` install it — same cache path,
-      # same key shape, same rev — so the blueprint this job builds cannot come
-      # from a different compiler than the one those workflows judge.
+      # `aiken-ci` installs it with the same cache path, key shape, and rev, so
+      # the blueprint this job builds cannot come from a different compiler
+      # than the one that workflow judges.
       - name: Cache the pinned Aiken fork
         id: aiken-fork
         uses: actions/cache@v4
@@ -276,10 +260,8 @@ jobs:
         run: pnpm --dir demo/midgard-fault-proofs run build && pnpm --dir demo/midgard-fault-proofs run typecheck && pnpm --dir demo/midgard-fault-proofs test
       - name: Verify DA committee transport and admission
         run: pnpm --dir demo/da-committee-node run guard:no-http-da-transport && pnpm --dir demo/da-committee-node run typecheck && pnpm --dir demo/da-committee-node test
-      - name: Build, typecheck, lint, format-check, and test Midgard watcher scaffold
-        run: pnpm --dir demo/midgard-watcher run build && pnpm --dir demo/midgard-watcher run typecheck && pnpm --dir demo/midgard-watcher run lint && pnpm --dir demo/midgard-watcher run format-check && pnpm --dir demo run watcher:focused-tests:verify
-      - name: Verify canonical watcher dependency map
-        run: pnpm --dir demo run watcher:dependency-map:verify
+      - name: Build, typecheck, lint, format-check, and test Midgard watcher
+        run: pnpm --dir demo/midgard-watcher run build && pnpm --dir demo/midgard-watcher run typecheck && pnpm --dir demo/midgard-watcher run lint && pnpm --dir demo/midgard-watcher run format-check && pnpm --dir demo/midgard-watcher test
       - name: Typecheck lucid-midgard
         run: pnpm --dir demo/lucid-midgard run typecheck
       - name: Test lucid-midgard

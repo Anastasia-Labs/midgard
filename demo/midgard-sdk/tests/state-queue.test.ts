@@ -23,6 +23,7 @@ import {
   Data,
   type Data as LucidData,
   Emulator,
+  fromText,
   generateEmulatorAccount,
   getAddressDetails,
   Lucid,
@@ -70,6 +71,7 @@ import {
   incompleteRemoveLastFraudulentBlockHeaderTxProgram,
   type LinkedListNodeView,
   makeGenesisConfirmedStateV1,
+  REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   requireInputIndex,
   requireMintRedeemerIndex,
   requireOperatorWalletInputs,
@@ -79,6 +81,7 @@ import {
   RETIRED_OPERATORS_ROOT_ASSET_NAME,
   SCHEDULER_ASSET_NAME,
   SchedulerDatum,
+  scriptRewardAddress,
   type SpendingValidator as SdkSpendingValidator,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
   STATE_QUEUE_ROOT_ASSET_NAME,
@@ -277,6 +280,8 @@ type StateQueueTestContracts = {
   readonly computationThread: AuthenticatedValidator;
   readonly daAttestation: AuthenticatedValidator;
   readonly stateQueue: AuthenticatedValidator;
+  readonly commitYield: SdkSpendingValidator;
+  readonly fraudRemovalYield: SdkSpendingValidator;
   readonly scheduler: AuthenticatedValidator;
   readonly activeOperators: AuthenticatedValidator;
   readonly retiredOperators: AuthenticatedValidator;
@@ -422,6 +427,7 @@ const buildTestContracts = async (
       base.settlement.policyId,
       base.daAttestation.policyId,
       availabilityChallenge.policyId,
+      base.scheduler.policyId,
     ],
   );
   const stateQueueMinting = makeMintingValidator(stateQueueMintingScriptCBOR);
@@ -434,10 +440,41 @@ const buildTestContracts = async (
       availabilityChallenge.policyId,
     ],
   );
+  const commitYield = makeSpendingValidator(
+    applyAllBlueprintParamsToScript(
+      realBlueprint,
+      "state_queue_yields.commit.withdraw",
+      [
+        stateQueueMinting.policyId,
+        base.hubOracle.policyId,
+        correctionLock.spendingScriptHash,
+        base.activeOperators.policyId,
+        activeOperatorsAddressData,
+        base.scheduler.policyId,
+        base.daAttestation.policyId,
+      ],
+    ),
+  );
+  const fraudRemovalYield = makeSpendingValidator(
+    applyAllBlueprintParamsToScript(
+      realBlueprint,
+      "state_queue_yields.remove_fraudulent.withdraw",
+      [
+        stateQueueMinting.policyId,
+        base.hubOracle.policyId,
+        correctionLock.spendingScriptHash,
+        base.activeOperators.policyId,
+        base.retiredOperators.policyId,
+        base.fraudProof.policyId,
+      ],
+    ),
+  );
 
   return {
     ...base,
     correctionLock,
+    commitYield,
+    fraudRemovalYield,
     computationThread,
     stateQueue: {
       ...stateQueueMinting,
@@ -640,6 +677,8 @@ const submitSetupTx = async ({
   readonly activeOperatorInput: UTxO;
   readonly fraudProof: UTxO;
   readonly correctionLock: UTxO;
+  readonly commitYield: UTxO;
+  readonly fraudRemovalYield: UTxO;
 }> => {
   const hubOracleAssets = {
     [toUnit(contracts.hubOracle.policyId, HUB_ORACLE_ASSET_NAME)]: 1n,
@@ -649,6 +688,24 @@ const submitSetupTx = async ({
   };
   const schedulerAssets = {
     [toUnit(contracts.scheduler.policyId, SCHEDULER_ASSET_NAME)]: 1n,
+  };
+  const commitYieldAssets = {
+    [toUnit(
+      contracts.scheduler.policyId,
+      fromText(
+        REFERENCE_SCRIPT_AUTH_TOKEN_NAMES["state-queue commit withdrawal"],
+      ),
+    )]: 1n,
+  };
+  const fraudRemovalYieldAssets = {
+    [toUnit(
+      contracts.scheduler.policyId,
+      fromText(
+        REFERENCE_SCRIPT_AUTH_TOKEN_NAMES[
+          "state-queue fraud-removal withdrawal"
+        ],
+      ),
+    )]: 1n,
   };
   const stateQueueAssets = {
     [toUnit(contracts.stateQueue.policyId, STATE_QUEUE_ROOT_ASSET_NAME)]: 1n,
@@ -725,6 +782,7 @@ const submitSetupTx = async ({
     HubOracleDatum,
   );
 
+  const walletAddress = await lucid.wallet().address();
   const unsigned = await lucid
     .newTx()
     .validFrom(Number(initValidFrom))
@@ -748,7 +806,10 @@ const submitSetupTx = async ({
       // continuation output's lovelace.
       { ...correctionLockAssets, lovelace: 5_000_000n },
     )
-    .mintAssets(schedulerAssets, Data.void())
+    .mintAssets(
+      { ...schedulerAssets, ...commitYieldAssets, ...fraudRemovalYieldAssets },
+      Data.void(),
+    )
     .pay.ToContract(
       contracts.scheduler.spendingScriptAddress,
       {
@@ -765,9 +826,27 @@ const submitSetupTx = async ({
       },
       schedulerAssets,
     )
+    .pay.ToAddressWithData(
+      walletAddress,
+      undefined,
+      { ...commitYieldAssets, lovelace: 20_000_000n },
+      contracts.commitYield.spendingScript,
+    )
+    .pay.ToAddressWithData(
+      walletAddress,
+      undefined,
+      { ...fraudRemovalYieldAssets, lovelace: 20_000_000n },
+      contracts.fraudRemovalYield.spendingScript,
+    )
+    .register.Stake(
+      scriptRewardAddress(network, contracts.commitYield.spendingScript),
+    )
+    .register.Stake(
+      scriptRewardAddress(network, contracts.fraudRemovalYield.spendingScript),
+    )
     .mintAssets(
       stateQueueAssets,
-      Data.to({ InitV1: { output_index: 3n } }, StateQueueRedeemer),
+      Data.to({ InitV1: { output_index: 5n } }, StateQueueRedeemer),
     )
     .pay.ToContract(
       contracts.stateQueue.spendingScriptAddress,
@@ -845,6 +924,14 @@ const submitSetupTx = async ({
     contracts.fraudProof.spendingScriptAddress,
     Object.keys(fraudProofAssets)[0]!,
   );
+  const [commitYield] = await lucid.utxosAtWithUnit(
+    walletAddress,
+    Object.keys(commitYieldAssets)[0]!,
+  );
+  const [fraudRemovalYield] = await lucid.utxosAtWithUnit(
+    walletAddress,
+    Object.keys(fraudRemovalYieldAssets)[0]!,
+  );
   const activeOperatorInput = (
     await lucid.utxosAt(contracts.activeOperators.spendingScriptAddress)
   ).find(isOnlyLovelace);
@@ -857,7 +944,9 @@ const submitSetupTx = async ({
     retiredOperatorsRoot === undefined ||
     activeOperatorInput === undefined ||
     fraudProof === undefined ||
-    correctionLock === undefined
+    correctionLock === undefined ||
+    commitYield === undefined ||
+    fraudRemovalYield === undefined
   ) {
     throw new Error("Setup transaction did not produce all expected UTxOs");
   }
@@ -871,6 +960,8 @@ const submitSetupTx = async ({
     activeOperatorInput,
     fraudProof,
     correctionLock,
+    commitYield,
+    fraudRemovalYield,
   };
 };
 
@@ -930,6 +1021,7 @@ const submitCommitHeaderTx = async ({
   scheduler,
   hubOracle,
   correctionLock,
+  commitYield,
   activeOperatorInput,
 }: {
   readonly emulator: Emulator;
@@ -941,6 +1033,7 @@ const submitCommitHeaderTx = async ({
   readonly scheduler: UTxO;
   readonly hubOracle: UTxO;
   readonly correctionLock: UTxO;
+  readonly commitYield: UTxO;
   readonly activeOperatorInput: UTxO;
 }): Promise<{
   readonly block: StateQueueUTxO;
@@ -1004,8 +1097,8 @@ const submitCommitHeaderTx = async ({
         stateQueueSpendingScript: contracts.stateQueue.spendingScript,
         stateQueueMintingScript: contracts.stateQueue.mintingScript,
         yieldWitness: {
-          referenceInput: scheduler,
-          script: contracts.stateQueue.spendingScript,
+          referenceInput: commitYield,
+          script: contracts.commitYield.spendingScript,
         },
       },
     ),
@@ -1269,6 +1362,7 @@ describe("state-queue emulator builders", () => {
       scheduler: setup.scheduler,
       hubOracle: setup.hubOracle,
       correctionLock: setup.correctionLock,
+      commitYield: setup.commitYield,
       activeOperatorInput: setup.activeOperatorInput,
     });
 
@@ -1330,8 +1424,8 @@ describe("state-queue emulator builders", () => {
         stateQueueSpendingScript: contracts.stateQueue.spendingScript,
         stateQueueMintingScript: contracts.stateQueue.mintingScript,
         yieldWitness: {
-          referenceInput: setup.fraudProof,
-          script: contracts.stateQueue.spendingScript,
+          referenceInput: setup.fraudRemovalYield,
+          script: contracts.fraudRemovalYield.spendingScript,
         },
       },
     );
@@ -1431,6 +1525,7 @@ describe("state-queue emulator builders", () => {
       scheduler: setup.scheduler,
       hubOracle: setup.hubOracle,
       correctionLock: setup.correctionLock,
+      commitYield: setup.commitYield,
       activeOperatorInput: setup.activeOperatorInput,
     });
     const secondHeader: HeaderType = {
@@ -1453,6 +1548,7 @@ describe("state-queue emulator builders", () => {
       scheduler: setup.scheduler,
       hubOracle: setup.hubOracle,
       correctionLock: setup.correctionLock,
+      commitYield: setup.commitYield,
       activeOperatorInput: firstCommit.activeOperatorInput,
     });
 
@@ -1509,8 +1605,8 @@ describe("state-queue emulator builders", () => {
         stateQueueSpendingScript: contracts.stateQueue.spendingScript,
         stateQueueMintingScript: contracts.stateQueue.mintingScript,
         yieldWitness: {
-          referenceInput: setup.fraudProof,
-          script: contracts.stateQueue.spendingScript,
+          referenceInput: setup.fraudRemovalYield,
+          script: contracts.fraudRemovalYield.spendingScript,
         },
       },
     );
