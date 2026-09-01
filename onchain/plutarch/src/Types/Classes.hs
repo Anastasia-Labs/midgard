@@ -4,11 +4,12 @@
 
 module Types.Classes where
 
-import Plutarch.Internal.Term (PType)
+import Data.Kind (Type)
+import Plutarch.Internal.Term (S)
 import Plutarch.Prelude
 
-class ScottConvertible (a :: PType) where
-  type ScottOf a = (b :: PType) | b -> a
+class ScottConvertible (a :: S -> Type) where
+  type ScottOf a = (b :: S -> Type) | b -> a
   -- | Converts a Plutarch value into its Scott-encoded representation.
   toScott :: Term s a -> Term s (ScottOf a)
   -- | Reconstructs a Plutarch value from its Scott-encoded representation.
