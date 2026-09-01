@@ -1,5 +1,6 @@
 export * from "./active-operators.js";
 export * from "./availability-challenge-v1.js";
+export * from "./cardano-addresses.js";
 export * from "./cbor.js";
 export * from "./common.js";
 export * from "./correction-lock.js";

@@ -43,6 +43,7 @@ import {
   SchedulerDatum,
   SchedulerMintRedeemer,
   SchedulerSpendRedeemer,
+  scriptRewardAddress,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
   STATE_QUEUE_ROOT_ASSET_NAME,
   StateQueueRedeemer,
@@ -72,11 +73,20 @@ import {
   SCHEDULER_APPOINTMENT_OUTPUT_INDEX,
   SETUP_OUTPUT_INDEX,
 } from "./header-fixtures.js";
+import {
+  type MinAdaYieldReferenceScriptsV1,
+  publishMinAdaYieldReferenceScriptsV1,
+  publishStateQueueYieldReferenceScriptV1,
+} from "./reference-scripts.js";
 import { type OperatorLifecycleReferenceScriptsV1 } from "./reference-scripts.js";
 
 type SetupLucid = Awaited<ReturnType<typeof Lucid>>;
 type SetupContracts = MidgardValidators & {
   readonly operatorLifecycleReferenceScripts?: OperatorLifecycleReferenceScriptsV1;
+  readonly minAdaYieldReferenceScripts?: MinAdaYieldReferenceScriptsV1;
+  readonly minAda?: {
+    readonly yields: MidgardValidators["fraudProofContracts"]["minAda"]["yields"];
+  };
 };
 
 /** Every asset unit the four setup transactions mint or track. */
@@ -143,6 +153,32 @@ type SetupUnits = ReturnType<typeof setupUnits>;
  */
 const CORRECTION_LOCK_LOVELACE_V1 = 2_000_000n;
 
+const registerStateQueueYieldRewardAccountsV1 = async (
+  lucid: SetupLucid,
+  contracts: MidgardValidators,
+): Promise<void> => {
+  const missing: string[] = [];
+  for (const { withdrawalScript } of Object.values(
+    contracts.stateQueue.yields,
+  )) {
+    const rewardAddress = scriptRewardAddress(network, withdrawalScript);
+    if (!(await lucid.rewardAccountAt(rewardAddress)).registered) {
+      missing.push(rewardAddress);
+    }
+  }
+  if (missing.length === 0) return;
+  let registration = lucid.newTx();
+  for (const rewardAddress of missing) {
+    registration = registration.register.Stake(rewardAddress);
+  }
+  const signed = await (
+    await registration.complete({ localUPLCEval: true })
+  ).sign
+    .withWallet()
+    .complete();
+  await lucid.awaitTx(await signed.submit());
+};
+
 /**
  * Transaction 1: mint the hub oracle, scheduler, state-queue root, operator
  * roots, and fraud-proof catalogue in one authored output order.
@@ -156,12 +192,19 @@ const submitInitialMintTx = async ({
   units,
 }: {
   readonly lucid: SetupLucid;
-  readonly contracts: MidgardValidators;
+  readonly contracts: SetupContracts;
   readonly nonceUtxo: UTxO;
   readonly catalogue: FraudProofCatalogueDeploymentInfo;
   readonly header: HeaderV1;
   readonly units: SetupUnits;
 }): Promise<void> => {
+  const initialReferences =
+    contracts.operatorLifecycleReferenceScripts?.initial;
+  if (initialReferences === undefined || initialReferences.length !== 7) {
+    throw new Error(
+      "initial setup reference scripts must be published before genesis minting",
+    );
+  }
   const hubOracleDatum = await Effect.runPromise(makeHubOracleDatum(contracts));
   const confirmedState = {
     headerHash: GENESIS_HEADER_HASH,
@@ -171,7 +214,7 @@ const submitInitialMintTx = async ({
     endTime: header.startTime,
     protocolVersion: GENESIS_PROTOCOL_VERSION,
   };
-  const builder = lucid
+  let builder = lucid
     .newTx()
     .validFrom(Number(header.startTime - 120_000n))
     .validTo(Number(header.startTime + 1n))
@@ -185,6 +228,7 @@ const submitInitialMintTx = async ({
       },
       Data.void(),
     )
+    .readFrom(initialReferences.map(({ utxo }) => utxo))
     .pay.ToAddressWithData(
       credentialToAddress(
         network,
@@ -307,14 +351,14 @@ const submitInitialMintTx = async ({
         value: Data.to(catalogue.root, FraudProofCatalogueDatum),
       },
       { [units.fraudProofCatalogue]: 1n },
-    )
-    .attach.MintingPolicy(contracts.hubOracle.mintingScript)
-    .attach.MintingPolicy(contracts.fraudProofCatalogue.mintingScript)
-    .attach.MintingPolicy(contracts.scheduler.mintingScript)
-    .attach.MintingPolicy(contracts.stateQueue.mintingScript)
-    .attach.MintingPolicy(contracts.activeOperators.mintingScript)
-    .attach.MintingPolicy(contracts.retiredOperators.mintingScript)
-    .attach.MintingPolicy(contracts.registeredOperators.mintingScript);
+    );
+  if (contracts.minAda !== undefined) {
+    for (const { withdrawalScript } of Object.values(contracts.minAda.yields)) {
+      builder = builder.register.Stake(
+        scriptRewardAddress(network, withdrawalScript),
+      );
+    }
+  }
   const mintPolicyOrder = [
     ["hub-oracle", contracts.hubOracle.policyId],
     ["fraud-proof-catalogue", contracts.fraudProofCatalogue.policyId],
@@ -735,6 +779,12 @@ const submitHeaderCommitTx = async ({
   readonly fraudulentBlockUtxo: UTxO;
   readonly continuedActiveOperatorNode: UTxO;
 }> => {
+  await registerStateQueueYieldRewardAccountsV1(lucid, contracts);
+  const commitYieldPublication = await publishStateQueueYieldReferenceScriptV1({
+    lucid,
+    contracts,
+    arm: "commit",
+  });
   const stateQueueRoot = await Effect.runPromise(
     utxoToStateQueueUTxO(stateQueueRootUtxo, contracts.stateQueue.policyId),
   );
@@ -817,6 +867,10 @@ const submitHeaderCommitTx = async ({
         },
         stateQueueSpendingScript: contracts.stateQueue.spendingScript,
         stateQueueMintingScript: contracts.stateQueue.mintingScript,
+        yieldWitness: {
+          referenceInput: commitYieldPublication.utxo,
+          script: contracts.stateQueue.yields.commit.withdrawalScript,
+        },
       },
     ),
   );
@@ -892,6 +946,7 @@ export const submitSetupTx = async ({
   readonly activeOperatorNode: UTxO;
   readonly activeOperatorNodeUnit: string;
   readonly registeredOperatorsRoot: UTxO;
+  readonly minAdaYieldReferenceScripts?: MinAdaYieldReferenceScriptsV1;
 }> => {
   const headerHash = await Effect.runPromise(hashBlockHeaderV1(header));
   const units = setupUnits(contracts, header, headerHash);
@@ -904,6 +959,11 @@ export const submitSetupTx = async ({
     header,
     units,
   });
+  const minAdaYieldReferenceScripts =
+    contracts.minAda === undefined
+      ? undefined
+      : (contracts.minAdaYieldReferenceScripts ??
+        (await publishMinAdaYieldReferenceScriptsV1({ lucid, contracts })));
   await submitOperatorActivationTx({ lucid, contracts, header, units });
 
   const hubOracleUtxo = await requireUtxoWithUnit(
@@ -995,5 +1055,8 @@ export const submitSetupTx = async ({
     activeOperatorNode: continuedActiveOperatorNode,
     activeOperatorNodeUnit: units.activeOperatorNode,
     registeredOperatorsRoot,
+    ...(minAdaYieldReferenceScripts === undefined
+      ? {}
+      : { minAdaYieldReferenceScripts }),
   };
 };

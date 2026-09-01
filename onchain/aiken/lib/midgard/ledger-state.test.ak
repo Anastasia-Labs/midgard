@@ -88,6 +88,7 @@ test l03_state_queue_node_v1_aiken_topology_and_datum_vector_is_exact() {
 test l04_init_v1_and_merge_to_confirmed_state_v1_aiken_vectors_are_exact() {
   let init: state_queue.MintRedeemer = state_queue.InitV1 { output_index: 2 }
   let merge: state_queue.MintRedeemer = state_queue.MergeToConfirmedStateV1 {
+    yield_to_ref_input_index: 0,
     header_node_key: #"11111111111111111111111111111111111111111111111111111111",
     confirmed_state_input_outref: OutputReference {
       transaction_id: #"4444444444444444444444444444444444444444444444444444444444444444",

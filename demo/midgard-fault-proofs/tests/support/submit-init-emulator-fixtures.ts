@@ -132,6 +132,7 @@ import {
   buildNonMembershipProof,
   type TrieEntry,
 } from "../../src/ne-proofs.js";
+import { findStateQueueYieldReferenceScriptV1 } from "./emulator/reference-scripts.js";
 import {
   nativeTxFromCoreCompact,
   type NeInputPreimageEntry,
@@ -575,8 +576,15 @@ export const membershipProofShape = async ({
 export const buildTransactionInclusionFixture = async ({
   adversarialBranchLevels = 0,
   spendInputCardinality,
+  emptyAddressWitnesses = false,
 }: {
   readonly adversarialBranchLevels?: number;
+  /**
+   * Use canonical empty address-witness fields when this block also drives a
+   * real field-opening family. The legacy 32-byte marker is useful only as a
+   * distinct hash preimage; it is not a canonical address-witness item.
+   */
+  readonly emptyAddressWitnesses?: boolean;
   /**
    * How many inputs each conflicting transaction spends. The default is the
    * fixture's minimal two; larger values drive the spend-input preimage
@@ -621,14 +629,14 @@ export const buildTransactionInclusionFixture = async ({
     fee: 0n,
     referenceByte: "13",
     outputByte: "14",
-    witnessByte: "20",
+    ...(emptyAddressWitnesses ? {} : { witnessByte: "20" }),
   });
   const tx2Native = makeNativeTx({
     spendInputCbors: tx2Inputs.map(outputReferenceCbor),
     fee: 1n,
     referenceByte: "23",
     outputByte: "24",
-    witnessByte: "30",
+    ...(emptyAddressWitnesses ? {} : { witnessByte: "30" }),
   });
   const tx1 = compactTxEntry(tx1Native);
   const tx2 = compactTxEntry(tx2Native);
@@ -1410,6 +1418,7 @@ export const buildInvalidForcedValidationDisputeFixture = async ({
 
 export const submitSuccessorBlockTx = async ({
   lucid,
+  emulator,
   contracts,
   anchorBlockUnit,
   header,
@@ -1419,6 +1428,7 @@ export const submitSuccessorBlockTx = async ({
   activeOperatorNodeUnit,
 }: {
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
+  readonly emulator: Emulator;
   readonly contracts: MidgardValidators;
   readonly anchorBlockUnit: string;
   readonly header: HeaderV1;
@@ -1456,6 +1466,10 @@ export const submitSuccessorBlockTx = async ({
   );
   const commitValidFrom = header.startTime - 60_000n;
   const commitValidTo = header.endTime + 1n;
+  expect(
+    commitValidTo,
+    "successor commit validTo must be later than the emulator clock before submission",
+  ).toBeGreaterThan(BigInt(emulator.now()));
   const continuedActiveOperatorDatum = encodeLinkedListNodeView({
     key: { Key: { key: header.operatorVkey } },
     next: "Empty",
@@ -1546,6 +1560,11 @@ export const submitSuccessorBlockTx = async ({
       `successor commit found no authenticated queue-head witness ${headHeaderHash}`,
     );
   }
+  const commitYieldRef = await findStateQueueYieldReferenceScriptV1({
+    lucid,
+    contracts,
+    arm: "commit",
+  });
   const commitTx = await Effect.runPromise(
     incompleteEmulatorCommitBlockHeaderTxProgram(
       lucid,
@@ -1580,6 +1599,10 @@ export const submitSuccessorBlockTx = async ({
         },
         stateQueueSpendingScript: contracts.stateQueue.spendingScript,
         stateQueueMintingScript: contracts.stateQueue.mintingScript,
+        yieldWitness: {
+          referenceInput: commitYieldRef,
+          script: contracts.stateQueue.yields.commit.withdrawalScript,
+        },
       },
     ),
   );
@@ -1816,16 +1839,21 @@ export const buildProvedDoubleSpendFixture = async ({
     throw new Error("Expected funder wallet to expose a nonce UTxO");
   }
 
+  const referenceScriptAuth = createReferenceScriptAuthPolicy(
+    funderLucid,
+    emulator.now(),
+  );
   const baseContracts = {
     ...(await buildMinimalFaultProofContracts(
       realBlueprint,
       alwaysBlueprint,
       nonceUtxo,
+      {
+        realMinFee: headerMinimumFee > 0n,
+        referenceScriptAuthPolicyId: referenceScriptAuth.policyId,
+      },
     )),
-    referenceScriptAuth: createReferenceScriptAuthPolicy(
-      funderLucid,
-      emulator.now(),
-    ),
+    referenceScriptAuth,
   };
   // Operator registration and activation source their four directory
   // validators from published reference scripts. Published from the prover
@@ -1840,7 +1868,9 @@ export const buildProvedDoubleSpendFixture = async ({
       }),
   };
   const catalogue = await buildCatalogueDeploymentInfo(contracts.fraudProofs);
-  const transactionInclusion = await buildTransactionInclusionFixture();
+  const transactionInclusion = await buildTransactionInclusionFixture({
+    emptyAddressWitnesses: headerMinimumFee > 0n,
+  });
   // Removal needs the state-queue, operator-directory and scheduler validators.
   // Publishing them as reference-script UTxOs is what the deployed node does and
   // is what keeps the removal transaction inside the literal 16,384-byte L1
@@ -1895,6 +1925,8 @@ export const buildProvedDoubleSpendFixture = async ({
     ),
     minFeeA: 0n,
     minFeeB: headerMinimumFee,
+    endTime:
+      BigInt(headerStartTime) + BigInt(EMULATOR_HEADER_CLOCK_HEADROOM_MS_V1),
   };
   const setup = await submitSetupTx({
     lucid: funderLucid,
@@ -1911,16 +1943,25 @@ export const buildProvedDoubleSpendFixture = async ({
   let previousHeader = fraudulentHeader;
   let previousHeaderHash = headerHash;
   for (let index = 0; index < successorCount; index += 1) {
+    const successorStart = emulatorSuccessorHeaderStartV1({
+      predecessorEndTime: previousHeader.endTime,
+      emulator,
+    });
+    const baseSuccessorHeader = makeHeader(
+      funderPaymentCredential.hash,
+      successorStart,
+      EMPTY_MERKLE_TREE_ROOT,
+    );
     const successorHeader = {
-      ...makeHeader(
-        funderPaymentCredential.hash,
-        Number(previousHeader.endTime),
-        EMPTY_MERKLE_TREE_ROOT,
-      ),
+      ...baseSuccessorHeader,
+      endTime:
+        baseSuccessorHeader.startTime +
+        BigInt(EMULATOR_HEADER_CLOCK_HEADROOM_MS_V1),
       prevHeaderHash: previousHeaderHash,
     };
     const successor = await submitSuccessorBlockTx({
       lucid: funderLucid,
+      emulator,
       contracts,
       anchorBlockUnit,
       header: successorHeader,
@@ -3043,22 +3084,33 @@ export const setupFraudulentBlockV1 = async ({
     readonly l2TransactionCount: bigint;
     readonly prevUtxosRoot?: string;
     readonly utxosRoot?: string;
+    /**
+     * Optional predecessor duration for journeys whose setup transactions
+     * advance the emulator beyond the one-second default header window.
+     */
+    readonly headerDurationMs?: number;
   };
 }) => {
   const funderKeyHash = await funderPaymentKeyHash(funderLucid);
   const headerStartTime =
     alignUnixTimeToEmulatorSlotBoundary(funderLucid, emulator.now() + 120_000) -
     1;
-  const fraudulentHeader = {
-    ...makeHeader(
-      funderKeyHash,
-      headerStartTime,
-      await countedTransactionsRoot(
-        fixture.transactionsRoot,
-        fixture.l2TransactionCount,
-      ),
+  const baseHeader = makeHeader(
+    funderKeyHash,
+    headerStartTime,
+    await countedTransactionsRoot(
+      fixture.transactionsRoot,
       fixture.l2TransactionCount,
     ),
+    fixture.l2TransactionCount,
+  );
+  const fraudulentHeader = {
+    ...baseHeader,
+    ...(fixture.headerDurationMs === undefined
+      ? {}
+      : {
+          endTime: baseHeader.startTime + BigInt(fixture.headerDurationMs),
+        }),
     ...(fixture.prevUtxosRoot === undefined
       ? {}
       : { prevUtxosRoot: fixture.prevUtxosRoot }),
@@ -3075,3 +3127,28 @@ export const setupFraudulentBlockV1 = async ({
   });
   return { ...setup, header: fraudulentHeader };
 };
+
+/**
+ * Successor fixtures are often assembled after publishing reference scripts,
+ * each of which advances the emulator. Keep the successor monotonic with its
+ * predecessor without allowing those preliminary transactions to leave the
+ * commit validity interval behind the live emulator clock.
+ */
+export const emulatorSuccessorHeaderStartV1 = ({
+  predecessorEndTime,
+  emulator,
+}: {
+  readonly predecessorEndTime: bigint;
+  readonly emulator: Emulator;
+}): number => {
+  const predecessorEnd = Number(predecessorEndTime);
+  const targetStart = Math.max(predecessorEnd, emulator.now());
+  expect(
+    targetStart,
+    "successor fixture predecessor window must remain live to preserve exact header contiguity",
+  ).toBe(predecessorEnd);
+  return targetStart;
+};
+
+/** Setup and successor submissions advance the emulator by roughly 20s. */
+export const EMULATOR_HEADER_CLOCK_HEADROOM_MS_V1 = 60_000;

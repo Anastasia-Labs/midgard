@@ -1111,6 +1111,11 @@ export const inspectContracts = ({
       network,
       hubOraclePolicyId,
       fraudProofCataloguePolicyId,
+      referenceScriptAuthPolicyId:
+        parseContractDeploymentReferenceScriptAuthPolicyId(
+          parsedDeploymentInfo,
+          "V1 fraud-proof min-ada step-02",
+        ),
     });
 
     expectScriptHash(

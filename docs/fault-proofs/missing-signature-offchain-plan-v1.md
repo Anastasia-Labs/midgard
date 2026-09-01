@@ -2,8 +2,9 @@
 
 Current status: implemented, registered, and emulator-proven. The canonical
 category is `missingSignature` (`0000000e`). Generic Init, deployment
-inspection/identity, and all four mandatory reference scripts are wired.
-Autonomous watcher actuation and live/preprod evidence remain open.
+inspection/identity, all four mandatory reference scripts, a production runner
+factory, and watcher installation are wired. Live/preprod acceptance remains
+open.
 
 ## Fault statement
 
@@ -44,5 +45,5 @@ substituted witnesses, cancellation/resume, and other negative boundaries.
 ## Remaining work
 
 - expose the family through the operational CLI/workflow surface;
-- mount watcher detection and proving;
+- accept the installed watcher detection/proving path end to end;
 - publish live/preprod proof-through-removal evidence.

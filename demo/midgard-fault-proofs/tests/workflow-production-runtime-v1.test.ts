@@ -588,6 +588,8 @@ describe("compiled manifest-bound production runtime V1", () => {
       "noReferenceInput",
       "referenceInputNoIdx",
       "invalidSignature",
+      "fabricatedDeposit",
+      "fabricatedWithdrawal",
       "withdrawnReferenceInput",
       "canonicalDecodability",
       "committedFieldShape",

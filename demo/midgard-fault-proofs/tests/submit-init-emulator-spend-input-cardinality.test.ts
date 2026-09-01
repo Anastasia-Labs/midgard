@@ -622,7 +622,7 @@ describe("fault-proof spend-input preimage cardinality", () => {
     // the Cardano default this whole artifact measures execution fit by, and it
     // is BELOW the consensus profile's own 16,500,000-unit capability floor, so
     // the boundary is the conservative one.
-    expect(EMULATOR_PROTOCOL_PARAMETERS.maxTxExMem).toBe(14_000_000n);
+    expect(EMULATOR_PROTOCOL_PARAMETERS.maxTxExMem).toBe(16_500_000n);
     expect(executionCeilings().memory).toBe(11_200_000n);
     expect(
       MIDGARD_CONSENSUS_LIMITS_V1.minSupportedTransactionExecutionMemoryUnits,

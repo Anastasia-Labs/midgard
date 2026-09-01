@@ -32,7 +32,7 @@ import {
   type NativeScriptInvalidContractsV1,
 } from "./contracts-v1.js";
 import {
-  NATIVE_SCRIPT_INVALID_SCAN_BATCH_V1,
+  NATIVE_SCRIPT_INVALID_NODE_BATCH_V1,
   nativeScriptInvalidPushdownStepV1,
   nativeScriptInvalidSignerSetV1,
   resolveNativeScriptInvalidPushdownResumeV1,
@@ -70,7 +70,7 @@ export const submitNativeScriptInvalidStep05 = async ({
   addressWitnessItems,
   cursorBytes,
   frames = [],
-  nodeBudget = NATIVE_SCRIPT_INVALID_SCAN_BATCH_V1,
+  nodeBudget = NATIVE_SCRIPT_INVALID_NODE_BATCH_V1,
   referenceScriptUtxo,
   witnessReferenceScripts,
   preSubmitBoundary,

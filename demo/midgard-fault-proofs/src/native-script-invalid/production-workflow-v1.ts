@@ -69,6 +69,7 @@ import {
 import type { FraudProofReleaseFinalityAuthorityV1 } from "../workflow/release-finality-policy-v1.js";
 import { captureLocallyEvaluatedTransactionV1 } from "../workflow/transaction-boundary-v1.js";
 import type { NativeScriptInvalidContractsV1 } from "./contracts-v1.js";
+import { nativeScriptInvalidUsesDirectRouteV1 } from "./evidence-machine-v1.js";
 import {
   admitProductionNativeScriptInvalidArtifactV1,
   prepareProductionNativeScriptInvalidArtifactV1,
@@ -154,10 +155,12 @@ const signerFieldPlan = (
 const isDirect = (
   admitted: ReturnType<typeof admitProductionNativeScriptInvalidArtifactV1>,
 ): boolean =>
-  admitted.prepared.addrWitnessItemCbors.length <= 32 &&
-  decodeMidgardVersionedScript(
-    Buffer.from(admitted.prepared.scriptItemCbor, "hex"),
-  ).scriptBytes.length <= 1_024;
+  nativeScriptInvalidUsesDirectRouteV1({
+    signerCount: admitted.prepared.addrWitnessItemCbors.length,
+    scriptBytes: decodeMidgardVersionedScript(
+      Buffer.from(admitted.prepared.scriptItemCbor, "hex"),
+    ).scriptBytes.length,
+  });
 
 const resolveField = async ({
   config,

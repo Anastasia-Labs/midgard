@@ -2,9 +2,9 @@
 
 Current status: implemented, registered, and emulator-proven. The canonical
 category is `inputSetUniqueness` (`0000001a`). Generic Init, deployment
-inspection/identity, and both mandatory reference scripts are wired. Typed
-family modules exist; family-specific CLI verbs, autonomous watcher actuation,
-and live/preprod evidence remain open.
+inspection/identity, both mandatory reference scripts, a production runner
+factory, and watcher installation are wired. Typed family modules exist;
+family-specific CLI verbs and live/preprod acceptance remain open.
 
 ## Fault statement
 
@@ -65,7 +65,8 @@ adversarial carriage mutation, and the larger carriage tier:
 ## Remaining work
 
 - expose the family through the operational CLI/workflow surface;
-- mount watcher detection and proving;
+- accept the installed watcher detection/proving path end to end;
 - publish live/preprod proof-through-removal evidence;
-- keep maximum-field proof-fit evidence current when the compiler, blueprint,
-  field bounds, or Cardano protocol limits change.
+- rerun maximum-field lifecycles under the shared Van Rossem emulator limits
+  when the compiler, blueprint, field bounds, or Cardano protocol limits
+  change.

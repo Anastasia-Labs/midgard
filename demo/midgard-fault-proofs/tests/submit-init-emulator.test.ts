@@ -21,6 +21,7 @@ import {
   EMPTY_MERKLE_TREE_ROOT,
   FraudProofComputationThreadStepDatum,
   FraudProofTokenDatum,
+  referenceScriptAuthPolicyDeploymentInfo,
   SCHEDULER_ASSET_NAME,
   SchedulerDatum,
   utxoToStateQueueUTxO,
@@ -49,6 +50,8 @@ import {
   buildTransactionInclusionFixture,
   countedTransactionsRoot,
   createRecordingLeaseCoordinator,
+  EMULATOR_HEADER_CLOCK_HEADROOM_MS_V1,
+  emulatorSuccessorHeaderStartV1,
   eventIndexes,
   expectRemovedFraudProofState,
   expectStateQueueHeaderOrder,
@@ -104,7 +107,7 @@ describe("fault-proof emulator integration", () => {
         emulator.now() + 120_000,
       ) - 1;
     const funderKeyHash = await funderPaymentKeyHash(funderLucid);
-    const fraudulentHeader = makeHeader(
+    const baseFraudulentHeader = makeHeader(
       funderKeyHash,
       headerStartTime,
       await countedTransactionsRoot(
@@ -113,6 +116,12 @@ describe("fault-proof emulator integration", () => {
       ),
       transactionInclusion.l2TransactionCount,
     );
+    const fraudulentHeader = {
+      ...baseFraudulentHeader,
+      endTime:
+        baseFraudulentHeader.startTime +
+        BigInt(EMULATOR_HEADER_CLOCK_HEADROOM_MS_V1),
+    };
     const setup = await submitSetupTx({
       lucid: funderLucid,
       contracts,
@@ -121,16 +130,17 @@ describe("fault-proof emulator integration", () => {
       header: fraudulentHeader,
     });
     const { headerHash } = setup;
+    const successorStart = emulatorSuccessorHeaderStartV1({
+      predecessorEndTime: fraudulentHeader.endTime,
+      emulator,
+    });
     const successor = await submitSuccessorBlockTx({
       lucid: funderLucid,
+      emulator,
       contracts,
       anchorBlockUnit: setup.stateQueueBlockUnit,
       header: {
-        ...makeHeader(
-          funderKeyHash,
-          Number(fraudulentHeader.endTime),
-          EMPTY_MERKLE_TREE_ROOT,
-        ),
+        ...makeHeader(funderKeyHash, successorStart, EMPTY_MERKLE_TREE_ROOT),
         prevHeaderHash: headerHash,
       },
       hubOracle: setup.hubOracle,
@@ -168,72 +178,80 @@ describe("fault-proof emulator integration", () => {
         },
       };
     };
-    const deploymentInfo = deploymentManifest({
-      hubOracleMint: { scriptHash: contracts.hubOracle.policyId },
-      fraudProofCatalogueMint: {
-        scriptHash: contracts.fraudProofCatalogue.policyId,
-        fraudProofCatalogue: catalogue,
+    const deploymentInfo = deploymentManifest(
+      {
+        hubOracleMint: { scriptHash: contracts.hubOracle.policyId },
+        fraudProofCatalogueMint: {
+          scriptHash: contracts.fraudProofCatalogue.policyId,
+          fraudProofCatalogue: catalogue,
+        },
+        fraudProofCatalogueSpend: {
+          scriptHash: contracts.fraudProofCatalogue.spendingScriptHash,
+        },
+        fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
+        fraudProofSpend: {
+          scriptHash: contracts.fraudProof.spendingScriptHash,
+        },
+        fraudProofDoubleSpend: {
+          scriptHash: contracts.fraudProofs.doubleSpend.spendingScriptHash,
+        },
+        stateQueueMint: deploymentEntry(
+          contracts.stateQueue.policyId,
+          contracts.stateQueue.mintingScript,
+          "stateQueueMint",
+        ),
+        correctionLockSpend: deploymentEntry(
+          contracts.correctionLock.spendingScriptHash,
+          contracts.correctionLock.spendingScript,
+          "correctionLockSpend",
+        ),
+        stateQueueSpend: deploymentEntry(
+          contracts.stateQueue.spendingScriptHash,
+          contracts.stateQueue.spendingScript,
+          "stateQueueSpend",
+        ),
+        stateQueueFraudRemovalWithdraw: deploymentEntry(
+          contracts.stateQueue.yields.fraudRemoval.withdrawalScriptHash,
+          contracts.stateQueue.yields.fraudRemoval.withdrawalScript,
+          "stateQueueFraudRemovalWithdraw",
+        ),
+        retiredOperatorsMint: deploymentEntry(
+          contracts.retiredOperators.policyId,
+          contracts.retiredOperators.mintingScript,
+          "retiredOperatorsMint",
+        ),
+        retiredOperatorsSpend: deploymentEntry(
+          contracts.retiredOperators.spendingScriptHash,
+          contracts.retiredOperators.spendingScript,
+          "retiredOperatorsSpend",
+        ),
+        registeredOperatorsMint: {
+          scriptHash: contracts.registeredOperators.policyId,
+        },
+        registeredOperatorsSpend: deploymentEntry(
+          contracts.registeredOperators.spendingScriptHash,
+          contracts.registeredOperators.spendingScript,
+        ),
+        activeOperatorsMint: deploymentEntry(
+          contracts.activeOperators.policyId,
+          contracts.activeOperators.mintingScript,
+          "activeOperatorsMint",
+        ),
+        activeOperatorsSpend: deploymentEntry(
+          contracts.activeOperators.spendingScriptHash,
+          contracts.activeOperators.spendingScript,
+          "activeOperatorsSpend",
+        ),
+        schedulerMint: { scriptHash: contracts.scheduler.policyId },
+        schedulerSpend: deploymentEntry(
+          contracts.scheduler.spendingScriptHash,
+          contracts.scheduler.spendingScript,
+          "schedulerSpend",
+        ),
+        settlementMint: { scriptHash: contracts.settlement.policyId },
       },
-      fraudProofCatalogueSpend: {
-        scriptHash: contracts.fraudProofCatalogue.spendingScriptHash,
-      },
-      fraudProofMint: { scriptHash: contracts.fraudProof.policyId },
-      fraudProofSpend: {
-        scriptHash: contracts.fraudProof.spendingScriptHash,
-      },
-      fraudProofDoubleSpend: {
-        scriptHash: contracts.fraudProofs.doubleSpend.spendingScriptHash,
-      },
-      stateQueueMint: deploymentEntry(
-        contracts.stateQueue.policyId,
-        contracts.stateQueue.mintingScript,
-        "stateQueueMint",
-      ),
-      correctionLockSpend: deploymentEntry(
-        contracts.correctionLock.spendingScriptHash,
-        contracts.correctionLock.spendingScript,
-        "correctionLockSpend",
-      ),
-      stateQueueSpend: deploymentEntry(
-        contracts.stateQueue.spendingScriptHash,
-        contracts.stateQueue.spendingScript,
-        "stateQueueSpend",
-      ),
-      retiredOperatorsMint: deploymentEntry(
-        contracts.retiredOperators.policyId,
-        contracts.retiredOperators.mintingScript,
-        "retiredOperatorsMint",
-      ),
-      retiredOperatorsSpend: deploymentEntry(
-        contracts.retiredOperators.spendingScriptHash,
-        contracts.retiredOperators.spendingScript,
-        "retiredOperatorsSpend",
-      ),
-      registeredOperatorsMint: {
-        scriptHash: contracts.registeredOperators.policyId,
-      },
-      registeredOperatorsSpend: deploymentEntry(
-        contracts.registeredOperators.spendingScriptHash,
-        contracts.registeredOperators.spendingScript,
-      ),
-      activeOperatorsMint: deploymentEntry(
-        contracts.activeOperators.policyId,
-        contracts.activeOperators.mintingScript,
-        "activeOperatorsMint",
-      ),
-      activeOperatorsSpend: deploymentEntry(
-        contracts.activeOperators.spendingScriptHash,
-        contracts.activeOperators.spendingScript,
-        "activeOperatorsSpend",
-      ),
-      schedulerMint: { scriptHash: contracts.scheduler.policyId },
-      schedulerSpend: deploymentEntry(
-        contracts.scheduler.spendingScriptHash,
-        contracts.scheduler.spendingScript,
-        "schedulerSpend",
-      ),
-      settlementMint: { scriptHash: contracts.settlement.policyId },
-    });
+      referenceScriptAuthPolicyDeploymentInfo(contracts.referenceScriptAuth),
+    );
 
     const proofFit: Record<string, CompleteSignedTransactionMeasurement> = {};
     const { maxTxExMem, maxTxExSteps } = emulator.protocolParameters;

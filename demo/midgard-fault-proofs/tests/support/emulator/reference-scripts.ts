@@ -3,6 +3,8 @@ import {
   createReferenceScriptAuthPolicy,
   type MidgardValidators,
   referenceScriptAuthPolicyDeploymentInfo,
+  type ReferenceScriptAuthTokenTarget,
+  referenceScriptAuthUnit,
   type ReferenceScriptPublication,
   referenceScriptPublicationFundingTarget,
   selectReferenceScriptFundingUtxos,
@@ -85,7 +87,11 @@ export const publishAuthenticatedValidationDisputeControl = async ({
   authPolicy,
 }: {
   readonly lucid: Awaited<ReturnType<typeof Lucid>>;
-  readonly target: ValidationDisputeControlPublicationTarget;
+  readonly target: {
+    readonly control: string;
+    readonly name: ReferenceScriptAuthTokenTarget;
+    readonly script: Script;
+  };
   readonly authPolicy: ReturnType<typeof createReferenceScriptAuthPolicy>;
 }) => {
   const selectedFundingInputs = selectReferenceScriptFundingUtxos(
@@ -160,6 +166,135 @@ export const publishValidationDisputeReferenceScript = async ({
   });
 };
 
+export const publishStateQueueYieldReferenceScriptV1 = async ({
+  lucid,
+  contracts,
+  arm,
+}: {
+  readonly lucid: Awaited<ReturnType<typeof Lucid>>;
+  readonly contracts: MidgardValidators;
+  readonly arm: keyof MidgardValidators["stateQueue"]["yields"];
+}) => {
+  const targetByArm = {
+    commit: {
+      control: "commit",
+      name: "state-queue commit withdrawal",
+      script: contracts.stateQueue.yields.commit.withdrawalScript,
+    },
+    unattestedTimeout: {
+      control: "unattested-timeout",
+      name: "state-queue unattested-timeout withdrawal",
+      script: contracts.stateQueue.yields.unattestedTimeout.withdrawalScript,
+    },
+    unavailableTimeout: {
+      control: "unavailable-timeout",
+      name: "state-queue unavailable-timeout withdrawal",
+      script: contracts.stateQueue.yields.unavailableTimeout.withdrawalScript,
+    },
+    fraudRemoval: {
+      control: "fraud-removal",
+      name: "state-queue fraud-removal withdrawal",
+      script: contracts.stateQueue.yields.fraudRemoval.withdrawalScript,
+    },
+    merge: {
+      control: "merge",
+      name: "state-queue merge withdrawal",
+      script: contracts.stateQueue.yields.merge.withdrawalScript,
+    },
+  } as const;
+  return publishAuthenticatedValidationDisputeControl({
+    lucid,
+    target: targetByArm[arm],
+    authPolicy: contracts.referenceScriptAuth as ReturnType<
+      typeof createReferenceScriptAuthPolicy
+    >,
+  });
+};
+
+export const findStateQueueYieldReferenceScriptV1 = async ({
+  lucid,
+  contracts,
+  arm,
+}: {
+  readonly lucid: Awaited<ReturnType<typeof Lucid>>;
+  readonly contracts: MidgardValidators;
+  readonly arm: keyof MidgardValidators["stateQueue"]["yields"];
+}): Promise<UTxO> => {
+  const roleByArm = {
+    commit: "state-queue commit withdrawal",
+    unattestedTimeout: "state-queue unattested-timeout withdrawal",
+    unavailableTimeout: "state-queue unavailable-timeout withdrawal",
+    fraudRemoval: "state-queue fraud-removal withdrawal",
+    merge: "state-queue merge withdrawal",
+  } as const;
+  const unit = referenceScriptAuthUnit(
+    contracts.referenceScriptAuth.policyId,
+    roleByArm[arm],
+  );
+  const matches = await lucid.utxosAtWithUnit(
+    await lucid.wallet().address(),
+    unit,
+  );
+  if (matches.length !== 1 || matches[0]?.scriptRef == null) {
+    throw new Error(
+      `Expected exactly one authenticated ${roleByArm[arm]} reference script, found ${matches.length.toString()}`,
+    );
+  }
+  return matches[0];
+};
+
+export type MinAdaYieldReferenceScriptsV1 = Readonly<{
+  tx: ReferenceScriptPublication & {
+    readonly publicationMeasurement: CompleteSignedTransactionMeasurement;
+  };
+  utxo: ReferenceScriptPublication & {
+    readonly publicationMeasurement: CompleteSignedTransactionMeasurement;
+  };
+}>;
+
+/** Publishes the two authenticated rewarding validators delegated to by min-Ada step 02. */
+export const publishMinAdaYieldReferenceScriptsV1 = async ({
+  lucid,
+  contracts,
+}: {
+  readonly lucid: Awaited<ReturnType<typeof Lucid>>;
+  readonly contracts: MidgardValidators;
+}): Promise<MinAdaYieldReferenceScriptsV1> => {
+  const targets = [
+    {
+      key: "tx" as const,
+      control: "min-ada step-02 tx yield",
+      name: "V1 fraud-proof min-ada step-02 tx yield" as const,
+      script: contracts.fraudProofContracts.minAda.yields.tx.withdrawalScript,
+    },
+    {
+      key: "utxo" as const,
+      control: "min-ada step-02 UTxO yield",
+      name: "V1 fraud-proof min-ada step-02 UTxO yield" as const,
+      script: contracts.fraudProofContracts.minAda.yields.utxo.withdrawalScript,
+    },
+  ];
+  const publications = {} as Record<
+    (typeof targets)[number]["key"],
+    MinAdaYieldReferenceScriptsV1[(typeof targets)[number]["key"]]
+  >;
+  for (const target of targets) {
+    const published = await publishAuthenticatedValidationDisputeControl({
+      lucid,
+      target,
+      authPolicy: contracts.referenceScriptAuth as ReturnType<
+        typeof createReferenceScriptAuthPolicy
+      >,
+    });
+    publications[target.key] = {
+      name: target.name,
+      utxo: published.utxo,
+      publicationMeasurement: published.publicationMeasurement,
+    };
+  }
+  return publications;
+};
+
 // Publishes a deployed validator as a plain reference-script UTxO at the
 // publisher wallet address, following the hash-checked deployment
 // consumption pattern (`requireDeploymentReferenceScript`); the consuming
@@ -200,7 +335,12 @@ export const publishPlainReferenceScriptUtxo = async ({
   const unsigned = await lucid
     .newTx()
     .pay.ToAddressWithData(parkAddress, undefined, { lovelace }, script)
-    .complete();
+    .complete()
+    .catch((cause: unknown) => {
+      throw new Error(
+        `${label} reference-script publication failed (applied script CBOR ${(script.script.length / 2).toString()} bytes): ${String(cause)}`,
+      );
+    });
   const signed = await unsigned.sign.withWallet().complete();
   const signedCbor = signed.toCBOR();
   const publicationMeasurement = measureCompleteSignedTransaction(signedCbor);
@@ -236,13 +376,14 @@ export const publishPlainReferenceScriptUtxo = async ({
 export type OperatorLifecycleReferenceScriptsV1 = {
   readonly registered: readonly ReferenceScriptPublication[];
   readonly active: readonly ReferenceScriptPublication[];
+  readonly initial: readonly ReferenceScriptPublication[];
 };
 
 /**
- * Publish the exact four reference scripts consumed by the genuine
- * register-then-activate setup lifecycle. Each script is deliberately placed
- * in its own bounded transaction so adding the production roster cannot push
- * a shared publication over the L1 transaction-size limit.
+ * Publish the nine distinct reference scripts consumed by genesis plus the
+ * genuine register-then-activate setup lifecycle. Each script is deliberately
+ * placed in its own bounded transaction so a shared publication cannot hide
+ * an individually unpublishable validator.
  */
 export const publishOperatorLifecycleReferenceScriptsV1 = async ({
   lucid,
@@ -291,7 +432,40 @@ export const publishOperatorLifecycleReferenceScriptsV1 = async ({
       "Operator lifecycle reference publication omitted or duplicated a canonical role",
     );
   }
-  return { registered, active };
+  const initial: ReferenceScriptPublication[] = [
+    ...registered.filter(({ name }) => name.endsWith(" minting")),
+    ...active.filter(({ name }) => name.endsWith(" minting")),
+  ];
+  for (const entry of [
+    {
+      name: "hub-oracle minting",
+      script: contracts.hubOracle.mintingScript,
+    },
+    {
+      name: "fraud-proof-catalogue minting",
+      script: contracts.fraudProofCatalogue.mintingScript,
+    },
+    { name: "scheduler minting", script: contracts.scheduler.mintingScript },
+    {
+      name: "state-queue minting",
+      script: contracts.stateQueue.mintingScript,
+    },
+    {
+      name: "retired-operators minting",
+      script: contracts.retiredOperators.mintingScript,
+    },
+  ] as const) {
+    const publication = await publishPlainReferenceScriptUtxo({
+      lucid,
+      script: entry.script,
+      label: `setup ${entry.name}`,
+    });
+    initial.push({ name: entry.name, utxo: publication.utxo });
+  }
+  if (initial.length !== 7) {
+    throw new Error("Initial setup reference publication omitted a role");
+  }
+  return { registered, active, initial };
 };
 
 /** Publishes a canonical fraud-proof chain under its production entry names. */
@@ -501,6 +675,7 @@ export type RemovalReferenceScriptName =
   | "correctionLockSpend"
   | "stateQueueSpend"
   | "stateQueueMint"
+  | "stateQueueFraudRemovalWithdraw"
   | "activeOperatorsSpend"
   | "activeOperatorsMint"
   | "retiredOperatorsSpend"
@@ -542,13 +717,6 @@ export const publishRemovalReferenceScripts = async ({
   // Sequential: each publication consumes wallet UTxOs the next one selects
   // from.
   for (const [name, script] of roster) {
-    // The 12-parameter state_queue.mint compiles past the 16,384-byte L1
-    // envelope (16,835 bytes unapplied), so its publication cannot fit a real
-    // L1 transaction; publish it through the documented oversized escape (the
-    // same one the R5 semantic resolvers use) so the measurement is still
-    // pinned honestly while the consuming transactions stay inside the
-    // envelope via readFrom. Deployability of the oversized script on real
-    // L1 parameters is tracked in #649.
     const oversized =
       script.script.length / 2 > PROTOCOL_PARAMETERS_DEFAULT.maxTxSize;
     const publication = await publishPlainReferenceScriptUtxo({
@@ -560,6 +728,14 @@ export const publishRemovalReferenceScripts = async ({
     published[name] = publication.utxo;
     measurements[name] = publication.publicationMeasurement;
   }
+  const fraudRemovalYield = await publishStateQueueYieldReferenceScriptV1({
+    lucid,
+    contracts,
+    arm: "fraudRemoval",
+  });
+  published.stateQueueFraudRemovalWithdraw = fraudRemovalYield.utxo;
+  measurements.stateQueueFraudRemovalWithdraw =
+    fraudRemovalYield.publicationMeasurement;
   return {
     published: published as RemovalReferenceScriptPublications,
     measurements: measurements as RemovalReferenceScriptMeasurements,

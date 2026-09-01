@@ -2,6 +2,10 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/field_opening_v1.{FieldOpeningV1}
 use midgard/validation_merkle_v1.{FrontierPeak}
 
+pub const staged_signer_resume_batch_limit: Int = 16
+
+pub const staged_signer_finalize_batch_limit: Int = 16
+
 pub type State {
   bad_tx_id: ByteArray,
   bad_tx_witness_set_hash: ByteArray,

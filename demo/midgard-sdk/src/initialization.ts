@@ -18,6 +18,7 @@ import {
   ACTIVE_OPERATORS_ROOT_ASSET_NAME,
   ActiveOperatorMintRedeemer,
 } from "@/active-operators.js";
+import { scriptRewardAddress } from "@/cardano-addresses.js";
 import {
   Bech32DeserializationError,
   MidgardValidators,
@@ -289,6 +290,52 @@ export const incompleteInitializationTxProgram = (
           value: Data.to("Idle", CorrectionLockDatum),
         },
         correctionLockAssets,
+      )
+      .register.Stake(
+        scriptRewardAddress(
+          network,
+          midgardValidators.stateQueue.yields.commit.withdrawalScript,
+        ),
+      )
+      .register.Stake(
+        scriptRewardAddress(
+          network,
+          midgardValidators.stateQueue.yields.unattestedTimeout
+            .withdrawalScript,
+        ),
+      )
+      .register.Stake(
+        scriptRewardAddress(
+          network,
+          midgardValidators.stateQueue.yields.unavailableTimeout
+            .withdrawalScript,
+        ),
+      )
+      .register.Stake(
+        scriptRewardAddress(
+          network,
+          midgardValidators.stateQueue.yields.fraudRemoval.withdrawalScript,
+        ),
+      )
+      .register.Stake(
+        scriptRewardAddress(
+          network,
+          midgardValidators.stateQueue.yields.merge.withdrawalScript,
+        ),
+      )
+      .register.Stake(
+        scriptRewardAddress(
+          network,
+          midgardValidators.fraudProofContracts.minAda.yields.tx
+            .withdrawalScript,
+        ),
+      )
+      .register.Stake(
+        scriptRewardAddress(
+          network,
+          midgardValidators.fraudProofContracts.minAda.yields.utxo
+            .withdrawalScript,
+        ),
       );
 
     if (params.referenceScripts !== undefined) {

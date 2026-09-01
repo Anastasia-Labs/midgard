@@ -27,6 +27,8 @@ import {
   publishNetworkIdReferenceScriptsV1,
 } from "./support/network-id-emulator-v1.js";
 import {
+  EMULATOR_HEADER_CLOCK_HEADROOM_MS_V1,
+  emulatorSuccessorHeaderStartV1,
   setupFraudulentBlockV1,
   submitSuccessorBlockTx,
 } from "./support/submit-init-emulator-fixtures.js";
@@ -433,12 +435,17 @@ describe("Q35 network-id real-fault lifecycle", () => {
         l2TransactionCount: base.l2TransactionCount,
         prevUtxosRoot: EMPTY_MERKLE_TREE_ROOT,
         utxosRoot: previous.root,
+        headerDurationMs: EMULATOR_HEADER_CLOCK_HEADROOM_MS_V1,
       },
+    });
+    const targetStart = emulatorSuccessorHeaderStartV1({
+      predecessorEndTime: predecessorSetup.header.endTime,
+      emulator: harness.emulator,
     });
     const targetHeader = {
       ...makeHeader(
         predecessorSetup.header.operatorVkey,
-        Number(predecessorSetup.header.endTime),
+        targetStart,
         EMPTY_MERKLE_TREE_ROOT,
       ),
       prevHeaderHash: predecessorSetup.headerHash,
@@ -447,6 +454,7 @@ describe("Q35 network-id real-fault lifecycle", () => {
     };
     const target = await submitSuccessorBlockTx({
       lucid: harness.funderLucid,
+      emulator: harness.emulator,
       contracts: harness.contracts,
       anchorBlockUnit: predecessorSetup.stateQueueBlockUnit,
       header: targetHeader,

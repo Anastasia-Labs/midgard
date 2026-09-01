@@ -24,6 +24,18 @@ export type MinAdaContractsV1 = {
     MinAdaStepContractV1,
     MinAdaStepContractV1,
   ];
+  readonly yields: {
+    readonly tx: {
+      readonly withdrawalScriptCBOR: string;
+      readonly withdrawalScript: Script;
+      readonly withdrawalScriptHash: string;
+    };
+    readonly utxo: {
+      readonly withdrawalScriptCBOR: string;
+      readonly withdrawalScript: Script;
+      readonly withdrawalScriptHash: string;
+    };
+  };
   readonly computationThread: {
     readonly policyId: string;
     readonly mintingScript: Script;
@@ -36,4 +48,5 @@ export type MinAdaContractsV1 = {
   readonly hubOraclePolicyId: string;
   readonly stateQueuePolicyId: string;
   readonly fieldPreimageCertificatePolicyId: string;
+  readonly referenceScriptAuthPolicyId: string;
 };

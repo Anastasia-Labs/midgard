@@ -253,6 +253,7 @@ const buildInspectionFixture = async () => {
       network: "Preprod",
       hubOraclePolicyId: h28,
       fraudProofCataloguePolicyId: h28b,
+      referenceScriptAuthPolicyId: h28b,
     }),
   );
   const firstSteps = fraudProofContractsToFirstSteps(contracts);

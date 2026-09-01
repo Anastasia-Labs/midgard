@@ -9,6 +9,7 @@ import {
   HUB_ORACLE_ASSET_NAME,
   type MidgardValidators,
   Proof,
+  type ReferenceScriptAuthPolicy,
   requireOwnMintPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
@@ -67,9 +68,11 @@ import {
 } from "./emulator-context.js";
 import { EMULATOR_PROTOCOL_PARAMETERS } from "./protocol-parameters.js";
 import {
+  type MinAdaYieldReferenceScriptsV1,
   type OperatorLifecycleReferenceScriptsV1,
   publishFaultProofWitnessReferenceScriptsV1,
   publishHarnessFaultProofReferenceScriptsV1,
+  publishMinAdaYieldReferenceScriptsV1,
   publishOperatorLifecycleReferenceScriptsV1,
 } from "./reference-scripts.js";
 
@@ -323,7 +326,9 @@ export type FaultProofEmulatorHarnessV1 = {
   readonly contracts: Awaited<
     ReturnType<typeof buildMinimalFaultProofContracts>
   > & {
+    readonly referenceScriptAuth: ReferenceScriptAuthPolicy;
     readonly operatorLifecycleReferenceScripts: OperatorLifecycleReferenceScriptsV1;
+    readonly minAdaYieldReferenceScripts?: MinAdaYieldReferenceScriptsV1;
   };
   readonly catalogue: Awaited<ReturnType<typeof buildCatalogueDeploymentInfo>>;
   readonly witnessReferenceScripts: FaultProofWitnessReferenceScriptsV1;
@@ -394,21 +399,25 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
   if (nonceUtxo === undefined) {
     throw new Error("Expected funder wallet to expose a nonce UTxO");
   }
+  const referenceScriptAuth = createReferenceScriptAuthPolicy(
+    proverLucid,
+    emulator.now(),
+  );
   const baseContracts = {
     ...(await buildMinimalFaultProofContracts(
       realBlueprint,
       alwaysBlueprint,
       nonceUtxo,
-      contractOptions,
+      {
+        ...contractOptions,
+        referenceScriptAuthPolicyId: referenceScriptAuth.policyId,
+      },
     )),
     // Test/dev scaffold: production deployments use the same native timelock
     // policy and persist its SDK-derived deployment info. Keeping the complete
     // policy here lets strict manifest consumers validate the policy id and
     // canonical role-token map rather than accepting an empty sidecar.
-    referenceScriptAuth: createReferenceScriptAuthPolicy(
-      funderLucid,
-      emulator.now(),
-    ),
+    referenceScriptAuth,
   };
   const operatorLifecycleReferenceScripts =
     await publishOperatorLifecycleReferenceScriptsV1({
@@ -435,9 +444,25 @@ export const makeFaultProofEmulatorHarnessV1 = async ({
       includeChunkedVerify: true,
       includePexcludes: true,
     });
-  const contracts = {
+  const contractsWithWitnesses = {
     ...stagedContracts,
     faultProofWitnessReferenceScripts: witnessReferenceScripts,
+  };
+  // Publish authenticated min-Ada yield scripts before fixture code samples
+  // the block-header clock. Setup then only registers their reward accounts,
+  // so deployment traffic cannot expire the bounded commit validity window.
+  const minAdaYieldReferenceScripts =
+    contractsWithWitnesses.minAda === undefined
+      ? undefined
+      : await publishMinAdaYieldReferenceScriptsV1({
+          lucid: proverLucid,
+          contracts: contractsWithWitnesses,
+        });
+  const contracts = {
+    ...contractsWithWitnesses,
+    ...(minAdaYieldReferenceScripts === undefined
+      ? {}
+      : { minAdaYieldReferenceScripts }),
   };
   const faultProofReferenceScripts =
     await publishHarnessFaultProofReferenceScriptsV1({

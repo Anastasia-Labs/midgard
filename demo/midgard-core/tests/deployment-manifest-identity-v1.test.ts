@@ -311,13 +311,23 @@ describe("DeploymentManifestV1 shared identity", () => {
       "nativeScriptInvalid",
       "minAda",
     ]);
-    expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toHaveLength(162);
+    expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toHaveLength(169);
     expect(
       Object.keys(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE),
-    ).toHaveLength(155);
+    ).toHaveLength(162);
     expect(
       Object.keys(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES),
-    ).toHaveLength(156);
+    ).toHaveLength(163);
+    expect(
+      DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
+        "V1 fraud-proof min-ada step-02 tx yield"
+      ],
+    ).toBe("fraudProofMinAdaStep02TxWithdraw");
+    expect(
+      DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES[
+        "V1 fraud-proof min-ada step-02 UTxO yield"
+      ],
+    ).toBe("V1FpMinAdaS02UtxoYield");
     expect(
       DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE[
         "V1 fraud-proof withdrawn-input step-03"

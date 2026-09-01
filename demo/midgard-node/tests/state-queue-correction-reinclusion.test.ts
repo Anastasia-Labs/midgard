@@ -26,6 +26,7 @@ const externalTimeoutTransition = ({
   const redeemer: StateQueueRedeemerType = terminal
     ? {
         RemoveUnattestedBlockAfterTimeout: {
+          yield_to_ref_input_index: 0n,
           timed_out_header_hash: target,
           removal_approach: {
             RemoveTimedOutHead: {
@@ -40,6 +41,7 @@ const externalTimeoutTransition = ({
       }
     : {
         RemoveUnattestedBlockAfterTimeout: {
+          yield_to_ref_input_index: 0n,
           timed_out_header_hash: target,
           removal_approach: {
             PruneTimedOutBlockDescendant: {
@@ -116,6 +118,7 @@ const externalFraudTransition = () => {
   const transactionHash = h32("e");
   const redeemer: StateQueueRedeemerType = {
     RemoveFraudulentBlockHeader: {
+      yield_to_ref_input_index: 0n,
       fraudulent_operator: h28("f"),
       fraudulent_blocks_header_hash: fraudulent,
       slashing_approach: {
@@ -184,6 +187,7 @@ const externalMergeTransition = () => {
   const transactionHash = h32("f");
   const redeemer: StateQueueRedeemerType = {
     MergeToConfirmedStateV1: {
+      yield_to_ref_input_index: 0n,
       header_node_key: merged,
       confirmed_state_input_outref: {
         transactionId: h32("0"),

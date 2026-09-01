@@ -629,6 +629,31 @@ const collectScriptDescriptors = (
     "state-queue spending",
   ),
   mintDescriptor("stateQueueMint", contracts.stateQueue, "state-queue minting"),
+  withdrawalDescriptor(
+    "stateQueueCommitWithdraw",
+    contracts.stateQueue.yields.commit,
+    "state-queue commit withdrawal",
+  ),
+  withdrawalDescriptor(
+    "stateQueueUnattestedTimeoutWithdraw",
+    contracts.stateQueue.yields.unattestedTimeout,
+    "state-queue unattested-timeout withdrawal",
+  ),
+  withdrawalDescriptor(
+    "stateQueueUnavailableTimeoutWithdraw",
+    contracts.stateQueue.yields.unavailableTimeout,
+    "state-queue unavailable-timeout withdrawal",
+  ),
+  withdrawalDescriptor(
+    "stateQueueFraudRemovalWithdraw",
+    contracts.stateQueue.yields.fraudRemoval,
+    "state-queue fraud-removal withdrawal",
+  ),
+  withdrawalDescriptor(
+    "stateQueueMergeWithdraw",
+    contracts.stateQueue.yields.merge,
+    "state-queue merge withdrawal",
+  ),
   spendDescriptor("schedulerSpend", contracts.scheduler, "scheduler spending"),
   mintDescriptor("schedulerMint", contracts.scheduler, "scheduler minting"),
   spendDescriptor(
@@ -803,6 +828,16 @@ const collectScriptDescriptors = (
     "V1 MPF pexcludes withdrawal",
   ),
   ...legacyFaultProofMissingStepDescriptors(contracts),
+  withdrawalDescriptor(
+    "fraudProofMinAdaStep02TxWithdraw",
+    contracts.fraudProofContracts.minAda.yields.tx,
+    "V1 fraud-proof min-ada step-02 tx yield",
+  ),
+  withdrawalDescriptor(
+    "fraudProofMinAdaStep02UtxoWithdraw",
+    contracts.fraudProofContracts.minAda.yields.utxo,
+    "V1 fraud-proof min-ada step-02 UTxO yield",
+  ),
   spendDescriptor(
     "correctionLockSpend",
     contracts.correctionLock,

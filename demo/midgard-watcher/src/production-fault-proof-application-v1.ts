@@ -12,6 +12,8 @@ import {
   createDaHashPreimageProductionWorkflowRunnerV1,
   createDoubleSpendProductionWorkflowRunnerV1,
   createDoubleWithdrawProductionWorkflowRunnerV1,
+  createFabricatedDepositProductionWorkflowRunnerV1,
+  createFabricatedWithdrawalProductionWorkflowRunnerV1,
   createHttpStateQueueMutationLeaseCoordinator,
   createInputNoIdxProductionWorkflowRunnerV1,
   createInputSetUniquenessProductionWorkflowRunnerV1,
@@ -23,13 +25,17 @@ import {
   createManifestBoundDaHashPreimageWorkflowV1,
   createManifestBoundDoubleSpendWorkflowV1,
   createManifestBoundDoubleWithdrawWorkflowV1,
+  createManifestBoundFabricatedDepositWorkflowV1,
+  createManifestBoundFabricatedWithdrawalWorkflowV1,
   createManifestBoundInputNoIdxWorkflowV1,
   createManifestBoundInputSetUniquenessWorkflowV1,
   createManifestBoundInvalidRangeWorkflowV1,
   createManifestBoundInvalidSignatureWorkflowV1,
   createManifestBoundL2TxMistagWorkflowV1,
+  createManifestBoundMinAdaWorkflowV1,
   createManifestBoundMinFeeWorkflowV1,
   createManifestBoundMissingNativeScriptTxWorkflowV1,
+  createManifestBoundMissingNativeScriptUtxoWorkflowV1,
   createManifestBoundMissingSignatureWorkflowV1,
   createManifestBoundNativeScriptInvalidWorkflowV1,
   createManifestBoundNetworkIdWorkflowV1,
@@ -39,8 +45,10 @@ import {
   createManifestBoundWithdrawnInputWorkflowV1,
   createManifestBoundWithdrawnReferenceInputWorkflowV1,
   createManifestBoundZeroInputWorkflowV1,
+  createMinAdaProductionWorkflowRunnerV1,
   createMinFeeProductionWorkflowRunnerV1,
   createMissingNativeScriptTxProductionWorkflowRunnerV1,
+  createMissingNativeScriptUtxoProductionWorkflowRunnerV1,
   createMissingSignatureProductionWorkflowRunnerV1,
   createNativeScriptInvalidProductionWorkflowRunnerV1,
   createNetworkIdProductionWorkflowRunnerV1,
@@ -70,13 +78,17 @@ import {
   type ManifestBoundDaHashPreimageWorkflowConfigV1,
   type ManifestBoundDoubleSpendWorkflowConfigV1,
   type ManifestBoundDoubleWithdrawWorkflowConfigV1,
+  type ManifestBoundFabricatedDepositWorkflowConfigV1,
+  type ManifestBoundFabricatedWithdrawalWorkflowConfigV1,
   type ManifestBoundInputNoIdxWorkflowConfigV1,
   type ManifestBoundInputSetUniquenessWorkflowConfigV1,
   type ManifestBoundInvalidRangeWorkflowConfigV1,
   type ManifestBoundInvalidSignatureWorkflowConfigV1,
   type ManifestBoundL2TxMistagWorkflowConfigV1,
+  type ManifestBoundMinAdaWorkflowConfigV1,
   type ManifestBoundMinFeeWorkflowConfigV1,
   type ManifestBoundMissingNativeScriptTxWorkflowConfigV1,
+  type ManifestBoundMissingNativeScriptUtxoWorkflowConfigV1,
   type ManifestBoundMissingSignatureWorkflowConfigV1,
   type ManifestBoundNativeScriptInvalidWorkflowConfigV1,
   type ManifestBoundNetworkIdWorkflowConfigV1,
@@ -86,6 +98,7 @@ import {
   type ManifestBoundWithdrawnInputWorkflowConfigV1,
   type ManifestBoundWithdrawnReferenceInputWorkflowConfigV1,
   type ManifestBoundZeroInputWorkflowConfigV1,
+  MIN_ADA_COMPLETE_CANONICAL_REPLAY_V1,
   MIN_FEE_COMPLETE_CANONICAL_REPLAY_V1,
   MISSING_NATIVE_SCRIPT_TX_COMPLETE_CANONICAL_REPLAY_V1,
   MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY_V1,
@@ -118,6 +131,7 @@ import {
 import {
   type AuthenticatedStateQueueHeaderObservationV1,
   CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION,
+  FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   HeaderV1,
 } from "@al-ft/midgard-sdk";
 import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
@@ -169,6 +183,8 @@ export const WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1 =
     "noReferenceInput",
     "referenceInputNoIdx",
     "invalidSignature",
+    "fabricatedDeposit",
+    "fabricatedWithdrawal",
     "missingSignature",
     "missingNativeScriptTx",
     "withdrawnReferenceInput",
@@ -180,11 +196,39 @@ export const WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1 =
     "withdrawnInput",
     "inputSetUniqueness",
     "networkId",
+    "missingNativeScriptUtxo",
     "nativeScriptInvalid",
+    "minAda",
   ] as const);
 
 export type WatcherInstalledProductionWorkflowCategoryV1 =
   (typeof WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1)[number];
+
+export const WATCHER_MISSING_PRODUCTION_WORKFLOW_CATEGORIES_V1 = Object.freeze([
+  "transitionTrace",
+  "validationTraceDispute",
+  "nativeScriptDecoding",
+  "withdrawalMistag",
+  "crossBlockDuplicateEvent",
+  "valueNotPreserved",
+  "mintAuthorization",
+] as const);
+
+const watcherProductionWorkflowCoverageV1 = new Set([
+  ...WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1,
+  ...WATCHER_MISSING_PRODUCTION_WORKFLOW_CATEGORIES_V1,
+]);
+if (
+  watcherProductionWorkflowCoverageV1.size !==
+    FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.length ||
+  FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.some(
+    (category) => !watcherProductionWorkflowCoverageV1.has(category),
+  )
+) {
+  throw new Error(
+    "watcher production workflow coverage does not partition the catalogue",
+  );
+}
 
 export type WatcherFaultProofInfrastructureAuthorityV1 = Readonly<{
   manifestPath: string;
@@ -292,6 +336,14 @@ type TaggedWorkflowConfigV1 =
       config: ManifestBoundInvalidSignatureWorkflowConfigV1;
     }>
   | Readonly<{
+      category: "fabricatedDeposit";
+      config: ManifestBoundFabricatedDepositWorkflowConfigV1;
+    }>
+  | Readonly<{
+      category: "fabricatedWithdrawal";
+      config: ManifestBoundFabricatedWithdrawalWorkflowConfigV1;
+    }>
+  | Readonly<{
       category: "canonicalDecodability";
       config: ManifestBoundCanonicalDecodabilityWorkflowConfigV1;
     }>
@@ -338,6 +390,14 @@ type TaggedWorkflowConfigV1 =
   | Readonly<{
       category: "nativeScriptInvalid";
       config: ManifestBoundNativeScriptInvalidWorkflowConfigV1;
+    }>
+  | Readonly<{
+      category: "missingNativeScriptUtxo";
+      config: ManifestBoundMissingNativeScriptUtxoWorkflowConfigV1;
+    }>
+  | Readonly<{
+      category: "minAda";
+      config: ManifestBoundMinAdaWorkflowConfigV1;
     }>;
 
 type TaggedWorkflowConfigForV1<
@@ -424,6 +484,12 @@ const constructProductionWorkflow = async (
       );
     case "invalidSignature":
       return await createManifestBoundInvalidSignatureWorkflowV1(input.config);
+    case "fabricatedDeposit":
+      return await createManifestBoundFabricatedDepositWorkflowV1(input.config);
+    case "fabricatedWithdrawal":
+      return await createManifestBoundFabricatedWithdrawalWorkflowV1(
+        input.config,
+      );
     case "withdrawnReferenceInput":
       return await createManifestBoundWithdrawnReferenceInputWorkflowV1(
         input.config,
@@ -460,6 +526,12 @@ const constructProductionWorkflow = async (
       return await createManifestBoundNativeScriptInvalidWorkflowV1(
         input.config,
       );
+    case "missingNativeScriptUtxo":
+      return await createManifestBoundMissingNativeScriptUtxoWorkflowV1(
+        input.config,
+      );
+    case "minAda":
+      return await createManifestBoundMinAdaWorkflowV1(input.config);
   }
 };
 
@@ -862,6 +934,24 @@ const referenceContracts = (
         chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
         fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
       });
+    case "fabricatedDeposit":
+      return Object.freeze({
+        step01: "fraudProofFabricatedDeposit",
+        step02: "fraudProofFabricatedDepositStep02",
+        step03: "fraudProofFabricatedDepositStep03",
+        step04: "fraudProofFabricatedDepositStep04",
+        computationThreadMint: "computationThreadMint",
+        fraudProofMint: "fraudProofMint",
+      });
+    case "fabricatedWithdrawal":
+      return Object.freeze({
+        step01: "fraudProofFabricatedWithdrawal",
+        step02: "fraudProofFabricatedWithdrawalStep02",
+        step03: "fraudProofFabricatedWithdrawalStep03",
+        step04: "fraudProofFabricatedWithdrawalStep04",
+        computationThreadMint: "computationThreadMint",
+        fraudProofMint: "fraudProofMint",
+      });
     case "canonicalDecodability":
       return Object.freeze({
         step01: "fraudProofCanonicalDecodability",
@@ -961,6 +1051,32 @@ const referenceContracts = (
         step03: "fraudProofNativeScriptInvalidStep03",
         step04: "fraudProofNativeScriptInvalidStep04",
         step05: "fraudProofNativeScriptInvalidStep05",
+        ...base,
+        chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
+        pexcludesWithdraw: "pexcludesWithdraw",
+        fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+      });
+    case "missingNativeScriptUtxo":
+      return Object.freeze({
+        step01: "fraudProofMissingNativeScriptUtxo",
+        step02: "fraudProofMissingNativeScriptUtxoStep02",
+        step03: "fraudProofMissingNativeScriptUtxoStep03",
+        step04: "fraudProofMissingNativeScriptUtxoStep04",
+        step05: "fraudProofMissingNativeScriptUtxoStep05",
+        step06: "fraudProofMissingNativeScriptUtxoStep06",
+        step07: "fraudProofMissingNativeScriptUtxoStep07",
+        ...base,
+        chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
+        pexcludesWithdraw: "pexcludesWithdraw",
+        fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+      });
+    case "minAda":
+      return Object.freeze({
+        step01: "fraudProofMinAda",
+        step02: "fraudProofMinAdaStep02",
+        step03: "fraudProofMinAdaStep03",
+        step04: "fraudProofMinAdaStep04",
+        step05: "fraudProofMinAdaStep05",
         ...base,
         chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
         pexcludesWithdraw: "pexcludesWithdraw",
@@ -1232,6 +1348,17 @@ function taggedConfig(
   common: CommonInfrastructureV1,
 ): Extract<TaggedWorkflowConfigV1, { readonly category: "invalidSignature" }>;
 function taggedConfig(
+  category: "fabricatedDeposit",
+  common: CommonInfrastructureV1,
+): Extract<TaggedWorkflowConfigV1, { readonly category: "fabricatedDeposit" }>;
+function taggedConfig(
+  category: "fabricatedWithdrawal",
+  common: CommonInfrastructureV1,
+): Extract<
+  TaggedWorkflowConfigV1,
+  { readonly category: "fabricatedWithdrawal" }
+>;
+function taggedConfig(
   category: "withdrawnReferenceInput",
   common: CommonInfrastructureV1,
 ): Extract<
@@ -1294,6 +1421,17 @@ function taggedConfig(
   TaggedWorkflowConfigV1,
   { readonly category: "nativeScriptInvalid" }
 >;
+function taggedConfig(
+  category: "missingNativeScriptUtxo",
+  common: CommonInfrastructureV1,
+): Extract<
+  TaggedWorkflowConfigV1,
+  { readonly category: "missingNativeScriptUtxo" }
+>;
+function taggedConfig(
+  category: "minAda",
+  common: CommonInfrastructureV1,
+): Extract<TaggedWorkflowConfigV1, { readonly category: "minAda" }>;
 function taggedConfig(
   category: WatcherInstalledProductionWorkflowCategoryV1,
   common: CommonInfrastructureV1,
@@ -1362,6 +1500,26 @@ function taggedConfig(
             fieldPreimageCertificateMint: reference(
               "fieldPreimageCertificateMint",
             ),
+          }),
+        }),
+      });
+    case "fabricatedDeposit":
+    case "fabricatedWithdrawal":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          referenceScripts: Object.freeze({
+            steps: Object.freeze([
+              reference("step01"),
+              reference("step02"),
+              reference("step03"),
+              reference("step04"),
+            ] as const),
+            witnesses: Object.freeze({
+              computationThreadMint: reference("computationThreadMint"),
+              fraudProofMint: reference("fraudProofMint"),
+            }),
           }),
         }),
       });
@@ -1680,6 +1838,64 @@ function taggedConfig(
           }),
         }),
       });
+    case "missingNativeScriptUtxo":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          referenceScripts: Object.freeze({
+            steps: Object.freeze([
+              reference("step01"),
+              reference("step02"),
+              reference("step03"),
+              reference("step04"),
+              reference("step05"),
+              reference("step06"),
+              reference("step07"),
+            ] as const),
+            witnesses: Object.freeze({
+              ...baseWitnesses(common.references),
+              chunkedVerifyWithdraw: reference("chunkedVerifyWithdraw"),
+              pexcludesWithdraw: reference("pexcludesWithdraw"),
+            }),
+            fieldPreimageCertificateMint: reference(
+              "fieldPreimageCertificateMint",
+            ),
+          }),
+          historicalNativeScriptCheckpointStore:
+            common.historicalNativeScriptAuthority.checkpointStore,
+          historicalNativeScriptHistorySource:
+            common.historicalNativeScriptAuthority.historySource,
+        }),
+      });
+    case "minAda":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          referenceScripts: Object.freeze({
+            steps: Object.freeze([
+              reference("step01"),
+              reference("step02"),
+              reference("step03"),
+              reference("step04"),
+              reference("step05"),
+            ] as const),
+            witnesses: Object.freeze({
+              ...baseWitnesses(common.references),
+              chunkedVerifyWithdraw: reference("chunkedVerifyWithdraw"),
+              pexcludesWithdraw: reference("pexcludesWithdraw"),
+            }),
+            fieldPreimageCertificateMint: reference(
+              "fieldPreimageCertificateMint",
+            ),
+          }),
+          historicalNativeScriptCheckpointStore:
+            common.historicalNativeScriptAuthority.checkpointStore,
+          historicalNativeScriptHistorySource:
+            common.historicalNativeScriptAuthority.historySource,
+        }),
+      });
   }
 }
 
@@ -1716,6 +1932,12 @@ const taggedReferenceOutRefs = (
           ...Object.values(tagged.config.referenceScripts.witnesses),
           tagged.config.referenceScripts.fieldPreimageCertificateMint,
         ];
+      case "fabricatedDeposit":
+      case "fabricatedWithdrawal":
+        return [
+          ...tagged.config.referenceScripts.steps,
+          ...Object.values(tagged.config.referenceScripts.witnesses),
+        ];
       case "nonExistentInput":
       case "noReferenceInput":
       case "nonExistentInputNoIndex":
@@ -1741,6 +1963,8 @@ const taggedReferenceOutRefs = (
           tagged.config.referenceScripts.fieldPreimageCertificateMint,
         ];
       case "nativeScriptInvalid":
+      case "missingNativeScriptUtxo":
+      case "minAda":
         return [
           ...tagged.config.referenceScripts.steps,
           ...Object.values(tagged.config.referenceScripts.witnesses),
@@ -1847,6 +2071,7 @@ const WATCHER_INSTALLED_COMPLETE_REPLAY_V1 =
     INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY_V1,
     NETWORK_ID_COMPLETE_CANONICAL_REPLAY_V1,
     NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY_V1,
+    MIN_ADA_COMPLETE_CANONICAL_REPLAY_V1,
   ]);
 
 const createApplication = ({
@@ -1974,6 +2199,12 @@ const createApplication = ({
     category: "invalidSignature",
   ): TaggedWorkflowLoaderForV1<"invalidSignature">;
   function makeTaggedLoader(
+    category: "fabricatedDeposit",
+  ): TaggedWorkflowLoaderForV1<"fabricatedDeposit">;
+  function makeTaggedLoader(
+    category: "fabricatedWithdrawal",
+  ): TaggedWorkflowLoaderForV1<"fabricatedWithdrawal">;
+  function makeTaggedLoader(
     category: "withdrawnReferenceInput",
   ): TaggedWorkflowLoaderForV1<"withdrawnReferenceInput">;
   function makeTaggedLoader(
@@ -2010,6 +2241,12 @@ const createApplication = ({
     category: "nativeScriptInvalid",
   ): TaggedWorkflowLoaderForV1<"nativeScriptInvalid">;
   function makeTaggedLoader(
+    category: "missingNativeScriptUtxo",
+  ): TaggedWorkflowLoaderForV1<"missingNativeScriptUtxo">;
+  function makeTaggedLoader(
+    category: "minAda",
+  ): TaggedWorkflowLoaderForV1<"minAda">;
+  function makeTaggedLoader(
     category: WatcherInstalledProductionWorkflowCategoryV1,
   ): ProductionWorkflowRuntimeConfigLoaderV1<TaggedWorkflowConfigV1> {
     return createWatcherProductionWorkflowRuntimeLoaderV1({
@@ -2041,6 +2278,8 @@ const createApplication = ({
     noReferenceInput: makeTaggedLoader("noReferenceInput"),
     referenceInputNoIdx: makeTaggedLoader("referenceInputNoIdx"),
     invalidSignature: makeTaggedLoader("invalidSignature"),
+    fabricatedDeposit: makeTaggedLoader("fabricatedDeposit"),
+    fabricatedWithdrawal: makeTaggedLoader("fabricatedWithdrawal"),
     withdrawnReferenceInput: makeTaggedLoader("withdrawnReferenceInput"),
     canonicalDecodability: makeTaggedLoader("canonicalDecodability"),
     committedFieldShape: makeTaggedLoader("committedFieldShape"),
@@ -2052,7 +2291,9 @@ const createApplication = ({
     withdrawnInput: makeTaggedLoader("withdrawnInput"),
     inputSetUniqueness: makeTaggedLoader("inputSetUniqueness"),
     networkId: makeTaggedLoader("networkId"),
+    missingNativeScriptUtxo: makeTaggedLoader("missingNativeScriptUtxo"),
     nativeScriptInvalid: makeTaggedLoader("nativeScriptInvalid"),
+    minAda: makeTaggedLoader("minAda"),
   } as const;
 
   const doubleSpendLoader = async (
@@ -2172,6 +2413,34 @@ const createApplication = ({
   ) => {
     const loaded = await taggedLoaders.invalidSignature(input);
     if (loaded.config.category !== "invalidSignature") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const fabricatedDepositLoader = async (
+    input: Parameters<(typeof taggedLoaders)["fabricatedDeposit"]>[0],
+  ) => {
+    const loaded = await taggedLoaders.fabricatedDeposit(input);
+    if (loaded.config.category !== "fabricatedDeposit") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const fabricatedWithdrawalLoader = async (
+    input: Parameters<(typeof taggedLoaders)["fabricatedWithdrawal"]>[0],
+  ) => {
+    const loaded = await taggedLoaders.fabricatedWithdrawal(input);
+    if (loaded.config.category !== "fabricatedWithdrawal") {
       await loaded.close();
       throw new Error("workflow loader changed its fixed category");
     }
@@ -2349,6 +2618,34 @@ const createApplication = ({
       tagged: loaded.config,
     });
   };
+  const missingNativeScriptUtxoLoader = async (
+    input: Parameters<(typeof taggedLoaders)["missingNativeScriptUtxo"]>[0],
+  ) => {
+    const loaded = await taggedLoaders.missingNativeScriptUtxo(input);
+    if (loaded.config.category !== "missingNativeScriptUtxo") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const minAdaLoader = async (
+    input: Parameters<(typeof taggedLoaders)["minAda"]>[0],
+  ) => {
+    const loaded = await taggedLoaders.minAda(input);
+    if (loaded.config.category !== "minAda") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
 
   const runners = Object.freeze({
     doubleSpend: createDoubleSpendProductionWorkflowRunnerV1(
@@ -2386,6 +2683,14 @@ const createApplication = ({
     invalidSignature: createInvalidSignatureProductionWorkflowRunnerV1(
       invalidSignatureLoader,
       fundingProfile("invalidSignature"),
+    ),
+    fabricatedDeposit: createFabricatedDepositProductionWorkflowRunnerV1(
+      fabricatedDepositLoader,
+      fundingProfile("fabricatedDeposit"),
+    ),
+    fabricatedWithdrawal: createFabricatedWithdrawalProductionWorkflowRunnerV1(
+      fabricatedWithdrawalLoader,
+      fundingProfile("fabricatedWithdrawal"),
     ),
     withdrawnReferenceInput:
       createWithdrawnReferenceInputProductionWorkflowRunnerV1(
@@ -2434,9 +2739,18 @@ const createApplication = ({
       networkIdLoader,
       fundingProfile("networkId"),
     ),
+    missingNativeScriptUtxo:
+      createMissingNativeScriptUtxoProductionWorkflowRunnerV1(
+        missingNativeScriptUtxoLoader,
+        fundingProfile("missingNativeScriptUtxo"),
+      ),
     nativeScriptInvalid: createNativeScriptInvalidProductionWorkflowRunnerV1(
       nativeScriptInvalidLoader,
       fundingProfile("nativeScriptInvalid"),
+    ),
+    minAda: createMinAdaProductionWorkflowRunnerV1(
+      minAdaLoader,
+      fundingProfile("minAda"),
     ),
   });
   const applicationRegistry = installProductionWorkflowApplicationRegistryV1({

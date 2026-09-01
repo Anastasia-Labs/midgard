@@ -327,6 +327,7 @@ describe("fault-proof deployment contract resolution", () => {
         network: "Preprod",
         hubOraclePolicyId: h28,
         fraudProofCataloguePolicyId: h28b,
+        referenceScriptAuthPolicyId: h28b,
       }),
     );
     // Q13/F20-01: the no-index first step is now derived from the compiled
@@ -480,6 +481,7 @@ describe("fault-proof deployment contract resolution", () => {
         network: "Preprod",
         hubOraclePolicyId: h28,
         fraudProofCataloguePolicyId: h28b,
+        referenceScriptAuthPolicyId: h28b,
       }),
     );
     const fraudProofCatalogue = await catalogueFor({
@@ -514,6 +516,7 @@ describe("fault-proof deployment contract resolution", () => {
         network: "Preprod",
         hubOraclePolicyId: h28,
         fraudProofCataloguePolicyId: h28b,
+        referenceScriptAuthPolicyId: h28b,
       }),
     );
     const fraudProofCatalogue = await catalogueFor({
@@ -547,6 +550,7 @@ describe("fault-proof deployment contract resolution", () => {
         network: "Preprod",
         hubOraclePolicyId: h28,
         fraudProofCataloguePolicyId: h28b,
+        referenceScriptAuthPolicyId: h28b,
       }),
     );
     const fraudProofCatalogue = await catalogueFor({
@@ -599,6 +603,7 @@ describe("fault-proof deployment contract resolution", () => {
         network: "Preprod",
         hubOraclePolicyId: h28,
         fraudProofCataloguePolicyId: h28b,
+        referenceScriptAuthPolicyId: h28b,
       }),
     );
     const fraudProofCatalogue = await catalogueFor({
@@ -654,6 +659,7 @@ describe("fault-proof deployment contract resolution", () => {
         network: "Preprod",
         hubOraclePolicyId: h28,
         fraudProofCataloguePolicyId: h28b,
+        referenceScriptAuthPolicyId: h28b,
       }),
     );
     const proofCatalogue = await catalogueFor({
@@ -748,6 +754,7 @@ describe("fault-proof deployment contract resolution", () => {
         network: "Preprod",
         hubOraclePolicyId: h28,
         fraudProofCataloguePolicyId: h28b,
+        referenceScriptAuthPolicyId: h28b,
       }),
     );
     const fraudProofCatalogue = await catalogueFor({
@@ -806,6 +813,7 @@ describe("fault-proof deployment contract resolution", () => {
         network: "Preprod",
         hubOraclePolicyId: h28,
         fraudProofCataloguePolicyId: h28b,
+        referenceScriptAuthPolicyId: h28b,
       }),
     );
     const fraudProofCatalogue = await catalogueFor({

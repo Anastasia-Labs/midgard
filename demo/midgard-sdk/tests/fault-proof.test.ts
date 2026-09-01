@@ -1184,6 +1184,7 @@ describe("double-spend fault-proof contract builder", () => {
         network: "Preprod",
         hubOraclePolicyId: h28b,
         fraudProofCataloguePolicyId: h28c,
+        referenceScriptAuthPolicyId: h28,
       }),
     );
 
@@ -1227,6 +1228,7 @@ describe("fault-proof contract builder", () => {
         network: "Preprod",
         hubOraclePolicyId: h28b,
         fraudProofCataloguePolicyId: h28c,
+        referenceScriptAuthPolicyId: h28,
       }),
     );
 

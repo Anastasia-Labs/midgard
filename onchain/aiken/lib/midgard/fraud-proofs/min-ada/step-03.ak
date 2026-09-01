@@ -5,9 +5,12 @@
 use midgard/computation_thread as ct
 
 pub type State {
-  descriptor_cbor: ByteArray,
-  out_ref_key: ByteArray,
-  prev_utxos_root: ByteArray,
+  MinAdaTxDescriptor { total_length: Int, lovelace: Int }
+  MinAdaUtxoDescriptor {
+    descriptor_cbor: ByteArray,
+    out_ref_key: ByteArray,
+    prev_utxos_root: ByteArray,
+  }
 }
 
 pub type Args {

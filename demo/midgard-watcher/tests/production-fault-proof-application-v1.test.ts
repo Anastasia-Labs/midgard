@@ -19,6 +19,7 @@ import {
   WATCHER_FAULT_PROOF_PRODUCTION_APPLICATION_V1,
   WATCHER_FAULT_PROOF_STARTUP_READINESS_V1,
   WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1,
+  WATCHER_MISSING_PRODUCTION_WORKFLOW_CATEGORIES_V1,
   type WatcherFaultProofApplicationDependenciesV1,
   type WatcherFaultProofInfrastructureAuthorityV1,
 } from "../src/production-fault-proof-application-v1.js";
@@ -35,6 +36,8 @@ const DEPLOYMENT_INFO_PATH = "/etc/midgard/contract-deployment-info.json";
 const ADDITIONAL_REFERENCE_CONTRACTS = [
   "fraudProofNativeScriptInvalidStep04",
   "fraudProofNativeScriptInvalidStep05",
+  "fraudProofMissingNativeScriptUtxoStep06",
+  "fraudProofMissingNativeScriptUtxoStep07",
 ] as const;
 const TEST_HISTORY_STORE =
   unsafeCreateInMemoryHistoricalNativeScriptCheckpointStoreForTestV1();
@@ -272,6 +275,8 @@ describe("watcher production fault-proof application V1", () => {
         "noReferenceInput",
         "referenceInputNoIdx",
         "invalidSignature",
+        "fabricatedDeposit",
+        "fabricatedWithdrawal",
         "missingSignature",
         "missingNativeScriptTx",
         "withdrawnReferenceInput",
@@ -283,7 +288,18 @@ describe("watcher production fault-proof application V1", () => {
         "withdrawnInput",
         "inputSetUniqueness",
         "networkId",
+        "missingNativeScriptUtxo",
         "nativeScriptInvalid",
+        "minAda",
+      ]);
+      expect(WATCHER_MISSING_PRODUCTION_WORKFLOW_CATEGORIES_V1).toEqual([
+        "transitionTrace",
+        "validationTraceDispute",
+        "nativeScriptDecoding",
+        "withdrawalMistag",
+        "crossBlockDuplicateEvent",
+        "valueNotPreserved",
+        "mintAuthorization",
       ]);
       expect(
         productionWorkflowReadinessReportV1(
@@ -292,9 +308,9 @@ describe("watcher production fault-proof application V1", () => {
         ),
       ).toMatchObject({
         deploymentFingerprint: DEPLOYMENT,
-        installedCategoryCount: 21,
-        requestedCategoryCount: 21,
-        readyCategoryCount: 21,
+        installedCategoryCount: 25,
+        requestedCategoryCount: 25,
+        readyCategoryCount: 25,
         missingCategoryCount: 0,
       });
 
@@ -358,7 +374,7 @@ describe("watcher production fault-proof application V1", () => {
                       pexcludesWithdraw: true,
                       fieldPreimageCertificateMint: true,
                     }
-                  : category === "missingNativeScriptTx"
+                  : category === "missingNativeScriptUtxo"
                     ? {
                         step01: true,
                         step02: true,
@@ -367,7 +383,6 @@ describe("watcher production fault-proof application V1", () => {
                         step05: true,
                         step06: true,
                         step07: true,
-                        step08: true,
                         computationThreadMint: true,
                         fraudProofMint: true,
                         phasMembershipWithdraw: true,
@@ -375,74 +390,122 @@ describe("watcher production fault-proof application V1", () => {
                         pexcludesWithdraw: true,
                         fieldPreimageCertificateMint: true,
                       }
-                    : category === "invalidRange" ||
-                        category === "zeroInput" ||
-                        category === "l2TxMistag"
+                    : category === "minAda"
                       ? {
                           step01: true,
                           step02: true,
+                          step03: true,
+                          step04: true,
+                          step05: true,
                           computationThreadMint: true,
                           fraudProofMint: true,
                           phasMembershipWithdraw: true,
                           chunkedVerifyWithdraw: true,
+                          pexcludesWithdraw: true,
+                          fieldPreimageCertificateMint: true,
                         }
-                      : category === "minFee" ||
-                          category === "invalidSignature" ||
-                          category === "canonicalDecodability" ||
-                          category === "inputSetUniqueness"
+                      : category === "fabricatedDeposit" ||
+                          category === "fabricatedWithdrawal"
                         ? {
                             step01: true,
                             step02: true,
+                            step03: true,
+                            step04: true,
                             computationThreadMint: true,
                             fraudProofMint: true,
-                            phasMembershipWithdraw: true,
-                            chunkedVerifyWithdraw: true,
-                            fieldPreimageCertificateMint: true,
                           }
-                        : category === "missingSignature"
+                        : category === "missingNativeScriptTx"
                           ? {
                               step01: true,
                               step02: true,
                               step03: true,
                               step04: true,
+                              step05: true,
+                              step06: true,
+                              step07: true,
+                              step08: true,
                               computationThreadMint: true,
                               fraudProofMint: true,
                               phasMembershipWithdraw: true,
+                              chunkedVerifyWithdraw: true,
+                              pexcludesWithdraw: true,
+                              fieldPreimageCertificateMint: true,
                             }
-                          : category === "withdrawnInput"
+                          : category === "invalidRange" ||
+                              category === "zeroInput" ||
+                              category === "l2TxMistag"
                             ? {
                                 step01: true,
                                 step02: true,
-                                step03: true,
                                 computationThreadMint: true,
                                 fraudProofMint: true,
                                 phasMembershipWithdraw: true,
                                 chunkedVerifyWithdraw: true,
-                                fieldPreimageCertificateMint: true,
                               }
-                            : category === "withdrawnReferenceInput"
+                            : category === "minFee" ||
+                                category === "invalidSignature" ||
+                                category === "canonicalDecodability" ||
+                                category === "inputSetUniqueness"
                               ? {
                                   step01: true,
                                   step02: true,
-                                  step03: true,
                                   computationThreadMint: true,
                                   fraudProofMint: true,
                                   phasMembershipWithdraw: true,
+                                  chunkedVerifyWithdraw: true,
                                   fieldPreimageCertificateMint: true,
                                 }
-                              : {
-                                  step01: true,
-                                  step02: true,
-                                  computationThreadMint: true,
-                                  fraudProofMint: true,
-                                  phasMembershipWithdraw: true,
-                                },
+                              : category === "missingSignature"
+                                ? {
+                                    step01: true,
+                                    step02: true,
+                                    step03: true,
+                                    step04: true,
+                                    computationThreadMint: true,
+                                    fraudProofMint: true,
+                                    phasMembershipWithdraw: true,
+                                  }
+                                : category === "withdrawnInput"
+                                  ? {
+                                      step01: true,
+                                      step02: true,
+                                      step03: true,
+                                      computationThreadMint: true,
+                                      fraudProofMint: true,
+                                      phasMembershipWithdraw: true,
+                                      chunkedVerifyWithdraw: true,
+                                      fieldPreimageCertificateMint: true,
+                                    }
+                                  : category === "withdrawnReferenceInput"
+                                    ? {
+                                        step01: true,
+                                        step02: true,
+                                        step03: true,
+                                        computationThreadMint: true,
+                                        fraudProofMint: true,
+                                        phasMembershipWithdraw: true,
+                                        fieldPreimageCertificateMint: true,
+                                      }
+                                    : {
+                                        step01: true,
+                                        step02: true,
+                                        computationThreadMint: true,
+                                        fraudProofMint: true,
+                                        phasMembershipWithdraw: true,
+                                      },
           ),
         );
       }
+      for (const category of WATCHER_MISSING_PRODUCTION_WORKFLOW_CATEGORIES_V1) {
+        await expect(
+          application.assertStartupReady(invocation(configPath, category)),
+        ).rejects.toThrow(
+          `watcher has no installed production workflow for ${category}`,
+        );
+      }
 
-      expect(deps.makeLucid).toHaveBeenCalledTimes(21);
-      expect(transport.stop).toHaveBeenCalledTimes(21);
+      expect(deps.makeLucid).toHaveBeenCalledTimes(25);
+      expect(transport.stop).toHaveBeenCalledTimes(25);
       await expect(
         application.runOrResume(
           hostileStructuralExecutionInvocation(configPath, "doubleSpend"),

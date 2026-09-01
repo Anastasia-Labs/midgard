@@ -120,6 +120,7 @@ const buildContracts = async (
       network: "Preprod",
       hubOraclePolicyId: "bb".repeat(28),
       fraudProofCataloguePolicyId: "cc".repeat(28),
+      referenceScriptAuthPolicyId: "dd".repeat(28),
     }),
   );
 

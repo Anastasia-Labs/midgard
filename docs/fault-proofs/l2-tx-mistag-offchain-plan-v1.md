@@ -2,9 +2,9 @@
 
 Current status: implemented, registered, and emulator-proven. The canonical
 category is `l2TxMistag` (`00000017`). Generic Init, deployment
-inspection/identity, and both mandatory reference scripts are wired. Typed
-family modules exist; family-specific CLI verbs, autonomous watcher actuation,
-and live/preprod evidence remain open.
+inspection/identity, both mandatory reference scripts, a production runner
+factory, and watcher installation are wired. Typed family modules exist;
+family-specific CLI verbs and live/preprod acceptance remain open.
 
 ## Fault statement
 
@@ -62,6 +62,7 @@ boundary:
 ## Remaining work
 
 - expose operational CLI/workflow commands;
-- mount watcher detection/proving;
+- accept the installed watcher detection/proving path end to end;
 - publish live/preprod proof-through-removal evidence;
-- keep forced-transaction validation-dispute proof-fit/release evidence current.
+- keep forced-transaction validation-dispute lifecycles green under the shared
+  Van Rossem emulator limits.

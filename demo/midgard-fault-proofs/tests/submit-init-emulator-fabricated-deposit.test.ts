@@ -22,6 +22,7 @@ import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { submitRemoveFraudulentBlock } from "../src/index.js";
 import {
   fabricatedDepositBlockEvidenceFromVerifiedPayloadV1,
   prepareFabricatedDepositFromCommittedLeavesV1,
@@ -55,12 +56,14 @@ import {
 import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
+  buildRemovalDeploymentInfo,
   expectSingleUtxoWithUnit,
   funderPaymentKeyHash,
   makeFaultProofEmulatorHarnessV1,
   makeHeader,
   network,
   publishPlainReferenceScriptUtxo,
+  publishRemovalReferenceScripts,
   submitFabricatedFamilyInitV1,
   submitSetupTx,
 } from "./support/submit-init-emulator-shared.js";
@@ -382,7 +385,7 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
     }
   }, 60_000);
 
-  it("proves a fabricated deposit end-to-end and mints the permanent fraud-proof token", async () => {
+  it("proves a fabricated deposit end-to-end, mints permanent evidence, and removes the fraudulent commitment", async () => {
     const harness = await makeEmulatorHarness();
     const {
       realBlueprint,
@@ -412,6 +415,10 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
       lucid: funderLucid,
       contracts,
       expectedHeaderHashes: [headerHash],
+    });
+    const removalReferences = await publishRemovalReferenceScripts({
+      lucid: proverLucid,
+      contracts,
     });
 
     // ## The authentic L1 deposit event, minted under the hub-registered
@@ -671,6 +678,40 @@ describe("fabricated-deposit fault-proof emulator lifecycle", () => {
     expect(Data.from(fraudProofUtxo.datum!, SDK.FraudProofTokenDatum)).toEqual({
       fraud_prover: proverSigner.paymentKeyHash,
     });
+
+    // ## removal: consume the convicted state-queue node while retaining the
+    // permanent proof token at its original out-ref.
+    const deploymentInfo = buildRemovalDeploymentInfo(contracts, catalogue, {
+      removalReferenceScripts: removalReferences.published,
+    });
+    const removeNow = BigInt(harness.emulator.now());
+    const removal = await submitRemoveFraudulentBlock({
+      lucid: proverLucid,
+      blueprint: realBlueprint,
+      deploymentInfo,
+      network,
+      signer: proverSigner,
+      fraudCategory: "fabricatedDeposit",
+      fraudulentHeaderHash: headerHash,
+      awaitConfirmation: true,
+      requireReferenceScripts: true,
+      validFrom: removeNow > 120_000n ? removeNow - 120_000n : 0n,
+      validTo: removeNow + 300_000n,
+    });
+    expect(removal.fraudCategory).toBe("fabricatedDeposit");
+    expect(removal.transactions).toHaveLength(1);
+    await expect(
+      proverLucid.utxosAtWithUnit(
+        contracts.stateQueue.spendingScriptAddress,
+        setup.stateQueueBlockUnit,
+      ),
+    ).resolves.toHaveLength(0);
+    const retainedFraudProof = await expectSingleUtxoWithUnit(
+      proverLucid,
+      step04Result.fraudProofAddress,
+      step04Result.fraudProofUnit,
+    );
+    expect(outRefLabel(retainedFraudProof)).toBe(step04Result.fraudProofOutRef);
   }, 240_000);
 
   it("cannot advance a fabricated-deposit thread against a valid block", async () => {

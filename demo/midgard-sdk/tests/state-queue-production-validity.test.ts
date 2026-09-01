@@ -108,6 +108,13 @@ const makeProductionCommitParams = (
     spendingScript: DUMMY_SCRIPT,
     spendingScriptHash: OPERATOR_KEY_HASH,
     spendingScriptAddress: DUMMY_ADDRESS,
+    yields: {
+      commit: {
+        withdrawalScriptCBOR: "00",
+        withdrawalScript: DUMMY_SCRIPT,
+        withdrawalScriptHash: OPERATOR_KEY_HASH,
+      },
+    },
   };
   const activeOperatorsValidator = {
     ...stateQueueValidator,
@@ -138,6 +145,9 @@ const makeProductionCommitParams = (
         datum: "Idle",
         assetName: "MIDGARD_CORRECTION_LOCK",
       },
+      stateQueueCommitYieldScriptRef: makeUtxo("69".repeat(32), 0, {
+        lovelace: 1_000_000n,
+      }),
       activeOperatorInput,
       activeOperatorsSpendingScript: DUMMY_SCRIPT,
       operatorWalletView: {
@@ -159,7 +169,10 @@ const makeValidityRecordingLucid = () => {
   txBuilder = { validFrom, validTo } as unknown as TxBuilder;
   const newTx = vi.fn(() => txBuilder);
   return {
-    lucid: { newTx } as unknown as LucidEvolution,
+    lucid: {
+      newTx,
+      config: () => ({ network: "Preprod" }),
+    } as unknown as LucidEvolution,
     newTx,
     validFrom,
     validTo,

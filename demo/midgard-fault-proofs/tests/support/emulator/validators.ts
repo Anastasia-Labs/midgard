@@ -241,7 +241,21 @@ export const makeAlwaysSucceedsContracts = (
     networkId: scaffoldChain(appendedFamilyFallback, 2),
     missingNativeScriptUtxo: scaffoldChain(appendedFamilyFallback, 7),
     nativeScriptInvalid: scaffoldChain(appendedFamilyFallback, 5),
-    minAda: scaffoldChain(appendedFamilyFallback, 5),
+    minAda: {
+      ...scaffoldChain(appendedFamilyFallback, 5),
+      yields: {
+        tx: {
+          withdrawalScriptCBOR: appendedFamilyFallback.spendingScriptCBOR,
+          withdrawalScript: appendedFamilyFallback.spendingScript,
+          withdrawalScriptHash: appendedFamilyFallback.spendingScriptHash,
+        },
+        utxo: {
+          withdrawalScriptCBOR: appendedFamilyFallback.spendingScriptCBOR,
+          withdrawalScript: appendedFamilyFallback.spendingScript,
+          withdrawalScriptHash: appendedFamilyFallback.spendingScriptHash,
+        },
+      },
+    },
   };
   const fraudProofs = fraudProofContractsToFirstSteps(fraudProofContracts);
   const fieldPreimageV1 = makeSpendingValidator(
@@ -276,7 +290,26 @@ export const makeAlwaysSucceedsContracts = (
     correctionLock: makeSpendingValidator(
       alwaysScript(blueprint, "midgard", "state_queue", "spend"),
     ),
-    stateQueue: alwaysAuthenticated(blueprint, "state_queue"),
+    stateQueue: {
+      ...alwaysAuthenticated(blueprint, "state_queue"),
+      yields: {
+        commit: makeWithdrawalValidator(
+          alwaysScript(blueprint, "midgard", "state_queue", "mint"),
+        ),
+        unattestedTimeout: makeWithdrawalValidator(
+          alwaysScript(blueprint, "midgard", "state_queue", "mint"),
+        ),
+        unavailableTimeout: makeWithdrawalValidator(
+          alwaysScript(blueprint, "midgard", "state_queue", "mint"),
+        ),
+        fraudRemoval: makeWithdrawalValidator(
+          alwaysScript(blueprint, "midgard", "state_queue", "mint"),
+        ),
+        merge: makeWithdrawalValidator(
+          alwaysScript(blueprint, "midgard", "state_queue", "mint"),
+        ),
+      },
+    },
     scheduler: alwaysAuthenticated(blueprint, "scheduler"),
     registeredOperators: alwaysAuthenticated(blueprint, "registered_operators"),
     activeOperators: alwaysAuthenticated(blueprint, "active_operators"),

@@ -2,9 +2,9 @@
 
 Current status: implemented, registered, and emulator-proven. The canonical
 category is `committedFieldShape` (`00000012`). Generic Init, deployment
-inspection/identity, and both mandatory reference scripts are wired.
-Family-specific CLI verbs, autonomous watcher actuation, and live/preprod
-evidence remain open.
+inspection/identity, both mandatory reference scripts, a production runner
+factory, and watcher installation are wired. Family-specific CLI verbs and
+live/preprod acceptance remain open.
 
 ## Fault statement
 
@@ -45,5 +45,5 @@ the supported field-carriage paths.
 ## Remaining work
 
 - expose the family through the operational CLI/workflow surface;
-- mount DA-first watcher detection and proving;
+- accept the installed DA-first watcher detection/proving path end to end;
 - publish live/preprod proof-through-removal evidence.

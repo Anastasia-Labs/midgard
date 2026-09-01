@@ -3,32 +3,20 @@
 use aiken/crypto.{ScriptHash}
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
-use env
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/chunked_inclusion_v1.{
-  published_chunk_membership_four_chunks,
-}
-use midgard/fraud_proofs/common.{
-  PublishedChunkMembership, RedeemerCarriedMembership, cancel, continue,
-  verify_membership_carried,
-}
-use midgard/fraud_proofs/field_opening_v1.{
-  BodyAnchor, opened_field_view, outputs_field_index,
-}
+use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/min_ada/step_01.{MinAdaTx, MinAdaUtxo}
 use midgard/fraud_proofs/min_ada/step_02.{Args, Datum, SpendRedeemer}
 use midgard/fraud_proofs/min_ada/step_03 as step_03
-use midgard/fraud_proofs/min_ada/step_05 as step_05
+use midgard/fraud_proofs/min_ada/yield
 use midgard/fraud_proofs/transition_trace/proof.{ledger_outref_key}
-use midgard/ledger_output_descriptor_v1
-use midgard/native_tx_field_access_v1.{field_item_at}
-use midgard/validation_machine_v1
+use midgard/state_queue_yield.{require_authenticated_zero_yield}
 
 validator main(
   step_03_validator_script_hash: ScriptHash,
-  step_05_validator_script_hash: ScriptHash,
+  _step_05_validator_script_hash: ScriptHash,
   computation_thread_token_policy_id: PolicyId,
-  field_preimage_certificate_policy_id: PolicyId,
+  reference_script_auth_policy_id: PolicyId,
 ) {
   spend(
     datum: Option<Datum>,
@@ -49,10 +37,20 @@ validator main(
       ct.Continue(Args {
         input_index,
         output_index,
+        yield_to_ref_input_index,
         outputs_opening,
         post_membership,
       }) -> {
-        let Transaction { inputs, outputs, reference_inputs, .. } = tx
+        let
+            Transaction {
+              inputs,
+              outputs,
+              reference_inputs,
+              withdrawals,
+              redeemers,
+              ..
+            }
+          = tx
         expect Some(step_datum) = datum
         let
             _own_script_hash,
@@ -76,62 +74,39 @@ validator main(
             expect Some(opening) = outputs_opening
             expect None = post_membership
             expect None = state.post_utxo
-            expect output_script_hash == step_05_validator_script_hash
-            let expected_output_state: Data = step_05.PredicateAndCulpabilityAuthenticated
-            expect output_state_data == expected_output_state
-            let outputs_view = opened_field_view(
-              opening,
-              BodyAnchor { tx_id: state.bad_tx_id },
-              outputs_field_index,
+            expect output_script_hash == step_03_validator_script_hash
+            expect step_03.MinAdaTxDescriptor { .. }: step_03.State = output_state_data
+            expect _ = bad_output_index
+            expect _yield_hash = require_authenticated_zero_yield(
               reference_inputs,
-              field_preimage_certificate_policy_id,
+              withdrawals,
+              redeemers,
+              reference_script_auth_policy_id,
+              yield.tx_role,
+              yield_to_ref_input_index,
             )
-            expect Some(built) = ledger_output_descriptor_v1.build_v1(
-              bad_output_index,
-              field_item_at(outputs_view, bad_output_index),
-            )
-            !validation_machine_v1.output_meets_min_ada_v1(
-              env.coins_per_utxo_byte,
-              built.total_length,
-              built.lovelace,
-            )
+            True
           }
           MinAdaUtxo -> {
             expect None = outputs_opening
             expect Some(membership) = post_membership
             expect Some(post) = state.post_utxo
             expect output_script_hash == step_03_validator_script_hash
-            let expected_output_state: Data = step_03.State {
+            let expected_output_state: Data = step_03.MinAdaUtxoDescriptor {
               descriptor_cbor: post.descriptor_cbor,
               out_ref_key: ledger_outref_key(post.out_ref),
               prev_utxos_root: post.prev_utxos_root,
             }
             expect output_state_data == expected_output_state
-            expect
-              when membership is {
-                RedeemerCarriedMembership { .. } -> {
-                  let Transaction { redeemers, .. } = tx
-                  verify_membership_carried(
-                    membership,
-                    post.post_utxos_root,
-                    ledger_outref_key(post.out_ref),
-                    post.descriptor_cbor,
-                    reference_inputs,
-                    redeemers,
-                  )
-                }
-                PublishedChunkMembership(published) ->
-                  published_chunk_membership_four_chunks(
-                    reference_inputs,
-                    published,
-                    post.post_utxos_root,
-                    ledger_outref_key(post.out_ref),
-                    post.descriptor_cbor,
-                  )
-              }
-            // Predicate adjudication is deliberately deferred to step 03 so
-            // maximum post-root membership and descriptor work never share a
-            // transaction budget.
+            expect _ = membership
+            expect _yield_hash = require_authenticated_zero_yield(
+              reference_inputs,
+              withdrawals,
+              redeemers,
+              reference_script_auth_policy_id,
+              yield.utxo_role,
+              yield_to_ref_input_index,
+            )
             True
           }
         }

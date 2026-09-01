@@ -10,8 +10,8 @@ use aiken_design_patterns/validity_range_normalization as vrn
 use cardano/address.{Address, Script}
 use cardano/assets.{AssetName, PolicyId, Value, tokens}
 use cardano/transaction.{
-  InlineDatum, Input, Output, OutputReference, Redeemer, ScriptPurpose, Spend,
-  Withdraw,
+  InlineDatum, Input, Mint, Output, OutputReference, Redeemer, ScriptPurpose,
+  Spend, Withdraw,
 }
 use env
 use midgard/common/types.{H28, H32, MerkleRoot, PosixTime, Proof, ValuePairs}
@@ -773,6 +773,25 @@ pub fn get_unique_withdraw_redeemer(
         fn(redeemer_pair) {
           when redeemer_pair.1st is {
             Withdraw(Script(script_hash)) -> script_hash == withdraw_script_hash
+            _ -> False
+          }
+        },
+      )
+  redeemer
+}
+
+/// The single mint redeemer for `policy_id` in this transaction. Rewarding
+/// validators use this to bind a yielded operation to the exact mint purpose
+/// whose policy delegates the work.
+pub fn get_unique_mint_redeemer(
+  redeemers: Pairs<ScriptPurpose, Redeemer>,
+  policy_id: PolicyId,
+) -> Redeemer {
+  expect [Pair(_, redeemer)] = redeemers
+    |> list.filter(
+        fn(redeemer_pair) {
+          when redeemer_pair.1st is {
+            Mint(candidate_policy_id) -> candidate_policy_id == policy_id
             _ -> False
           }
         },

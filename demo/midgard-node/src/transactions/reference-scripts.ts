@@ -976,6 +976,18 @@ const publishMissingReferenceScriptTargets = (
   | TxSubmitError
 > =>
   Effect.gen(function* () {
+    yield* Effect.try({
+      try: () =>
+        SDK.assertReferenceScriptRawBodiesFitL1EnvelopeV1(missingTargets),
+      catch: (cause) =>
+        cause instanceof SDK.StateQueueError
+          ? cause
+          : new SDK.StateQueueError({
+              message:
+                "Failed to admit raw reference-script bodies for L1 publication",
+              cause,
+            }),
+    });
     const orderedFundingCandidates = orderWalletFundingUtxos(
       fundingCandidateUtxos,
     );
@@ -1373,6 +1385,26 @@ export const nodeRuntimeReferenceScriptTargets = (
     script: contracts.stateQueue.mintingScript,
   },
   {
+    name: "state-queue commit withdrawal",
+    script: contracts.stateQueue.yields.commit.withdrawalScript,
+  },
+  {
+    name: "state-queue unattested-timeout withdrawal",
+    script: contracts.stateQueue.yields.unattestedTimeout.withdrawalScript,
+  },
+  {
+    name: "state-queue unavailable-timeout withdrawal",
+    script: contracts.stateQueue.yields.unavailableTimeout.withdrawalScript,
+  },
+  {
+    name: "state-queue fraud-removal withdrawal",
+    script: contracts.stateQueue.yields.fraudRemoval.withdrawalScript,
+  },
+  {
+    name: "state-queue merge withdrawal",
+    script: contracts.stateQueue.yields.merge.withdrawalScript,
+  },
+  {
     name: "registered-operators spending",
     script: contracts.registeredOperators.spendingScript,
   },
@@ -1529,6 +1561,14 @@ export const nodeRuntimeReferenceScriptTargets = (
       ]),
   ...legacyFraudProofReferenceScriptTargets(contracts),
   ...registeredFraudProofReferenceScriptTargets(contracts),
+  manifestReferenceScriptTarget(
+    "fraudProofMinAdaStep02TxWithdraw",
+    contracts.fraudProofContracts.minAda.yields.tx.withdrawalScript,
+  ),
+  manifestReferenceScriptTarget(
+    "fraudProofMinAdaStep02UtxoWithdraw",
+    contracts.fraudProofContracts.minAda.yields.utxo.withdrawalScript,
+  ),
   {
     name: "correction-lock spending",
     script: contracts.correctionLock.spendingScript,
@@ -1565,6 +1605,26 @@ export const referenceScriptTargetsByCommand = (
     {
       name: "state-queue minting",
       script: contracts.stateQueue.mintingScript,
+    },
+    {
+      name: "state-queue commit withdrawal",
+      script: contracts.stateQueue.yields.commit.withdrawalScript,
+    },
+    {
+      name: "state-queue unattested-timeout withdrawal",
+      script: contracts.stateQueue.yields.unattestedTimeout.withdrawalScript,
+    },
+    {
+      name: "state-queue unavailable-timeout withdrawal",
+      script: contracts.stateQueue.yields.unavailableTimeout.withdrawalScript,
+    },
+    {
+      name: "state-queue fraud-removal withdrawal",
+      script: contracts.stateQueue.yields.fraudRemoval.withdrawalScript,
+    },
+    {
+      name: "state-queue merge withdrawal",
+      script: contracts.stateQueue.yields.merge.withdrawalScript,
     },
     {
       name: "registered-operators minting",
@@ -1628,6 +1688,26 @@ export const referenceScriptTargetsByCommand = (
     {
       name: "state-queue minting",
       script: contracts.stateQueue.mintingScript,
+    },
+    {
+      name: "state-queue commit withdrawal",
+      script: contracts.stateQueue.yields.commit.withdrawalScript,
+    },
+    {
+      name: "state-queue unattested-timeout withdrawal",
+      script: contracts.stateQueue.yields.unattestedTimeout.withdrawalScript,
+    },
+    {
+      name: "state-queue unavailable-timeout withdrawal",
+      script: contracts.stateQueue.yields.unavailableTimeout.withdrawalScript,
+    },
+    {
+      name: "state-queue fraud-removal withdrawal",
+      script: contracts.stateQueue.yields.fraudRemoval.withdrawalScript,
+    },
+    {
+      name: "state-queue merge withdrawal",
+      script: contracts.stateQueue.yields.merge.withdrawalScript,
     },
     {
       name: "correction-lock spending",

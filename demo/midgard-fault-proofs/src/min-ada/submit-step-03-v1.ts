@@ -3,6 +3,7 @@ import {
   MinAdaStep03DatumSchema,
   MinAdaStep03SpendRedeemerSchema,
   MinAdaStep04DatumSchema,
+  MinAdaStep05DatumSchema,
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
@@ -35,6 +36,8 @@ type Step03Datum = Data.Static<typeof MinAdaStep03DatumSchema>;
 const Step03Datum = MinAdaStep03DatumSchema as unknown as Step03Datum;
 type Step04Datum = Data.Static<typeof MinAdaStep04DatumSchema>;
 const Step04Datum = MinAdaStep04DatumSchema as unknown as Step04Datum;
+type Step05Datum = Data.Static<typeof MinAdaStep05DatumSchema>;
+const Step05Datum = MinAdaStep05DatumSchema as unknown as Step05Datum;
 type Redeemer = Data.Static<typeof MinAdaStep03SpendRedeemerSchema>;
 const Redeemer = MinAdaStep03SpendRedeemerSchema as unknown as Redeemer;
 
@@ -77,16 +80,21 @@ export const submitMinAdaUtxoStep03 = async ({
     family: FAMILY,
     stepIndex,
   });
-  const descriptor = decodeMidgardLedgerOutputCommitmentV1(
-    Buffer.from(state.descriptor_cbor, "hex"),
-  );
+  const facts =
+    "MinAdaTxDescriptor" in state
+      ? state.MinAdaTxDescriptor
+      : (() => {
+          const descriptor = decodeMidgardLedgerOutputCommitmentV1(
+            Buffer.from(state.MinAdaUtxoDescriptor.descriptor_cbor, "hex"),
+          );
+          return {
+            total_length: BigInt(descriptor.totalLength),
+            lovelace: descriptor.lovelace,
+          };
+        })();
   if (
     coinsPerUtxoByte <= 0n ||
-    outputMeetsMinAdaV1(
-      coinsPerUtxoByte,
-      BigInt(descriptor.totalLength),
-      descriptor.lovelace,
-    )
+    outputMeetsMinAdaV1(coinsPerUtxoByte, facts.total_length, facts.lovelace)
   ) {
     throw new Error(
       `${label}: authenticated descriptor does not violate min-Ada`,
@@ -99,18 +107,28 @@ export const submitMinAdaUtxoStep03 = async ({
     family: FAMILY,
     stepIndex,
   });
-  const nextDatum = Data.to(
-    {
-      fraud_prover: signer.paymentKeyHash,
-      data: {
-        out_ref_key: state.out_ref_key,
-        prev_utxos_root: state.prev_utxos_root,
-      },
-    },
-    Step04Datum,
-  );
+  const isTx = "MinAdaTxDescriptor" in state;
+  const nextDatum = isTx
+    ? Data.to(
+        {
+          fraud_prover: signer.paymentKeyHash,
+          data: "PredicateAndCulpabilityAuthenticated",
+        },
+        Step05Datum,
+      )
+    : Data.to(
+        {
+          fraud_prover: signer.paymentKeyHash,
+          data: {
+            out_ref_key: state.MinAdaUtxoDescriptor.out_ref_key,
+            prev_utxos_root: state.MinAdaUtxoDescriptor.prev_utxos_root,
+          },
+        },
+        Step04Datum,
+      );
+  const nextStepIndex = isTx ? 4 : 3;
   const outputMatches = computationThreadOutputPredicate({
-    address: contracts.steps[3].spendingScriptAddress,
+    address: contracts.steps[nextStepIndex].spendingScriptAddress,
     datum: nextDatum,
     unit: threadToken.unit,
   });
@@ -132,7 +150,7 @@ export const submitMinAdaUtxoStep03 = async ({
     stepReference,
     stepScript: contracts.steps[stepIndex].spendingScript,
     stepRole: label,
-    nextAddress: contracts.steps[3].spendingScriptAddress,
+    nextAddress: contracts.steps[nextStepIndex].spendingScriptAddress,
     nextDatum,
     redeemer,
     preSubmitBoundary,

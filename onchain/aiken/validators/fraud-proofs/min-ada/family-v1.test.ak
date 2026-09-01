@@ -4,10 +4,15 @@ use aiken/crypto.{blake2b_256}
 use aiken/merkle_patricia_forestry as mpf
 use aiken/primitive/bytearray
 use cardano/address
-use cardano/transaction.{Input, OutputReference, Transaction}
+use cardano/assets
+use cardano/transaction.{
+  InlineDatum, Input, NoDatum, Output, OutputReference, Spend, Transaction,
+  Withdraw,
+}
 use env
 use fraud_proofs/min_ada/step_01 as step_01_validator
 use fraud_proofs/min_ada/step_02 as step_02_validator
+use fraud_proofs/min_ada/step_02_yields as step_02_yields
 use fraud_proofs/min_ada/step_03 as step_03_validator
 use fraud_proofs/min_ada/step_04 as step_04_validator
 use fraud_proofs/min_ada/step_05 as step_05_validator
@@ -23,10 +28,11 @@ use midgard/fraud_proofs/min_ada/step_01.{
   PostUtxoStateV1,
 }
 use midgard/fraud_proofs/min_ada/step_02.{
-  Args as Step02Args, Datum as Step02Datum, State,
+  Args as Step02Args, Datum as Step02Datum, State, YieldMinAdaStep02V1,
 }
 use midgard/fraud_proofs/min_ada/step_03.{
-  Args as Step03Args, Datum as Step03Datum, State as Step03State,
+  Args as Step03Args, Datum as Step03Datum, MinAdaTxDescriptor,
+  MinAdaUtxoDescriptor, State as Step03State,
 }
 use midgard/fraud_proofs/min_ada/step_04.{
   Args as Step04Args, Datum as Step04Datum, State as Step04State,
@@ -34,6 +40,7 @@ use midgard/fraud_proofs/min_ada/step_04.{
 use midgard/fraud_proofs/min_ada/step_05.{
   Args as Step05Args, Datum as Step05Datum, PredicateAndCulpabilityAuthenticated,
 }
+use midgard/fraud_proofs/min_ada/yield as min_ada_yield
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_output}
 use midgard/fraud_proofs/native_tx/types.{
@@ -47,6 +54,56 @@ use midgard/ledger_state
 use midgard/validation_machine_v1
 use pexcludes as pexcludes_validator
 use phas as phas_validator
+
+const tx_yield_hash =
+  #"abababababababababababababababababababababababababababab"
+
+const utxo_yield_hash =
+  #"acacacacacacacacacacacacacacacacacacacacacacacacacacacac"
+
+fn with_authenticated_yield(
+  tx: Transaction,
+  role: ByteArray,
+  script_hash: ByteArray,
+  step_datum: Step02Datum,
+  spend_redeemer: ct.StepRedeemer<Step02Args>,
+) -> Transaction {
+  expect [thread_input] = tx.inputs
+  let dispatcher_input = Input {
+    ..thread_input,
+    output: Output { ..thread_input.output, datum: InlineDatum(step_datum) },
+  }
+  let yield_input = Input {
+    output_reference: OutputReference {
+      transaction_id: #"adadadadadadadadadadadadadadadadadadadadadadadadadadadadadadadad",
+      output_index: 0,
+    },
+    output: Output {
+      address: address.from_script(script_hash),
+      value: assets.from_lovelace(2_000_000)
+        |> assets.merge(
+            assets.from_asset(fixture.test_certificate_policy_id, role, 1),
+          ),
+      datum: NoDatum,
+      reference_script: Some(script_hash),
+    },
+  }
+  let yield_redeemer: Data = 0
+  let dispatcher_redeemer: Data = spend_redeemer
+  Transaction {
+    ..tx,
+    inputs: [dispatcher_input],
+    reference_inputs: list.concat(tx.reference_inputs, [yield_input]),
+    withdrawals: [Pair(address.Script(script_hash), 0)],
+    redeemers: list.concat(
+      tx.redeemers,
+      [
+        Pair(Spend(dispatcher_input.output_reference), dispatcher_redeemer),
+        Pair(Withdraw(address.Script(script_hash)), yield_redeemer),
+      ],
+    ),
+  }
+}
 
 fn output_at_delta(delta: Int) -> MidgardTxOutput {
   let base = fixture.sample_native_output()
@@ -392,34 +449,59 @@ fn run_tx_step_02_with_successors(
     fault: MinAdaTx { output_index: 0 },
     post_utxo: None,
   }
-  let terminal_state_data: Data = PredicateAndCulpabilityAuthenticated
-  step_02_validator.main.spend(
-    step_03_script_hash,
-    step_04_script_hash,
-    fixture.computation_thread_policy_id,
-    fixture.test_certificate_policy_id,
-    Some(
-      ct.StepDatum {
-        fraud_prover: fixture.fraud_prover_key_hash,
-        data: Some(state),
-      },
-    ),
-    ct.Continue(
-      Step02Args {
-        input_index: 0,
-        output_index: 0,
-        outputs_opening: Some(
-          fixture.inline_body_opening(block.compact_cbor, [carried_output_cbor]),
-        ),
-        post_membership: None,
-      },
-    ),
-    fixture.own_out_ref(),
-    fixture.continue_mid_step_l1_tx_v1(
-      fixture.ct_token_asset_name(block),
-      terminal_state_data,
-    ),
+  let next_state_data: Data = MinAdaTxDescriptor {
+    total_length: bytearray.length(carried_output_cbor),
+    lovelace: output.value.lovelace,
+  }
+  let base_tx = fixture.continue_mid_step_l1_tx_v1(
+    fixture.ct_token_asset_name(block),
+    next_state_data,
   )
+  let step_datum = ct.StepDatum {
+    fraud_prover: fixture.fraud_prover_key_hash,
+    data: Some(state),
+  }
+  let spend_redeemer = ct.Continue(
+    Step02Args {
+      input_index: 0,
+      output_index: 0,
+      yield_to_ref_input_index: list.length(base_tx.reference_inputs),
+      outputs_opening: Some(
+        fixture.inline_body_opening(block.compact_cbor, [carried_output_cbor]),
+      ),
+      post_membership: None,
+    },
+  )
+  let l1_tx = with_authenticated_yield(
+    base_tx,
+    min_ada_yield.tx_role,
+    tx_yield_hash,
+    step_datum,
+    spend_redeemer,
+  )
+  and {
+    step_02_validator.main.spend(
+      step_03_script_hash,
+      step_04_script_hash,
+      fixture.computation_thread_policy_id,
+      fixture.test_certificate_policy_id,
+      Some(step_datum),
+      spend_redeemer,
+      fixture.own_out_ref(),
+      l1_tx,
+    ),
+    step_02_yields.tx.withdraw(
+      fixture.step_script_hash,
+      fixture.test_certificate_policy_id,
+      YieldMinAdaStep02V1,
+      address.Script(tx_yield_hash),
+      l1_tx,
+    ),
+    run_tx_predicate(
+      bytearray.length(carried_output_cbor),
+      output.value.lovelace,
+    ),
+  }
 }
 
 test q27_min_ada_tx_convicts_one_lovelace_below_the_exact_floor() {
@@ -470,7 +552,7 @@ fn run_post_membership_published(
   chunks: List<Input>,
 ) -> Bool {
   let state = post_state(out_ref, descriptor_cbor, post_root, prev_root)
-  let next_state: Data = Step03State {
+  let next_state: Data = MinAdaUtxoDescriptor {
     descriptor_cbor,
     out_ref_key: ledger_outref_key(out_ref),
     prev_utxos_root: prev_root,
@@ -479,29 +561,45 @@ fn run_post_membership_published(
     fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()),
   )
   let base_tx = fixture.continue_mid_step_l1_tx_v1(asset_name, next_state)
-  let l1_tx = Transaction { ..base_tx, reference_inputs: chunks }
-  step_02_validator.main.spend(
-    fixture.next_step_script_hash,
-    fixture.step_script_hash,
-    fixture.computation_thread_policy_id,
-    fixture.test_certificate_policy_id,
-    Some(
-      ct.StepDatum {
-        fraud_prover: fixture.fraud_prover_key_hash,
-        data: Some(state),
-      },
-    ),
-    ct.Continue(
-      Step02Args {
-        input_index: 0,
-        output_index: 0,
-        outputs_opening: None,
-        post_membership: Some(PublishedChunkMembership(carriage)),
-      },
-    ),
-    fixture.own_out_ref(),
-    l1_tx,
+  let proof_tx = Transaction { ..base_tx, reference_inputs: chunks }
+  let step_datum = ct.StepDatum {
+    fraud_prover: fixture.fraud_prover_key_hash,
+    data: Some(state),
+  }
+  let spend_redeemer = ct.Continue(
+    Step02Args {
+      input_index: 0,
+      output_index: 0,
+      yield_to_ref_input_index: list.length(chunks),
+      outputs_opening: None,
+      post_membership: Some(PublishedChunkMembership(carriage)),
+    },
   )
+  let l1_tx = with_authenticated_yield(
+    proof_tx,
+    min_ada_yield.utxo_role,
+    utxo_yield_hash,
+    step_datum,
+    spend_redeemer,
+  )
+  and {
+    step_02_validator.main.spend(
+      fixture.next_step_script_hash,
+      fixture.step_script_hash,
+      fixture.computation_thread_policy_id,
+      fixture.test_certificate_policy_id,
+      Some(step_datum),
+      spend_redeemer,
+      fixture.own_out_ref(),
+      l1_tx,
+    ),
+    step_02_yields.utxo.withdraw(
+      fixture.step_script_hash,
+      YieldMinAdaStep02V1,
+      address.Script(utxo_yield_hash),
+      l1_tx,
+    ),
+  }
 }
 
 fn run_post_membership_direct(
@@ -512,7 +610,7 @@ fn run_post_membership_direct(
   proof: mpf.Proof,
 ) -> Bool {
   let state = post_state(out_ref, descriptor_cbor, post_root, prev_root)
-  let next_state: Data = Step03State {
+  let next_state: Data = MinAdaUtxoDescriptor {
     descriptor_cbor,
     out_ref_key: ledger_outref_key(out_ref),
     prev_utxos_root: prev_root,
@@ -527,35 +625,43 @@ fn run_post_membership_direct(
     key,
     descriptor_cbor,
   )
-  let l1_tx = Transaction {
+  let membership_tx = Transaction {
     ..base_tx,
     redeemers: list.concat(base_tx.redeemers, [membership_entry]),
   }
+  let step_datum = ct.StepDatum {
+    fraud_prover: fixture.fraud_prover_key_hash,
+    data: Some(state),
+  }
+  let spend_redeemer = ct.Continue(
+    Step02Args {
+      input_index: 0,
+      output_index: 0,
+      yield_to_ref_input_index: 0,
+      outputs_opening: None,
+      post_membership: Some(
+        RedeemerCarriedMembership {
+          membership_proof: proof,
+          membership_proof_script_redeemer_index: 0,
+        },
+      ),
+    },
+  )
+  let l1_tx = with_authenticated_yield(
+    membership_tx,
+    min_ada_yield.utxo_role,
+    utxo_yield_hash,
+    step_datum,
+    spend_redeemer,
+  )
   and {
     step_02_validator.main.spend(
       fixture.next_step_script_hash,
       fixture.step_script_hash,
       fixture.computation_thread_policy_id,
       fixture.test_certificate_policy_id,
-      Some(
-        ct.StepDatum {
-          fraud_prover: fixture.fraud_prover_key_hash,
-          data: Some(state),
-        },
-      ),
-      ct.Continue(
-        Step02Args {
-          input_index: 0,
-          output_index: 0,
-          outputs_opening: None,
-          post_membership: Some(
-            RedeemerCarriedMembership {
-              membership_proof: proof,
-              membership_proof_script_redeemer_index: 0,
-            },
-          ),
-        },
-      ),
+      Some(step_datum),
+      spend_redeemer,
       fixture.own_out_ref(),
       l1_tx,
     ),
@@ -564,7 +670,35 @@ fn run_post_membership_direct(
       address.Script(env.plutarch_phas_validator_hash),
       l1_tx,
     ),
+    step_02_yields.utxo.withdraw(
+      fixture.step_script_hash,
+      YieldMinAdaStep02V1,
+      address.Script(utxo_yield_hash),
+      l1_tx,
+    ),
   }
+}
+
+fn run_tx_predicate(total_length: Int, lovelace: Int) -> Bool {
+  let state = MinAdaTxDescriptor { total_length, lovelace }
+  let terminal_state: Data = PredicateAndCulpabilityAuthenticated
+  let asset_name = fixture.ct_token_asset_name(
+    fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()),
+  )
+  step_03_validator.main.spend(
+    fixture.step_script_hash,
+    fixture.next_step_script_hash,
+    fixture.computation_thread_policy_id,
+    Some(
+      ct.StepDatum {
+        fraud_prover: fixture.fraud_prover_key_hash,
+        data: Some(state),
+      },
+    ),
+    ct.Continue(Step03Args { input_index: 0, output_index: 0 }),
+    fixture.own_out_ref(),
+    fixture.continue_mid_step_l1_tx_v1(asset_name, terminal_state),
+  )
 }
 
 fn run_post_predicate(descriptor_cbor: ByteArray) -> Bool {
@@ -576,7 +710,7 @@ fn run_post_predicate_at(
   step_04_script_hash: ByteArray,
 ) -> Bool {
   let (out_ref, _, _) = descriptor_material(-1)
-  let state = Step03State {
+  let state = MinAdaUtxoDescriptor {
     descriptor_cbor,
     out_ref_key: ledger_outref_key(out_ref),
     prev_utxos_root: env.empty_merkle_tree_root,
@@ -590,6 +724,7 @@ fn run_post_predicate_at(
   )
   step_03_validator.main.spend(
     step_04_script_hash,
+    fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
     Some(
       ct.StepDatum {
@@ -854,8 +989,8 @@ test q27_min_ada_tx_cannot_continue_to_the_utxo_predecessor_step() fail {
   run_tx_step_02_with_successors(
     output,
     encode_midgard_tx_output(output),
-    fixture.next_step_script_hash,
     fixture.step_script_hash,
+    fixture.next_step_script_hash,
   )
 }
 
@@ -966,6 +1101,7 @@ test q27_min_ada_steps_preserve_prover_cancellation() {
     ),
     step_03_validator.main.spend(
       fixture.next_step_script_hash,
+      fixture.step_script_hash,
       fixture.computation_thread_policy_id,
       step_03_cancel_datum,
       ct.Cancel { input_index: 0, computation_thread_mint_redeemer_index: 0 },

@@ -120,8 +120,15 @@ import {
   witnessSpendingValidatorCarriageV1,
   witnessWithdrawalValidatorCarriageV1,
 } from "../../src/witness-reference-scripts-v1.js";
-import { publishFaultProofWitnessReferenceScriptsV1 } from "./emulator/reference-scripts.js";
-import { countedTransactionsRoot } from "./submit-init-emulator-fixtures.js";
+import {
+  findStateQueueYieldReferenceScriptV1,
+  publishFaultProofWitnessReferenceScriptsV1,
+} from "./emulator/reference-scripts.js";
+import {
+  countedTransactionsRoot,
+  EMULATOR_HEADER_CLOCK_HEADROOM_MS_V1,
+  emulatorSuccessorHeaderStartV1,
+} from "./submit-init-emulator-fixtures.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   captureEmulatorSubmission,
@@ -501,8 +508,11 @@ export const setupValueNotPreservedScenarioV1 = async ({
     alignUnixTimeToEmulatorSlotBoundary(funderLucid, emulator.now() + 120_000) -
     1;
   const funderKeyHash = await funderPaymentKeyHash(funderLucid);
+  const baseAnchorHeader = makeHeader(funderKeyHash, headerStartTime);
   const anchorHeader = {
-    ...makeHeader(funderKeyHash, headerStartTime),
+    ...baseAnchorHeader,
+    endTime:
+      baseAnchorHeader.startTime + BigInt(EMULATOR_HEADER_CLOCK_HEADROOM_MS_V1),
     utxosRoot: fixture.ledger.rootHex,
   };
   const anchorSetup = await submitSetupTx({
@@ -512,10 +522,14 @@ export const setupValueNotPreservedScenarioV1 = async ({
     catalogue,
     header: anchorHeader,
   });
+  const successorStart = emulatorSuccessorHeaderStartV1({
+    predecessorEndTime: anchorHeader.endTime,
+    emulator,
+  });
   const header = {
     ...makeHeader(
       funderKeyHash,
-      Number(anchorHeader.endTime),
+      successorStart,
       await countedTransactionsRoot(
         fixture.transactionsRoot,
         fixture.l2TransactionCount,
@@ -605,6 +619,11 @@ const commitHeaderAfterAnchorBlockV1 = async ({
   });
   const commitValidFrom = header.startTime - 60_000n;
   const commitValidTo = header.endTime + 1n;
+  if (commitValidTo <= BigInt(harness.emulator.now())) {
+    throw new Error(
+      "value-not-preserved successor commit validTo expired before submission",
+    );
+  }
   const continuedActiveOperatorDatum = encodeLinkedListNodeView({
     key: { Key: { key: header.operatorVkey } },
     next: "Empty",
@@ -672,6 +691,11 @@ const commitHeaderAfterAnchorBlockV1 = async ({
       "value-not-preserved second commit found no confirmed-state root witness",
     );
   }
+  const commitYieldRef = await findStateQueueYieldReferenceScriptV1({
+    lucid,
+    contracts,
+    arm: "commit",
+  });
   const commitTx = await Effect.runPromise(
     incompleteEmulatorCommitBlockHeaderTxProgram(
       lucid,
@@ -703,6 +727,10 @@ const commitHeaderAfterAnchorBlockV1 = async ({
         },
         stateQueueSpendingScript: contracts.stateQueue.spendingScript,
         stateQueueMintingScript: contracts.stateQueue.mintingScript,
+        yieldWitness: {
+          referenceInput: commitYieldRef,
+          script: contracts.stateQueue.yields.commit.withdrawalScript,
+        },
       },
     ),
   );

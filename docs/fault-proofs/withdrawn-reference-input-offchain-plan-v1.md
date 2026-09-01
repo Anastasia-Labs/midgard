@@ -2,8 +2,9 @@
 
 Current status: implemented, registered, and emulator-proven. The canonical
 category is `withdrawnReferenceInput` (`00000010`). Generic Init, deployment
-inspection/identity, and all three mandatory reference scripts are wired.
-Autonomous watcher actuation and live/preprod evidence remain open.
+inspection/identity, all three mandatory reference scripts, a production
+runner factory, and watcher installation are wired. Live/preprod acceptance
+remains open.
 
 ## Fault statement
 
@@ -45,5 +46,5 @@ and invalid-withdrawal refusals, adversarial evidence, and published carriage.
 
 ## Remaining work
 
-- mount watcher detection and proving;
+- accept the installed watcher detection/proving path end to end;
 - publish live/preprod proof-through-removal evidence.

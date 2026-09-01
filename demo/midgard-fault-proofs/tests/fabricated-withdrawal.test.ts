@@ -41,10 +41,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import * as SDK from "@al-ft/midgard-sdk";
-import { Data, toUnit, type UTxO } from "@lucid-evolution/lucid";
+import {
+  Data,
+  type LucidEvolution,
+  toUnit,
+  type UTxO,
+} from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import type { CanonicalBlockEvidenceV1 } from "../src/evidence/canonical-block-evidence-v1.js";
 import {
   classifyFabricatedWithdrawalFaultV1,
   fabricatedWithdrawalBlockEvidenceFromVerifiedPayloadV1,
@@ -60,6 +66,10 @@ import { authenticateFabricatedWithdrawalEventUtxoV1 } from "../src/submit-fabri
 import { deriveFabricatedWithdrawalStep03HandoffV1 } from "../src/submit-fabricated-withdrawal-step-03.js";
 import { assertFabricatedWithdrawalStep04FinalizableV1 } from "../src/submit-fabricated-withdrawal-step-04.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
+import {
+  createProductionFabricatedWithdrawalEvidenceAuthorityV1,
+  requireProductionFabricatedWithdrawalArtifactV1,
+} from "../src/workflow/production-fabricated-withdrawal-evidence-v1.js";
 import {
   authenticatedHeaderObservationV1,
   buildCanonicalBlockFixtureV1,
@@ -508,6 +518,79 @@ describe("Q40 fabricated-withdrawal evidence admission", () => {
         daProvenance: DA_PROVENANCE,
       }),
     ).rejects.toMatchObject({ code: "header_hash_mismatch" });
+  });
+});
+
+describe("fabricated-withdrawal production evidence authority", () => {
+  const canonicalEvidence = async (
+    fixture: WithdrawalsBlockFixtureV1,
+  ): Promise<CanonicalBlockEvidenceV1> => {
+    const evidence =
+      await fabricatedWithdrawalBlockEvidenceFromVerifiedPayloadV1({
+        observation: fixture.observation,
+        payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
+        daProvenance: DA_PROVENANCE,
+        minimumConfirmationDepth: 1,
+      });
+    const withdrawals = evidence.entries.map(([keyCbor, valueCbor]) => ({
+      key: Data.from(keyCbor, SDK.OutputReference),
+      value: Data.from(valueCbor, SDK.WithdrawalInfo),
+      keyBytes: Buffer.from(keyCbor, "hex"),
+      valueBytes: Buffer.from(valueCbor, "hex"),
+    }));
+    return {
+      ...evidence,
+      observation: fixture.observation,
+      header: fixture.header,
+      reconstruction: { withdrawals },
+    } as unknown as CanonicalBlockEvidenceV1;
+  };
+
+  it("derives and re-admits an authenticated live-identity fault", async () => {
+    const fixture = await buildWithdrawalsBlockFixtureV1({ leaves: [FI_LEAF] });
+    const authority = createProductionFabricatedWithdrawalEvidenceAuthorityV1({
+      lucid: {
+        utxosByOutRef: async () => [
+          syntheticUtxo({
+            txIdByte: 0x3a,
+            outputIndex: 0,
+            datum: "d87980",
+            assets: {},
+          }),
+        ],
+      } as unknown as LucidEvolution,
+      network: "Preview",
+      hubOraclePolicyId: WITHDRAWAL_POLICY_ID,
+      minimumConfirmationDepth: 1,
+    });
+    const detections = await authority.detect(
+      await canonicalEvidence(fixture),
+      h28(0x44),
+    );
+    expect(detections).toHaveLength(1);
+    expect(detections[0]!.detection.violationId).toBe("fabricated-withdrawal");
+    expect(detections[0]!.artifact.l1Evidence).toEqual({
+      kind: "absent_identity",
+      unspentOutRef: `${FABRICATED_WITHDRAWAL_ID.transactionId}#0`,
+    });
+    const readmitted = await authority.readmit(detections[0]!.artifact);
+    expect(
+      requireProductionFabricatedWithdrawalArtifactV1(
+        readmitted,
+        h28(0x44),
+        fixture.headerHash,
+      ),
+    ).toBe(readmitted);
+    await expect(
+      authority.readmit({ ...readmitted, withdrawalIndex: 1 }),
+    ).rejects.toThrow(/digest mismatch/u);
+    expect(() =>
+      requireProductionFabricatedWithdrawalArtifactV1(
+        { ...readmitted },
+        h28(0x44),
+        fixture.headerHash,
+      ),
+    ).toThrow(/not re-authenticated/u);
   });
 });
 

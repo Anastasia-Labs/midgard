@@ -137,6 +137,7 @@ describe("state-queue correction transition V1", () => {
       ],
       redeemers: timeoutRedeemer({
         RemoveUnattestedBlockAfterTimeout: {
+          yield_to_ref_input_index: 0n,
           timed_out_header_hash: target,
           removal_approach: {
             PruneTimedOutBlockDescendant: {
@@ -182,6 +183,7 @@ describe("state-queue correction transition V1", () => {
       nextQueue: [{ headerHash: null, outRef: outRef("c", 0) }],
       redeemers: timeoutRedeemer({
         RemoveUnattestedBlockAfterTimeout: {
+          yield_to_ref_input_index: 0n,
           timed_out_header_hash: target,
           removal_approach: {
             RemoveTimedOutHead: {
@@ -213,6 +215,7 @@ describe("state-queue correction transition V1", () => {
         ...terminal,
         redeemers: timeoutRedeemer({
           MergeToConfirmedStateV1: {
+            yield_to_ref_input_index: 0n,
             header_node_key: target,
             confirmed_state_input_outref: {
               transactionId: h32("0"),
@@ -252,6 +255,7 @@ describe("state-queue correction transition V1", () => {
       nextQueue: [{ headerHash: null, outRef: outRef("c", 0) }],
       redeemers: timeoutRedeemer({
         RemoveUnattestedBlockAfterTimeout: {
+          yield_to_ref_input_index: 0n,
           timed_out_header_hash: target,
           removal_approach: {
             RemoveTimedOutHead: {
@@ -299,6 +303,7 @@ describe("state-queue correction transition V1", () => {
     const target = h28("1");
     const redeemers = timeoutRedeemer({
       RemoveUnattestedBlockAfterTimeout: {
+        yield_to_ref_input_index: 0n,
         timed_out_header_hash: target,
         removal_approach: {
           RemoveTimedOutHead: {
@@ -409,6 +414,7 @@ describe("state-queue correction transition V1", () => {
       ],
       redeemers: timeoutRedeemer({
         MergeToConfirmedStateV1: {
+          yield_to_ref_input_index: 0n,
           header_node_key: target,
           confirmed_state_input_outref: {
             transactionId: h32("0"),
@@ -489,6 +495,7 @@ describe("state-queue correction transition V1", () => {
       ],
       redeemers: timeoutRedeemer({
         RemoveFraudulentBlockHeader: {
+          yield_to_ref_input_index: 0n,
           fraudulent_operator: h28("f"),
           fraudulent_blocks_header_hash: descendant,
           slashing_approach: {

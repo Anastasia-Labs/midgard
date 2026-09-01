@@ -74,6 +74,18 @@ import {
   type ManifestBoundDoubleWithdrawWorkflowV1,
   runOrResumeManifestBoundDoubleWithdrawWorkflowV1,
 } from "./production-double-withdraw-v1.js";
+import {
+  createManifestBoundFabricatedDepositWorkflowV1,
+  type ManifestBoundFabricatedDepositWorkflowConfigV1,
+  type ManifestBoundFabricatedDepositWorkflowV1,
+  runOrResumeManifestBoundFabricatedDepositWorkflowV1,
+} from "./production-fabricated-deposit-v1.js";
+import {
+  createManifestBoundFabricatedWithdrawalWorkflowV1,
+  type ManifestBoundFabricatedWithdrawalWorkflowConfigV1,
+  type ManifestBoundFabricatedWithdrawalWorkflowV1,
+  runOrResumeManifestBoundFabricatedWithdrawalWorkflowV1,
+} from "./production-fabricated-withdrawal-v1.js";
 import type { ProductionWorkflowFundingRequirementsV1 } from "./production-funding-requirements-v1.js";
 import { bindProductionWorkflowFundingReservationJournalV1 } from "./production-funding-reservation-permit-v1.js";
 import {
@@ -765,6 +777,46 @@ export const createWithdrawnInputProductionWorkflowRunnerV1 = (
     }),
   });
 
+export const createFabricatedDepositProductionWorkflowRunnerV1 = (
+  loadRuntimeConfig: ProductionWorkflowRuntimeConfigLoaderV1<ManifestBoundFabricatedDepositWorkflowConfigV1>,
+  fundingRequirements?: ProductionWorkflowFundingRequirementsV1,
+): ProductionWorkflowAdapterRunnerV1 =>
+  createAdmittedProductionWorkflowRunnerV1({
+    category: "fabricatedDeposit",
+    ...runnerFunding(fundingRequirements),
+    runOrResume: createManifestBoundProductionWorkflowRunOrResumeV1({
+      category: "fabricatedDeposit",
+      loadRuntimeConfig,
+      constructWorkflow: createManifestBoundFabricatedDepositWorkflowV1,
+      execute: async ({ workflow, sources, journal }) =>
+        await runOrResumeManifestBoundFabricatedDepositWorkflowV1({
+          workflow: workflow as ManifestBoundFabricatedDepositWorkflowV1,
+          sources,
+          journal,
+        }),
+    }),
+  });
+
+export const createFabricatedWithdrawalProductionWorkflowRunnerV1 = (
+  loadRuntimeConfig: ProductionWorkflowRuntimeConfigLoaderV1<ManifestBoundFabricatedWithdrawalWorkflowConfigV1>,
+  fundingRequirements?: ProductionWorkflowFundingRequirementsV1,
+): ProductionWorkflowAdapterRunnerV1 =>
+  createAdmittedProductionWorkflowRunnerV1({
+    category: "fabricatedWithdrawal",
+    ...runnerFunding(fundingRequirements),
+    runOrResume: createManifestBoundProductionWorkflowRunOrResumeV1({
+      category: "fabricatedWithdrawal",
+      loadRuntimeConfig,
+      constructWorkflow: createManifestBoundFabricatedWithdrawalWorkflowV1,
+      execute: async ({ workflow, sources, journal }) =>
+        await runOrResumeManifestBoundFabricatedWithdrawalWorkflowV1({
+          workflow: workflow as ManifestBoundFabricatedWithdrawalWorkflowV1,
+          sources,
+          journal,
+        }),
+    }),
+  });
+
 export const createWithdrawnReferenceInputProductionWorkflowRunnerV1 = (
   loadRuntimeConfig: ProductionWorkflowRuntimeConfigLoaderV1<ManifestBoundWithdrawnReferenceInputWorkflowConfigV1>,
   fundingRequirements?: ProductionWorkflowFundingRequirementsV1,
@@ -801,6 +853,8 @@ export const PRODUCTION_WORKFLOW_RUNNER_FACTORIES_V1 = Object.freeze({
   noReferenceInput: createNoReferenceInputProductionWorkflowRunnerV1,
   referenceInputNoIdx: createReferenceInputNoIdxProductionWorkflowRunnerV1,
   invalidSignature: createInvalidSignatureProductionWorkflowRunnerV1,
+  fabricatedDeposit: createFabricatedDepositProductionWorkflowRunnerV1,
+  fabricatedWithdrawal: createFabricatedWithdrawalProductionWorkflowRunnerV1,
   withdrawnReferenceInput:
     createWithdrawnReferenceInputProductionWorkflowRunnerV1,
   canonicalDecodability: createCanonicalDecodabilityProductionWorkflowRunnerV1,

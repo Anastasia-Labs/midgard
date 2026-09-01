@@ -71,5 +71,6 @@ faulty-block removal:
   prior-ledger-only fold cannot authenticate them;
 - expose operational CLI/workflow commands;
 - mount watcher detection/proving and publish preprod/live evidence;
-- refresh proof-fit measurements whenever compiler, blueprint, field bounds, or
-  Cardano protocol limits change.
+- rerun maximum-shape lifecycles under the shared Van Rossem emulator limits
+  whenever compiler, blueprint, field bounds, or Cardano protocol limits
+  change.

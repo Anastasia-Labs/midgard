@@ -217,7 +217,21 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       "state_queue",
     );
     const scheduler = yield* mkAuthVal("scheduler");
-    const stateQueue = yield* mkAuthVal("state_queue");
+    const stateQueueAuthenticated = yield* mkAuthVal("state_queue");
+    const stateQueueYield = yield* makeWithdrawalValidator(
+      "midgard",
+      "state_queue",
+    );
+    const stateQueue: SDK.StateQueueValidatorV1 = {
+      ...stateQueueAuthenticated,
+      yields: {
+        commit: stateQueueYield,
+        unattestedTimeout: stateQueueYield,
+        unavailableTimeout: stateQueueYield,
+        fraudRemoval: stateQueueYield,
+        merge: stateQueueYield,
+      },
+    };
     const correctionLock = stateQueue;
     const daParamsGovernor = stateQueue;
     const daAttestation = stateQueue;

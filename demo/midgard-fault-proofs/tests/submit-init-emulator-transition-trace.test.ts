@@ -83,17 +83,22 @@ describe("fault-proof emulator integration", () => {
       throw new Error("Expected funder wallet to expose a nonce UTxO");
     }
 
+    const referenceScriptAuth = createReferenceScriptAuthPolicy(
+      funderLucid,
+      emulator.now(),
+    );
     const baseContracts = {
       ...(await buildMinimalFaultProofContracts(
         realBlueprint,
         alwaysBlueprint,
         nonceUtxo,
-        { realTransitionTrace: true, alwaysFraudProofCatalogue: true },
+        {
+          realTransitionTrace: true,
+          alwaysFraudProofCatalogue: true,
+          referenceScriptAuthPolicyId: referenceScriptAuth.policyId,
+        },
       )),
-      referenceScriptAuth: createReferenceScriptAuthPolicy(
-        funderLucid,
-        emulator.now(),
-      ),
+      referenceScriptAuth,
     };
     // Operator registration and activation source their four directory
     // validators from published reference scripts. Published from the prover

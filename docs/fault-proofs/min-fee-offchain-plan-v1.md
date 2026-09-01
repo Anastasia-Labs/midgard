@@ -2,9 +2,9 @@
 
 Current status: implemented, registered, and emulator-proven. The canonical
 category is `minFee` (`00000013`). Generic Init, deployment
-inspection/identity, and both mandatory reference scripts are wired. The
-family has prepare/submit/cancel modules; autonomous watcher actuation and
-live/preprod evidence remain open.
+inspection/identity, both mandatory reference scripts, a production runner
+factory, and watcher installation are wired. The family has
+prepare/submit/cancel modules; live/preprod acceptance remains open.
 
 ## Fault statement
 
@@ -47,7 +47,7 @@ authenticated size inputs, and adversarial field carriage.
 
 ## Remaining work
 
-- mount watcher detection and proving;
+- accept the installed watcher detection/proving path end to end;
 - publish live/preprod proof-through-removal evidence;
-- refresh proof-fit evidence if field limits, compiler output, or protocol
-  transaction limits change.
+- rerun maximum-shape lifecycles under the shared Van Rossem emulator limits if
+  field limits, compiler output, or protocol transaction limits change.

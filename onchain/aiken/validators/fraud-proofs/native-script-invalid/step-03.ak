@@ -15,7 +15,8 @@ use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
 use midgard/fraud_proofs/native_script_decoding/thread_fixture_v1 as tf
 use midgard/fraud_proofs/native_script_invalid/step_03.{
   Args, Datum, DirectFinalize, SpendRedeemer, StartSignerScan, State,
-  direct_script_bytes_limit, direct_signer_limit, staged_signer_batch_limit,
+  direct_script_bytes_limit, direct_signer_limit,
+  staged_signer_start_batch_limit,
 }
 use midgard/fraud_proofs/native_script_invalid/step_04
 use midgard/fraud_proofs/native_tx/components.{
@@ -253,7 +254,7 @@ fn append_signer(
 
 fn valid_staged_budget(item_budget: Int) -> Bool {
   expect item_budget > 0
-  expect item_budget <= staged_signer_batch_limit
+  expect item_budget <= staged_signer_start_batch_limit
   True
 }
 

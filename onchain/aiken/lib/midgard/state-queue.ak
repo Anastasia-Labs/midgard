@@ -149,6 +149,7 @@ pub type MintRedeemer {
   InitV1 { output_index: Int }
   Deinit
   CommitBlockHeader {
+    yield_to_ref_input_index: Int,
     new_block_output_index: Int,
     continued_latest_block_output_index: Int,
     operator: VerificationKeyHash,
@@ -164,6 +165,7 @@ pub type MintRedeemer {
     m_head_state_queue_node_ref_input_index: Option<Int>,
   }
   RemoveFraudulentBlockHeader {
+    yield_to_ref_input_index: Int,
     fraudulent_operator: VerificationKeyHash,
     fraudulent_blocks_header_hash: HeaderHash,
     slashing_approach: SlashingApproach,
@@ -176,6 +178,7 @@ pub type MintRedeemer {
   /// applied-attestation state and the shared input that serializes this path
   /// against `AttachDaAttestation`.
   RemoveUnattestedBlockAfterTimeout {
+    yield_to_ref_input_index: Int,
     timed_out_header_hash: HeaderHash,
     removal_approach: AttestationTimeoutRemovalApproach,
   }
@@ -184,11 +187,13 @@ pub type MintRedeemer {
   /// the first transaction; the CorrectionLock singleton then carries the
   /// same DACH identity across permissionless descendant pruning.
   RemoveUnavailableBlockAfterTimeout {
+    yield_to_ref_input_index: Int,
     unavailable_header_hash: HeaderHash,
     challenge_asset_name: AssetName,
     removal_approach: AttestationTimeoutRemovalApproach,
   }
   MergeToConfirmedStateV1 {
+    yield_to_ref_input_index: Int,
     header_node_key: ByteArray,
     confirmed_state_input_outref: OutputReference,
     confirmed_state_output_index: Int,
@@ -208,6 +213,14 @@ pub type MintRedeemer {
     merged_block_transition_step_count: Int,
     merged_block_validation_trace_count: Int,
   }
+}
+
+/// Canonical fieldless redeemer used by every state-queue rewarding validator.
+/// The rewarding validator binds its work to the exact state-queue mint
+/// redeemer in the same transaction, so the withdrawal does not duplicate the
+/// operational payload.
+pub type YieldRedeemerV1 {
+  YieldStateQueueV1
 }
 
 pub fn get_confirmed_state(

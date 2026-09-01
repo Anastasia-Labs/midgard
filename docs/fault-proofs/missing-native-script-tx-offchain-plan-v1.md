@@ -2,9 +2,9 @@
 
 Current status: implemented, registered, and emulator-proven. The canonical
 category is `missingNativeScriptTx` (`0000000f`). Generic Init, deployment
-inspection/identity, and all six mandatory reference scripts are wired.
-Family-specific CLI verbs, autonomous watcher actuation, and live/preprod
-evidence remain open.
+inspection/identity, all eight mandatory reference scripts, a production
+runner factory, and watcher installation are wired. Family-specific CLI verbs
+and live/preprod acceptance remain open.
 
 ## Fault statement
 
@@ -16,7 +16,7 @@ transaction/script bytes cannot convict.
 
 ## On-chain chain
 
-The six-step chain lives under:
+The eight-step chain lives under:
 
 - `onchain/aiken/validators/fraud-proofs/missing-native-script-tx/`
 - `onchain/aiken/lib/midgard/fraud-proofs/missing-native-script-tx/`
@@ -48,5 +48,5 @@ adversarial evidence, and published carriage.
 ## Remaining work
 
 - expose the family through the operational CLI/workflow surface;
-- mount watcher detection and proving;
+- accept the installed watcher detection/proving path end to end;
 - publish live/preprod proof-through-removal evidence.

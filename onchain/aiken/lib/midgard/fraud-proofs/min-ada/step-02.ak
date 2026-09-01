@@ -13,11 +13,17 @@ pub type State {
 pub type Args {
   input_index: Int,
   output_index: Int,
+  /// Authenticated reference input carrying this fault arm's rewarding script.
+  yield_to_ref_input_index: Int,
   /// Present exactly for `MinAdaTx`.
   outputs_opening: Option<FieldOpeningV1>,
   /// Present exactly for `MinAdaUtxo`; authenticates the descriptor frozen by
   /// step 01 against the challenged post-block UTxO root.
   post_membership: Option<MembershipCarriage>,
+}
+
+pub type YieldRedeemer {
+  YieldMinAdaStep02V1
 }
 
 pub type Datum =

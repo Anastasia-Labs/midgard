@@ -77,6 +77,10 @@ import {
   requireProductionFabricatedDepositEvidenceAuthorityV1,
 } from "./production-fabricated-deposit-evidence-v1.js";
 import {
+  type ProductionFabricatedWithdrawalEvidenceAuthorityV1,
+  requireProductionFabricatedWithdrawalEvidenceAuthorityV1,
+} from "./production-fabricated-withdrawal-evidence-v1.js";
+import {
   detectMinAdaUtxoFromHistoricalCorpusV1,
   detectMissingNativeScriptUtxoFromHistoricalCorpusV1,
   type ProductionHistoricalNativeScriptCorpusV1,
@@ -1273,6 +1277,21 @@ export const createFabricatedDepositCompleteCanonicalReplayV1 = ({
   const admitted =
     requireProductionFabricatedDepositEvidenceAuthorityV1(authority);
   return completeReplayer(["fabricatedDeposit"], async (evidence) =>
+    (await admitted.detect(evidence, owner)).map(({ detection }) => detection),
+  );
+};
+
+/** Complete committed-withdrawal scan against the concrete public L1 authority. */
+export const createFabricatedWithdrawalCompleteCanonicalReplayV1 = ({
+  authority,
+  owner,
+}: {
+  readonly authority: ProductionFabricatedWithdrawalEvidenceAuthorityV1;
+  readonly owner: string;
+}): CompleteCanonicalReplayV1 => {
+  const admitted =
+    requireProductionFabricatedWithdrawalEvidenceAuthorityV1(authority);
+  return completeReplayer(["fabricatedWithdrawal"], async (evidence) =>
     (await admitted.detect(evidence, owner)).map(({ detection }) => detection),
   );
 };

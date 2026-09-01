@@ -13,16 +13,20 @@ Run Aiken commands from the contract project directory:
 cd onchain/aiken
 ```
 
+Midgard demo, emulator, Preprod, and e2e contract builds use the Aiken
+`testnet` environment. Select it explicitly so environment-dependent protocol
+parameters in `plutus.json` match the off-chain testnet configuration.
+
 For a traced diagnostic blueprint, use:
 
 ```bash
-aiken build --trace-level verbose --trace-filter all
+aiken build --env testnet --trace-level verbose --trace-filter all
 ```
 
 For a normal blueprint without traces, use:
 
 ```bash
-aiken build
+aiken build --env testnet
 ```
 
 ## Focused Checks

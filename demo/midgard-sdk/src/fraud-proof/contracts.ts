@@ -21,6 +21,7 @@ import {
   type FraudProofs,
   MintingValidator,
   SpendingValidator,
+  WithdrawalValidator,
 } from "@/common.js";
 
 /**
@@ -245,6 +246,8 @@ export const MIN_ADA_FAULT_PROOF_TITLES = {
   step03: "fraud_proofs/min_ada/step_03.main.spend",
   step04: "fraud_proofs/min_ada/step_04.main.spend",
   step05: "fraud_proofs/min_ada/step_05.main.spend",
+  txYield: "fraud_proofs/min_ada/step_02_yields.tx.withdraw",
+  utxoYield: "fraud_proofs/min_ada/step_02_yields.utxo.withdraw",
 } as const;
 
 export const TRANSITION_TRACE_FAULT_PROOF_TITLES = {
@@ -879,6 +882,10 @@ export type MinAdaFaultProofContracts = {
   readonly fraudProof: AuthenticatedValidator;
   readonly fieldPreimageCertificate: MintingValidator;
   readonly minAda: FraudProofChain & {
+    readonly yields: {
+      readonly tx: WithdrawalValidator;
+      readonly utxo: WithdrawalValidator;
+    };
     readonly steps: readonly [
       SpendingValidator,
       SpendingValidator,
@@ -1142,6 +1149,7 @@ export type BuildFaultProofContractsParams = {
   readonly network: Network;
   readonly hubOraclePolicyId: string;
   readonly fraudProofCataloguePolicyId: string;
+  readonly referenceScriptAuthPolicyId?: string;
 };
 
 export type BuildDoubleSpendFaultProofContractsParams =
@@ -1232,7 +1240,9 @@ export type BuildNativeScriptInvalidFaultProofContractsParams =
   BuildFaultProofContractsParams;
 
 export type BuildMinAdaFaultProofContractsParams =
-  BuildFaultProofContractsParams;
+  BuildFaultProofContractsParams & {
+    readonly referenceScriptAuthPolicyId: string;
+  };
 
 export type BuildTransitionTraceFaultProofContractsParams =
   BuildFaultProofContractsParams;
@@ -1455,6 +1465,20 @@ const makeSpendingValidator = (
     spendingScript,
     spendingScriptAddress: validatorToAddress(network, spendingScript),
     spendingScriptHash: validatorToScriptHash(spendingScript),
+  };
+};
+
+const makeWithdrawalValidator = (
+  withdrawalScriptCBOR: string,
+): WithdrawalValidator => {
+  const withdrawalScript = {
+    type: "PlutusV3" as const,
+    script: withdrawalScriptCBOR,
+  };
+  return {
+    withdrawalScriptCBOR,
+    withdrawalScript,
+    withdrawalScriptHash: validatorToScriptHash(withdrawalScript),
   };
 };
 
@@ -3421,7 +3445,9 @@ const buildMinAdaChain = ({
   fraudProof,
   fraudProofTokenAddressData,
   fieldPreimageCertificatePolicyId,
-}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  referenceScriptAuthPolicyId,
+}: BuildMinAdaFaultProofContractsParams &
+  SharedFaultProofContracts): Effect.Effect<
   MinAdaFaultProofContracts["minAda"],
   Error
 > =>
@@ -3446,7 +3472,11 @@ const buildMinAdaChain = ({
     const step03 = yield* buildFaultProofSpendingStep(
       context,
       MIN_ADA_FAULT_PROOF_TITLES.step03,
-      [step04.spendingScriptHash, computationThread.policyId],
+      [
+        step04.spendingScriptHash,
+        step05.spendingScriptHash,
+        computationThread.policyId,
+      ],
       "Failed to build min-ada step 03",
     );
     const step02 = yield* buildFaultProofSpendingStep(
@@ -3456,7 +3486,7 @@ const buildMinAdaChain = ({
         step03.spendingScriptHash,
         step05.spendingScriptHash,
         computationThread.policyId,
-        fieldPreimageCertificatePolicyId,
+        referenceScriptAuthPolicyId,
       ],
       "Failed to build min-ada step 02",
     );
@@ -3470,9 +3500,29 @@ const buildMinAdaChain = ({
       ],
       "Failed to build min-ada step 01",
     );
+    const txYield = yield* tryBuild("Failed to build min-ada tx yield", () =>
+      makeWithdrawalValidator(
+        applyBlueprintParams(blueprint, MIN_ADA_FAULT_PROOF_TITLES.txYield, [
+          step02.spendingScriptHash,
+          fieldPreimageCertificatePolicyId,
+        ]),
+      ),
+    );
+    const utxoYield = yield* tryBuild(
+      "Failed to build min-ada UTxO yield",
+      () =>
+        makeWithdrawalValidator(
+          applyBlueprintParams(
+            blueprint,
+            MIN_ADA_FAULT_PROOF_TITLES.utxoYield,
+            [step02.spendingScriptHash],
+          ),
+        ),
+    );
     return {
       firstStep: step01,
       steps: [step01, step02, step03, step04, step05],
+      yields: { tx: txYield, utxo: utxoYield },
     };
   });
 
@@ -4286,7 +4336,7 @@ const buildValidationTraceDisputeChain = ({
   });
 
 export const buildFaultProofContracts = (
-  params: BuildFaultProofContractsParams,
+  params: BuildMinAdaFaultProofContractsParams,
 ): Effect.Effect<FaultProofContracts, Error> =>
   Effect.gen(function* () {
     const shared = yield* buildSharedFaultProofContracts(params);

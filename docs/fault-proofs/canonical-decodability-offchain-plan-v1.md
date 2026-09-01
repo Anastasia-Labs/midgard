@@ -2,9 +2,9 @@
 
 Current status: implemented, registered, and emulator-proven. The canonical
 category is `canonicalDecodability` (`00000011`). Generic Init, deployment
-inspection/identity, and both mandatory reference scripts are wired.
-Family-specific CLI verbs, autonomous watcher actuation, and live/preprod
-evidence remain open.
+inspection/identity, both mandatory reference scripts, a production runner
+factory, and watcher installation are wired. Family-specific CLI verbs and
+live/preprod acceptance remain open.
 
 ## Fault statement
 
@@ -48,5 +48,5 @@ evidence, cancellation/resume, permanent mint, and faulty-block removal.
 ## Remaining work
 
 - expose the family through the operational CLI/workflow surface;
-- mount watcher detection and proving;
+- accept the installed watcher detection/proving path end to end;
 - publish live/preprod proof-through-removal evidence.

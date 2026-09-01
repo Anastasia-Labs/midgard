@@ -53,6 +53,7 @@ import {
   EMPTY_HEADER_TRANSITION_COMMITMENTS_V1,
   EMPTY_MERKLE_TREE_ROOT,
   encodeLinkedListNodeView,
+  encodeStateQueueYieldRedeemerV1,
   fetchSortedStateQueueUTxOsProgram,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   FraudProofTokenDatum,
@@ -1002,6 +1003,10 @@ const submitCommitHeaderTx = async ({
         },
         stateQueueSpendingScript: contracts.stateQueue.spendingScript,
         stateQueueMintingScript: contracts.stateQueue.mintingScript,
+        yieldWitness: {
+          referenceInput: scheduler,
+          script: contracts.stateQueue.spendingScript,
+        },
       },
     ),
   );
@@ -1034,6 +1039,10 @@ const submitCommitHeaderTx = async ({
 };
 
 describe("state-queue ABI", () => {
+  it("encodes YieldStateQueueV1 as the canonical fieldless constructor", () => {
+    expect(encodeStateQueueYieldRedeemerV1()).toBe("d87980");
+  });
+
   it("uses the exact sole L04 InitV1 and MergeToConfirmedStateV1 language", () => {
     const init = { InitV1: { output_index: 2n } } as const;
     const initCbor = Data.to(init, StateQueueRedeemer);
@@ -1042,6 +1051,7 @@ describe("state-queue ABI", () => {
 
     const proofMerge = {
       MergeToConfirmedStateV1: {
+        yield_to_ref_input_index: 0n,
         header_node_key: "11".repeat(28),
         confirmed_state_input_outref: outputReference,
         confirmed_state_output_index: 0n,
@@ -1064,7 +1074,7 @@ describe("state-queue ABI", () => {
     } as const;
     const mergeCbor = Data.to(proofMerge, StateQueueRedeemer);
     expect(mergeCbor).toBe(
-      "d87f9f581c11111111111111111111111111111111111111111111111111111111d8799f5820444444444444444444444444444444444444444444444444444444444444444400ff00d8799f01ff58202121212121212121212121212121212121212121212121212121212121212121582022222222222222222222222222222222222222222222222222222222222222225820232323232323232323232323232323232323232323232323232323232323232358202424242424242424242424242424242424242424242424242424242424242424582025252525252525252525252525252525252525252525252525252525252525255820262626262626262626262626262626262626262626262626262626262626262658202727272727272727272727272727272727272727272727272727272727272727010203040a0a05ff",
+      "d87f9f00581c11111111111111111111111111111111111111111111111111111111d8799f5820444444444444444444444444444444444444444444444444444444444444444400ff00d8799f01ff58202121212121212121212121212121212121212121212121212121212121212121582022222222222222222222222222222222222222222222222222222222222222225820232323232323232323232323232323232323232323232323232323232323232358202424242424242424242424242424242424242424242424242424242424242424582025252525252525252525252525252525252525252525252525252525252525255820262626262626262626262626262626262626262626262626262626262626262658202727272727272727272727272727272727272727272727272727272727272727010203040a0a05ff",
     );
     expect(roundTrip(proofMerge, StateQueueRedeemer)).toEqual(proofMerge);
     expect(initCbor.startsWith("d8799f")).toBe(true);
@@ -1088,6 +1098,7 @@ describe("state-queue ABI", () => {
       roundTrip(
         {
           CommitBlockHeader: {
+            yield_to_ref_input_index: 0n,
             new_block_output_index: 1n,
             continued_latest_block_output_index: 2n,
             operator: "11".repeat(28),
@@ -1109,6 +1120,7 @@ describe("state-queue ABI", () => {
 
     const removeRedeemer = {
       RemoveFraudulentBlockHeader: {
+        yield_to_ref_input_index: 0n,
         fraudulent_operator: "22".repeat(28),
         fraudulent_blocks_header_hash: "33".repeat(28),
         slashing_approach: {
@@ -1317,6 +1329,10 @@ describe("state-queue emulator builders", () => {
         },
         stateQueueSpendingScript: contracts.stateQueue.spendingScript,
         stateQueueMintingScript: contracts.stateQueue.mintingScript,
+        yieldWitness: {
+          referenceInput: setup.fraudProof,
+          script: contracts.stateQueue.spendingScript,
+        },
       },
     );
     const removeUnsigned = await removeTx.complete({ localUPLCEval: true });
@@ -1492,6 +1508,10 @@ describe("state-queue emulator builders", () => {
         },
         stateQueueSpendingScript: contracts.stateQueue.spendingScript,
         stateQueueMintingScript: contracts.stateQueue.mintingScript,
+        yieldWitness: {
+          referenceInput: setup.fraudProof,
+          script: contracts.stateQueue.spendingScript,
+        },
       },
     );
     const removeUnsigned = await removeSuccessorTx.complete({

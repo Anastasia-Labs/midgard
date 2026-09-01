@@ -241,6 +241,7 @@ const terminalMerge = (
   const headerOutRef = `${h32((sequence + 4).toString(16))}#0`;
   const redeemer = {
     MergeToConfirmedStateV1: {
+      yield_to_ref_input_index: 0n,
       header_node_key: headerHash.toString("hex"),
       confirmed_state_input_outref: {
         transactionId: h32("0"),

@@ -87,6 +87,7 @@ fn correction_transition(
     state_queue.RemoveUnattestedBlockAfterTimeout {
       timed_out_header_hash,
       removal_approach,
+      ..
     } ->
       (
         correction_lock.Locked {
@@ -102,6 +103,7 @@ fn correction_transition(
       unavailable_header_hash,
       challenge_asset_name,
       removal_approach,
+      ..
     } -> {
       expect bytearray.length(challenge_asset_name) == 32
       let expected_locked = correction_lock.Locked {
@@ -383,6 +385,7 @@ fn test_timeout_redeemer(terminal: Bool) -> state_queue.MintRedeemer {
     }
   }
   state_queue.RemoveUnattestedBlockAfterTimeout {
+    yield_to_ref_input_index: 0,
     timed_out_header_hash: test_target,
     removal_approach,
   }
@@ -401,6 +404,7 @@ fn test_fraud_redeemer(terminal: Bool) -> state_queue.MintRedeemer {
     }
   }
   state_queue.RemoveFraudulentBlockHeader {
+    yield_to_ref_input_index: 0,
     fraudulent_operator: test_operator,
     fraudulent_blocks_header_hash: test_target,
     slashing_approach: state_queue.OperatorAlreadySlashed {
@@ -429,6 +433,7 @@ fn test_availability_redeemer(
     }
   }
   state_queue.RemoveUnavailableBlockAfterTimeout {
+    yield_to_ref_input_index: 0,
     unavailable_header_hash: test_target,
     challenge_asset_name: asset_name,
     removal_approach,

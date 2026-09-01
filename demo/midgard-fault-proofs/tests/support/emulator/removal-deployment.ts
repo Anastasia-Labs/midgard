@@ -492,6 +492,15 @@ export const buildRemovalDeploymentInfo = (
         contracts.stateQueue.mintingScript,
         "stateQueueMint",
       ),
+      stateQueueFraudRemovalWithdraw: deploymentEntry(
+        contracts.stateQueue.yields.fraudRemoval.withdrawalScriptHash,
+        contracts.stateQueue.yields.fraudRemoval.withdrawalScript,
+        "stateQueueFraudRemovalWithdraw",
+      ),
+      stateQueueUnattestedTimeoutWithdraw: deploymentEntry(
+        contracts.stateQueue.yields.unattestedTimeout.withdrawalScriptHash,
+        contracts.stateQueue.yields.unattestedTimeout.withdrawalScript,
+      ),
       correctionLockSpend: deploymentEntry(
         contracts.correctionLock.spendingScriptHash,
         contracts.correctionLock.spendingScript,

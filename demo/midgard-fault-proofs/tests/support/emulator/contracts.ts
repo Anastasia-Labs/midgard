@@ -15,11 +15,14 @@ import {
   buildInvalidRangeFaultProofContracts,
   buildInvalidSignatureFaultProofContracts,
   buildL2TxMistagFaultProofContracts,
+  buildMinAdaFaultProofContracts,
   buildMinFeeFaultProofContracts,
   buildMintAuthorizationFaultProofContracts,
   buildMissingNativeScriptTxFaultProofContracts,
+  buildMissingNativeScriptUtxoFaultProofContracts,
   buildMissingSignatureFaultProofContracts,
   buildNativeScriptDecodingFaultProofContracts,
+  buildNativeScriptInvalidFaultProofContracts,
   buildNonExistentInputFaultProofContracts,
   buildNoReferenceInputFaultProofContracts,
   buildReferenceInputNoIdxFaultProofContracts,
@@ -73,6 +76,7 @@ import {
   type InputSetUniquenessContractsV1,
 } from "../../../src/input-set-uniqueness/contracts-v1.js";
 import { type L2TxMistagContractsV1 } from "../../../src/l2-tx-mistag/contracts-v1.js";
+import { type MinAdaContractsV1 } from "../../../src/min-ada/contracts-v1.js";
 import { type MinFeeContractsV1 } from "../../../src/min-fee-contracts-v1.js";
 import {
   MINT_AUTHORIZATION_BLUEPRINT_TITLES_V1,
@@ -82,6 +86,7 @@ import {
   MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES_V1,
   type MissingNativeScriptTxContractsV1,
 } from "../../../src/missing-native-script-tx/contracts-v1.js";
+import { type MissingNativeScriptUtxoContractsV1 } from "../../../src/missing-native-script-utxo/contracts-v1.js";
 import {
   MISSING_SIGNATURE_BLUEPRINT_TITLES_V1,
   type MissingSignatureContractsV1,
@@ -90,6 +95,7 @@ import {
   NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES_V1,
   type NativeScriptDecodingContractsV1,
 } from "../../../src/native-script-decoding/contracts-v1.js";
+import { type NativeScriptInvalidContractsV1 } from "../../../src/native-script-invalid/contracts-v1.js";
 import { type FabricatedDepositContractsV1 } from "../../../src/submit-fabricated-deposit-step-01.js";
 import { type FabricatedWithdrawalContractsV1 } from "../../../src/submit-fabricated-withdrawal-step-01.js";
 import {
@@ -122,6 +128,7 @@ import {
   makeIsolatedAlwaysSucceedsAuthenticatedValidator,
   makeMintingValidator,
   makeSpendingValidator,
+  makeWithdrawalValidator,
 } from "./validators.js";
 
 type EmulatorStepTuple = readonly [
@@ -919,6 +926,9 @@ export const buildMinimalFaultProofContracts = async (
     realNativeScriptDecoding = false,
     realMissingSignature = false,
     realMissingNativeScriptTx = false,
+    realMissingNativeScriptUtxo = false,
+    realNativeScriptInvalid = false,
+    realMinAda = false,
     realCanonicalDecodability = false,
     realCommittedFieldShape = false,
     realWithdrawnReferenceInput = false,
@@ -933,6 +943,7 @@ export const buildMinimalFaultProofContracts = async (
     realMintAuthorization = false,
     alwaysFraudProofCatalogue = false,
     alwaysStateQueue = false,
+    referenceScriptAuthPolicyId,
   }: {
     readonly realNonExistentInput?: boolean;
     readonly realInvalidRange?: boolean;
@@ -949,6 +960,9 @@ export const buildMinimalFaultProofContracts = async (
     readonly realNativeScriptDecoding?: boolean;
     readonly realMissingSignature?: boolean;
     readonly realMissingNativeScriptTx?: boolean;
+    readonly realMissingNativeScriptUtxo?: boolean;
+    readonly realNativeScriptInvalid?: boolean;
+    readonly realMinAda?: boolean;
     readonly realCanonicalDecodability?: boolean;
     readonly realCommittedFieldShape?: boolean;
     readonly realWithdrawnReferenceInput?: boolean;
@@ -969,6 +983,7 @@ export const buildMinimalFaultProofContracts = async (
      * policy, and removal path remain their production implementations.
      */
     readonly alwaysStateQueue?: boolean;
+    readonly referenceScriptAuthPolicyId?: string;
   } = {},
 ): Promise<
   MidgardValidators & {
@@ -978,6 +993,9 @@ export const buildMinimalFaultProofContracts = async (
     readonly nativeScriptDecoding?: NativeScriptDecodingContractsV1;
     readonly missingSignature?: MissingSignatureContractsV1;
     readonly missingNativeScriptTx?: MissingNativeScriptTxContractsV1;
+    readonly missingNativeScriptUtxo?: MissingNativeScriptUtxoContractsV1;
+    readonly nativeScriptInvalid?: NativeScriptInvalidContractsV1;
+    readonly minAda?: MinAdaContractsV1;
     readonly canonicalDecodability?: CanonicalDecodabilityContractsV1;
     readonly committedFieldShape?: CommittedFieldShapeContractsV1;
     readonly withdrawnReferenceInput?: WithdrawnReferenceInputContractsV1;
@@ -1125,6 +1143,7 @@ export const buildMinimalFaultProofContracts = async (
       readonly network: typeof network;
       readonly hubOraclePolicyId: string;
       readonly fraudProofCataloguePolicyId: string;
+      readonly referenceScriptAuthPolicyId: string;
     }) => Effect.Effect<T, E>,
   ): Promise<T | undefined> => {
     if (!enabled) {
@@ -1136,6 +1155,8 @@ export const buildMinimalFaultProofContracts = async (
         network,
         hubOraclePolicyId: hubOracle.policyId,
         fraudProofCataloguePolicyId: fraudProofCatalogue.policyId,
+        referenceScriptAuthPolicyId:
+          referenceScriptAuthPolicyId ?? base.referenceScriptAuth.policyId,
       }),
     );
     expect(familyContracts.fraudProof.policyId).toBe(
@@ -1206,6 +1227,18 @@ export const buildMinimalFaultProofContracts = async (
   const missingNativeScriptTxContracts = await buildFamilyContracts(
     realMissingNativeScriptTx,
     buildMissingNativeScriptTxFaultProofContracts,
+  );
+  const missingNativeScriptUtxoContracts = await buildFamilyContracts(
+    realMissingNativeScriptUtxo,
+    buildMissingNativeScriptUtxoFaultProofContracts,
+  );
+  const nativeScriptInvalidContracts = await buildFamilyContracts(
+    realNativeScriptInvalid,
+    buildNativeScriptInvalidFaultProofContracts,
+  );
+  const minAdaContracts = await buildFamilyContracts(
+    realMinAda,
+    buildMinAdaFaultProofContracts,
   );
   const withdrawnReferenceInputContracts = await buildFamilyContracts(
     realWithdrawnReferenceInput,
@@ -1301,6 +1334,7 @@ export const buildMinimalFaultProofContracts = async (
       withScheduler.settlement.policyId,
       withScheduler.daAttestation.policyId,
       availabilityChallengePolicyId,
+      referenceScriptAuthPolicyId ?? base.referenceScriptAuth.policyId,
     ]),
   );
   const stateQueueSpending = makeSpendingValidator(
@@ -1310,11 +1344,86 @@ export const buildMinimalFaultProofContracts = async (
       availabilityChallengePolicyId,
     ]),
   );
+  const stateQueueYields = {
+    commit: makeWithdrawalValidator(
+      applyCompiledScript(realBlueprint, "state_queue_yields.commit.withdraw", [
+        stateQueueMinting.policyId,
+        hubOracle.policyId,
+        correctionLock.spendingScriptHash,
+        withScheduler.activeOperators.policyId,
+        activeOperatorsAddressData,
+        withScheduler.scheduler.policyId,
+        withScheduler.daAttestation.policyId,
+      ]),
+    ),
+    unattestedTimeout: makeWithdrawalValidator(
+      applyCompiledScript(
+        realBlueprint,
+        "state_queue_yields.remove_unattested.withdraw",
+        [
+          stateQueueMinting.policyId,
+          hubOracle.policyId,
+          correctionLock.spendingScriptHash,
+        ],
+      ),
+    ),
+    unavailableTimeout: makeWithdrawalValidator(
+      applyCompiledScript(
+        realBlueprint,
+        "state_queue_yields.remove_unavailable.withdraw",
+        [
+          stateQueueMinting.policyId,
+          hubOracle.policyId,
+          correctionLock.spendingScriptHash,
+          availabilityChallengePolicyId,
+        ],
+      ),
+    ),
+    fraudRemoval: makeWithdrawalValidator(
+      applyCompiledScript(
+        realBlueprint,
+        "state_queue_yields.remove_fraudulent.withdraw",
+        [
+          stateQueueMinting.policyId,
+          hubOracle.policyId,
+          correctionLock.spendingScriptHash,
+          withScheduler.activeOperators.policyId,
+          withScheduler.retiredOperators.policyId,
+          doubleSpendContracts.fraudProof.policyId,
+        ],
+      ),
+    ),
+    merge: makeWithdrawalValidator(
+      applyCompiledScript(realBlueprint, "state_queue_yields.merge.withdraw", [
+        stateQueueMinting.policyId,
+        hubOracle.policyId,
+        correctionLock.spendingScriptHash,
+        withScheduler.settlement.policyId,
+        withScheduler.daAttestation.policyId,
+      ]),
+    ),
+  };
   const stateQueue = alwaysStateQueue
-    ? makeIsolatedAlwaysSucceedsAuthenticatedValidator()
+    ? (() => {
+        const isolated = makeIsolatedAlwaysSucceedsAuthenticatedValidator();
+        const yieldValidator = makeWithdrawalValidator(
+          isolated.mintingScriptCBOR,
+        );
+        return {
+          ...isolated,
+          yields: {
+            commit: yieldValidator,
+            unattestedTimeout: yieldValidator,
+            unavailableTimeout: yieldValidator,
+            fraudRemoval: yieldValidator,
+            merge: yieldValidator,
+          },
+        };
+      })()
     : {
         ...stateQueueMinting,
         ...stateQueueSpending,
+        yields: stateQueueYields,
       };
 
   // The Q39/Q40 submitters take an explicit focused contracts record. Assemble
@@ -1376,6 +1485,44 @@ export const buildMinimalFaultProofContracts = async (
           hubOraclePolicyId: hubOracle.policyId,
           stateQueuePolicyId: stateQueueMinting.policyId,
           fieldPreimageCertificatePolicyId,
+        };
+  const missingNativeScriptUtxo:
+    | MissingNativeScriptUtxoContractsV1
+    | undefined =
+    missingNativeScriptUtxoContracts === undefined
+      ? undefined
+      : {
+          steps: missingNativeScriptUtxoContracts.missingNativeScriptUtxo.steps,
+          computationThread: missingNativeScriptUtxoContracts.computationThread,
+          fraudProof: missingNativeScriptUtxoContracts.fraudProof,
+          hubOraclePolicyId: hubOracle.policyId,
+          stateQueuePolicyId: stateQueueMinting.policyId,
+          fieldPreimageCertificatePolicyId,
+        };
+  const nativeScriptInvalid: NativeScriptInvalidContractsV1 | undefined =
+    nativeScriptInvalidContracts === undefined
+      ? undefined
+      : {
+          steps: nativeScriptInvalidContracts.nativeScriptInvalid.steps,
+          computationThread: nativeScriptInvalidContracts.computationThread,
+          fraudProof: nativeScriptInvalidContracts.fraudProof,
+          hubOraclePolicyId: hubOracle.policyId,
+          stateQueuePolicyId: stateQueueMinting.policyId,
+          fieldPreimageCertificatePolicyId,
+        };
+  const minAda: MinAdaContractsV1 | undefined =
+    minAdaContracts === undefined
+      ? undefined
+      : {
+          steps: minAdaContracts.minAda.steps,
+          yields: minAdaContracts.minAda.yields,
+          computationThread: minAdaContracts.computationThread,
+          fraudProof: minAdaContracts.fraudProof,
+          hubOraclePolicyId: hubOracle.policyId,
+          stateQueuePolicyId: stateQueueMinting.policyId,
+          fieldPreimageCertificatePolicyId,
+          referenceScriptAuthPolicyId:
+            referenceScriptAuthPolicyId ?? base.referenceScriptAuth.policyId,
         };
   const canonicalDecodability: CanonicalDecodabilityContractsV1 | undefined =
     canonicalDecodabilityContracts === undefined
@@ -1574,6 +1721,18 @@ export const buildMinimalFaultProofContracts = async (
       missingNativeScriptTx === undefined
         ? withActiveOperators.fraudProofContracts.missingNativeScriptTx
         : chainFromSteps(missingNativeScriptTx.steps),
+    missingNativeScriptUtxo:
+      missingNativeScriptUtxo === undefined
+        ? withActiveOperators.fraudProofContracts.missingNativeScriptUtxo
+        : chainFromSteps(missingNativeScriptUtxo.steps),
+    nativeScriptInvalid:
+      nativeScriptInvalid === undefined
+        ? withActiveOperators.fraudProofContracts.nativeScriptInvalid
+        : chainFromSteps(nativeScriptInvalid.steps),
+    minAda:
+      minAda === undefined
+        ? withActiveOperators.fraudProofContracts.minAda
+        : { ...chainFromSteps(minAda.steps), yields: minAda.yields },
     withdrawnReferenceInput:
       withdrawnReferenceInput === undefined
         ? withActiveOperators.fraudProofContracts.withdrawnReferenceInput
@@ -1631,6 +1790,11 @@ export const buildMinimalFaultProofContracts = async (
     ...(nativeScriptDecoding === undefined ? {} : { nativeScriptDecoding }),
     ...(missingSignature === undefined ? {} : { missingSignature }),
     ...(missingNativeScriptTx === undefined ? {} : { missingNativeScriptTx }),
+    ...(missingNativeScriptUtxo === undefined
+      ? {}
+      : { missingNativeScriptUtxo }),
+    ...(nativeScriptInvalid === undefined ? {} : { nativeScriptInvalid }),
+    ...(minAda === undefined ? {} : { minAda }),
     ...(canonicalDecodability === undefined ? {} : { canonicalDecodability }),
     ...(committedFieldShape === undefined ? {} : { committedFieldShape }),
     ...(withdrawnReferenceInput === undefined

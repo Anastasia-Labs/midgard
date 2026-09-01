@@ -8,7 +8,6 @@ import {
   requireInputIndex,
   requireOwnSpendPurpose,
   requireUniqueOutputIndex,
-  resolveMissingSignatureFieldWalkCheckpointV1,
 } from "@al-ft/midgard-sdk";
 import {
   type BuildTxWithRedeemer,
@@ -37,8 +36,10 @@ import {
   type NativeScriptInvalidContractsV1,
 } from "./contracts-v1.js";
 import {
-  NATIVE_SCRIPT_INVALID_SCAN_BATCH_V1,
+  NATIVE_SCRIPT_INVALID_SIGNER_FINALIZE_BATCH_V1,
+  NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH_V1,
   nativeScriptInvalidSignerScanStateV1,
+  resolveNativeScriptInvalidSignerCheckpointV1,
 } from "./evidence-machine-v1.js";
 
 type State = NonNullable<
@@ -117,7 +118,7 @@ export const submitNativeScriptInvalidStep04 = async ({
     anchorWitnessSetHash: state.bad_tx_witness_set_hash,
     label: `${label} field 7`,
   });
-  const current = resolveMissingSignatureFieldWalkCheckpointV1({
+  const current = resolveNativeScriptInvalidSignerCheckpointV1({
     txId: state.bad_tx_id,
     itemCount: addressWitnessItems.length,
     totalLength: planned.preimage.length,
@@ -126,16 +127,19 @@ export const submitNativeScriptInvalidStep04 = async ({
   if (current === null) {
     throw new Error(`${label}: signer checkpoint is missing`);
   }
+  const remainingItems = addressWitnessItems.length - current.nextItemIndex;
+  const batchSize =
+    remainingItems <= NATIVE_SCRIPT_INVALID_SIGNER_FINALIZE_BATCH_V1
+      ? remainingItems
+      : NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH_V1;
   const next = nativeScriptInvalidSignerScanStateV1({
     txId: state.bad_tx_id,
     addressWitnessItems,
     totalLength: planned.preimage.length,
     committedCheckpointHash: state.signer_checkpoint_hash,
+    batchSize,
   });
-  const itemBudget = Math.min(
-    NATIVE_SCRIPT_INVALID_SCAN_BATCH_V1,
-    addressWitnessItems.length - current.nextItemIndex,
-  );
+  const itemBudget = batchSize;
   signer.selectWallet(lucid);
   const carriageUtxos =
     publishedCarriageUtxos ??

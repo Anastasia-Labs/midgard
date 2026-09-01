@@ -62,7 +62,10 @@ modules. In particular, the following current families rely on this contract:
   `missing-native-script-tx`;
 - `withdrawn-reference-input`, `withdrawn-input`, `canonical-decodability`,
   `committed-field-shape`, `min-fee`, `l2-tx-mistag`,
-  `value-not-preserved`, `input-set-uniqueness`, and `mint-authorization`.
+  `value-not-preserved`, `input-set-uniqueness`, `mint-authorization`, and
+  `network-id`;
+- `native-script-decoding`, `missing-native-script-utxo`,
+  `native-script-invalid`, and `min-ada`.
 
 The current source and blueprint determine each family's exact step state and
 declared parameter list. This document intentionally carries no copied script

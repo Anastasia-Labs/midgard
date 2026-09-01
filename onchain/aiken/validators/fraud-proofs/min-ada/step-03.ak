@@ -10,11 +10,13 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/min_ada/step_03.{Args, Datum, SpendRedeemer}
 use midgard/fraud_proofs/min_ada/step_04 as step_04
+use midgard/fraud_proofs/min_ada/step_05 as step_05
 use midgard/ledger_output_commitment_v1
 use midgard/validation_machine_v1
 
 validator main(
   step_04_validator_script_hash: ScriptHash,
+  step_05_validator_script_hash: ScriptHash,
   computation_thread_token_policy_id: PolicyId,
 ) {
   spend(
@@ -53,20 +55,36 @@ validator main(
           outputs,
         )
         expect Some(state) = m_input_state_data
-        expect output_script_hash == step_04_validator_script_hash
-        let expected_output_state: Data = step_04.State {
-          out_ref_key: state.out_ref_key,
-          prev_utxos_root: state.prev_utxos_root,
+        when state is {
+          step_03.MinAdaTxDescriptor { total_length, lovelace } -> {
+            expect output_script_hash == step_05_validator_script_hash
+            let expected_output_state: Data = step_05.PredicateAndCulpabilityAuthenticated
+            expect output_state_data == expected_output_state
+            !validation_machine_v1.output_meets_min_ada_v1(
+              env.coins_per_utxo_byte,
+              total_length,
+              lovelace,
+            )
+          }
+          step_03.MinAdaUtxoDescriptor {
+            descriptor_cbor,
+            out_ref_key,
+            prev_utxos_root,
+          } -> {
+            expect output_script_hash == step_04_validator_script_hash
+            let expected_output_state: Data = step_04.State {
+              out_ref_key,
+              prev_utxos_root,
+            }
+            expect output_state_data == expected_output_state
+            let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
+            !validation_machine_v1.output_meets_min_ada_v1(
+              env.coins_per_utxo_byte,
+              descriptor.total_length,
+              descriptor.lovelace,
+            )
+          }
         }
-        expect output_state_data == expected_output_state
-        let descriptor = ledger_output_commitment_v1.decode(
-          state.descriptor_cbor,
-        )
-        !validation_machine_v1.output_meets_min_ada_v1(
-          env.coins_per_utxo_byte,
-          descriptor.total_length,
-          descriptor.lovelace,
-        )
       }
     }
   }

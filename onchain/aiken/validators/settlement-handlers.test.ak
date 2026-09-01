@@ -1215,6 +1215,7 @@ test settlement_handler_spend_resolve_rejects_burn_of_the_wrong_quantity() fail 
 
 fn merge_redeemer(header_node_key: ByteArray, m_index: Option<Int>) -> Redeemer {
   let redeemer: state_queue.MintRedeemer = state_queue.MergeToConfirmedStateV1 {
+    yield_to_ref_input_index: 0,
     header_node_key,
     confirmed_state_input_outref: outref(
       #"7777777777777777777777777777777777777777777777777777777777777777",

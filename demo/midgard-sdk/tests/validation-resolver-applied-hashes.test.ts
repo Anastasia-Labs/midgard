@@ -80,6 +80,7 @@ describe("validation resolver production-builder parameter application", () => {
         network: "Preprod",
         hubOraclePolicyId: "bb".repeat(28),
         fraudProofCataloguePolicyId: "cc".repeat(28),
+        referenceScriptAuthPolicyId: "dd".repeat(28),
       }),
     );
     const materialHash = validatorToScriptHash({

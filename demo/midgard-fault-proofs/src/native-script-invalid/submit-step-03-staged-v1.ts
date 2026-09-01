@@ -37,8 +37,9 @@ import {
   type NativeScriptInvalidContractsV1,
 } from "./contracts-v1.js";
 import {
-  NATIVE_SCRIPT_INVALID_SCAN_BATCH_V1,
+  NATIVE_SCRIPT_INVALID_SIGNER_START_BATCH_V1,
   nativeScriptInvalidSignerScanStateV1,
+  nativeScriptInvalidUsesDirectRouteV1,
 } from "./evidence-machine-v1.js";
 
 type State = NonNullable<
@@ -112,7 +113,12 @@ export const submitNativeScriptInvalidStep03StartSignerScan = async ({
   if (script.language !== "NativeCardano") {
     throw new Error(`${label}: selected witness is not a native script`);
   }
-  if (addressWitnessItems.length <= 32 && script.scriptBytes.length <= 1_024) {
+  if (
+    nativeScriptInvalidUsesDirectRouteV1({
+      signerCount: addressWitnessItems.length,
+      scriptBytes: script.scriptBytes.length,
+    })
+  ) {
     throw new Error(
       `${label}: direct path fits; staged scan is not admissible`,
     );
@@ -132,6 +138,7 @@ export const submitNativeScriptInvalidStep03StartSignerScan = async ({
     txId: state.bad_tx_id,
     addressWitnessItems,
     totalLength: planned.preimage.length,
+    batchSize: NATIVE_SCRIPT_INVALID_SIGNER_START_BATCH_V1,
   });
   signer.selectWallet(lucid);
   const carriageUtxos =
@@ -196,7 +203,7 @@ export const submitNativeScriptInvalidStep03StartSignerScan = async ({
               output_index: outputIndex,
               script_item_cbor: Buffer.from(scriptItemCbor).toString("hex"),
               addr_tx_wits_opening: opening,
-              item_budget: BigInt(NATIVE_SCRIPT_INVALID_SCAN_BATCH_V1),
+              item_budget: BigInt(NATIVE_SCRIPT_INVALID_SIGNER_START_BATCH_V1),
             },
           },
         ],

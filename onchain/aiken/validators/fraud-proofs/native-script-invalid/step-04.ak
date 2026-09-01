@@ -8,11 +8,9 @@ use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/fraud_proofs/field_opening_v1.{
   WitnessAnchor, address_witnesses_field_index, resume_opened_field_walk,
 }
-use midgard/fraud_proofs/native_script_invalid/step_03.{
-  staged_signer_batch_limit,
-}
 use midgard/fraud_proofs/native_script_invalid/step_04.{
   Args, Datum, FinalizeSignerScan, ResumeSignerScan, SpendRedeemer, State,
+  staged_signer_finalize_batch_limit, staged_signer_resume_batch_limit,
 }
 use midgard/fraud_proofs/native_script_invalid/step_05
 use midgard/fraud_proofs/native_tx/components.{
@@ -97,7 +95,7 @@ validator main(
         when action is {
           ResumeSignerScan { item_budget, .. } -> {
             expect item_budget > 0
-            expect item_budget <= staged_signer_batch_limit
+            expect item_budget <= staged_signer_resume_batch_limit
             expect !machine_walk.walk_is_complete(next)
             expect output_script_hash == own_script_hash
             let expected_output_state: Data = State {
@@ -114,7 +112,7 @@ validator main(
           }
           FinalizeSignerScan { item_budget, .. } -> {
             expect item_budget >= 0
-            expect item_budget <= staged_signer_batch_limit
+            expect item_budget <= staged_signer_finalize_batch_limit
             expect machine_walk.walk_is_complete(next)
             expect output_script_hash == step_05_validator_script_hash
             let expected_output_state: Data = step_05.State {

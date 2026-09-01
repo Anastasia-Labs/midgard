@@ -263,14 +263,34 @@ const productionWorkflowAdapterRegistrationRowsV1 = [
     requiredClosure:
       "install and exercise the manifest-bound invalid-signature runner in the compiled application with its exact reference roster and public retained-DA runtime",
   },
-  manual("fabricatedDeposit", [
-    "prepare-fabricated-deposit.ts",
-    "submit-fabricated-deposit-step-01.ts..submit-fabricated-deposit-step-04.ts",
-  ]),
-  manual("fabricatedWithdrawal", [
-    "prepare-fabricated-withdrawal.ts",
-    "submit-fabricated-withdrawal-step-01.ts..submit-fabricated-withdrawal-step-04.ts",
-  ]),
+  {
+    category: "fabricatedDeposit",
+    status: "missing",
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "workflow/production-fabricated-deposit-evidence-v1.ts",
+      "workflow/production-fabricated-deposit-v1.ts",
+      "workflow/production-runtime-v1.ts#createFabricatedDepositProductionWorkflowRunnerV1",
+      "submit-fabricated-deposit-step-01.ts..submit-fabricated-deposit-step-04.ts",
+      "remove-fraudulent-block.ts",
+    ],
+    requiredClosure:
+      "install and exercise the manifest-bound fabricated-deposit runner in a compiled application with its public L1 event authority and retained-DA runtime",
+  },
+  {
+    category: "fabricatedWithdrawal",
+    status: "missing",
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "workflow/production-fabricated-withdrawal-evidence-v1.ts",
+      "workflow/production-fabricated-withdrawal-v1.ts",
+      "workflow/production-runtime-v1.ts#createFabricatedWithdrawalProductionWorkflowRunnerV1",
+      "submit-fabricated-withdrawal-step-01.ts..submit-fabricated-withdrawal-step-04.ts",
+      "remove-fraudulent-block.ts",
+    ],
+    requiredClosure:
+      "install and exercise the manifest-bound fabricated-withdrawal runner in a compiled application with its public L1 event authority and retained-DA runtime",
+  },
   {
     category: "nativeScriptDecoding",
     status: "missing",

@@ -21,6 +21,7 @@ import {
   ActiveOperatorSpendRedeemer,
   castActiveOperatorDatumToData,
 } from "@/active-operators.js";
+import { scriptRewardAddress } from "@/cardano-addresses.js";
 import type {
   DataCoercionError,
   HashingError,
@@ -56,6 +57,7 @@ import {
   type SettlementMintRedeemer as SettlementMintRedeemerType,
 } from "@/settlement.js";
 import {
+  encodeStateQueueYieldRedeemerV1,
   getConfirmedStateFromStateQueueDatum,
   StateQueueError,
   type StateQueueFetchConfig,
@@ -80,6 +82,7 @@ const ACTIVE_OPERATOR_MATURITY_DURATION_MS = BigInt(
   MIDGARD_CONSENSUS_PROFILE_V1.limits.blockMaturityMs,
 );
 const MIN_SETTLEMENT_OUTPUT_LOVELACE = 5_000_000n;
+// Aiken's sole fieldless constructor is represented by Plutus `Constr 0 []`.
 export const PRODUCTION_COMMIT_MAX_VALIDITY_RANGE_MS = 8 * 60 * 1_000;
 
 export const isProductionCommitValidityInterval = ({
@@ -123,10 +126,12 @@ export type StateQueueCommitWitnessContext = {
   readonly activeOperatorsSpendingScriptRef?: UTxO;
   readonly stateQueueSpendingScriptRef?: UTxO;
   readonly stateQueueMintingScriptRef?: UTxO;
+  readonly stateQueueCommitYieldScriptRef: UTxO;
   readonly operatorWalletView: OperatorWalletViewLike;
 };
 
 type StateQueueCommitLayout = {
+  readonly yieldToRefInputIndex: bigint;
   readonly schedulerRefInputIndex: bigint;
   readonly newBlockOutputIndex: bigint;
   readonly continuedLatestBlockOutputIndex: bigint;
@@ -141,6 +146,7 @@ type StateQueueCommitLayout = {
 
 type StateQueueCommitRedeemer = {
   readonly CommitBlockHeader: {
+    readonly yield_to_ref_input_index: bigint;
     readonly new_block_output_index: bigint;
     readonly continued_latest_block_output_index: bigint;
     readonly operator: string;
@@ -198,6 +204,7 @@ const makeStateQueueCommitRedeemer = (
   layout: StateQueueCommitLayout,
 ): StateQueueCommitRedeemer => ({
   CommitBlockHeader: {
+    yield_to_ref_input_index: layout.yieldToRefInputIndex,
     new_block_output_index: layout.newBlockOutputIndex,
     continued_latest_block_output_index: layout.continuedLatestBlockOutputIndex,
     operator: operatorKeyHash,
@@ -245,6 +252,7 @@ const encodeStateQueueLinkedListMutationSpendRedeemer = (): string =>
   Data.to("LinkedListMutation" as never, StateQueueSpendRedeemer as never);
 
 type CommitLayoutLike = {
+  readonly yieldToRefInputIndex: bigint;
   readonly schedulerRefInputIndex: bigint;
   readonly activeOperatorsInputIndex: bigint;
   readonly activeOperatorsRedeemerIndex: bigint;
@@ -258,6 +266,7 @@ type CommitLayoutLike = {
 };
 
 const COMMIT_LAYOUT_FIELDS = [
+  { key: "yieldToRefInputIndex", label: "yield_to_ref_input_index" },
   { key: "schedulerRefInputIndex", label: "scheduler_ref_input_index" },
   { key: "activeOperatorsInputIndex", label: "active_operators_input_index" },
   {
@@ -321,6 +330,7 @@ const deriveCommitLayoutFromRedeemerContext = ({
   activeOperatorInput,
   confirmedStateRefInput,
   headStateQueueNodeRefInput,
+  stateQueueCommitYieldScriptRef,
   stateQueuePolicyId,
   stateQueueAddress,
   headerNodeUnit,
@@ -333,6 +343,7 @@ const deriveCommitLayoutFromRedeemerContext = ({
   readonly activeOperatorInput: UTxO;
   readonly confirmedStateRefInput?: UTxO;
   readonly headStateQueueNodeRefInput?: UTxO;
+  readonly stateQueueCommitYieldScriptRef: UTxO;
   readonly stateQueuePolicyId: string;
   readonly stateQueueAddress: string;
   readonly headerNodeUnit: string;
@@ -345,6 +356,11 @@ const deriveCommitLayoutFromRedeemerContext = ({
     "state-queue commit active operator",
   );
   return {
+    yieldToRefInputIndex: requireContextReferenceInputIndex(
+      ctx,
+      stateQueueCommitYieldScriptRef,
+      "state-queue commit yield target",
+    ),
     schedulerRefInputIndex: requireContextReferenceInputIndex(
       ctx,
       schedulerRefInput,
@@ -415,6 +431,7 @@ export type DeterministicCommitTxBuilderInput = {
   readonly previousHeaderNodeDatumCbor: string;
   readonly updatedActiveOperatorDatumCbor: string;
   readonly commitMintAssets: Readonly<Record<string, bigint>>;
+  readonly yieldRewardAddress: string;
   readonly makeBaseCommitTx: (
     stateQueueCommitSpendRedeemer: BuildTxWithRedeemer | string,
   ) => TxBuilder;
@@ -428,6 +445,7 @@ export const buildDeterministicCommitTxBuilder = ({
   previousHeaderNodeDatumCbor,
   updatedActiveOperatorDatumCbor,
   commitMintAssets,
+  yieldRewardAddress,
   makeBaseCommitTx,
 }: DeterministicCommitTxBuilderInput): Effect.Effect<
   TxSignBuilder,
@@ -446,6 +464,7 @@ export const buildDeterministicCommitTxBuilder = ({
       witness.schedulerRefInput,
       witness.hubOracleRefInput,
       witness.correctionLockRefInput.utxo,
+      witness.stateQueueCommitYieldScriptRef,
       ...(witness.activeOperatorsSpendingScriptRef === undefined
         ? []
         : [witness.activeOperatorsSpendingScriptRef]),
@@ -474,6 +493,7 @@ export const buildDeterministicCommitTxBuilder = ({
         activeOperatorInput: witness.activeOperatorInput,
         confirmedStateRefInput: witness.confirmedStateRefInput,
         headStateQueueNodeRefInput: witness.headStateQueueNodeRefInput,
+        stateQueueCommitYieldScriptRef: witness.stateQueueCommitYieldScriptRef,
         stateQueueAddress: contracts.stateQueue.spendingScriptAddress,
         stateQueuePolicyId: contracts.stateQueue.policyId,
         headerNodeUnit,
@@ -512,7 +532,9 @@ export const buildDeterministicCommitTxBuilder = ({
           witness.activeOperatorInput.assets,
         )
         .addSignerKey(witness.operatorKeyHash)
-        .mintAssets(commitMintAssets, stateQueueCommitMintRedeemer);
+        .mintAssets(commitMintAssets, stateQueueCommitMintRedeemer)
+        .withdraw(yieldRewardAddress, 0n, (() =>
+          encodeStateQueueYieldRedeemerV1()) satisfies BuildTxWithRedeemer);
       const withActiveOperatorsScript =
         witness.activeOperatorsSpendingScriptRef === undefined
           ? tx.attach.Script(witness.activeOperatorsSpendingScript)
@@ -721,6 +743,16 @@ export const buildProductionCommitBlockHeaderTxProgram = ({
           latestBlock.utxo.assets,
         );
 
+    const network = lucid.config().network;
+    if (network === undefined) {
+      return yield* Effect.fail(
+        new StateQueueError({
+          message:
+            "Cannot build a state-queue commit yield without a configured Lucid network",
+          cause: "lucid.config().network is undefined",
+        }),
+      );
+    }
     const tx = yield* buildDeterministicCommitTxBuilder({
       contracts,
       witness,
@@ -729,6 +761,10 @@ export const buildProductionCommitBlockHeaderTxProgram = ({
       previousHeaderNodeDatumCbor: updatedNodeDatumCbor,
       updatedActiveOperatorDatumCbor,
       commitMintAssets,
+      yieldRewardAddress: scriptRewardAddress(
+        network,
+        contracts.stateQueue.yields.commit.withdrawalScript,
+      ),
       makeBaseCommitTx,
     });
 
@@ -752,11 +788,13 @@ export type ProductionMergeToConfirmedStateParams = {
   readonly hubOracleRefInput: UTxO;
   /** Authenticated deployment singleton; merge is permitted only while Idle. */
   readonly correctionLockRefInput: CorrectionLockUTxO;
+  readonly stateQueueMergeYieldRefInput: UTxO;
   readonly referenceScripts?: StateQueueMergeReferenceScripts;
   readonly settlementOutputLovelace?: bigint;
 };
 
 export type MergeRedeemerLayout = {
+  readonly yieldToRefInputIndex: number;
   readonly confirmedStateOutputIndex: number;
   readonly settlementOutputIndex: number;
   readonly stateQueueRedeemerIndex: number;
@@ -816,6 +854,7 @@ const makeStateQueueMergeRedeemer = ({
   readonly confirmedStateInputOutRef: OutputReference;
 }): StateQueueRedeemerType => {
   const common = {
+    yield_to_ref_input_index: BigInt(layout.yieldToRefInputIndex),
     header_node_key: headerNodeKey,
     confirmed_state_input_outref: confirmedStateInputOutRef,
     confirmed_state_output_index: BigInt(layout.confirmedStateOutputIndex),
@@ -857,6 +896,7 @@ const deriveMergeLayoutFromRedeemerContext = ({
   ctx,
   confirmedUTxO,
   hubOracleRefInput,
+  stateQueueMergeYieldRefInput,
   stateQueuePolicyId,
   stateQueueAddress,
   encodedConfirmedNodeDatum,
@@ -868,6 +908,7 @@ const deriveMergeLayoutFromRedeemerContext = ({
   readonly ctx: Parameters<BuildTxWithRedeemer>[0];
   readonly confirmedUTxO: StateQueueUTxO;
   readonly hubOracleRefInput: UTxO;
+  readonly stateQueueMergeYieldRefInput: UTxO;
   readonly stateQueuePolicyId: string;
   readonly stateQueueAddress: string;
   readonly encodedConfirmedNodeDatum: string;
@@ -876,6 +917,13 @@ const deriveMergeLayoutFromRedeemerContext = ({
   readonly encodedSettlementDatum: string;
   readonly settlementOutputAssets: Assets;
 }): MergeRedeemerLayout => ({
+  yieldToRefInputIndex: Number(
+    requireContextReferenceInputIndex(
+      ctx,
+      stateQueueMergeYieldRefInput,
+      "state-queue merge yield target",
+    ),
+  ),
   confirmedStateOutputIndex: Number(
     requireUniqueContextOutputIndex(
       ctx.outputs,
@@ -953,6 +1001,12 @@ const assertMergeRedeemerInvariants = ({
   if (stateQueueMerge === undefined) {
     mismatches.push("state_queue variant mismatch");
   } else {
+    if (
+      stateQueueMerge.yield_to_ref_input_index !==
+      BigInt(layout.yieldToRefInputIndex)
+    ) {
+      mismatches.push("state_queue.yield_to_ref_input_index mismatch");
+    }
     if (stateQueueMerge.header_node_key !== headerNodeKey) {
       mismatches.push("state_queue.header_node_key mismatch");
     }
@@ -1105,6 +1159,7 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
   presetWalletInputs,
   hubOracleRefInput,
   correctionLockRefInput,
+  stateQueueMergeYieldRefInput,
   referenceScripts,
   settlementOutputLovelace = MIN_SETTLEMENT_OUTPUT_LOVELACE,
 }: ProductionMergeToConfirmedStateParams): Effect.Effect<
@@ -1194,6 +1249,7 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
     const mergeReferenceInputs = [
       hubOracleRefInput,
       correctionLockRefInput.utxo,
+      stateQueueMergeYieldRefInput,
       ...(referenceScripts?.stateQueueSpending === undefined
         ? []
         : [referenceScripts.stateQueueSpending]),
@@ -1205,6 +1261,16 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
         : [referenceScripts.settlementMinting]),
     ];
 
+    const network = lucid.config().network;
+    if (network === undefined) {
+      return yield* Effect.fail(
+        mergeStateQueueError(
+          "E_MERGE_NETWORK_UNDEFINED",
+          "Cannot build a state-queue merge yield without a configured Lucid network",
+          "lucid.config().network is undefined",
+        ),
+      );
+    }
     const makeMergeTx = (
       encodedStateQueueMergeRedeemer: BuildTxWithRedeemer | string,
       encodedSettlementSpawnRedeemer: BuildTxWithRedeemer | string,
@@ -1228,7 +1294,15 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
           settlementOutputAssets,
         )
         .mintAssets(stateQueueAssetsToBurn, encodedStateQueueMergeRedeemer)
-        .mintAssets(settlementAssetsToMint, encodedSettlementSpawnRedeemer);
+        .mintAssets(settlementAssetsToMint, encodedSettlementSpawnRedeemer)
+        .withdraw(
+          scriptRewardAddress(
+            network,
+            contracts.stateQueue.yields.merge.withdrawalScript,
+          ),
+          0n,
+          encodeStateQueueYieldRedeemerV1(),
+        );
 
     const makeMergeTxWithScripts = (
       encodedStateQueueMergeRedeemer: BuildTxWithRedeemer | string,
@@ -1265,6 +1339,7 @@ export const buildProductionMergeToConfirmedStateTxProgram = ({
         ctx,
         confirmedUTxO,
         hubOracleRefInput,
+        stateQueueMergeYieldRefInput,
         stateQueuePolicyId: fetchConfig.stateQueuePolicyId,
         stateQueueAddress: fetchConfig.stateQueueAddress,
         encodedConfirmedNodeDatum,

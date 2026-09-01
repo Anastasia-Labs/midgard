@@ -85,7 +85,14 @@ export default defineConfig({
     // Creates and migrates one database per worker shard before any file runs.
     globalSetup: ["./tests/global-setup.ts"],
     reporters: [["default", { summary: false }]],
-    include: ["./tests/**/*.test.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
+    // Vitest 3's filter resolution does not reliably match the eight-way
+    // extension brace used here previously, so keep the overwhelmingly common
+    // TypeScript lane explicit. Otherwise a focused `*.test.ts` invocation can
+    // report "No test files found" and never exercise a release gate.
+    include: [
+      "./tests/**/*.test.ts",
+      "./tests/**/*.test.{js,mjs,cjs,mts,cts,jsx,tsx}",
+    ],
     exclude: [
       ...configDefaults.exclude,
       "./tests/phase4-pipelined-process-summary-verifier.test.mjs",

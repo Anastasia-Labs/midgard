@@ -96,6 +96,9 @@ export const submitNativeScriptInvalidStep01 = async ({
     txInclusion,
     nextDatum,
     spendRedeemerSchema: NativeScriptInvalidStep01SpendRedeemerSchema,
+    wrapInclusionArgs: (args) => ({
+      carriage: { RedeemerCarriedInclusion: [args] },
+    }),
     referenceScriptUtxo,
     witnessReferenceScripts,
     preSubmitBoundary,

@@ -423,7 +423,11 @@ export const releaseTimeoutCorrectionLeaseBeforeYieldV1 = async (
 
 const requireDeploymentScript = (
   deploymentInfo: ContractDeploymentInfo,
-  name: "correctionLockSpend" | "stateQueueSpend" | "stateQueueMint",
+  name:
+    | "correctionLockSpend"
+    | "stateQueueSpend"
+    | "stateQueueMint"
+    | "stateQueueUnattestedTimeoutWithdraw",
 ): Script => {
   const entry = deploymentInfo[name];
   if (entry?.contract === undefined) {
@@ -487,6 +491,10 @@ export const submitUnattestedTimeoutCorrection = async ({
     deploymentInfo,
     "stateQueueMint",
   );
+  const stateQueueUnattestedTimeoutWithdrawalScript = requireDeploymentScript(
+    deploymentInfo,
+    "stateQueueUnattestedTimeoutWithdraw",
+  );
   const correctionLockSpendingScript = requireDeploymentScript(
     deploymentInfo,
     "correctionLockSpend",
@@ -500,24 +508,33 @@ export const submitUnattestedTimeoutCorrection = async ({
     stateQueueSpendingScript,
   );
   const stateQueueConfig = { stateQueueAddress, stateQueuePolicyId };
-  const [correctionLockSpendRef, stateQueueSpendRef, stateQueueMintRef] =
-    await Promise.all([
-      requireDeploymentReferenceScript({
-        lucid,
-        deploymentInfo,
-        name: "correctionLockSpend",
-      }),
-      requireDeploymentReferenceScript({
-        lucid,
-        deploymentInfo,
-        name: "stateQueueSpend",
-      }),
-      requireDeploymentReferenceScript({
-        lucid,
-        deploymentInfo,
-        name: "stateQueueMint",
-      }),
-    ]);
+  const [
+    correctionLockSpendRef,
+    stateQueueSpendRef,
+    stateQueueMintRef,
+    stateQueueUnattestedTimeoutWithdrawRef,
+  ] = await Promise.all([
+    requireDeploymentReferenceScript({
+      lucid,
+      deploymentInfo,
+      name: "correctionLockSpend",
+    }),
+    requireDeploymentReferenceScript({
+      lucid,
+      deploymentInfo,
+      name: "stateQueueSpend",
+    }),
+    requireDeploymentReferenceScript({
+      lucid,
+      deploymentInfo,
+      name: "stateQueueMint",
+    }),
+    requireDeploymentReferenceScript({
+      lucid,
+      deploymentInfo,
+      name: "stateQueueUnattestedTimeoutWithdraw",
+    }),
+  ]);
   const referenceScripts = {
     correctionLockSpend: correctionLockSpendRef,
     stateQueueSpend: stateQueueSpendRef,
@@ -707,6 +724,10 @@ export const submitUnattestedTimeoutCorrection = async ({
         stateQueueSpendingScript,
         stateQueueMintingScript,
         referenceScripts,
+        yieldWitness: {
+          referenceInput: stateQueueUnattestedTimeoutWithdrawRef,
+          script: stateQueueUnattestedTimeoutWithdrawalScript,
+        },
       } as const;
       const tx =
         plan.kind === "prune-descendant"

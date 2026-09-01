@@ -93,6 +93,7 @@ const authenticatedTransition = (txHash = transactionHash) =>
         cborHex: Data.to(
           {
             RemoveUnattestedBlockAfterTimeout: {
+              yield_to_ref_input_index: 0n,
               timed_out_header_hash: target,
               removal_approach: {
                 PruneTimedOutBlockDescendant: {
@@ -150,6 +151,7 @@ const authenticatedFraudTransition = () => {
         cborHex: Data.to(
           {
             RemoveFraudulentBlockHeader: {
+              yield_to_ref_input_index: 0n,
               fraudulent_operator: h28("f"),
               fraudulent_blocks_header_hash: descendant,
               slashing_approach: {
@@ -251,6 +253,7 @@ const appendCheckpoint = ({
         cborHex: Data.to(
           {
             CommitBlockHeader: {
+              yield_to_ref_input_index: 0n,
               new_block_output_index: 1n,
               continued_latest_block_output_index: 0n,
               operator: h28("9"),
@@ -687,6 +690,7 @@ describe("node-owned state-queue correction observer", () => {
     const mintRedeemer = Data.to(
       {
         RemoveUnattestedBlockAfterTimeout: {
+          yield_to_ref_input_index: 0n,
           timed_out_header_hash: target,
           removal_approach: {
             PruneTimedOutBlockDescendant: {
@@ -1084,6 +1088,7 @@ describe("node-owned state-queue correction observer", () => {
               const item = transactionBySlot.get(blockSlot)!;
               const redeemer: StateQueueRedeemerType = {
                 RemoveUnattestedBlockAfterTimeout: {
+                  yield_to_ref_input_index: 0n,
                   timed_out_header_hash: target,
                   removal_approach: {
                     PruneTimedOutBlockDescendant: {

@@ -18,6 +18,7 @@ import {
   resolveFaultProofFieldCarriagePublicationsV1,
   resolveFaultProofFieldPreimageCertificateV1,
 } from "../field-opening-v1.js";
+import { parseContractDeploymentReferenceScriptAuthPolicyId } from "../inspect-contracts.js";
 import { resolvePublishedProofChunksV1 } from "../publish-proof-chunks.js";
 import type { StateQueueMutationLeaseCoordinator } from "../remove-fraudulent-block.js";
 import { type ResolvedProverSigner } from "../runtime.js";
@@ -100,6 +101,7 @@ import { MIN_ADA_CURSOR_SPEC_V1 } from "./workflow-spec-v1.js";
 
 export type MinAdaWorkflowReferenceScriptsV1 = Readonly<{
   steps: readonly [UTxO, UTxO, UTxO, UTxO, UTxO];
+  yields: Readonly<{ tx: UTxO; utxo: UTxO }>;
   witnesses: Required<FaultProofWitnessReferenceScriptsV1>;
   fieldPreimageCertificateMint: UTxO;
 }>;
@@ -291,6 +293,7 @@ const transactionPort = (
                   ? {}
                   : { certificateUtxo: carriage.certificate }),
                 referenceScriptUtxo: config.references.steps[1],
+                yieldReferenceScriptUtxo: config.references.yields.tx,
                 preSubmitBoundary,
                 awaitConfirmation: false,
               });
@@ -320,6 +323,7 @@ const transactionPort = (
               prepared: admitted.prepared,
               publishedProofChunks: chunks,
               referenceScriptUtxo: config.references.steps[1],
+              yieldReferenceScriptUtxo: config.references.yields.utxo,
               witnessReferenceScripts: config.references.witnesses,
               preSubmitBoundary,
               awaitConfirmation: false,
@@ -328,7 +332,7 @@ const transactionPort = (
         ),
       });
     }
-    if (input.stage === "step_03" && !isTx(admitted)) {
+    if (input.stage === "step_03") {
       return Object.freeze({
         transaction: await captureLocallyEvaluatedTransactionV1(
           async (preSubmitBoundary) => {
@@ -517,6 +521,18 @@ export const createManifestBoundMinAdaWorkflowV1 = async (
     });
   const references: MinAdaWorkflowReferenceScriptsV1 = Object.freeze({
     steps: Object.freeze(steps),
+    yields: Object.freeze({
+      tx: requireManifestBoundReferenceScriptUtxoV1({
+        binding,
+        contractName: "fraudProofMinAdaStep02TxWithdraw",
+        utxo: config.referenceScripts.yields.tx,
+      }),
+      utxo: requireManifestBoundReferenceScriptUtxoV1({
+        binding,
+        contractName: "fraudProofMinAdaStep02UtxoWithdraw",
+        utxo: config.referenceScripts.yields.utxo,
+      }),
+    }),
     witnesses: Object.freeze({
       computationThreadMint: witness(
         "computationThreadMint",
@@ -541,6 +557,7 @@ export const createManifestBoundMinAdaWorkflowV1 = async (
   });
   const contracts: MinAdaContractsV1 = Object.freeze({
     steps: chain.steps,
+    yields: chain.yields,
     computationThread: binding.resolvedContracts.contracts.computationThread,
     fraudProof: {
       policyId: binding.resolvedContracts.contracts.fraudProof.policyId,
@@ -552,6 +569,11 @@ export const createManifestBoundMinAdaWorkflowV1 = async (
     hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
     stateQueuePolicyId,
     fieldPreimageCertificatePolicyId: certificate.policyId,
+    referenceScriptAuthPolicyId:
+      parseContractDeploymentReferenceScriptAuthPolicyId(
+        binding.deploymentInfo,
+        "reference-script-auth minting",
+      ),
   });
   const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPortV1({
     source: config.source,

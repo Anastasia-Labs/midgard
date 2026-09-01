@@ -15,11 +15,32 @@ import {
   missingSignatureFieldWalkCheckpointV1,
   missingSignatureVkeyHashV1,
   type NativeScriptPushdownFrameV1,
-  resolveMissingSignatureFieldWalkCheckpointV1,
   type SignerSetProofV1,
 } from "@al-ft/midgard-sdk";
 
-export const NATIVE_SCRIPT_INVALID_SCAN_BATCH_V1 = 32;
+export const NATIVE_SCRIPT_INVALID_DIRECT_SIGNER_LIMIT_V1 = 28;
+export const NATIVE_SCRIPT_INVALID_SIGNER_START_BATCH_V1 = 16;
+export const NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH_V1 = 16;
+export const NATIVE_SCRIPT_INVALID_SIGNER_FINALIZE_BATCH_V1 = 16;
+export const NATIVE_SCRIPT_INVALID_NODE_BATCH_V1 = 16;
+
+export const nativeScriptInvalidUsesDirectRouteV1 = ({
+  signerCount,
+  scriptBytes,
+}: {
+  readonly signerCount: number;
+  readonly scriptBytes: number;
+}): boolean =>
+  signerCount <= NATIVE_SCRIPT_INVALID_DIRECT_SIGNER_LIMIT_V1 &&
+  scriptBytes <= 1_024;
+
+export const assertNativeScriptInvalidDirectRouteV1 = (signerCount: number) => {
+  if (signerCount > NATIVE_SCRIPT_INVALID_DIRECT_SIGNER_LIMIT_V1) {
+    throw new Error(
+      `native-script-invalid: direct signer limit is ${NATIVE_SCRIPT_INVALID_DIRECT_SIGNER_LIMIT_V1.toString()}; use the staged route`,
+    );
+  }
+};
 
 const hash32 = (bytes: Uint8Array): Buffer => computeHash32(bytes);
 
@@ -73,18 +94,68 @@ export type NativeScriptInvalidSignerScanStateV1 = Readonly<{
   complete: boolean;
 }>;
 
+export const resolveNativeScriptInvalidSignerCheckpointV1 = ({
+  txId,
+  itemCount,
+  totalLength,
+  committedHash,
+}: {
+  readonly txId: string;
+  readonly itemCount: number;
+  readonly totalLength: number;
+  readonly committedHash: string;
+}) => {
+  missingSignatureFieldWalkCheckpointV1({
+    txId,
+    itemCount,
+    totalLength,
+    nextItemIndex: 0,
+  });
+  if (committedHash === "") return null;
+  if (!/^[0-9a-f]{64}$/u.test(committedHash)) {
+    throw new Error(
+      "native-script-invalid checkpoint commitment must be 32-byte lowercase hex",
+    );
+  }
+  for (
+    let cursor = NATIVE_SCRIPT_INVALID_SIGNER_START_BATCH_V1;
+    cursor < itemCount;
+    cursor += NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH_V1
+  ) {
+    const candidate = missingSignatureFieldWalkCheckpointV1({
+      txId,
+      itemCount,
+      totalLength,
+      nextItemIndex: cursor,
+    });
+    if (candidate.checkpointHash === committedHash) return candidate;
+  }
+  throw new Error(
+    "native-script-invalid checkpoint commitment is not reachable by the deterministic signer scan schedule",
+  );
+};
+
 export const nativeScriptInvalidSignerScanStateV1 = ({
   txId,
   addressWitnessItems,
   totalLength,
   committedCheckpointHash = "",
+  batchSize = NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH_V1,
 }: {
   readonly txId: string;
   readonly addressWitnessItems: readonly Uint8Array[];
   readonly totalLength: number;
   readonly committedCheckpointHash?: string;
+  readonly batchSize?: number;
 }): NativeScriptInvalidSignerScanStateV1 => {
-  const current = resolveMissingSignatureFieldWalkCheckpointV1({
+  if (
+    !Number.isSafeInteger(batchSize) ||
+    batchSize <= 0 ||
+    batchSize > NATIVE_SCRIPT_INVALID_SIGNER_RESUME_BATCH_V1
+  ) {
+    throw new Error("native-script-invalid: signer batch size must be 1..16");
+  }
+  const current = resolveNativeScriptInvalidSignerCheckpointV1({
     txId,
     itemCount: addressWitnessItems.length,
     totalLength,
@@ -93,7 +164,7 @@ export const nativeScriptInvalidSignerScanStateV1 = ({
   const currentIndex = current?.nextItemIndex ?? 0;
   const nextItemIndex = Math.min(
     addressWitnessItems.length,
-    currentIndex + NATIVE_SCRIPT_INVALID_SCAN_BATCH_V1,
+    currentIndex + batchSize,
   );
   const signerHashes = exactSignerHashesV1(
     addressWitnessItems.slice(0, nextItemIndex),
@@ -467,7 +538,7 @@ export const nativeScriptInvalidPushdownStepV1 = ({
   validityIntervalStart,
   validityIntervalEnd,
   signerSet,
-  nodeBudget = NATIVE_SCRIPT_INVALID_SCAN_BATCH_V1,
+  nodeBudget = NATIVE_SCRIPT_INVALID_NODE_BATCH_V1,
   committedCursorHash,
   cursorBytes,
   frames = [],
@@ -484,9 +555,9 @@ export const nativeScriptInvalidPushdownStepV1 = ({
   if (
     !Number.isSafeInteger(nodeBudget) ||
     nodeBudget <= 0 ||
-    nodeBudget > NATIVE_SCRIPT_INVALID_SCAN_BATCH_V1
+    nodeBudget > NATIVE_SCRIPT_INVALID_NODE_BATCH_V1
   ) {
-    throw new Error("native-script-invalid: node budget must be 1..32");
+    throw new Error("native-script-invalid: node budget must be 1..16");
   }
   const scriptBytes = Buffer.from(rawScriptBytes);
   let state =
@@ -558,7 +629,7 @@ export const resolveNativeScriptInvalidPushdownResumeV1 = ({
   validityIntervalEnd,
   signerSet,
   committedCursorHash,
-  nodeBudget = NATIVE_SCRIPT_INVALID_SCAN_BATCH_V1,
+  nodeBudget = NATIVE_SCRIPT_INVALID_NODE_BATCH_V1,
 }: {
   readonly scriptBytes: Uint8Array;
   readonly validityIntervalStart: bigint;

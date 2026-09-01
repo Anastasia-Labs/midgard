@@ -166,6 +166,7 @@ const derive = ({
 
 const mergeRedeemer = (root: string): StateQueueRedeemerType => ({
   MergeToConfirmedStateV1: {
+    yield_to_ref_input_index: 0n,
     header_node_key: header1,
     confirmed_state_input_outref: {
       transactionId: root.slice(0, 64),
@@ -203,6 +204,7 @@ describe("authenticated state-queue replay checkpoint V1", () => {
       nextQueue: [anchor[0]!, { headerHash: header1, outRef: `${h32("6")}#0` }],
       value: {
         RemoveUnattestedBlockAfterTimeout: {
+          yield_to_ref_input_index: 0n,
           timed_out_header_hash: header1,
           removal_approach: {
             PruneTimedOutBlockDescendant: {
@@ -224,6 +226,7 @@ describe("authenticated state-queue replay checkpoint V1", () => {
       nextQueue: [anchor[0]!, { headerHash: header1, outRef: `${h32("7")}#0` }],
       value: {
         RemoveFraudulentBlockHeader: {
+          yield_to_ref_input_index: 0n,
           fraudulent_operator: h28("f"),
           fraudulent_blocks_header_hash: header2,
           slashing_approach: {
@@ -293,6 +296,7 @@ describe("authenticated state-queue replay checkpoint V1", () => {
       ],
       value: {
         CommitBlockHeader: {
+          yield_to_ref_input_index: 0n,
           new_block_output_index: 1n,
           continued_latest_block_output_index: 0n,
           operator: h28("9"),
@@ -362,6 +366,7 @@ describe("authenticated state-queue replay checkpoint V1", () => {
       ],
       value: {
         CommitBlockHeader: {
+          yield_to_ref_input_index: 0n,
           new_block_output_index: 1n,
           continued_latest_block_output_index: 0n,
           operator: h28("9"),

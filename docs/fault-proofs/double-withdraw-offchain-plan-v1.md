@@ -2,8 +2,9 @@
 
 Current status: implemented, registered, and emulator-proven. The canonical
 category is `doubleWithdraw` (`00000015`). Generic Init, deployment
-inspection/identity, and both mandatory reference scripts are wired.
-Autonomous watcher actuation and live/preprod evidence remain open.
+inspection/identity, both mandatory reference scripts, a production runner
+factory, and watcher installation are wired. Live/preprod acceptance remains
+open.
 
 ## Fault statement
 
@@ -43,5 +44,5 @@ same-identity, different-output, or non-payable evidence.
 
 - align the technical-spec DOUBLE-WITHDRAW wording with the implemented
   both-payable condition;
-- mount watcher detection and proving;
+- accept the installed watcher detection/proving path end to end;
 - publish live/preprod proof-through-removal evidence.

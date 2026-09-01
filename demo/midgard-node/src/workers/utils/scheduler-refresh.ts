@@ -69,6 +69,7 @@ export type RealStateQueueWitnessContext = {
   readonly activeOperatorsSpendingScriptRef?: UTxO;
   readonly stateQueueSpendingScriptRef?: UTxO;
   readonly stateQueueMintingScriptRef?: UTxO;
+  readonly stateQueueCommitYieldScriptRef: UTxO;
   readonly operatorWalletView: OperatorWalletView;
 };
 
@@ -1442,6 +1443,10 @@ export const fetchRealStateQueueWitnessContext = (
                 name: "state-queue minting",
                 script: contracts.stateQueue.mintingScript,
               },
+              {
+                name: "state-queue commit withdrawal",
+                script: contracts.stateQueue.yields.commit.withdrawalScript,
+              },
             ],
             contracts.referenceScriptAuth,
           );
@@ -1459,6 +1464,10 @@ export const fetchRealStateQueueWitnessContext = (
     );
     const stateQueueMintingScriptRef = optionalReferenceScript(
       "state-queue minting",
+    );
+    const stateQueueCommitYieldScriptRef = referenceScriptByName(
+      resolvedReferenceScripts,
+      "state-queue commit withdrawal",
     );
     const schedulerWitnessUnit = toUnit(
       contracts.scheduler.policyId,
@@ -1589,6 +1598,7 @@ export const fetchRealStateQueueWitnessContext = (
       activeOperatorsSpendingScriptRef,
       stateQueueSpendingScriptRef,
       stateQueueMintingScriptRef,
+      stateQueueCommitYieldScriptRef,
       operatorWalletView: schedulerRefInput.operatorWalletView,
     };
   });

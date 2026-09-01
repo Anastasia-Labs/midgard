@@ -413,6 +413,7 @@ export {
   WATCHER_FAULT_PROOF_PRODUCTION_APPLICATION_V1,
   WATCHER_FAULT_PROOF_STARTUP_READINESS_V1,
   WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1,
+  WATCHER_MISSING_PRODUCTION_WORKFLOW_CATEGORIES_V1,
   type WatcherFaultProofApplicationDependenciesV1,
   type WatcherFaultProofHeaderClassificationInputV1,
   type WatcherFaultProofInfrastructureAuthorityV1,

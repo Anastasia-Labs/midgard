@@ -9,8 +9,10 @@ import {
   MinAdaStep05DatumSchema,
   requireInputIndex,
   requireOwnSpendPurpose,
+  requireReferenceInputIndex,
   requireUniqueOutputIndex,
   requireWithdrawalRedeemerIndex,
+  scriptRewardAddress,
 } from "@al-ft/midgard-sdk";
 import {
   buildCanonicalMidgardLedgerOutputMaterialV1,
@@ -37,7 +39,6 @@ import {
   requireLinearFaultStepStateV1,
   requireLinearFaultThreadUtxoV1,
 } from "../linear-fault-family-v1.js";
-import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
 import {
   chunkedMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
@@ -73,6 +74,22 @@ type Step05Datum = Data.Static<typeof MinAdaStep05DatumSchema>;
 const Step05Datum = MinAdaStep05DatumSchema as unknown as Step05Datum;
 type Redeemer = Data.Static<typeof MinAdaStep02SpendRedeemerSchema>;
 const Redeemer = MinAdaStep02SpendRedeemerSchema as unknown as Redeemer;
+
+const walletInputsExcludingReferences = ({
+  walletUtxos,
+  references,
+}: {
+  readonly walletUtxos: readonly UTxO[];
+  readonly references: readonly UTxO[];
+}): UTxO[] =>
+  walletUtxos.filter(
+    (utxo) =>
+      !references.some(
+        (reference) =>
+          reference.txHash === utxo.txHash &&
+          reference.outputIndex === utxo.outputIndex,
+      ),
+  );
 
 const requireStep02 = async ({
   lucid,
@@ -117,6 +134,7 @@ export const submitMinAdaTxStep02 = async ({
   publishedCarriageUtxos,
   certificateUtxo,
   referenceScriptUtxo,
+  yieldReferenceScriptUtxo,
   publicationPreSubmitBoundary,
   preSubmitBoundary,
   awaitConfirmation = true,
@@ -131,6 +149,7 @@ export const submitMinAdaTxStep02 = async ({
   readonly publishedCarriageUtxos?: readonly UTxO[];
   readonly certificateUtxo?: UTxO;
   readonly referenceScriptUtxo: UTxO;
+  readonly yieldReferenceScriptUtxo: UTxO;
   readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
@@ -197,12 +216,19 @@ export const submitMinAdaTxStep02 = async ({
     family: FAMILY,
     stepIndex,
   });
+  const yieldReference = requireLinearFaultReferenceScriptV1({
+    utxo: yieldReferenceScriptUtxo,
+    expectedScriptHash: contracts.yields.tx.withdrawalScriptHash,
+    family: FAMILY,
+    stepIndex,
+  });
   const opening: FieldOpeningV1 = faultProofFieldOpeningV1({
     planned,
     referenceInputs: [
       ...carriageUtxos,
       stepReference,
       ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+      yieldReference,
     ],
     certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
     label: `${label} field 2`,
@@ -210,12 +236,17 @@ export const submitMinAdaTxStep02 = async ({
   const nextDatum = Data.to(
     {
       fraud_prover: signer.paymentKeyHash,
-      data: "PredicateAndCulpabilityAuthenticated",
+      data: {
+        MinAdaTxDescriptor: {
+          total_length: BigInt(material.descriptor.totalLength),
+          lovelace: material.descriptor.lovelace,
+        },
+      },
     },
-    Step05Datum,
+    Step03Datum,
   );
   const outputMatches = computationThreadOutputPredicate({
-    address: contracts.steps[4].spendingScriptAddress,
+    address: contracts.steps[2].spendingScriptAddress,
     datum: nextDatum,
     unit: threadToken.unit,
   });
@@ -230,6 +261,11 @@ export const submitMinAdaTxStep02 = async ({
           {
             input_index: inputIndex,
             output_index: outputIndex,
+            yield_to_ref_input_index: requireReferenceInputIndex(
+              ctx,
+              yieldReference,
+              label,
+            ),
             outputs_opening: opening,
             post_membership: null,
           },
@@ -238,23 +274,71 @@ export const submitMinAdaTxStep02 = async ({
       Redeemer,
     );
   }) satisfies BuildTxWithRedeemer;
-  const txHash = await submitLinearFaultContinueV1({
-    lucid,
-    signerPaymentKeyHash: signer.paymentKeyHash,
-    threadUtxo,
-    threadUnit: threadToken.unit,
+  const network = lucid.config().network;
+  if (network === undefined) throw new Error(`${label}: Lucid network missing`);
+  const { selectFeeInput } = await import("../submit-step-01.js");
+  const transactionReferences = [
     stepReference,
-    stepScript: contracts.steps[stepIndex].spendingScript,
-    stepRole: label,
-    nextAddress: contracts.steps[4].spendingScriptAddress,
-    nextDatum,
-    redeemer,
-    carriageUtxos,
-    extraReferenceInputs:
-      certificateUtxo === undefined ? [] : [certificateUtxo],
-    preSubmitBoundary,
-    awaitConfirmation,
+    ...carriageUtxos,
+    ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+    yieldReference,
+  ];
+  const feeInput = selectFeeInput(
+    walletInputsExcludingReferences({
+      walletUtxos: await lucid.wallet().getUtxos(),
+      references: transactionReferences,
+    }),
+  );
+  const unsigned = await lucid
+    .newTx()
+    .collectFrom([feeInput])
+    .collectFrom([threadUtxo], redeemer)
+    .readFrom(transactionReferences)
+    .withdraw(
+      scriptRewardAddress(network, contracts.yields.tx.withdrawalScript),
+      0n,
+      Data.void(),
+    )
+    .pay.ToContract(
+      contracts.steps[2].spendingScriptAddress,
+      { kind: "inline", value: nextDatum },
+      {
+        lovelace: threadUtxo.assets.lovelace ?? 0n,
+        [threadToken.unit]: 1n,
+      },
+    )
+    .addSignerKey(signer.paymentKeyHash)
+    .complete({ localUPLCEval: true });
+  const signed = await unsigned.sign.withWallet().complete();
+  const {
+    reachFraudProofPreSubmitBoundaryV1,
+    workflowReferenceScriptsUsedByTransactionV1,
+  } = await import("../workflow/transaction-boundary-v1.js");
+  const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
+    signed,
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: label,
+          utxo: stepReference,
+          expectedScript: contracts.steps[stepIndex].spendingScript,
+        },
+        {
+          role: `${label}-yield`,
+          utxo: yieldReference,
+          expectedScript: contracts.yields.tx.withdrawalScript,
+        },
+      ],
+    }),
+    boundary: preSubmitBoundary,
   });
+  const txHash = await signed.submit();
+  if (txHash !== expectedTxHash) throw new Error(`${label}: hash mismatch`);
+  if (awaitConfirmation) {
+    const { DEFAULT_CONFIRMATION_POLL_MS } = await import("../runtime.js");
+    await lucid.awaitTx(txHash, DEFAULT_CONFIRMATION_POLL_MS);
+  }
   if (outputIndex === undefined) throw new Error(`${label}: unresolved layout`);
   return {
     txHash,
@@ -274,6 +358,7 @@ export const submitMinAdaUtxoStep02 = async ({
   prepared,
   publishedProofChunks = [],
   referenceScriptUtxo,
+  yieldReferenceScriptUtxo,
   witnessReferenceScripts,
   preSubmitBoundary,
   awaitConfirmation = true,
@@ -288,6 +373,7 @@ export const submitMinAdaUtxoStep02 = async ({
   readonly prepared: PreparedMinAdaUtxoV1;
   readonly publishedProofChunks?: readonly PublishedProofChunkV1[];
   readonly referenceScriptUtxo: UTxO;
+  readonly yieldReferenceScriptUtxo: UTxO;
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
@@ -318,6 +404,12 @@ export const submitMinAdaUtxoStep02 = async ({
     family: FAMILY,
     stepIndex,
   });
+  const yieldReference = requireLinearFaultReferenceScriptV1({
+    utxo: yieldReferenceScriptUtxo,
+    expectedScriptHash: contracts.yields.utxo.withdrawalScriptHash,
+    family: FAMILY,
+    stepIndex,
+  });
   const chunks = publishedProofChunks;
   const carriedByChunks = chunks.length > 0;
   const membershipScript: Script = carriedByChunks
@@ -341,6 +433,7 @@ export const submitMinAdaUtxoStep02 = async ({
     ...chunks.map(({ utxo }) => utxo),
     stepReference,
     ...membershipWitness.referenceInputs,
+    yieldReference,
   ];
   const chunkIndices = derivedChunkReferenceIndices({
     referenceInputs,
@@ -358,9 +451,11 @@ export const submitMinAdaUtxoStep02 = async ({
     {
       fraud_prover: signer.paymentKeyHash,
       data: {
-        descriptor_cbor: prepared.descriptorCbor,
-        out_ref_key: prepared.outRefKeyCbor,
-        prev_utxos_root: prepared.prevUtxosRoot,
+        MinAdaUtxoDescriptor: {
+          descriptor_cbor: prepared.descriptorCbor,
+          out_ref_key: prepared.outRefKeyCbor,
+          prev_utxos_root: prepared.prevUtxosRoot,
+        },
       },
     },
     Step03Datum,
@@ -400,6 +495,11 @@ export const submitMinAdaUtxoStep02 = async ({
           {
             input_index: inputIndex,
             output_index: outputIndex,
+            yield_to_ref_input_index: requireReferenceInputIndex(
+              ctx,
+              yieldReference,
+              label,
+            ),
             outputs_opening: null,
             post_membership: postMembership,
           },
@@ -411,6 +511,7 @@ export const submitMinAdaUtxoStep02 = async ({
   const extraReferenceInputs = [
     ...chunks.map(({ utxo }) => utxo),
     ...membershipWitness.referenceInputs,
+    yieldReference,
   ];
   const baseArgs = {
     lucid,
@@ -443,7 +544,7 @@ export const submitMinAdaUtxoStep02 = async ({
     .collectFrom([feeInput])
     .collectFrom([threadUtxo], redeemer)
     .readFrom([stepReference, ...extraReferenceInputs]);
-  const withWithdrawal = carriedByChunks
+  const withMembershipWithdrawal = carriedByChunks
     ? base.withdraw(
         membershipAddress,
         0n,
@@ -464,6 +565,11 @@ export const submitMinAdaUtxoStep02 = async ({
           membershipProofCbor: prepared.postMembershipProofCbor,
         }),
       );
+  const withWithdrawal = withMembershipWithdrawal.withdraw(
+    scriptRewardAddress(network, contracts.yields.utxo.withdrawalScript),
+    0n,
+    Data.void(),
+  );
   const unsigned = await membershipWitness
     .attach(
       withWithdrawal.pay
@@ -480,22 +586,36 @@ export const submitMinAdaUtxoStep02 = async ({
     .complete({ localUPLCEval: true });
   if (outputIndex === undefined) throw new Error(`${label}: unresolved layout`);
   const signed = await unsigned.sign.withWallet().complete();
-  const { reachFraudProofPreSubmitBoundaryV1, workflowReferenceScriptV1 } =
-    await import("../workflow/transaction-boundary-v1.js");
+  const {
+    reachFraudProofPreSubmitBoundaryV1,
+    workflowReferenceScriptsUsedByTransactionV1,
+  } = await import("../workflow/transaction-boundary-v1.js");
   const expectedTxHash = await reachFraudProofPreSubmitBoundaryV1({
     signed,
-    referenceScripts: [
-      workflowReferenceScriptV1({
-        role: label,
-        utxo: stepReference,
-        expectedScript: contracts.steps[stepIndex].spendingScript,
-      }),
-      workflowReferenceScriptV1({
-        role: `${label}-proof`,
-        utxo: membershipWitness.referenceInputs[0],
-        expectedScript: membershipScript,
-      }),
-    ],
+    referenceScripts: workflowReferenceScriptsUsedByTransactionV1({
+      signed,
+      candidates: [
+        {
+          role: label,
+          utxo: stepReference,
+          expectedScript: contracts.steps[stepIndex].spendingScript,
+        },
+        ...(membershipWitness.referenceInputs[0] === undefined
+          ? []
+          : [
+              {
+                role: `${label}-proof`,
+                utxo: membershipWitness.referenceInputs[0],
+                expectedScript: membershipScript,
+              },
+            ]),
+        {
+          role: `${label}-yield`,
+          utxo: yieldReference,
+          expectedScript: contracts.yields.utxo.withdrawalScript,
+        },
+      ],
+    }),
     boundary: preSubmitBoundary,
   });
   const txHash = await signed.submit();

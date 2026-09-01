@@ -1084,6 +1084,10 @@ export const buildAndSubmitMergeTx = (
                   script: contracts.stateQueue.mintingScript,
                 },
                 {
+                  name: "state-queue merge withdrawal",
+                  script: contracts.stateQueue.yields.merge.withdrawalScript,
+                },
+                {
                   name: "settlement minting",
                   script: contracts.settlement.mintingScript,
                 },
@@ -1107,6 +1111,10 @@ export const buildAndSubmitMergeTx = (
                 "settlement minting",
               ),
             };
+      const stateQueueMergeYieldRefInput = referenceScriptByName(
+        resolvedReferenceScripts,
+        "state-queue merge withdrawal",
+      );
 
       const operatorWalletView = yield* Effect.tryPromise({
         try: () => fetchOperatorWalletView(lucid),
@@ -1135,6 +1143,7 @@ export const buildAndSubmitMergeTx = (
           presetWalletInputs,
           hubOracleRefInput,
           correctionLockRefInput,
+          stateQueueMergeYieldRefInput,
           referenceScripts,
         }).pipe(Effect.tapError(() => Metric.increment(mergeFailureCounter)));
       const txBuilder = builtMerge.tx;

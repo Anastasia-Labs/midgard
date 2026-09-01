@@ -153,23 +153,35 @@ export const NativeScriptInvalidStep05ArgsSchema = Data.Enum([
   }),
   Data.Object({
     ResumeScriptScan: Data.Object({
-      ...NativeScriptInvalidScriptScanBaseV1Schema,
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      script_item_cbor: Data.Bytes(),
       cursor_bytes: Data.Bytes(),
       frames: Data.Array(NativeScriptPushdownFrameV1Schema),
+      node_budget: Data.Integer(),
+      signer_queries: Data.Array(NativeScriptInvalidSignerQueryV1Schema),
     }),
   }),
   Data.Object({
     StartScriptFinalize: Data.Object({
-      ...NativeScriptInvalidScriptScanBaseV1Schema,
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
       fraud_proof_mint_redeemer_index: Data.Integer(),
+      script_item_cbor: Data.Bytes(),
+      node_budget: Data.Integer(),
+      signer_queries: Data.Array(NativeScriptInvalidSignerQueryV1Schema),
     }),
   }),
   Data.Object({
     FinalizeScriptScan: Data.Object({
-      ...NativeScriptInvalidScriptScanBaseV1Schema,
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
       fraud_proof_mint_redeemer_index: Data.Integer(),
+      script_item_cbor: Data.Bytes(),
       cursor_bytes: Data.Bytes(),
       frames: Data.Array(NativeScriptPushdownFrameV1Schema),
+      node_budget: Data.Integer(),
+      signer_queries: Data.Array(NativeScriptInvalidSignerQueryV1Schema),
     }),
   }),
 ]);

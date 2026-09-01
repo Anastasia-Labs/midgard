@@ -76,6 +76,7 @@ export const submitMissingNativeScriptTxBindingV1 = async ({
   txInclusion,
   nextDatum,
   spendRedeemerSchema,
+  wrapInclusionArgs,
   referenceScriptUtxo,
   witnessReferenceScripts,
   preSubmitBoundary,
@@ -96,6 +97,10 @@ export const submitMissingNativeScriptTxBindingV1 = async ({
   readonly txInclusion: SubmitStep01TxInclusion;
   readonly nextDatum: string;
   readonly spendRedeemerSchema: Parameters<typeof Data.to>[1];
+  /** Family-specific wrapper around the authenticated inclusion carriage. */
+  readonly wrapInclusionArgs?: (
+    args: Readonly<Record<string, unknown>>,
+  ) => unknown;
   readonly referenceScriptUtxo: UTxO;
   /** Required published witness reference scripts for this transaction. */
   readonly witnessReferenceScripts?: FaultProofWitnessReferenceScriptsV1;
@@ -175,26 +180,28 @@ export const submitMissingNativeScriptTxBindingV1 = async ({
       ),
     };
     layout = resolved;
+    const inclusionArgs = {
+      input_index: resolved.inputIndex,
+      output_index: resolved.outputIndex,
+      hub_ref_input_index: resolved.hubOracleRefInputIndex,
+      state_queue_node_ref_input_index: resolved.stateQueueNodeRefInputIndex,
+      native_tx_id: txInclusion.nativeTxId,
+      l2_transaction_source_cbor: txInclusion.l2TransactionSourceCbor,
+      transactions_phas_root: txInclusion.transactionsPhasRoot,
+      tx_membership_proof: txInclusion.txMembershipProof,
+      inclusion_proof_script_withdraw_redeemer_index:
+        requireWithdrawalRedeemerIndex(
+          ctx,
+          phasAddress,
+          `${label} PHAS membership`,
+        ),
+    };
     return Data.to(
       {
         Continue: [
-          {
-            input_index: resolved.inputIndex,
-            output_index: resolved.outputIndex,
-            hub_ref_input_index: resolved.hubOracleRefInputIndex,
-            state_queue_node_ref_input_index:
-              resolved.stateQueueNodeRefInputIndex,
-            native_tx_id: txInclusion.nativeTxId,
-            l2_transaction_source_cbor: txInclusion.l2TransactionSourceCbor,
-            transactions_phas_root: txInclusion.transactionsPhasRoot,
-            tx_membership_proof: txInclusion.txMembershipProof,
-            inclusion_proof_script_withdraw_redeemer_index:
-              requireWithdrawalRedeemerIndex(
-                ctx,
-                phasAddress,
-                `${label} PHAS membership`,
-              ),
-          },
+          wrapInclusionArgs === undefined
+            ? inclusionArgs
+            : wrapInclusionArgs(inclusionArgs),
         ],
       },
       spendRedeemerSchema,

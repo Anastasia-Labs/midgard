@@ -754,12 +754,14 @@ const buildOneCategoryFaultProofContracts = async ({
   network,
   hubOraclePolicyId,
   fraudProofCataloguePolicyId,
+  referenceScriptAuthPolicyId,
   categoryName,
 }: {
   readonly blueprint: ReturnType<typeof parseFaultProofBlueprint>;
   readonly network: Network;
   readonly hubOraclePolicyId: string;
   readonly fraudProofCataloguePolicyId: string;
+  readonly referenceScriptAuthPolicyId: string;
   readonly categoryName: SupportedFaultProofCategoryName;
 }): Promise<OneCategoryFaultProofContracts> => {
   const params = {
@@ -767,6 +769,7 @@ const buildOneCategoryFaultProofContracts = async ({
     network,
     hubOraclePolicyId,
     fraudProofCataloguePolicyId,
+    referenceScriptAuthPolicyId,
   };
   switch (categoryName) {
     case "doubleSpend":
@@ -957,11 +960,17 @@ export const resolveFaultProofDeploymentContracts = async ({
     ? requireDeploymentScriptHash(parsedDeploymentInfo, "fraudProofSpend")
     : undefined;
   const parsedBlueprint = parseFaultProofBlueprint(blueprint);
+  const referenceScriptAuthPolicyId =
+    parseContractDeploymentReferenceScriptAuthPolicyId(
+      deploymentInfo,
+      "reference-script-auth minting",
+    );
   const contracts = await buildOneCategoryFaultProofContracts({
     blueprint: parsedBlueprint,
     network,
     hubOraclePolicyId,
     fraudProofCataloguePolicyId,
+    referenceScriptAuthPolicyId,
     categoryName,
   });
   const categoryContracts = contracts[categoryName];

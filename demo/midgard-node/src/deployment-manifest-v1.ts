@@ -224,12 +224,19 @@ export const DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES = Object.freeze([
   "fraudProofNativeScriptInvalidStep03",
   "fraudProofMinAda",
   "fraudProofMinAdaStep02",
+  "fraudProofMinAdaStep02TxWithdraw",
+  "fraudProofMinAdaStep02UtxoWithdraw",
   "correctionLockSpend",
   "fraudProofMinAdaStep03",
   "fraudProofMinAdaStep04",
   "fraudProofMinAdaStep05",
   "availabilityChallengeSpend",
   "availabilityChallengeMint",
+  "stateQueueCommitWithdraw",
+  "stateQueueUnattestedTimeoutWithdraw",
+  "stateQueueUnavailableTimeoutWithdraw",
+  "stateQueueFraudRemovalWithdraw",
+  "stateQueueMergeWithdraw",
 ] as const);
 
 export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
@@ -242,6 +249,13 @@ export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
     "da-attestation minting": "daAttestationMint",
     "state-queue spending": "stateQueueSpend",
     "state-queue minting": "stateQueueMint",
+    "state-queue commit withdrawal": "stateQueueCommitWithdraw",
+    "state-queue unattested-timeout withdrawal":
+      "stateQueueUnattestedTimeoutWithdraw",
+    "state-queue unavailable-timeout withdrawal":
+      "stateQueueUnavailableTimeoutWithdraw",
+    "state-queue fraud-removal withdrawal": "stateQueueFraudRemovalWithdraw",
+    "state-queue merge withdrawal": "stateQueueMergeWithdraw",
     "scheduler spending": "schedulerSpend",
     "scheduler minting": "schedulerMint",
     "registered-operators spending": "registeredOperatorsSpend",
@@ -462,6 +476,10 @@ export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofNativeScriptInvalidStep03",
     "V1 fraud-proof min-ada step-01": "fraudProofMinAda",
     "V1 fraud-proof min-ada step-02": "fraudProofMinAdaStep02",
+    "V1 fraud-proof min-ada step-02 tx yield":
+      "fraudProofMinAdaStep02TxWithdraw",
+    "V1 fraud-proof min-ada step-02 UTxO yield":
+      "fraudProofMinAdaStep02UtxoWithdraw",
     "correction-lock spending": "correctionLockSpend",
     "V1 fraud-proof min-ada step-03": "fraudProofMinAdaStep03",
     "V1 fraud-proof min-ada step-04": "fraudProofMinAdaStep04",

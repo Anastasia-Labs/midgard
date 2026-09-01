@@ -266,7 +266,7 @@ describe("V1 deployment manifest", () => {
     );
     // Re-derived from the wave-current `midgard-core` roster.
     // `midgard-core/tests/deployment-manifest-identity-v1.test.ts` pins the
-    // same three numbers (162 contracts, 155 reference-script roles, 156 auth
+    // same three numbers (169 contracts, 162 reference-script roles, 163 auth
     // token names) and is green, and the two assertions above make this
     // package's copies fail closed against it. The state-correction wave is
     // what moved them: `correctionLockSpend`, `claimRegistrySpend`,
@@ -276,9 +276,9 @@ describe("V1 deployment manifest", () => {
     // `claimRegistrySpend` back out of the contract vector and
     // `claim-registry spending` out of the role and token vocabularies,
     // dropping each of the three by exactly one.
-    expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toHaveLength(162);
-    expect(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_ROLES).toHaveLength(155);
-    expect(Object.keys(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES)).toHaveLength(156);
+    expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toHaveLength(169);
+    expect(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_ROLES).toHaveLength(162);
+    expect(Object.keys(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES)).toHaveLength(163);
     expect(FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER).toHaveLength(32);
   });
 

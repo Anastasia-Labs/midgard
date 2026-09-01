@@ -1140,13 +1140,42 @@ export const midgardContractsFromDeploymentManifest = (
       sourcePath,
       "correctionLockSpend",
     ),
-    stateQueue: authenticatedValidatorFromManifest(
-      network,
-      manifest,
-      sourcePath,
-      "stateQueueSpend",
-      "stateQueueMint",
-    ),
+    stateQueue: {
+      ...authenticatedValidatorFromManifest(
+        network,
+        manifest,
+        sourcePath,
+        "stateQueueSpend",
+        "stateQueueMint",
+      ),
+      yields: {
+        commit: withdrawalValidatorFromManifest(
+          manifest,
+          sourcePath,
+          "stateQueueCommitWithdraw",
+        ),
+        unattestedTimeout: withdrawalValidatorFromManifest(
+          manifest,
+          sourcePath,
+          "stateQueueUnattestedTimeoutWithdraw",
+        ),
+        unavailableTimeout: withdrawalValidatorFromManifest(
+          manifest,
+          sourcePath,
+          "stateQueueUnavailableTimeoutWithdraw",
+        ),
+        fraudRemoval: withdrawalValidatorFromManifest(
+          manifest,
+          sourcePath,
+          "stateQueueFraudRemovalWithdraw",
+        ),
+        merge: withdrawalValidatorFromManifest(
+          manifest,
+          sourcePath,
+          "stateQueueMergeWithdraw",
+        ),
+      },
+    },
     scheduler: authenticatedValidatorFromManifest(
       network,
       manifest,
@@ -1266,6 +1295,11 @@ export const midgardContractsFromDeploymentManifest = (
 export const REAL_STATE_QUEUE_SCRIPT_TITLES = {
   mint: "state_queue.mint.mint",
   spend: "state_queue.spend.spend",
+  commitYield: "state_queue_yields.commit.withdraw",
+  unattestedTimeoutYield: "state_queue_yields.remove_unattested.withdraw",
+  unavailableTimeoutYield: "state_queue_yields.remove_unavailable.withdraw",
+  fraudRemovalYield: "state_queue_yields.remove_fraudulent.withdraw",
+  mergeYield: "state_queue_yields.merge.withdraw",
 } as const;
 
 export const REAL_CORRECTION_LOCK_SCRIPT_TITLES = {
@@ -1803,6 +1837,7 @@ const buildRealFaultProofContracts = (
       network,
       hubOraclePolicyId: contracts.hubOracle.policyId,
       fraudProofCataloguePolicyId: contracts.fraudProofCatalogue.policyId,
+      referenceScriptAuthPolicyId: contracts.referenceScriptAuth.policyId,
     });
 
     yield* expectDerivedScriptHash(
@@ -2153,7 +2188,8 @@ export const buildRealInvalidSignatureFirstStepValidator = (
 const buildRealStateQueueValidator = (
   network: Network,
   contracts: SDK.MidgardValidators,
-): Effect.Effect<SDK.AuthenticatedValidator, Error> =>
+  referenceScriptAuthPolicyId: string,
+): Effect.Effect<SDK.StateQueueValidatorV1, Error> =>
   Effect.gen(function* () {
     const activeOperatorsAddress = yield* Effect.mapError(
       Effect.map(
@@ -2167,27 +2203,100 @@ const buildRealStateQueueValidator = (
           `Failed to encode active-operators address for state_queue mint parameters: ${String(cause)}`,
         ),
     );
-    return yield* buildRealAuthenticatedValidator(
-      network,
-      REAL_STATE_QUEUE_SCRIPT_TITLES,
+    const blueprint = yield* loadRealBlueprint();
+    const mintParameters = [
+      contracts.hubOracle.policyId,
+      contracts.correctionLock.spendingScriptHash,
+      contracts.activeOperators.policyId,
+      activeOperatorsAddress,
+      contracts.retiredOperators.policyId,
+      contracts.scheduler.policyId,
+      contracts.fraudProof.policyId,
+      contracts.settlement.policyId,
+      contracts.daAttestation.policyId,
+      contracts.availabilityChallenge.policyId,
+      referenceScriptAuthPolicyId,
+    ] as const;
+    const mintingScriptCBOR = yield* applyBlueprintDeclaredParams(
+      yield* getBlueprintValidator(
+        blueprint,
+        REAL_STATE_QUEUE_SCRIPT_TITLES.mint,
+      ),
+      mintParameters,
+    );
+    const minting = makeMintingPolicy(mintingScriptCBOR);
+    const spendingScriptCBOR = yield* applyBlueprintDeclaredParams(
+      yield* getBlueprintValidator(
+        blueprint,
+        REAL_STATE_QUEUE_SCRIPT_TITLES.spend,
+      ),
       [
-        contracts.hubOracle.policyId,
-        contracts.correctionLock.spendingScriptHash,
-        contracts.activeOperators.policyId,
-        activeOperatorsAddress,
-        contracts.retiredOperators.policyId,
-        contracts.scheduler.policyId,
-        contracts.fraudProof.policyId,
-        contracts.settlement.policyId,
-        contracts.daAttestation.policyId,
-        contracts.availabilityChallenge.policyId,
-      ],
-      (policyId) => [
-        policyId,
+        minting.policyId,
         contracts.daAttestation.policyId,
         contracts.availabilityChallenge.policyId,
       ],
     );
+    const buildYield = (
+      title: string,
+      parameters: readonly Data[],
+    ): Effect.Effect<SDK.WithdrawalValidator, Error> =>
+      Effect.gen(function* () {
+        const compiledCode = yield* applyBlueprintDeclaredParams(
+          yield* getBlueprintValidator(blueprint, title),
+          parameters,
+        );
+        return makeWithdrawalValidator(compiledCode);
+      });
+    return {
+      ...minting,
+      ...makeSpendingValidator(network, spendingScriptCBOR),
+      yields: {
+        commit: yield* buildYield(REAL_STATE_QUEUE_SCRIPT_TITLES.commitYield, [
+          minting.policyId,
+          contracts.hubOracle.policyId,
+          contracts.correctionLock.spendingScriptHash,
+          contracts.activeOperators.policyId,
+          activeOperatorsAddress,
+          contracts.scheduler.policyId,
+          contracts.daAttestation.policyId,
+        ]),
+        unattestedTimeout: yield* buildYield(
+          REAL_STATE_QUEUE_SCRIPT_TITLES.unattestedTimeoutYield,
+          [
+            minting.policyId,
+            contracts.hubOracle.policyId,
+            contracts.correctionLock.spendingScriptHash,
+          ],
+        ),
+        unavailableTimeout: yield* buildYield(
+          REAL_STATE_QUEUE_SCRIPT_TITLES.unavailableTimeoutYield,
+          [
+            minting.policyId,
+            contracts.hubOracle.policyId,
+            contracts.correctionLock.spendingScriptHash,
+            contracts.availabilityChallenge.policyId,
+          ],
+        ),
+        fraudRemoval: yield* buildYield(
+          REAL_STATE_QUEUE_SCRIPT_TITLES.fraudRemovalYield,
+          [
+            minting.policyId,
+            contracts.hubOracle.policyId,
+            contracts.correctionLock.spendingScriptHash,
+            contracts.activeOperators.policyId,
+            contracts.retiredOperators.policyId,
+            contracts.fraudProof.policyId,
+          ],
+        ),
+        merge: yield* buildYield(REAL_STATE_QUEUE_SCRIPT_TITLES.mergeYield, [
+          minting.policyId,
+          contracts.hubOracle.policyId,
+          contracts.correctionLock.spendingScriptHash,
+          contracts.settlement.policyId,
+          contracts.daAttestation.policyId,
+        ]),
+      },
+    };
   });
 
 const buildRealCorrectionLockValidator = (
@@ -2646,6 +2755,7 @@ export const withRealStateQueueAndOperatorContracts = (
     const realStateQueue = yield* buildRealStateQueueValidator(
       network,
       withRealDaAttestation,
+      deploymentParameters.referenceScriptAuth.policyId,
     );
 
     const withRealStateQueue: SDK.MidgardValidators = {

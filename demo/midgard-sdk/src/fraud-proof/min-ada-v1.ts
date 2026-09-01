@@ -66,6 +66,7 @@ export const MinAdaStep02DatumSchema = faultProofStepDatumSchema(
 export const MinAdaStep02ArgsSchema = Data.Object({
   input_index: Data.Integer(),
   output_index: Data.Integer(),
+  yield_to_ref_input_index: Data.Integer(),
   outputs_opening: Data.Nullable(FieldOpeningV1Schema),
   post_membership: Data.Nullable(MembershipCarriageSchema),
 });
@@ -73,11 +74,21 @@ export const MinAdaStep02SpendRedeemerSchema = faultProofStepRedeemerSchema(
   MinAdaStep02ArgsSchema,
 );
 
-export const MinAdaStep03StateSchema = Data.Object({
-  descriptor_cbor: Data.Bytes(),
-  out_ref_key: Data.Bytes(),
-  prev_utxos_root: H32Schema,
-});
+export const MinAdaStep03StateSchema = Data.Enum([
+  Data.Object({
+    MinAdaTxDescriptor: Data.Object({
+      total_length: Data.Integer(),
+      lovelace: Data.Integer(),
+    }),
+  }),
+  Data.Object({
+    MinAdaUtxoDescriptor: Data.Object({
+      descriptor_cbor: Data.Bytes(),
+      out_ref_key: Data.Bytes(),
+      prev_utxos_root: H32Schema,
+    }),
+  }),
+]);
 export const MinAdaStep03DatumSchema = faultProofStepDatumSchema(
   MinAdaStep03StateSchema,
 );
@@ -105,9 +116,14 @@ export const MinAdaStep04SpendRedeemerSchema = faultProofStepRedeemerSchema(
   MinAdaStep04ArgsSchema,
 );
 
-export const MinAdaStep05StateSchema = Data.Literal(
-  "PredicateAndCulpabilityAuthenticated",
-);
+export const MinAdaStep05StateSchema = Data.Enum([
+  Data.Literal("PredicateAndCulpabilityAuthenticated"),
+  // Lucid collapses a singleton enum to `void`, which cannot encode the
+  // constructor name inside the surrounding nullable step datum. Keep the
+  // canonical constructor at index zero; the second arm is never emitted and
+  // is rejected by the on-chain step-05 datum decoder.
+  Data.Literal("ReservedMinAdaStep05State"),
+]);
 export const MinAdaStep05DatumSchema = faultProofStepDatumSchema(
   MinAdaStep05StateSchema,
 );

@@ -505,9 +505,9 @@ export const runForcedValidationDisputeScenario = async (
   // submissions until the route has actually reached removal so validation-only
   // and negative scenarios do not mutate the emulator first.
   //
-  // The stage no longer runs under `withRealL1MaxTxSize`: the 12-parameter
-  // `state_queue.mint` compiles to 16,835 bytes, past the 16,384-byte L1
-  // envelope, so its publication cannot be built against the real limit at
+  // The stage no longer runs under `withRealL1MaxTxSize`: the ten-parameter
+  // `state_queue.mint` is 16,498 bytes after applying this harness deployment,
+  // past the 16,384-byte L1 envelope, so its publication cannot be built at
   // all. This raises the stage's publication budget to the same raised
   // deployment-time parameters the R5 semantic resolvers publish under, and
   // `publishRemovalReferenceScripts` marks that one entry `oversized` so its

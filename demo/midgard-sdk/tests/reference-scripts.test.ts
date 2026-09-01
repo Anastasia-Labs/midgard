@@ -2,6 +2,7 @@ import type { Assets, LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import {
+  assertReferenceScriptRawBodiesFitL1EnvelopeV1,
   createReferenceScriptAuthPolicy,
   hasReferenceScriptAuthRole,
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
@@ -40,6 +41,41 @@ const utxo = ({
 });
 
 describe("reference-script SDK boundary", () => {
+  it("rejects a reference script whose raw body alone cannot fit the L1 transaction envelope", () => {
+    expect(() =>
+      assertReferenceScriptRawBodiesFitL1EnvelopeV1([
+        {
+          name: "availability-challenge minting",
+          script: {
+            type: "PlutusV3",
+            script: "00".repeat(20_017),
+          },
+        },
+      ]),
+    ).toThrow(
+      /availability-challenge minting raw script is 20017 bytes, exceeding the 16384-byte L1 transaction envelope by at least 3633 bytes/u,
+    );
+  });
+
+  it("admits only the raw-body lower bound and leaves complete signed fit to the publisher", () => {
+    expect(() =>
+      assertReferenceScriptRawBodiesFitL1EnvelopeV1([
+        {
+          name: "boundary",
+          script: { type: "PlutusV3", script: "00".repeat(16_383) },
+        },
+      ]),
+    ).not.toThrow();
+    expect(() =>
+      assertReferenceScriptRawBodiesFitL1EnvelopeV1([
+        {
+          name: "exact-envelope",
+          script: { type: "PlutusV3", script: "00".repeat(16_384) },
+        },
+      ]),
+    ).toThrow(/exact-envelope raw script is 16384 bytes/u);
+  });
+
   it("assigns unique <=32-byte auth tokens to every registered fraud-proof role", () => {
     const fraudProofEntries = Object.entries(
       REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,

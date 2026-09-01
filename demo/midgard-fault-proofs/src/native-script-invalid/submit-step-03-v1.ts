@@ -29,6 +29,7 @@ import {
   NATIVE_SCRIPT_INVALID_CATEGORY_LABEL as FAMILY,
   type NativeScriptInvalidContractsV1,
 } from "./contracts-v1.js";
+import { assertNativeScriptInvalidDirectRouteV1 } from "./evidence-machine-v1.js";
 
 type State = NonNullable<
   Data.Static<typeof NativeScriptInvalidStep03DatumSchema>["data"]
@@ -80,6 +81,7 @@ export const submitNativeScriptInvalidStep03 = async ({
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;
 }) => {
+  assertNativeScriptInvalidDirectRouteV1(addressWitnessItems.length);
   const stepIndex = 2;
   const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
     lucid,

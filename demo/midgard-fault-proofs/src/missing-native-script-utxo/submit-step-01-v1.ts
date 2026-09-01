@@ -96,6 +96,9 @@ export const submitMissingNativeScriptUtxoStep01 = async ({
     txInclusion,
     nextDatum,
     spendRedeemerSchema: MissingNativeScriptUtxoStep01SpendRedeemerSchema,
+    wrapInclusionArgs: (args) => ({
+      carriage: { RedeemerCarriedInclusion: [args] },
+    }),
     referenceScriptUtxo,
     witnessReferenceScripts,
     preSubmitBoundary,

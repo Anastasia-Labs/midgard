@@ -23,12 +23,30 @@ import {
   submitRemovalForFixture,
 } from "./support/submit-init-emulator-fixtures.js";
 import {
+  buildRemovalDeploymentInfo,
   expectSingleUtxoWithUnit,
   network,
   publishFraudProofChainReferenceScripts,
+  publishRemovalReferenceScripts,
 } from "./support/submit-init-emulator-shared.js";
 
 describe("Q53 fraud-proof reward idempotency", () => {
+  const expectExactNonZeroFullSlashEconomics = (
+    signed: Awaited<
+      ReturnType<typeof captureLocallyEvaluatedTransactionV1>
+    >["signed"],
+  ) => {
+    const economics = SDK.getProtocolParameters(network);
+    expect(economics.slashing_penalty).toBeGreaterThan(0n);
+    expect(economics.fraud_prover_reward).toBeGreaterThan(0n);
+    expect(economics.required_bond).toBe(
+      economics.slashing_penalty + economics.fraud_prover_reward,
+    );
+    expect(signed.toTransaction().body().fee()).toBe(
+      economics.slashing_penalty,
+    );
+  };
+
   it("lets only one signed replacement removal consume the queue and operator bond", async () => {
     const fixture = await buildProvedDoubleSpendFixture();
 
@@ -47,6 +65,8 @@ describe("Q53 fraud-proof reward idempotency", () => {
     const replacement = await capture("replacement");
 
     expect(replacement.txHash).not.toBe(first.txHash);
+    expectExactNonZeroFullSlashEconomics(first.signed);
+    expectExactNonZeroFullSlashEconomics(replacement.signed);
     const firstInputs = workflowTransactionInputOutRefsV1(first.signed);
     const replacementInputs = workflowTransactionInputOutRefsV1(
       replacement.signed,
@@ -68,7 +88,14 @@ describe("Q53 fraud-proof reward idempotency", () => {
     await expectRemovedFraudProofState(fixture);
   }, 300_000);
 
-  it.skip("lets only one of two different-family proofs for the same header consume the bond and queue", async () => {
+  it("lets only one of two different-family proofs for the same header consume the bond and queue", async () => {
+    const atStage = async <T>(label: string, action: () => Promise<T>) => {
+      try {
+        return await action();
+      } catch (cause) {
+        throw new Error(`${label}: ${String(cause)}`);
+      }
+    };
     const fixture = await buildProvedDoubleSpendFixture({
       headerMinimumFee: 1n,
     });
@@ -117,10 +144,14 @@ describe("Q53 fraud-proof reward idempotency", () => {
       minFeeB: 1n,
       categoryId: category.categoryId,
     });
+    const stepReferenceEntryNames = [
+      "fraudProofMinFee",
+      "fraudProofMinFeeStep02",
+    ] as const;
     const stepReferences = await publishFraudProofChainReferenceScripts({
       lucid: fixture.proverLucid,
       steps: minFeeChain.steps,
-      entryNames: ["fraudProofMinFee", "fraudProofMinFeeStep02"],
+      entryNames: stepReferenceEntryNames,
       familyLabel: "Q53 min-fee",
     });
     const catalogue = {
@@ -129,45 +160,51 @@ describe("Q53 fraud-proof reward idempotency", () => {
         fixture.contracts.fraudProofCatalogue.spendingScriptAddress,
       root: fixture.catalogue.root,
     };
-    const init = await submitMinFeeInit({
-      lucid: fixture.proverLucid,
-      blueprint: fixture.realBlueprint,
-      network,
-      contracts: minFee,
-      category,
-      catalogue,
-      signer: fixture.proverSigner,
-      fraudulentBlockOutRef: fixture.fraudulentBlockOutRef,
-      witnessReferenceScripts: fixture.witnessReferenceScripts,
-    });
-    const step01 = await submitMinFeeStep01({
-      lucid: fixture.proverLucid,
-      blueprint: fixture.realBlueprint,
-      contracts: minFee,
-      categoryId: category.categoryId,
-      network,
-      signer: fixture.proverSigner,
-      threadOutRef: init.nextThreadOutRef,
-      stateQueueBlockOutRef: fixture.fraudulentBlockOutRef,
-      txInclusion: parseSubmitStep01TxInclusion(prepared.tx.txInclusion),
-      referenceScriptUtxo: stepReferences[0].utxo,
-      witnessReferenceScripts: fixture.witnessReferenceScripts,
-    });
+    const init = await atStage("min-fee init", async () =>
+      submitMinFeeInit({
+        lucid: fixture.proverLucid,
+        blueprint: fixture.realBlueprint,
+        network,
+        contracts: minFee,
+        category,
+        catalogue,
+        signer: fixture.proverSigner,
+        fraudulentBlockOutRef: fixture.fraudulentBlockOutRef,
+        witnessReferenceScripts: fixture.witnessReferenceScripts,
+      }),
+    );
+    const step01 = await atStage("min-fee step-01", async () =>
+      submitMinFeeStep01({
+        lucid: fixture.proverLucid,
+        blueprint: fixture.realBlueprint,
+        contracts: minFee,
+        categoryId: category.categoryId,
+        network,
+        signer: fixture.proverSigner,
+        threadOutRef: init.nextThreadOutRef,
+        stateQueueBlockOutRef: fixture.fraudulentBlockOutRef,
+        txInclusion: parseSubmitStep01TxInclusion(prepared.tx.txInclusion),
+        referenceScriptUtxo: stepReferences[stepReferenceEntryNames[0]].utxo,
+        witnessReferenceScripts: fixture.witnessReferenceScripts,
+      }),
+    );
     const fieldItemCbors = prepared.tx.fieldItemCbors.map((field) =>
       field.map((item) => Buffer.from(item, "hex")),
     ) as unknown as MinFeeFieldItemCborsV1;
-    const minFeeProof = await submitMinFeeStep02({
-      lucid: fixture.proverLucid,
-      contracts: minFee,
-      categoryId: category.categoryId,
-      signer: fixture.proverSigner,
-      threadOutRef: step01.nextThreadOutRef,
-      nativeTxCompactCbor: prepared.tx.nativeTxCompactCbor,
-      witnessSet: prepared.tx.witnessSet,
-      fieldItemCbors,
-      referenceScriptUtxo: stepReferences[1].utxo,
-      witnessReferenceScripts: fixture.witnessReferenceScripts,
-    });
+    const minFeeProof = await atStage("min-fee step-02", async () =>
+      submitMinFeeStep02({
+        lucid: fixture.proverLucid,
+        contracts: minFee,
+        categoryId: category.categoryId,
+        signer: fixture.proverSigner,
+        threadOutRef: step01.nextThreadOutRef,
+        nativeTxCompactCbor: prepared.tx.nativeTxCompactCbor,
+        witnessSet: prepared.tx.witnessSet,
+        fieldItemCbors,
+        referenceScriptUtxo: stepReferences[stepReferenceEntryNames[1]].utxo,
+        witnessReferenceScripts: fixture.witnessReferenceScripts,
+      }),
+    );
     expect(minFeeProof.minimumFee).toBe(1n);
     expect(minFeeProof.fee).toBe(0n);
     expect(minFeeProof.fraudProofUnit).not.toBe(
@@ -177,6 +214,19 @@ describe("Q53 fraud-proof reward idempotency", () => {
     expect(
       fixture.step04Result.fraudProofUnit.endsWith(fixture.headerHash),
     ).toBe(true);
+
+    const removalReferences = await publishRemovalReferenceScripts({
+      lucid: fixture.proverLucid,
+      contracts: fixture.contracts,
+    });
+    const removalDeploymentInfo = buildRemovalDeploymentInfo(
+      { ...fixture.contracts, minFee },
+      fixture.catalogue,
+      {
+        removalReferenceScripts: removalReferences.published,
+        fraudProofReferenceScripts: stepReferences,
+      },
+    );
 
     const doubleSpendRemoval = await captureLocallyEvaluatedTransactionV1(
       async (preSubmitBoundary) =>
@@ -188,7 +238,7 @@ describe("Q53 fraud-proof reward idempotency", () => {
         await submitRemoveFraudulentBlock({
           lucid: fixture.proverLucid,
           blueprint: fixture.realBlueprint,
-          deploymentInfo: fixture.deploymentInfo,
+          deploymentInfo: removalDeploymentInfo,
           network,
           signer: fixture.proverSigner,
           fraudCategory: "minFee",
@@ -200,6 +250,8 @@ describe("Q53 fraud-proof reward idempotency", () => {
           preSubmitBoundary,
         }),
     );
+    expectExactNonZeroFullSlashEconomics(doubleSpendRemoval.signed);
+    expectExactNonZeroFullSlashEconomics(minFeeRemoval.signed);
     const doubleSpendInputs = workflowTransactionInputOutRefsV1(
       doubleSpendRemoval.signed,
     );

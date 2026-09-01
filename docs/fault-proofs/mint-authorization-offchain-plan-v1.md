@@ -75,5 +75,6 @@ and faulty-block removal:
 - expose operational CLI/workflow commands;
 - mount watcher detection/proving and publish preprod/live evidence;
 - retain separate release evidence for the Plutus/CEK policy path;
-- refresh proof-fit measurements whenever compiler, blueprint, field bounds, or
-  Cardano protocol limits change.
+- rerun its maximum-shape lifecycle under the shared Van Rossem emulator limits
+  whenever compiler, blueprint, field bounds, or Cardano protocol limits
+  change.

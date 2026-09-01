@@ -34,12 +34,12 @@ application helpers.
 
 ## Current deployment identity
 
-The generated testnet blueprint currently contains 510 validators and has
+The generated testnet blueprint currently contains 563 validators and has
 SHA-256
-`ad69e8f98e49e110864cb270dd6bb731caaf43357e8459827b1659124c890de8`.
-The 29-category catalogue derives root
-`c686373893084eff5efe51a52821055f994caa4c26a363df37ec97df23380b62`.
-The inspection suite's static expected root is still stale. These are
+`b885c3abb0eeaace296011a108fbe4a06d0e5303bfb9d73bbec48fc30f32f9de`.
+The 32-category catalogue derives root
+`85ecf82f70e409621d5324c54ae8e2deedbb7c37698e28ba7d76481c17bb6e90`.
+The inspection suite pins and verifies that root. These are
 whole-artifact identities, not constants to copy into application logic. Any
 validator, compiler, parameter, or catalogue change requires
 regeneration and re-binding.

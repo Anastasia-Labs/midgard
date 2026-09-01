@@ -247,6 +247,18 @@ const REFERENCE_SCRIPT_NAMES = [
   "correctionLockSpend",
   "stateQueueSpend",
   "stateQueueMint",
+  "stateQueueFraudRemovalWithdraw",
+  "activeOperatorsSpend",
+  "activeOperatorsMint",
+  "retiredOperatorsSpend",
+  "retiredOperatorsMint",
+  "schedulerSpend",
+] as const;
+
+const STATE_QUEUE_REMOVE_REFERENCE_SCRIPT_NAMES = [
+  "correctionLockSpend",
+  "stateQueueSpend",
+  "stateQueueMint",
   "activeOperatorsSpend",
   "activeOperatorsMint",
   "retiredOperatorsSpend",
@@ -265,6 +277,7 @@ type RemoveFraudulentBlockContracts = {
   readonly stateQueueAddress: string;
   readonly stateQueueSpendingScript: Script;
   readonly stateQueueMintingScript: Script;
+  readonly stateQueueFraudRemovalWithdrawalScript: Script;
   readonly activeOperatorsPolicyId: string;
   readonly activeOperatorsAddress: string;
   readonly activeOperatorsSpendingScript: Script;
@@ -886,6 +899,10 @@ const assembleRemovalContracts = ({
     deploymentInfo,
     "stateQueueMint",
   );
+  const stateQueueFraudRemovalWithdrawalScript = requireDeploymentScript(
+    deploymentInfo,
+    "stateQueueFraudRemovalWithdraw",
+  );
   const correctionLockSpendingScript = requireDeploymentScript(
     deploymentInfo,
     "correctionLockSpend",
@@ -943,6 +960,7 @@ const assembleRemovalContracts = ({
     ),
     stateQueueSpendingScript,
     stateQueueMintingScript,
+    stateQueueFraudRemovalWithdrawalScript,
     activeOperatorsPolicyId,
     activeOperatorsAddress: validatorToAddress(
       network,
@@ -1024,9 +1042,20 @@ const resolveReferenceScripts = async ({
   readonly lucid: LucidEvolution;
   readonly deploymentInfo: ContractDeploymentInfo;
   readonly requireReferenceScripts: boolean;
-}): Promise<StateQueueRemoveReferenceScriptUTxOs | undefined> => {
+}): Promise<
+  StateQueueRemoveReferenceScriptUTxOs & {
+    readonly stateQueueFraudRemovalWithdraw: UTxO;
+  }
+> => {
+  const stateQueueFraudRemovalWithdraw = await requireDeploymentReferenceScript(
+    {
+      lucid,
+      deploymentInfo,
+      name: "stateQueueFraudRemovalWithdraw",
+    },
+  );
   if (!requireReferenceScripts) {
-    return undefined;
+    return { stateQueueFraudRemovalWithdraw };
   }
   const [
     correctionLockSpend,
@@ -1038,11 +1067,12 @@ const resolveReferenceScripts = async ({
     retiredOperatorsMint,
     schedulerSpend,
   ] = await Promise.all(
-    REFERENCE_SCRIPT_NAMES.map((name) =>
+    STATE_QUEUE_REMOVE_REFERENCE_SCRIPT_NAMES.map((name) =>
       requireDeploymentReferenceScript({ lucid, deploymentInfo, name }),
     ),
   );
   return {
+    stateQueueFraudRemovalWithdraw,
     correctionLockSpend,
     stateQueueSpend,
     stateQueueMint,
@@ -1055,7 +1085,11 @@ const resolveReferenceScripts = async ({
 };
 
 const referenceScriptOutRefs = (
-  referenceScripts: StateQueueRemoveReferenceScriptUTxOs | undefined,
+  referenceScripts:
+    | (StateQueueRemoveReferenceScriptUTxOs & {
+        readonly stateQueueFraudRemovalWithdraw: UTxO;
+      })
+    | undefined,
 ): Readonly<Record<ReferenceScriptName, string | null>> =>
   Object.fromEntries(
     REFERENCE_SCRIPT_NAMES.map((name) => {
@@ -2226,6 +2260,7 @@ const makeStateQueueRemoveMintRedeemer = ({
   fraudulentOperator,
   fraudulentBlocksHeaderHash,
   fraudProofRefInput,
+  yieldRefInput,
   slashing,
   contracts,
   onLayout,
@@ -2236,6 +2271,7 @@ const makeStateQueueRemoveMintRedeemer = ({
   readonly fraudulentOperator: string;
   readonly fraudulentBlocksHeaderHash: string;
   readonly fraudProofRefInput: UTxO;
+  readonly yieldRefInput: UTxO;
   readonly slashing: RemoveFraudulentBlockSlashing;
   readonly contracts: RemoveFraudulentBlockContracts;
   readonly onLayout: (layout: RemoveFraudulentBlockLayout) => void;
@@ -2269,6 +2305,11 @@ const makeStateQueueRemoveMintRedeemer = ({
       ...slashingLayout,
     };
     const commonRedeemer = {
+      yield_to_ref_input_index: requireReferenceInputIndex(
+        ctx,
+        yieldRefInput,
+        "remove-fraudulent-block yield",
+      ),
       fraudulent_operator: fraudulentOperator,
       fraudulent_blocks_header_hash: fraudulentBlocksHeaderHash,
       slashing_approach: slashingApproach,
@@ -2649,6 +2690,7 @@ export const submitRemoveFraudulentBlock = async ({
       fraudulentOperator,
       fraudulentBlocksHeaderHash: headerHash,
       fraudProofRefInput: fraudProofUtxo,
+      yieldRefInput: referenceScripts.stateQueueFraudRemovalWithdraw,
       slashing,
       contracts,
       onLayout: (layout) => {
@@ -2679,6 +2721,10 @@ export const submitRemoveFraudulentBlock = async ({
               stateQueueSpendingScript: contracts.stateQueueSpendingScript,
               stateQueueMintingScript: contracts.stateQueueMintingScript,
               referenceScripts,
+              yieldWitness: {
+                referenceInput: referenceScripts.stateQueueFraudRemovalWithdraw,
+                script: contracts.stateQueueFraudRemovalWithdrawalScript,
+              },
               stateQueueMintRedeemer,
             },
           )
@@ -2704,6 +2750,10 @@ export const submitRemoveFraudulentBlock = async ({
               stateQueueSpendingScript: contracts.stateQueueSpendingScript,
               stateQueueMintingScript: contracts.stateQueueMintingScript,
               referenceScripts,
+              yieldWitness: {
+                referenceInput: referenceScripts.stateQueueFraudRemovalWithdraw,
+                script: contracts.stateQueueFraudRemovalWithdrawalScript,
+              },
               stateQueueMintRedeemer,
             },
           );

@@ -9,6 +9,28 @@ import { makeFaultProofEmulatorHarnessV1 } from "./harness.js";
 const APPENDED_CATEGORY_NAMES = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.slice(11);
 
 describe("fault-proof emulator catalogue registration", () => {
+  it.each([
+    ["missingNativeScriptUtxo", "realMissingNativeScriptUtxo"],
+    ["nativeScriptInvalid", "realNativeScriptInvalid"],
+    ["minAda", "realMinAda"],
+  ] as const)(
+    "registers the selected real %s first step",
+    async (categoryName, optionName) => {
+      const harness = await makeFaultProofEmulatorHarnessV1({
+        contractOptions: {
+          [optionName]: true,
+          alwaysFraudProofCatalogue: true,
+        },
+      });
+      const family = harness.contracts[categoryName];
+      expect(family).toBeDefined();
+      expect(harness.catalogue.categories[categoryName].scriptHash).toBe(
+        family!.steps[0].spendingScriptHash,
+      );
+    },
+    120_000,
+  );
+
   it("registers every appended production category from its canonical chain", async () => {
     const harness = await makeFaultProofEmulatorHarnessV1();
 

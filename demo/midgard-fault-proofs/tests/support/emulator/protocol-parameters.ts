@@ -22,6 +22,16 @@ export type DiagnosticCardanoParameterOverrides = Pick<
   | "costModels"
 >;
 
+/**
+ * Van Rossem (protocol version 11) transaction limits used by every
+ * fault-proof Lucid Evolution emulator lifecycle.
+ */
+export const VAN_ROSSEM_TRANSACTION_LIMITS = Object.freeze({
+  maxTxSize: 16_384,
+  maxTxExMem: 16_500_000n,
+  maxTxExSteps: 10_000_000_000n,
+});
+
 export const requireJsonRecord = (
   value: unknown,
   label: string,
@@ -106,9 +116,9 @@ export const loadDiagnosticCardanoParameterOverrides =
       "Diagnostic Cardano parameter snapshot entry",
     );
     const maxTxSize = requireNonNegativeInteger(parameters, "max_tx_size");
-    if (maxTxSize !== PROTOCOL_PARAMETERS_DEFAULT.maxTxSize) {
+    if (maxTxSize !== VAN_ROSSEM_TRANSACTION_LIMITS.maxTxSize) {
       throw new Error(
-        `Diagnostic target max_tx_size must be ${PROTOCOL_PARAMETERS_DEFAULT.maxTxSize.toString()}, found ${maxTxSize.toString()}`,
+        `Diagnostic target max_tx_size must be ${VAN_ROSSEM_TRANSACTION_LIMITS.maxTxSize.toString()}, found ${maxTxSize.toString()}`,
       );
     }
     const costModelsJson = requireJsonRecord(
@@ -120,12 +130,22 @@ export const loadDiagnosticCardanoParameterOverrides =
       PlutusV2: requireCostModel(costModelsJson, "PlutusV2"),
       PlutusV3: requireCostModel(costModelsJson, "PlutusV3"),
     };
+    const maxTxExMem = requireBigIntParameter(parameters, "max_tx_ex_mem");
+    const maxTxExSteps = requireBigIntParameter(parameters, "max_tx_ex_steps");
+    if (
+      maxTxExMem !== VAN_ROSSEM_TRANSACTION_LIMITS.maxTxExMem ||
+      maxTxExSteps !== VAN_ROSSEM_TRANSACTION_LIMITS.maxTxExSteps
+    ) {
+      throw new Error(
+        "Diagnostic target transaction ExUnit limits must match Van Rossem",
+      );
+    }
     return {
       minFeeA: requireNonNegativeInteger(parameters, "min_fee_a"),
       minFeeB: requireNonNegativeInteger(parameters, "min_fee_b"),
       maxValSize: requireNonNegativeInteger(parameters, "max_val_size"),
-      maxTxExMem: requireBigIntParameter(parameters, "max_tx_ex_mem"),
-      maxTxExSteps: requireBigIntParameter(parameters, "max_tx_ex_steps"),
+      maxTxExMem,
+      maxTxExSteps,
       priceMem: requireFiniteNumber(parameters, "price_mem"),
       priceStep: requireFiniteNumber(parameters, "price_step"),
       coinsPerUtxoByte: requireBigIntParameter(
@@ -151,6 +171,6 @@ export const loadDiagnosticCardanoParameterOverrides =
 export const EMULATOR_PROTOCOL_PARAMETERS = {
   ...PROTOCOL_PARAMETERS_DEFAULT,
   ...loadDiagnosticCardanoParameterOverrides(),
-  maxTxSize: 65_536,
+  ...VAN_ROSSEM_TRANSACTION_LIMITS,
   maxCollateralInputs: 3,
 } as const;

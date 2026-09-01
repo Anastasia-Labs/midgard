@@ -35,6 +35,11 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
   "scheduler minting": "SchedulerMint",
   "state-queue spending": "StateQueueSpend",
   "state-queue minting": "StateQueueMint",
+  "state-queue commit withdrawal": "StateQueueCommitYield",
+  "state-queue unattested-timeout withdrawal": "StateQueueUnattestedYield",
+  "state-queue unavailable-timeout withdrawal": "StateQueueUnavailableYield",
+  "state-queue fraud-removal withdrawal": "StateQueueFraudRemovalYield",
+  "state-queue merge withdrawal": "StateQueueMergeYield",
   "registered-operators spending": "RegisteredOperatorsSpend",
   "registered-operators minting": "RegisteredOperatorsMint",
   "active-operators spending": "ActiveOperatorsSpend",
@@ -207,6 +212,8 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
   "V1 fraud-proof native-script-invalid step-03": "V1FpNativeScriptInvalidS03",
   "V1 fraud-proof min-ada step-01": "V1FpMinAdaS01",
   "V1 fraud-proof min-ada step-02": "V1FpMinAdaS02",
+  "V1 fraud-proof min-ada step-02 tx yield": "V1FpMinAdaS02TxYield",
+  "V1 fraud-proof min-ada step-02 UTxO yield": "V1FpMinAdaS02UtxoYield",
   "correction-lock spending": "CorrectionLockSpend",
   "V1 fraud-proof min-ada step-03": "V1FpMinAdaS03",
   "V1 fraud-proof min-ada step-04": "V1FpMinAdaS04",
@@ -267,6 +274,36 @@ export type ReferenceScriptAuthPolicyDeploymentInfo = {
 export type ReferenceScriptTarget = {
   readonly name: string;
   readonly script: Script;
+};
+
+/**
+ * Release-bound Cardano transaction envelope used for reference-script
+ * publication. A script body at or above this size cannot possibly fit once
+ * the output, funding input, auth mint and signature are added.
+ */
+export const REFERENCE_SCRIPT_PUBLICATION_L1_MAX_TX_BYTES_V1 = 16_384;
+
+/**
+ * Fail-fast lower-bound admission for production reference-script
+ * publication. This deliberately does not claim that a smaller raw body fits:
+ * the completed, signed transaction remains the authoritative fit check.
+ */
+export const assertReferenceScriptRawBodiesFitL1EnvelopeV1 = (
+  targets: readonly ReferenceScriptTarget[],
+  maxTxBytes = REFERENCE_SCRIPT_PUBLICATION_L1_MAX_TX_BYTES_V1,
+): void => {
+  for (const target of targets) {
+    const rawScriptBytes = target.script.script.length / 2;
+    if (rawScriptBytes >= maxTxBytes) {
+      throw new StateQueueError({
+        message:
+          `${target.name} raw script is ${rawScriptBytes.toString()} bytes, ` +
+          `exceeding the ${maxTxBytes.toString()}-byte L1 transaction envelope ` +
+          `by at least ${(rawScriptBytes - maxTxBytes).toString()} bytes`,
+        cause: "reference_script_raw_body_exceeds_l1_envelope_v1",
+      });
+    }
+  }
 };
 
 export type ReferenceScriptResolved = {

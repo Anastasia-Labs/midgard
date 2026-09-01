@@ -16,6 +16,7 @@ import {
 import { Data as EffectData, Effect } from "effect";
 
 import { ActiveOperatorSpendRedeemer } from "@/active-operators.js";
+import { scriptRewardAddress } from "@/cardano-addresses.js";
 import {
   DataCoercionError,
   GenericErrorFields,
@@ -167,6 +168,7 @@ export const StateQueueRedeemerSchema = Data.Enum([
   Data.Literal("Deinit"),
   Data.Object({
     CommitBlockHeader: Data.Object({
+      yield_to_ref_input_index: Data.Integer(),
       new_block_output_index: Data.Integer(),
       continued_latest_block_output_index: Data.Integer(),
       operator: Data.Bytes({ minLength: 28, maxLength: 28 }),
@@ -179,6 +181,7 @@ export const StateQueueRedeemerSchema = Data.Enum([
   }),
   Data.Object({
     RemoveFraudulentBlockHeader: Data.Object({
+      yield_to_ref_input_index: Data.Integer(),
       fraudulent_operator: Data.Bytes({ minLength: 28, maxLength: 28 }),
       fraudulent_blocks_header_hash: HeaderHashSchema,
       slashing_approach: SlashingApproachSchema,
@@ -188,12 +191,14 @@ export const StateQueueRedeemerSchema = Data.Enum([
   }),
   Data.Object({
     RemoveUnattestedBlockAfterTimeout: Data.Object({
+      yield_to_ref_input_index: Data.Integer(),
       timed_out_header_hash: HeaderHashSchema,
       removal_approach: AttestationTimeoutRemovalApproachSchema,
     }),
   }),
   Data.Object({
     RemoveUnavailableBlockAfterTimeout: Data.Object({
+      yield_to_ref_input_index: Data.Integer(),
       unavailable_header_hash: HeaderHashSchema,
       challenge_asset_name: Data.Bytes({ minLength: 32, maxLength: 32 }),
       removal_approach: AttestationTimeoutRemovalApproachSchema,
@@ -201,6 +206,7 @@ export const StateQueueRedeemerSchema = Data.Enum([
   }),
   Data.Object({
     MergeToConfirmedStateV1: Data.Object({
+      yield_to_ref_input_index: Data.Integer(),
       header_node_key: Data.Bytes(),
       confirmed_state_input_outref: OutputReferenceSchema,
       confirmed_state_output_index: Data.Integer(),
@@ -225,6 +231,40 @@ export const StateQueueRedeemerSchema = Data.Enum([
 export type StateQueueRedeemer = Data.Static<typeof StateQueueRedeemerSchema>;
 export const StateQueueRedeemer =
   StateQueueRedeemerSchema as unknown as StateQueueRedeemer;
+
+export const StateQueueYieldRedeemerV1Schema = Data.Enum([
+  Data.Literal("YieldStateQueueV1"),
+]);
+export type StateQueueYieldRedeemerV1 = Data.Static<
+  typeof StateQueueYieldRedeemerV1Schema
+>;
+export const StateQueueYieldRedeemerV1 =
+  StateQueueYieldRedeemerV1Schema as unknown as StateQueueYieldRedeemerV1;
+
+/** Encode Aiken's sole fieldless `YieldStateQueueV1` constructor. */
+export const encodeStateQueueYieldRedeemerV1 = (): string => Data.void();
+
+export type StateQueueYieldWitnessV1 = {
+  /** Authenticated deployment output carrying the arm-specific reference script. */
+  readonly referenceInput: UTxO;
+  /** The same rewarding script, used to derive its network reward address. */
+  readonly script: Script;
+};
+
+const applyStateQueueZeroYieldV1 = (
+  lucid: LucidEvolution,
+  tx: TxBuilder,
+  witness: StateQueueYieldWitnessV1,
+): TxBuilder => {
+  const network = lucid.config().network;
+  if (network === undefined) {
+    throw new Error(
+      "Cannot build a state-queue yield without a configured Lucid network",
+    );
+  }
+  return tx.withdraw(scriptRewardAddress(network, witness.script), 0n, (() =>
+    encodeStateQueueYieldRedeemerV1()) satisfies BuildTxWithRedeemer);
+};
 
 export const StateQueueSpendRedeemerSchema = Data.Enum([
   Data.Literal("LinkedListMutation"),
@@ -316,6 +356,7 @@ export type EmulatorStateQueueCommitBlockHeaderParams = {
   };
   stateQueueSpendingScript: Script;
   stateQueueMintingScript: Script;
+  readonly yieldWitness: StateQueueYieldWitnessV1;
 };
 
 type AlreadySlashedRemoveParams = {
@@ -417,6 +458,7 @@ type EmulatorStateQueueRemoveLastFraudulentBlockHeaderCommonParams = {
   additionalRefInputs?: readonly UTxO[];
   stateQueueSpendingScript: Script;
   stateQueueMintingScript: Script;
+  readonly yieldWitness: StateQueueYieldWitnessV1;
   referenceScripts?: StateQueueRemoveReferenceScriptUTxOs;
   slashing: EmulatorStateQueueRemoveSlashingParams;
   stateQueueMintRedeemer?: BuildTxWithRedeemer;
@@ -441,6 +483,7 @@ type EmulatorStateQueueRemoveFraudulentBlocksLinkParams = {
   additionalRefInputs?: readonly UTxO[];
   stateQueueSpendingScript: Script;
   stateQueueMintingScript: Script;
+  readonly yieldWitness: StateQueueYieldWitnessV1;
   referenceScripts?: StateQueueRemoveReferenceScriptUTxOs;
   slashing: EmulatorStateQueueRemoveSlashingParams;
   stateQueueMintRedeemer?: BuildTxWithRedeemer;
@@ -851,6 +894,7 @@ type StateQueueRemovalTxAssemblyParams = {
   readonly stateQueueMintingScript: Script;
   readonly referenceScripts?: StateQueueRemoveReferenceScriptUTxOs;
   readonly slashing: EmulatorStateQueueRemoveSlashingParams;
+  readonly yieldWitness: StateQueueYieldWitnessV1;
 };
 
 const buildStateQueueRemovalTx = (
@@ -868,6 +912,7 @@ const buildStateQueueRemovalTx = (
     ...(params.additionalRefInputs ?? []),
     ...removeSlashingReferenceInputs(params.slashing),
     ...referenceScriptInputs,
+    params.yieldWitness.referenceInput,
   ]);
   let tx = lucid.newTx();
   if (params.validFrom !== undefined) {
@@ -947,11 +992,12 @@ const buildStateQueueRemovalTx = (
     tx = tx.attach.Script(params.correctionLockSpendingScript);
   }
 
-  return collectRemoveSlashingInputs(
+  const withSlashing = collectRemoveSlashingInputs(
     tx,
     params.slashing,
     params.referenceScripts,
   );
+  return applyStateQueueZeroYieldV1(lucid, withSlashing, params.yieldWitness);
 };
 
 const requireFraudProofCorrectionIdentity = (
@@ -1060,6 +1106,11 @@ export const incompleteEmulatorCommitBlockHeaderTxProgram = (
       Data.to(
         {
           CommitBlockHeader: {
+            yield_to_ref_input_index: requireReferenceInputIndex(
+              ctx,
+              params.yieldWitness.referenceInput,
+              "emulator state-queue commit yield target",
+            ),
             new_block_output_index: requireUniqueOutputIndex(
               ctx.outputs,
               (output) =>
@@ -1138,6 +1189,7 @@ export const incompleteEmulatorCommitBlockHeaderTxProgram = (
         ...(params.headStateQueueNodeRefInput === undefined
           ? []
           : [params.headStateQueueNodeRefInput]),
+        params.yieldWitness.referenceInput,
       ])
       .pay.ToContract(
         config.stateQueueAddress,
@@ -1157,6 +1209,8 @@ export const incompleteEmulatorCommitBlockHeaderTxProgram = (
       .attach.Script(params.stateQueueSpendingScript)
       .attach.Script(params.stateQueueMintingScript)
       .attach.Script(params.activeOperatorSpendingScript);
+
+    tx = applyStateQueueZeroYieldV1(lucid, tx, params.yieldWitness);
 
     if (params.validFrom !== undefined) {
       tx = tx.validFrom(Number(params.validFrom));
@@ -1225,6 +1279,11 @@ export const incompleteRemoveLastFraudulentBlockHeaderTxProgram = (
     return Data.to(
       {
         RemoveFraudulentBlockHeader: {
+          yield_to_ref_input_index: requireReferenceInputIndex(
+            ctx,
+            params.yieldWitness.referenceInput,
+            "emulator state-queue fraud removal yield target",
+          ),
           fraudulent_operator: params.fraudulentOperator,
           fraudulent_blocks_header_hash: fraudulentBlocksHeaderHash,
           slashing_approach: resolveRemoveSlashingApproach(
@@ -1292,6 +1351,7 @@ export const incompleteRemoveLastFraudulentBlockHeaderTxProgram = (
     stateQueueMintingScript: params.stateQueueMintingScript,
     referenceScripts: params.referenceScripts,
     slashing: params.slashing,
+    yieldWitness: params.yieldWitness,
   });
 };
 
@@ -1350,6 +1410,11 @@ export const incompleteRemoveFraudulentBlocksLinkTxProgram = (
     return Data.to(
       {
         RemoveFraudulentBlockHeader: {
+          yield_to_ref_input_index: requireReferenceInputIndex(
+            ctx,
+            params.yieldWitness.referenceInput,
+            "state-queue fraud removal yield target",
+          ),
           fraudulent_operator: params.fraudulentOperator,
           fraudulent_blocks_header_hash: params.fraudulentBlocksHeaderHash,
           slashing_approach: resolveRemoveSlashingApproach(
@@ -1423,6 +1488,7 @@ export const incompleteRemoveFraudulentBlocksLinkTxProgram = (
     stateQueueMintingScript: params.stateQueueMintingScript,
     referenceScripts: params.referenceScripts,
     slashing: params.slashing,
+    yieldWitness: params.yieldWitness,
   });
 };
 
@@ -1444,6 +1510,7 @@ type StateQueueTimeoutRemovalCommonParams = {
   readonly validTo: bigint;
   readonly stateQueueSpendingScript: Script;
   readonly stateQueueMintingScript: Script;
+  readonly yieldWitness: StateQueueYieldWitnessV1;
   readonly referenceScripts?: StateQueueTimeoutRemovalReferenceScriptUTxOs;
 };
 
@@ -1508,6 +1575,7 @@ const timeoutRemovalBaseTx = ({
     ...(params.referenceScripts?.stateQueueMint === undefined
       ? []
       : [params.referenceScripts.stateQueueMint]),
+    params.yieldWitness.referenceInput,
   ]);
   let tx = lucid
     .newTx()
@@ -1555,9 +1623,11 @@ const timeoutRemovalBaseTx = ({
   if (params.referenceScripts?.correctionLockSpend === undefined) {
     tx = tx.attach.Script(params.correctionLockSpendingScript);
   }
-  return params.referenceScripts?.stateQueueMint === undefined
-    ? tx.attach.Script(params.stateQueueMintingScript)
-    : tx;
+  const withMintScript =
+    params.referenceScripts?.stateQueueMint === undefined
+      ? tx.attach.Script(params.stateQueueMintingScript)
+      : tx;
+  return applyStateQueueZeroYieldV1(lucid, withMintScript, params.yieldWitness);
 };
 
 /**
@@ -1611,6 +1681,11 @@ export const incompletePruneTimedOutBlockDescendantTxProgram = (
     Data.to(
       {
         RemoveUnattestedBlockAfterTimeout: {
+          yield_to_ref_input_index: requireReferenceInputIndex(
+            ctx,
+            params.yieldWitness.referenceInput,
+            "timed-out removal yield target",
+          ),
           timed_out_header_hash: timedOutHeaderHash,
           removal_approach: {
             PruneTimedOutBlockDescendant: {
@@ -1701,6 +1776,11 @@ export const incompleteRemoveUnattestedHeadAfterTimeoutTxProgram = (
     Data.to(
       {
         RemoveUnattestedBlockAfterTimeout: {
+          yield_to_ref_input_index: requireReferenceInputIndex(
+            ctx,
+            params.yieldWitness.referenceInput,
+            "timed-out removal yield target",
+          ),
           timed_out_header_hash: timedOutHeaderHash,
           removal_approach: {
             RemoveTimedOutHead: {

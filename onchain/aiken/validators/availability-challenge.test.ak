@@ -1761,6 +1761,7 @@ fn timeout_state_queue_redeemer(
   bound_challenge_asset_name: ByteArray,
 ) -> state_queue.MintRedeemer {
   state_queue.RemoveUnavailableBlockAfterTimeout {
+    yield_to_ref_input_index: 0,
     unavailable_header_hash: header_hash(),
     challenge_asset_name: bound_challenge_asset_name,
     removal_approach: state_queue.PruneTimedOutBlockDescendant {
