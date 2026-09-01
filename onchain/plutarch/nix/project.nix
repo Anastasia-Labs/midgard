@@ -1,23 +1,36 @@
-{ repoRoot, inputs, pkgs, lib, system }:
+{ inputs, pkgs, lib }:
 
 let
-  modules = [{ }];
+  cabalProject = pkgs.haskell-nix.cabalProject' (
 
-  cabalProject = pkgs.haskell-nix.cabalProject' {
-    inherit modules;
-    src = ../.;
-    name = "midgard-contracts";
-    compiler-nix-name = "ghc966";
-    inputMap = {
-      "https://chap.intersectmbo.org/" = inputs.CHaP;
-    };
-    shell.withHoogle = false;
-  };
+    { config, pkgs, ... }:
 
-  project = lib.iogx.mkHaskellProject {
-    inherit cabalProject;
-    shellArgs = repoRoot.nix.shell;
-  };
+    {
+      name = "midgard-merkle";
+
+      compiler-nix-name = lib.mkDefault "ghc966";
+
+      src = lib.cleanSource ../.;
+
+      flake.variants = {
+        ghc966 = { }; # Alias for the default variant
+        #ghc984.compiler-nix-name = "ghc984";
+        #ghc9102.compiler-nix-name = "ghc9102";
+        #ghc9122.compiler-nix-name = "ghc9122";
+      };
+
+      inputMap = { "https://chap.intersectmbo.org/" = inputs.CHaP; };
+
+      cabalProjectLocal = ''
+        package *
+          ghc-options=-Werror
+      '';
+      modules = [{
+        packages = { };
+      }];
+    }
+  );
 
 in
-project
+
+cabalProject
