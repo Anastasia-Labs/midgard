@@ -4,11 +4,13 @@ import {
   computeMidgardNativeTxIdV1,
   computeMidgardNativeTxProofCommitmentV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  decodeMidgardNativeTxProofFieldLengthsV1,
   deriveMidgardNativeTxProofSourceV1,
   deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeMidgardNativeTxCanonicalV1,
+  encodeMidgardNativeTxProofFieldLengthsV1,
   encodeMidgardSpendInputItemV1,
   materializeMidgardNativeTxFromCanonicalV1,
   MIDGARD_NATIVE_NETWORK_ID_NONE,
@@ -37,6 +39,12 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { fetchProductionFraudProofEvidenceV1 } from "../src/evidence/production-fraud-proof-evidence-v1.js";
+import { prepareAcceptedFieldPreimageLengthMismatchV1 } from "../src/field-preimage-length-mismatch/prepare-accepted-v1.js";
+import {
+  detectAuthenticatedFieldPreimageLengthProductionEvidenceV1,
+  detectFieldPreimageLengthCompleteReplayV1,
+} from "../src/field-preimage-length-mismatch/production-evidence-v1.js";
 import {
   buildCountedRoot,
   buildEventToStepMismatchFault,
@@ -547,6 +555,7 @@ const buildPayloadFixture = async ({
       forced_transaction_preimages: sorted(forcedTransactionPreimages),
       cek_program_material: [],
       validation_traces: sorted(validationTraces),
+      validation_trace_witnesses: [],
       counts,
     },
   };
@@ -568,6 +577,40 @@ const reconstruct = async (
     expectedHeaderHash: fixture.headerHash,
     committedHeader: fixture.header,
   });
+
+const authenticatedObservation = (
+  fixture: Awaited<ReturnType<typeof buildPayloadFixture>>,
+): SDK.AuthenticatedStateQueueHeaderObservationV1 => ({
+  schemaVersion: SDK.CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION,
+  sourceMode: "local_node",
+  provenance: {
+    trustClass: "authenticated_cardano_l1",
+    sourceId: "local-kupmios",
+    grade: "security",
+  },
+  chainPoint: { slot: 42n, blockHash: h32(42) },
+  confirmationDepth: 30,
+  headerHash: fixture.headerHash,
+  header: fixture.header,
+});
+
+const retainedSource = (
+  fixture: Awaited<ReturnType<typeof buildPayloadFixture>>,
+) => ({
+  sourceId: "public-da",
+  fetchPayloadByHeaderHash: async () => ({
+    ok: true as const,
+    provenance: {
+      trustClass: "public_or_permissionless_da" as const,
+      sourceId: "public-da/peer-1",
+      grade: "security" as const,
+    },
+    sourceId: "public-da",
+    sourcePeerId: "peer-1",
+    payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
+    attempts: [],
+  }),
+});
 
 const forcedEventKey = (id: SDK.OutputReference): SDK.EventKey => ({
   ForcedTransactionEventKey: { tx_order_id: id },
@@ -1099,6 +1142,212 @@ describe("transition-trace challenger tooling", () => {
       kind: "invalidOneStepTransition",
       invariant: "l2_transaction_transition_matches_authenticated_replay",
     });
+  });
+
+  it("rejects whole-block reconstruction but directly prepares an authenticated accepted length mismatch", async () => {
+    const material = nativeMaterial(72);
+    const lengths = [
+      ...decodeMidgardNativeTxProofFieldLengthsV1(
+        Buffer.from(material.source.field_preimage_lengths_cbor, "hex"),
+      ),
+    ];
+    lengths[0] = lengths[0]! + 1;
+    const source: SDK.L2TransactionSourceV1 = {
+      tx_id: material.txId,
+      source: {
+        ...material.source,
+        field_preimage_lengths_cbor:
+          encodeMidgardNativeTxProofFieldLengthsV1(lengths).toString("hex"),
+      },
+    };
+    const sourceCbor = Data.to(source, SDK.L2TransactionSourceV1);
+    const eventKey: SDK.EventKey = {
+      L2TransactionEventKey: { tx_id: material.txId },
+    };
+    const transactions = [
+      entry(Buffer.from(material.txId, "hex"), Buffer.from(sourceCbor, "hex")),
+    ];
+    const fixture = await buildPayloadFixture({
+      transactions,
+      transactionPreimages: [
+        entry(Buffer.from(material.txId, "hex"), material.canonicalCbor),
+      ],
+      steps: [
+        {
+          schema_version: 1n,
+          step_index: 0n,
+          event_key: eventKey,
+          phase: "L2Transaction",
+          pre_utxos_root: SDK.EMPTY_MERKLE_TREE_ROOT,
+          post_utxos_root: SDK.EMPTY_MERKLE_TREE_ROOT,
+        },
+      ],
+      eventToStep: [
+        eventToStepEntry(eventKey, {
+          step_index: 0n,
+          phase: "L2Transaction",
+        }),
+      ],
+    });
+    await expect(reconstruct(fixture)).rejects.toMatchObject({
+      code: "malformedPayload",
+    });
+    const direct = await prepareAcceptedFieldPreimageLengthMismatchV1({
+      headerHash: fixture.headerHash,
+      committedTransactionsRoot: fixture.header.transactionsRoot,
+      l2TransactionCount: fixture.header.l2TransactionCount,
+      entries: transactions,
+      transactionId: material.txId,
+      canonicalTransactionCbor: material.canonicalCbor,
+      fieldIndex: 0,
+    });
+    expect(direct.prepared).toMatchObject({
+      direction: "wrongfulAcceptance",
+      declaredLength: lengths[0],
+      actualLength: lengths[0]! - 1,
+    });
+    expect(direct.inclusion.l2TransactionSourceCbor).toBe(sourceCbor);
+    const production =
+      await detectAuthenticatedFieldPreimageLengthProductionEvidenceV1({
+        observation: authenticatedObservation(fixture),
+        sources: [retainedSource(fixture)],
+      });
+    expect(production.prepared).toEqual(direct.prepared);
+    expect(production.stageEvidence.acceptedInclusion).toMatchObject({
+      nativeTxId: material.txId,
+      l2TransactionSourceCbor: sourceCbor,
+    });
+    const routed = await fetchProductionFraudProofEvidenceV1({
+      observation: authenticatedObservation(fixture),
+      sources: [retainedSource(fixture)],
+      minimumConfirmationDepth: 30,
+    });
+    expect(routed).toMatchObject({
+      kind: "field_preimage_length_mismatch",
+      evidence: {
+        position: 0n,
+        prepared: direct.prepared,
+      },
+    });
+  });
+
+  it("derives an exact forced length-rejection finding and its membership from canonical retained DA", async () => {
+    const txOrderId = outRef(73);
+    const reason: SDK.RejectionReasonV1 = {
+      FieldPreimageLengthMismatch: { field_index: 0n },
+    };
+    const forced = forcedTx(73, {
+      ForcedTxInvalid: { reason },
+    });
+    const eventKey = forcedEventKey(txOrderId);
+    const fixture = await buildPayloadFixture({
+      forcedTransactions: [
+        encodedEntry({
+          key: txOrderId,
+          keySchema: SDK.OutputReference as never,
+          value: forced,
+          valueSchema: SDK.ForcedInclusionTxV1Schema,
+        }),
+      ],
+      steps: [
+        {
+          schema_version: 1n,
+          step_index: 0n,
+          event_key: eventKey,
+          phase: "ForcedTransaction",
+          pre_utxos_root: SDK.EMPTY_MERKLE_TREE_ROOT,
+          post_utxos_root: SDK.EMPTY_MERKLE_TREE_ROOT,
+        },
+      ],
+      eventToStep: [
+        eventToStepEntry(eventKey, {
+          step_index: 0n,
+          phase: "ForcedTransaction",
+        }),
+      ],
+    });
+    const production =
+      await detectAuthenticatedFieldPreimageLengthProductionEvidenceV1({
+        observation: authenticatedObservation(fixture),
+        sources: [retainedSource(fixture)],
+      });
+    expect(production.prepared).toMatchObject({
+      direction: "wrongfulRejection",
+      fieldIndex: 0,
+      declaredLength: production.prepared.actualLength,
+    });
+    expect(production.stageEvidence.forcedMembership).toMatchObject({
+      key: txOrderId,
+      value: forced,
+    });
+    expect(production.stageEvidence.forcedDirection).toBe(1n);
+  });
+
+  it("does not classify an honest forced field-length rejection", async () => {
+    const txOrderId = outRef(74);
+    const forced = forcedTx(74, {
+      ForcedTxInvalid: {
+        reason: { FieldPreimageLengthMismatch: { field_index: 0n } },
+      },
+    });
+    const lengths = decodeMidgardNativeTxProofFieldLengthsV1(
+      Buffer.from(forced.source.field_preimage_lengths_cbor, "hex"),
+    );
+    const honestForced: SDK.ForcedInclusionTxV1 = {
+      ...forced,
+      source: {
+        ...forced.source,
+        field_preimage_lengths_cbor: encodeMidgardNativeTxProofFieldLengthsV1([
+          lengths[0]! + 1,
+          ...lengths.slice(1),
+        ]).toString("hex"),
+      },
+    };
+    const eventKey = forcedEventKey(txOrderId);
+    const fixture = await buildPayloadFixture({
+      forcedTransactions: [
+        encodedEntry({
+          key: txOrderId,
+          keySchema: SDK.OutputReference as never,
+          value: forced,
+          valueSchema: SDK.ForcedInclusionTxV1Schema,
+        }),
+      ],
+      steps: [
+        {
+          schema_version: 1n,
+          step_index: 0n,
+          event_key: eventKey,
+          phase: "ForcedTransaction",
+          pre_utxos_root: SDK.EMPTY_MERKLE_TREE_ROOT,
+          post_utxos_root: SDK.EMPTY_MERKLE_TREE_ROOT,
+        },
+      ],
+      eventToStep: [
+        eventToStepEntry(eventKey, {
+          step_index: 0n,
+          phase: "ForcedTransaction",
+        }),
+      ],
+    });
+    const reconstruction = await reconstruct(fixture);
+    const [entry] = reconstruction.forcedTransactions;
+    expect(entry).toBeDefined();
+    const block = {
+      headerHash: fixture.headerHash,
+      header: fixture.header,
+      reconstruction: {
+        ...reconstruction,
+        forcedTransactions: [
+          {
+            ...entry!,
+            value: honestForced,
+          },
+        ],
+      },
+    } as never;
+
+    expect(detectFieldPreimageLengthCompleteReplayV1(block)).toEqual([]);
   });
 
   it("returns no tag-4 fault when verified delete/insert replay matches the committed post-root", async () => {

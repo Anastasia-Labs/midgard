@@ -16,6 +16,7 @@ import {
   encodeCborInteger,
   encodeCborTagRaw,
 } from "@al-ft/midgard-core/codec";
+import { decodeSingleCbor } from "@al-ft/midgard-core/codec/cbor";
 import {
   isMidgardConsensusProfileV1,
   MIDGARD_CONSENSUS_LIMITS_V1,
@@ -30,6 +31,7 @@ import {
   collectMidgardV1AttachedProgramEnvelopes,
   collectMidgardV1ReferencedProgramEnvelopes,
 } from "@al-ft/midgard-core/script-proof";
+import { MidgardValidationPhase } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   applyUTxOStatePatch,
@@ -45,6 +47,7 @@ import {
   RejectCodes,
   runPhaseAValidation,
   runPhaseBValidationWithPatch,
+  validationAuxiliaryWitnessDataV1,
   type ValidationMachineLedgerEntry,
   type ValidationMachineLedgerMutationStep,
 } from "@al-ft/midgard-validation";
@@ -1181,6 +1184,7 @@ export type RetainedValidationTraceMember = {
   readonly keyCbor: Buffer;
   readonly valueCbor: Buffer;
   readonly value: SDK.ValidationTraceDescriptorV1;
+  readonly witnesses: readonly SDK.DaPayloadEntry[];
 };
 
 export type ValidationTraceBuildResult = {
@@ -1246,6 +1250,102 @@ export const buildDeterministicValidationTraceMembers = (
           rejection_code_hash:
             trace.tree.descriptor.rejectionCodeHash.toString("hex"),
         };
+        const witnesses = trace.witnesses.flatMap((witness, stateIndex) => {
+          const decodedControl =
+            witness.phase === "scriptSources" ||
+            witness.phase === "scriptIntegrity" ||
+            witness.phase === "valueAndMint"
+              ? decodeSingleCbor(witness.cbor)
+              : null;
+          const scriptSourcesStage =
+            witness.phase === "scriptSources" &&
+            Array.isArray(decodedControl) &&
+            (decodedControl.length === 30 || decodedControl.length === 31)
+              ? BigInt(decodedControl[9] as bigint | number)
+              : null;
+          const retainedNativeExecution =
+            witness.phase === "nativeScripts" &&
+            witness.auxiliary?.kind === "nativeExecutionDescriptor";
+          const retainedScriptSources =
+            witness.phase === "scriptSources" &&
+            (witness.auxiliary === null ||
+              witness.auxiliary.kind === "scriptPurposeScan" ||
+              witness.auxiliary.kind === "scriptSourceScan" ||
+              ((witness.auxiliary.kind === "redeemerScanBegin" ||
+                witness.auxiliary.kind === "redeemerItemStep") &&
+                (scriptSourcesStage === 10n || scriptSourcesStage === 12n)));
+          const retainedScriptIntegrityTerminal =
+            witness.phase === "scriptIntegrity" &&
+            witness.auxiliary === null &&
+            Array.isArray(decodedControl) &&
+            decodedControl.length === 4 &&
+            BigInt(decodedControl[1] as bigint | number) === 3n;
+          const retainedValueAndMintAsset =
+            witness.phase === "valueAndMint" &&
+            Array.isArray(decodedControl) &&
+            decodedControl.length === 12 &&
+            witness.auxiliary !== null &&
+            ((witness.auxiliary.kind === "valueInputAsset" &&
+              BigInt(decodedControl[1] as bigint | number) === 2n) ||
+              (witness.auxiliary.kind === "valueOutputAsset" &&
+                BigInt(decodedControl[1] as bigint | number) === 3n) ||
+              (witness.auxiliary.kind === "valueMintAsset" &&
+                BigInt(decodedControl[1] as bigint | number) === 4n));
+          if (
+            !retainedNativeExecution &&
+            !retainedScriptSources &&
+            !retainedScriptIntegrityTerminal &&
+            !retainedValueAndMintAsset
+          ) {
+            return [];
+          }
+          // Non-negative coordinates remain the consensus execution indexes
+          // consumed by the existing NativeScripts reconstruction API. The
+          // chronological negative domain is reserved for ScriptSources
+          // controls/frontier openings, the exact ScriptIntegrity stage-3
+          // terminal control, and ValueAndMint asset mutations. This keeps
+          // every retained phase collision-free
+          // without making a caller-provided label part of witness authority.
+          const retainedCoordinate = retainedNativeExecution
+            ? BigInt(witness.auxiliary.executionIndex)
+            : BigInt(stateIndex) - BigInt(trace.witnesses.length);
+          const key: SDK.RetainedValidationWitnessKeyV1 = {
+            event_key: transaction.eventKey,
+            execution_index: retainedCoordinate,
+          };
+          const auxiliary = LucidData.from(
+            LucidData.to(
+              validationAuxiliaryWitnessDataV1(witness.auxiliary) as never,
+            ),
+            SDK.ValidationAuxiliaryWitnessV1Schema,
+          ) as unknown as SDK.ValidationAuxiliaryWitnessV1;
+          const value: SDK.RetainedValidationWitnessV1 = {
+            machine_state: SDK.validationMachineStateDataFromCore(
+              trace.states[stateIndex]!,
+            ),
+            trace_proof: SDK.validationTraceProofDataFromCore(
+              trace.tree.proofs[stateIndex]!,
+            ),
+            phase: BigInt(
+              witness.phase === "scriptSources"
+                ? MidgardValidationPhase.scriptSources
+                : witness.phase === "nativeScripts"
+                  ? MidgardValidationPhase.nativeScripts
+                  : witness.phase === "scriptIntegrity"
+                    ? MidgardValidationPhase.scriptIntegrity
+                    : MidgardValidationPhase.valueAndMint,
+            ),
+            program_counter: BigInt(witness.programCounter),
+            witness_cbor: witness.cbor.toString("hex"),
+            auxiliary,
+          };
+          return [
+            [
+              SDK.encodeRetainedValidationWitnessKeyV1(key).toString("hex"),
+              SDK.encodeRetainedValidationWitnessV1(value).toString("hex"),
+            ] satisfies SDK.DaPayloadEntry,
+          ];
+        });
         return {
           eventKey: transaction.eventKey,
           keyCbor,
@@ -1257,6 +1357,7 @@ export const buildDeterministicValidationTraceMembers = (
             "hex",
           ),
           value: descriptor,
+          witnesses,
         };
       }),
     { concurrency: 1 },

@@ -242,7 +242,7 @@ export const submitWithdrawalMistagIntermediateStep = async ({
   readonly threadOutRef: string;
   readonly hubOracleUtxo?: UTxO;
   readonly stateQueueBlockUtxo?: UTxO;
-  /** Required for every step because applied step 03 is larger than the L1 envelope. */
+  /** Production reference script used by this proof step. */
   readonly referenceScriptUtxo: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
   readonly awaitConfirmation?: boolean;

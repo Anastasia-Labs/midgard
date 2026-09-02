@@ -1107,6 +1107,41 @@ pub fn field_item_at(view: FieldViewV1, index: Int) -> ByteArray {
   field_read_range(view, offset, length)
 }
 
+/// Read an adjacent batch from a fixed-stride field with one contiguous
+/// carriage read. Under certified carriage this verifies each touched chunk
+/// once, rather than once per item, while retaining the canonical wrapper
+/// check for every returned payload.
+pub fn fixed_stride_item_batch(
+  view: FieldViewV1,
+  start_index: Int,
+  count: Int,
+) -> List<ByteArray> {
+  let item_count = declared_item_count(view)
+  let stride = field_view_stride(view)
+  expect stride > walk_derived_stride
+  expect start_index >= 0
+  expect count > 0
+  expect start_index + count <= item_count
+  let encoded = field_read_range(
+    view,
+    header_len_for_count(item_count) + stride * start_index,
+    stride * count,
+  )
+  list.map(
+    list.range(0, count - 1),
+    fn(index) {
+      let item_offset = stride * index
+      let Pair(payload_offset, length) = item_header_at(
+        Whole { bytes: encoded, count: 0, stride: walk_derived_stride },
+        item_offset,
+      )
+      expect payload_offset == item_offset + fixed_item_wrapper_bytes
+      expect length == stride - fixed_item_wrapper_bytes
+      slice_exact(encoded, payload_offset, length)
+    },
+  )
+}
+
 /// The `(offset, length)` of item `index`'s payload within the preimage.
 /// Exposed because a resumable walk records positions, never bytes (§7.6).
 ///

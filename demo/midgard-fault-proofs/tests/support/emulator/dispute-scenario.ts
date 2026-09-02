@@ -349,9 +349,9 @@ export const runForcedValidationDisputeScenario = async (
   if (stopAfter === "prepare-selected") {
     return { fixture, contracts, initResult, lowIndex, highIndex };
   }
-  // Publish the exact selected semantic resolver once. Oversized ValueAndMint
-  // bodies use the deployment-time host limit; all other semantic bodies are
-  // published inside the real L1 envelope.
+  // Publish the exact selected semantic resolver once. An over-limit body is
+  // not a runnable lifecycle: it must be physically split before this harness
+  // can claim production-fit acceptance.
   const stagedResolverIndex = fixture.evidence.oneStepArgument.resolverIndex;
   const stagedSemanticIndex =
     fixture.evidence.oneStepArgument.semanticResolverIndex;
@@ -385,6 +385,14 @@ export const runForcedValidationDisputeScenario = async (
   const semanticIsOversized =
     semanticContract.spendingScript.script.length / 2 >
     PROTOCOL_PARAMETERS_DEFAULT.maxTxSize;
+  if (semanticIsOversized) {
+    throw new Error(
+      `validation semantic resolver ${validationSemanticResolverGlobalIndexV1(
+        stagedResolverIndex,
+        stagedSemanticIndex,
+      ).toString()} is unpublishable under the Van Rossem maxTxSize; lifecycle excluded until the resolver is split`,
+    );
+  }
   const semanticPublication = await runEmulatorLifecycleStage(
     `reference-script.publish.${
       valueAndMintSemanticEntryName ??
@@ -393,35 +401,15 @@ export const runForcedValidationDisputeScenario = async (
         stagedSemanticIndex,
       ).toString()}`
     }`,
-    async () => {
-      if (semanticIsOversized) {
-        const prePublicationProtocolParameters = emulator.protocolParameters;
-        emulator.protocolParameters = functionalProtocolParameters;
-        try {
-          const oversizedPublisherLucid = await Lucid(emulator, "Custom", {
-            slotConfig: functionalSlotConfig,
-          });
-          oversizedPublisherLucid.selectWallet.fromSeed(operator.seedPhrase);
-          return await publishPlainReferenceScriptUtxo({
-            lucid: oversizedPublisherLucid,
-            script: semanticContract.spendingScript,
-            label:
-              valueAndMintSemanticEntryName ?? "validation semantic resolver",
-            oversized: true,
-          });
-        } finally {
-          emulator.protocolParameters = prePublicationProtocolParameters;
-        }
-      }
-      return await withRealL1MaxTxSize(emulator, () =>
+    async () =>
+      await withRealL1MaxTxSize(emulator, () =>
         publishPlainReferenceScriptUtxo({
           lucid: referenceScriptPublisherLucid,
           script: semanticContract.spendingScript,
           label:
             valueAndMintSemanticEntryName ?? "validation semantic resolver",
         }),
-      );
-    },
+      ),
   );
   const valueAndMintSemanticPublication =
     valueAndMintSemanticContract !== undefined && semanticIsOversized

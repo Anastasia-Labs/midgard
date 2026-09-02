@@ -30,6 +30,7 @@ import {
   finalizeMidgardRedeemerItemProofV1,
   hashMidgardCekMachineStateV1,
   hashMidgardCekProgramEnvelopeV1,
+  hashMidgardInlineScriptSourceLeafV1,
   hashMidgardMintAssetLeafV1,
   hashMidgardOutputDescriptorLeafV1,
   hashMidgardOutputItemLeafV1,
@@ -86,12 +87,12 @@ import {
   decodeMidgardNativeTxWitnessSetCompactV1,
   decodeMidgardSpendInputItemV1,
   decodeMidgardTxOutput,
+  decodeMidgardVersionedScript,
   decodeSingleCbor,
   deriveMidgardNativeTxProofSourceV1,
   encodeMidgardDefiniteBytesV1,
   encodeMidgardSpendInputItemV1,
   encodeMidgardVersionedScript,
-  hashMidgardVersionedScript,
   midgardFieldHeaderLengthForCountV1,
   type MidgardValue,
   type MidgardVersionedScript,
@@ -142,6 +143,10 @@ import {
   buildCanonicalMidgardLedgerEntryOutputMaterialV1,
   buildCanonicalMidgardLedgerOutputMaterialV1,
 } from "./ledger-output-descriptor.js";
+import {
+  type MidgardRawEnvelopePhaseAProjectionV1,
+  projectMidgardRawEnvelopeForPhaseAV1,
+} from "./ledger-tx.js";
 import type { LocalScriptEvalResult } from "./local-script-eval.js";
 import {
   cardanoScriptPurposeData,
@@ -1573,7 +1578,67 @@ export const buildDeterministicValidationMachineTrace = (
       });
       ledgerDescriptorState.set(outRefHex, outputMaterial.descriptorCbor);
     }
-    const phaseALedgerTx = "ledgerTx" in phaseA ? phaseA.ledgerTx : null;
+    let rawExecutionProjection: MidgardRawEnvelopePhaseAProjectionV1 | null =
+      null;
+    if (
+      !("ledgerTx" in phaseA) &&
+      phaseA.code === RejectCodes.InvalidFieldType &&
+      phaseA.consensusPhase === "canonicalDecode"
+    ) {
+      try {
+        const projected = projectMidgardRawEnvelopeForPhaseAV1(queued.txCbor);
+        if (
+          projected.canonicalSubmittedTx === null &&
+          projected.scriptWitnesses.some(
+            ({ languageTag, versionedItemBytes }) => {
+              if (languageTag !== 0) return false;
+              try {
+                decodeMidgardVersionedScript(versionedItemBytes);
+                return false;
+              } catch {
+                return true;
+              }
+            },
+          )
+        )
+          rawExecutionProjection = projected;
+      } catch {
+        // Non-field-6 malformed material remains the original fail-closed
+        // canonicalDecode rejection.
+      }
+    }
+    const phaseALedgerTx =
+      "ledgerTx" in phaseA
+        ? phaseA.ledgerTx
+        : rawExecutionProjection === null
+          ? null
+          : ({
+              ...rawExecutionProjection.ledgerTx,
+              scriptWitnesses: rawExecutionProjection.scriptWitnesses.map(
+                (witness) => ({
+                  index: witness.index,
+                  hash: witness.hash,
+                  script:
+                    witness.languageTag === 0
+                      ? {
+                          language: "NativeCardano" as const,
+                          scriptBytes: witness.scriptBytes,
+                          // Structural semantics consume the retained bytes;
+                          // this placeholder never reaches ledger evaluation.
+                          nativeScript: { type: "all" as const, scripts: [] },
+                        }
+                      : witness.languageTag === 3
+                        ? {
+                            language: "PlutusV3" as const,
+                            scriptBytes: witness.scriptBytes,
+                          }
+                        : {
+                            language: "MidgardV1" as const,
+                            scriptBytes: witness.scriptBytes,
+                          },
+                }),
+              ),
+            } as const);
     const scriptEvaluations: {
       readonly scriptBytes: Buffer;
       readonly contextCbor: Buffer;
@@ -1602,6 +1667,8 @@ export const buildDeterministicValidationMachineTrace = (
     let ledgerOps: readonly ValidationMachineLedgerOp[] = [];
     if (!("ledgerTx" in phaseA)) {
       rejection = phaseA;
+      if (rawExecutionProjection !== null)
+        rejection = { ...phaseA, consensusPhase: "nativeScripts" };
     } else {
       const phaseB = yield* runPhaseBValidationWithPatch(
         [phaseA],
@@ -2007,6 +2074,7 @@ export const buildDeterministicValidationMachineTrace = (
       readonly originKind: "inline" | "reference";
       readonly sourceKey: Buffer;
       readonly script: MidgardVersionedScript;
+      readonly authenticatedVersionedItemBytes: Buffer;
       readonly scriptLanguageTag: 0 | 3 | 128;
       readonly scriptHash: Buffer;
       readonly scriptTotalLength: number;
@@ -2039,22 +2107,22 @@ export const buildDeterministicValidationMachineTrace = (
           : witness.script.language === "PlutusV3"
             ? 3
             : 128;
-      const scriptHash = Buffer.from(
-        hashMidgardVersionedScript(witness.script),
-        "hex",
-      );
+      const scriptHash = Buffer.from(witness.hash);
       return {
         originKind: "inline",
         sourceKey,
         script: witness.script,
+        authenticatedVersionedItemBytes: Buffer.from(item.bytes),
         scriptLanguageTag,
         scriptHash,
         scriptTotalLength: item.bytes.length,
         scriptItemCommitment: item.commitment,
-        leaf: hashMidgardScriptSourceLeafV1({
-          originKind: "inline",
-          sourceKey,
-          script: witness.script,
+        leaf: hashMidgardInlineScriptSourceLeafV1({
+          sourceIndex: BigInt(witness.index),
+          scriptLanguageTag,
+          scriptHash,
+          scriptTotalLength: item.bytes.length,
+          itemCommitment: item.commitment,
         }),
       };
     });
@@ -2084,7 +2152,7 @@ export const buildDeterministicValidationMachineTrace = (
             ? MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX
             : 2,
         itemIndex,
-        bytes: encodeMidgardVersionedScript(source.script),
+        bytes: source.authenticatedVersionedItemBytes,
       });
       if (
         item.bytes.length !== source.scriptTotalLength ||
@@ -3035,7 +3103,7 @@ export const buildDeterministicValidationMachineTrace = (
     }
 
     let phaseANativeControl = initialPhaseANativeScriptsScanControl;
-    if (!stoppedAtRejection) {
+    if (!stoppedAtRejection && rawExecutionProjection === null) {
       const nativeScriptFrames: ValidationMachineNativeScriptFrameV1[] = [];
       const expectedPhaseANativeRejection = (code: RejectCode): boolean =>
         rejection !== null &&
@@ -3378,6 +3446,22 @@ export const buildDeterministicValidationMachineTrace = (
           ),
         );
       }
+    }
+
+    if (!stoppedAtRejection && rawExecutionProjection !== null) {
+      phaseANativeControl = resetPhaseANativeScriptsScanControl({
+        scriptCount: rawExecutionProjection.scriptWitnesses.length,
+        scriptSeen: rawExecutionProjection.scriptWitnesses.length,
+        containsNonNativeScript: rawExecutionProjection.scriptWitnesses.some(
+          ({ languageTag }) => languageTag !== 0,
+        )
+          ? 1
+          : 0,
+      });
+      pushWitness(
+        "phaseANativeScripts",
+        phaseANativeScriptsScanWitnessCbor(phaseANativeControl),
+      );
     }
 
     if (!stoppedAtRejection) {
@@ -3761,9 +3845,7 @@ export const buildDeterministicValidationMachineTrace = (
                 MidgardBlake2b224TraceStagesV1.Terminal ||
               !pendingSource.hashControl.chainingValue
                 .subarray(0, 28)
-                .equals(
-                  Buffer.from(hashMidgardVersionedScript(source.script), "hex"),
-                )
+                .equals(source.scriptHash)
             ) {
               return yield* Effect.fail(
                 new Error(
@@ -4002,6 +4084,9 @@ export const buildDeterministicValidationMachineTrace = (
                   originKind: "reference",
                   sourceKey: node.key,
                   script: output.script_ref,
+                  authenticatedVersionedItemBytes: encodeMidgardVersionedScript(
+                    output.script_ref,
+                  ),
                   scriptLanguageTag: descriptor.referenceScriptLanguage,
                   scriptHash: descriptor.referenceScriptHash,
                   scriptTotalLength: descriptor.referenceScriptTotalLength,
@@ -4721,18 +4806,6 @@ export const buildDeterministicValidationMachineTrace = (
                     redeemerLeaves,
                     redeemerIndex,
                   );
-                const languageTag = (
-                  script: MidgardVersionedScript,
-                ): 0 | 3 | 128 => {
-                  switch (script.language) {
-                    case "NativeCardano":
-                      return 0;
-                    case "PlutusV3":
-                      return 3;
-                    case "MidgardV1":
-                      return 128;
-                  }
-                };
                 const setDiscoveryBit = (
                   bitmap: bigint,
                   index: number,
@@ -4813,16 +4886,13 @@ export const buildDeterministicValidationMachineTrace = (
                         siblings: sourceMembership(sourceIndex).siblings,
                       },
                     );
-                    const sourceHash = Buffer.from(
-                      hashMidgardVersionedScript(source.script),
-                      "hex",
-                    );
+                    const sourceHash = source.scriptHash;
                     discovery = {
                       ...discovery,
                       sourceCursor: sourceIndex + 1,
                     };
                     if (sourceHash.equals(purpose.scriptHash)) {
-                      const exactLanguageTag = languageTag(source.script);
+                      const exactLanguageTag = source.scriptLanguageTag;
                       discovery = {
                         ...discovery,
                         matchedSourceIndex: sourceIndex,

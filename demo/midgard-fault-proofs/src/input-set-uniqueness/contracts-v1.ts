@@ -13,8 +13,10 @@
  * Blueprint-declared parameter order per step (the #609 arity guard checks
  * count, not order, so the order is pinned here):
  *
- * - step_01: `[step_02_validator_script_hash, computation_thread_token_policy_id, hub_oracle]`
+ * - step_01: `[step_02_validator_script_hash, step_03_validator_script_hash, computation_thread_token_policy_id, hub_oracle]`
  * - step_02: `[fraud_proof_token_policy_id, fraud_proof_token_address, computation_thread_token_policy_id, field_preimage_certificate_policy_id]`
+ * - step_03: `[step_04_hash, computation_thread_token_policy_id, field_preimage_certificate_policy_id]`
+ * - step_04: `[fraud_proof_token_policy_id, fraud_proof_token_address, computation_thread_token_policy_id, field_preimage_certificate_policy_id]`
  *
  * Step-02 both concludes (opens fields 0/1 through the §8.8 door) and
  * finalizes (burns the thread, mints the permanent fraud-proof token), so the
@@ -27,10 +29,12 @@ import type { Script } from "@lucid-evolution/lucid";
 /** Human-readable family label used in every local failure message. */
 export const INPUT_SET_UNIQUENESS_CATEGORY_LABEL = "input-set-uniqueness";
 
-/** Blueprint titles of the two parameterized step validators. */
+/** Blueprint titles of the four parameterized step validators. */
 export const INPUT_SET_UNIQUENESS_BLUEPRINT_TITLES_V1 = {
   step01: "fraud_proofs/input_set_uniqueness/step_01.main.spend",
   step02: "fraud_proofs/input_set_uniqueness/step_02.main.spend",
+  step03: "fraud_proofs/input_set_uniqueness/step_03.main.spend",
+  step04: "fraud_proofs/input_set_uniqueness/step_04.main.spend",
 } as const;
 
 /** One deployed step of the `input-set-uniqueness` chain. */
@@ -49,8 +53,10 @@ export type InputSetUniquenessStepContractV1 = {
  * separately from the deployment they are actually talking to.
  */
 export type InputSetUniquenessContractsV1 = {
-  /** Steps 01..02, in order. */
+  /** Steps 01..04, in order. Accepted proofs use 01→02; forced use 01→03→04*. */
   readonly steps: readonly [
+    InputSetUniquenessStepContractV1,
+    InputSetUniquenessStepContractV1,
     InputSetUniquenessStepContractV1,
     InputSetUniquenessStepContractV1,
   ];

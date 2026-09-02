@@ -4,6 +4,7 @@ import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import {
   buildFaultProofContracts,
   EMPTY_MERKLE_TREE_ROOT,
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   type FraudProofCatalogueCategoryDeploymentInfo,
@@ -318,15 +319,7 @@ const completeFraudProofCategoryRecord = <Value>(
 
 export const expectedFraudProofCategoryId = (
   name: FraudProofCatalogueCategoryName,
-): string => {
-  const index = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.indexOf(name);
-  if (index < 0) {
-    throw new Error(`Unknown fraud-proof catalogue category "${name}"`);
-  }
-  const bytes = Buffer.alloc(FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT);
-  bytes.writeUInt32BE(index);
-  return bytes.toString("hex");
-};
+): string => FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[name];
 
 export const DEFAULT_FAULT_PROOF_NETWORK: Network = "Preprod";
 
@@ -1113,7 +1106,7 @@ export const inspectContracts = ({
       fraudProofCataloguePolicyId,
       referenceScriptAuthPolicyId:
         parseContractDeploymentReferenceScriptAuthPolicyId(
-          parsedDeploymentInfo,
+          deploymentInfo,
           "V1 fraud-proof min-ada step-02",
         ),
     });

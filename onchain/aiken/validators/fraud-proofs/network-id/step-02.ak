@@ -30,11 +30,13 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardAddress, MidgardTransaction, MidgardTransactionBody, MidgardTxOutput,
 }
 use midgard/fraud_proofs/network_id/rule.{
-  is_output_network_violation_v1, is_transaction_network_violation_v1,
+  is_any_network_violation_v1, is_output_network_violation_v1,
+  is_transaction_network_violation_v1,
 }
 use midgard/fraud_proofs/network_id/step_01.{
-  Introduced, NetworkChanged, NetworkIdFaultV1, OutputNetwork, OutputNetworkUtxo,
-  PostUtxoPredecessorClaimV1, PostUtxoStateV1, TransactionNetwork,
+  ForcedNetworkIdMismatch, Introduced, NetworkChanged, NetworkIdFaultV1,
+  OutputNetwork, OutputNetworkUtxo, PostUtxoPredecessorClaimV1, PostUtxoStateV1,
+  TransactionNetwork,
 }
 use midgard/fraud_proofs/network_id/step_02.{
   Args, Datum, IntroducedPredecessor, NetworkChangedPredecessor,
@@ -44,7 +46,7 @@ use midgard/fraud_proofs/transition_trace/proof.{ledger_outref_key}
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_descriptor_v1
 use midgard/ledger_output_v1
-use midgard/native_tx_field_access_v1.{field_item_at}
+use midgard/native_tx_field_access_v1.{field_item_at, field_item_count}
 
 validator main(
   fraud_proof_token_policy_id: PolicyId,
@@ -105,6 +107,7 @@ validator main(
             expect None = outputs_opening
             expect None = predecessor_carriage
             expect None = state.post_utxo
+            expect None = state.forced_source_key
             is_transaction_network_violation_v1(
               state.committed_tx_network_id,
               state.expected_network_id,
@@ -114,6 +117,7 @@ validator main(
             expect Some(opening) = outputs_opening
             expect None = predecessor_carriage
             expect None = state.post_utxo
+            expect None = state.forced_source_key
             let outputs_view = opened_field_view(
               opening,
               BodyAnchor { tx_id: state.bad_tx_id },
@@ -132,6 +136,7 @@ validator main(
           OutputNetworkUtxo { observed_network_id } -> {
             expect None = outputs_opening
             expect Some(post) = state.post_utxo
+            expect None = state.forced_source_key
             expect Some(predecessor) = predecessor_carriage
             let key = ledger_outref_key(post.out_ref)
             when post.predecessor is {
@@ -173,6 +178,28 @@ validator main(
               state.expected_network_id,
             )
           }
+          ForcedNetworkIdMismatch -> {
+            expect Some(opening) = outputs_opening
+            expect None = predecessor_carriage
+            expect None = state.post_utxo
+            expect Some(_) = state.forced_source_key
+            let outputs_view = opened_field_view(
+              opening,
+              BodyAnchor { tx_id: state.bad_tx_id },
+              outputs_field_index,
+              reference_inputs,
+              field_preimage_certificate_policy_id,
+            )
+            !is_any_network_violation_v1(
+              state.committed_tx_network_id,
+              output_network_ids(
+                outputs_view,
+                0,
+                field_item_count(outputs_view),
+              ),
+              state.expected_network_id,
+            )
+          }
         }
       }
     }
@@ -180,6 +207,17 @@ validator main(
 
   else(_) {
     fail
+  }
+}
+
+fn output_network_ids(view, index: Int, count: Int) -> List<Int> {
+  if index == count {
+    []
+  } else {
+    [
+      decode_midgard_tx_output_cbor(field_item_at(view, index)).address.network_id,
+      ..output_network_ids(view, index + 1, count)
+    ]
   }
 }
 
@@ -231,6 +269,7 @@ fn state_for(
     expected_network_id: 0,
     fault,
     post_utxo: None,
+    forced_source_key: None,
   }
 }
 
@@ -337,6 +376,7 @@ fn run_post_finalize_with_reference_inputs(
         predecessor: predecessor_claim,
       },
     ),
+    forced_source_key: None,
   }
   let asset_name = fixture.ct_token_asset_name(
     fixture.native_block_fixture_v1(fixture.valid_native_tx_v1()),

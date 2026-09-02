@@ -2,13 +2,101 @@ import { encodeCborInteger } from "@al-ft/midgard-core/codec/cbor";
 import { Data, toHex } from "@lucid-evolution/lucid";
 import { sha256 } from "@noble/hashes/sha2.js";
 
-import { HeaderHashSchema, HeaderV1Schema } from "./ledger-state.js";
+import { ValidationAuxiliaryWitnessV1Schema } from "./fraud-proof/validation-auxiliary-witness-v1.js";
+import {
+  ValidationMachineStateV1Schema,
+  ValidationTraceProofV1Schema,
+} from "./fraud-proof/validation-dispute.js";
+import {
+  EventKeySchema,
+  HeaderHashSchema,
+  HeaderV1Schema,
+} from "./ledger-state.js";
 
 export const DA_PAYLOAD_V1_VERSION = 1n;
 
 export const DaPayloadEntrySchema = Data.Tuple([Data.Bytes(), Data.Bytes()]);
 export type DaPayloadEntry = Data.Static<typeof DaPayloadEntrySchema>;
 export const DaPayloadEntry = DaPayloadEntrySchema as unknown as DaPayloadEntry;
+
+/**
+ * Event-local retained validation coordinate. Non-negative values are exact
+ * NativeScripts execution indexes; the negative domain is reserved for
+ * chronological ScriptSources frontier/control/redeemer-item witnesses and
+ * the exact ScriptIntegrity stage-3 terminal control and ValueAndMint asset
+ * mutations.
+ */
+export const RetainedValidationWitnessKeyV1Schema = Data.Object({
+  event_key: EventKeySchema,
+  execution_index: Data.Integer(),
+});
+export type RetainedValidationWitnessKeyV1 = Data.Static<
+  typeof RetainedValidationWitnessKeyV1Schema
+>;
+
+/**
+ * Minimal public reconstruction material for a ScriptSources frontier/control
+ * or redeemer-item state, the ScriptIntegrity stage-3 terminal control, a
+ * ValueAndMint asset mutation, or a NativeScripts
+ * `nativeExecutionDescriptor` transition. The state
+ * remains committed by `validation_traces_root`; this record only opens that
+ * state and its exact work witness against the descriptor. Family consumers
+ * must additionally verify any auxiliary membership against the authenticated
+ * terminal frontier they use.
+ */
+export const RetainedValidationWitnessV1Schema = Data.Object({
+  machine_state: ValidationMachineStateV1Schema,
+  trace_proof: ValidationTraceProofV1Schema,
+  phase: Data.Integer(),
+  program_counter: Data.Integer(),
+  witness_cbor: Data.Bytes(),
+  auxiliary: ValidationAuxiliaryWitnessV1Schema,
+});
+export type RetainedValidationWitnessV1 = Data.Static<
+  typeof RetainedValidationWitnessV1Schema
+>;
+
+const canonicalDataBytes = <T>(value: T, schema: unknown): Buffer =>
+  Buffer.from(Data.to(value as never, schema as never), "hex");
+
+export const encodeRetainedValidationWitnessKeyV1 = (
+  key: RetainedValidationWitnessKeyV1,
+): Buffer => canonicalDataBytes(key, RetainedValidationWitnessKeyV1Schema);
+
+export const encodeRetainedValidationWitnessV1 = (
+  witness: RetainedValidationWitnessV1,
+): Buffer => canonicalDataBytes(witness, RetainedValidationWitnessV1Schema);
+
+const decodeCanonicalData = <T>(
+  bytes: Uint8Array,
+  schema: unknown,
+  fieldName: string,
+): T => {
+  const exact = Buffer.from(bytes);
+  const decoded = Data.from(exact.toString("hex"), schema as never) as T;
+  if (!canonicalDataBytes(decoded, schema).equals(exact)) {
+    throw new DaPayloadV1NonCanonicalError(`${fieldName} is not canonical`);
+  }
+  return decoded;
+};
+
+export const decodeRetainedValidationWitnessKeyV1 = (
+  bytes: Uint8Array,
+): RetainedValidationWitnessKeyV1 =>
+  decodeCanonicalData(
+    bytes,
+    RetainedValidationWitnessKeyV1Schema,
+    "retained validation witness key",
+  );
+
+export const decodeRetainedValidationWitnessV1 = (
+  bytes: Uint8Array,
+): RetainedValidationWitnessV1 =>
+  decodeCanonicalData(
+    bytes,
+    RetainedValidationWitnessV1Schema,
+    "retained validation witness",
+  );
 
 export const DaPayloadCountsV1Schema = Data.Object({
   withdrawalCount: Data.Integer(),
@@ -42,6 +130,7 @@ export const DaPayloadBodyV1Schema = Data.Object({
   transition_trace: Data.Array(DaPayloadEntrySchema),
   event_to_step: Data.Array(DaPayloadEntrySchema),
   validation_traces: Data.Array(DaPayloadEntrySchema),
+  validation_trace_witnesses: Data.Array(DaPayloadEntrySchema),
   counts: DaPayloadCountsV1Schema,
 });
 export type DaPayloadBodyV1 = Data.Static<typeof DaPayloadBodyV1Schema>;
@@ -349,6 +438,7 @@ const encodedPayloadV1Size = (
     listSize(body.transition_trace),
     listSize(body.event_to_step),
     listSize(body.validation_traces),
+    listSize(body.validation_trace_witnesses),
     countsSize,
   ]);
   return constructorSize([integerSize(payload.version), bodySize]);
@@ -437,6 +527,7 @@ export const encodeDaPayloadV1 = (payload: DaPayloadV1): Buffer => {
   writeList(writer, body.transition_trace);
   writeList(writer, body.event_to_step);
   writeList(writer, body.validation_traces);
+  writeList(writer, body.validation_trace_witnesses);
 
   const counts = body.counts;
   writeConstructorStart(writer);
@@ -524,6 +615,9 @@ class DaPayloadV1Reader {
     const validation_traces = this.#entryList(
       "payload.block_body.validation_traces",
     );
+    const validation_trace_witnesses = this.#entryList(
+      "payload.block_body.validation_trace_witnesses",
+    );
     this.#constructorStart("payload.block_body.counts");
     const counts = {
       withdrawalCount: this.#integer("counts.withdrawalCount"),
@@ -556,6 +650,7 @@ class DaPayloadV1Reader {
         transition_trace,
         event_to_step,
         validation_traces,
+        validation_trace_witnesses,
         counts,
       },
     };

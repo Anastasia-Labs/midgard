@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { computeHash28 } from "@al-ft/midgard-core";
 import { encodeMidgardCekProgramMaterialSidecarV1 } from "@al-ft/midgard-core/cek-proof";
 import {
   encodeMidgardCekTermNodeV1,
@@ -22,11 +23,13 @@ import {
   type MidgardNativeTxFullV1,
   type MidgardNativeTxWitnessSetCanonicalV1,
 } from "@al-ft/midgard-core/codec";
-import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
+import { decodeSingleCbor, encodeCbor } from "@al-ft/midgard-core/codec/cbor";
 import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   buildCanonicalMidgardLedgerEntryOutputMaterialV1,
+  buildValidationMachineLedgerInsertOpV1,
+  buildValidationMachineLedgerMutationSteps,
   RejectCodes,
 } from "@al-ft/midgard-validation";
 import { CML, Data, type UTxO } from "@lucid-evolution/lucid";
@@ -43,7 +46,16 @@ import {
   classifyForcedTransactionsV1,
 } from "@/workers/utils/mpf.js";
 
-import { FUNDED_OUTPUT_LOVELACE_V1 } from "../../midgard-validation/tests/validation-fixtures.js";
+import {
+  encodeRecomputedNativeTx,
+  FUNDED_OUTPUT_LOVELACE_V1,
+  makeMintPreimageCbor,
+  makeNativeTx,
+  makeOutput as makeValidationOutput,
+  nativeScriptWitness,
+  outRefFromByte,
+  outRefFromTxId,
+} from "../../midgard-validation/tests/validation-fixtures.js";
 import { makeOutRefCbor } from "./midgard-output-helpers.js";
 
 const canonicalTransaction = (
@@ -95,10 +107,13 @@ const outputReferenceFromHash = (
   outputIndex = 0n,
 ): Buffer => makeOutRefCbor(transactionId, outputIndex);
 
-const makeOutput = (lovelace: bigint): Buffer =>
+const makeOutput = (
+  lovelace: bigint,
+  assets: ReadonlyMap<string, ReadonlyMap<string, bigint>> = new Map(),
+): Buffer =>
   encodeMidgardTxOutput({
     address: TEST_ADDRESS,
-    value: { lovelace, assets: new Map() },
+    value: { lovelace, assets },
   });
 
 const makeSignedEffectfulTransaction = (
@@ -619,6 +634,133 @@ describe("V1 forced transaction material", () => {
     ).toEqual(members[0]!.value);
   });
 
+  it("retains the complete ScriptSources frontier and canonical native execution witness", async () => {
+    const spent = outRefFromByte(0x7a);
+    const spentOutput = makeValidationOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const malformedPayload = Buffer.from("820700", "hex");
+    const malformedItem = Buffer.from("820043820700", "hex");
+    const policyId = computeHash28(
+      Buffer.concat([Buffer.from([0]), malformedPayload]),
+    );
+    const assetName = Buffer.from("31", "hex");
+    const output = makeValidationOutput(
+      FUNDED_OUTPUT_LOVELACE_V1,
+      undefined,
+      new Map([
+        [policyId.toString("hex"), new Map([[assetName.toString("hex"), 1n]])],
+      ]),
+    );
+    const baseline = makeNativeTx({
+      spendInputs: [spent],
+      outputs: [output],
+      scriptWitnesses: [nativeScriptWitness({ type: "all", scripts: [] })],
+      mintPreimageCbor: makeMintPreimageCbor(
+        new Map([[policyId, new Map([[assetName, 1n]])]]),
+      ),
+    });
+    const malformed = encodeRecomputedNativeTx({
+      ...baseline.tx,
+      witnessSet: {
+        ...baseline.tx.witnessSet,
+        scriptTxWitsPreimageCbor: encodeCbor([malformedItem]),
+      },
+    });
+    const mutations = await buildValidationMachineLedgerMutationSteps({
+      initialEntries: [{ outRef: spent, output: spentOutput }],
+      operations: [
+        { type: "delete", key: spent },
+        buildValidationMachineLedgerInsertOpV1({
+          key: outRefFromTxId(malformed.txId),
+          outputCbor: output,
+        }),
+      ],
+    });
+    const eventKey: SDK.EventKey = {
+      ForcedTransactionEventKey: {
+        tx_order_id: {
+          transactionId: "66".repeat(32),
+          outputIndex: 0n,
+        },
+      },
+    };
+    const [member] = await Effect.runPromise(
+      buildDeterministicValidationTraceMembers({
+        consensusProfile: MIDGARD_CONSENSUS_PROFILE_V1,
+        blockEndTime: new Date("2026-07-23T12:00:00.000Z"),
+        expectedNetworkId: 0n,
+        minFeeA: 0n,
+        minFeeB: 0n,
+        blockSlot: 100n,
+        transactions: [
+          {
+            eventKey,
+            transactionId: malformed.txId,
+            canonicalTransactionCbor: malformed.txCbor,
+            programMaterialSidecarCbor:
+              encodeMidgardCekProgramMaterialSidecarV1([]),
+            sourceKind: "forced",
+            priorUtxosRoot: mutations[0]!.preRoot.toString("hex"),
+            postUtxosRoot: mutations[0]!.preRoot.toString("hex"),
+            ledgerOps: [],
+            ledgerWitnessEntries: [{ outRef: spent, output: spentOutput }],
+            ledgerMutationSteps: [],
+            verdict: "rejected",
+            rejectionCode: "E_INVALID_FIELD_TYPE",
+          },
+        ],
+      }),
+    );
+    expect(member).toBeDefined();
+    const retainedEntries = member!.witnesses.map(([keyHex, valueHex]) => ({
+      key: SDK.decodeRetainedValidationWitnessKeyV1(Buffer.from(keyHex, "hex")),
+      value: SDK.decodeRetainedValidationWitnessV1(
+        Buffer.from(valueHex, "hex"),
+      ),
+    }));
+    const scriptSources = retainedEntries.filter(
+      ({ value }) => value.phase === 8n,
+    );
+    const nativeExecutions = retainedEntries.filter(
+      ({ value }) => value.phase === 9n,
+    );
+    expect(scriptSources.length).toBeGreaterThan(0);
+    expect(scriptSources.every(({ key }) => key.execution_index < 0n)).toBe(
+      true,
+    );
+    expect(
+      scriptSources.some(
+        ({ value }) =>
+          typeof value.auxiliary === "object" &&
+          "ScriptPurposeScanWitness" in value.auxiliary,
+      ),
+    ).toBe(true);
+    expect(
+      scriptSources.some(
+        ({ value }) =>
+          typeof value.auxiliary === "object" &&
+          "ScriptSourceScanWitness" in value.auxiliary,
+      ),
+    ).toBe(true);
+    expect(
+      scriptSources.some(
+        ({ value }) => value.auxiliary === "NoAuxiliaryWitness",
+      ),
+    ).toBe(true);
+    expect(nativeExecutions).toHaveLength(1);
+    const [{ key, value: retained }] = nativeExecutions;
+    expect(key).toEqual({ event_key: eventKey, execution_index: 0n });
+    expect(retained).toMatchObject({
+      phase: 9n,
+      program_counter: retained.machine_state.program_counter,
+      auxiliary: {
+        NativeExecutionDescriptorWitness: {
+          execution_index: 0n,
+          language_tag: 0n,
+        },
+      },
+    });
+  });
+
   it("executes sequential valid forced deltas and emits accepted validation traces", async () => {
     const initialInput = outputReferenceFromHash(Buffer.alloc(32, 0x31));
     // Phase B enforces MIN-ADA-TX on every produced output, so a 10-lovelace
@@ -627,7 +769,10 @@ describe("V1 forced transaction material", () => {
     // is the shared fixture amount that clears the floor with headroom, and
     // using it for both the pre-state entry and the produced output keeps this
     // two-step chain value-conserving at fee 0.
-    const output = makeOutput(FUNDED_OUTPUT_LOVELACE_V1);
+    const output = makeOutput(
+      FUNDED_OUTPUT_LOVELACE_V1,
+      new Map([["ab".repeat(28), new Map([["01", 7n]])]]),
+    );
     const firstTransaction = makeSignedEffectfulTransaction(
       initialInput,
       output,
@@ -747,6 +892,54 @@ describe("V1 forced transaction material", () => {
           value.machine_version === 1n && value.verdict === "Accepted",
       ),
     ).toBe(true);
+    for (const member of members) {
+      const retained = member.witnesses.map(([keyHex, valueHex]) => ({
+        key: SDK.decodeRetainedValidationWitnessKeyV1(
+          Buffer.from(keyHex, "hex"),
+        ),
+        value: SDK.decodeRetainedValidationWitnessV1(
+          Buffer.from(valueHex, "hex"),
+        ),
+      }));
+      const terminal = retained.find(({ value }) => value.phase === 10n);
+      expect(terminal).toMatchObject({
+        value: {
+          phase: 10n,
+          auxiliary: "NoAuxiliaryWitness",
+        },
+      });
+      const control = decodeSingleCbor(
+        Buffer.from(terminal!.value.witness_cbor, "hex"),
+      );
+      expect(Array.isArray(control) ? BigInt(control[1] as number) : null).toBe(
+        3n,
+      );
+      expect(terminal!.key.execution_index).toBeLessThan(0n);
+      const assetMutations = retained.filter(
+        ({ value }) => value.phase === 12n,
+      );
+      expect(assetMutations).toHaveLength(2);
+      expect(assetMutations.every(({ key }) => key.execution_index < 0n)).toBe(
+        true,
+      );
+      expect(
+        assetMutations.map(({ value }) => {
+          const control = decodeSingleCbor(
+            Buffer.from(value.witness_cbor, "hex"),
+          );
+          return {
+            stage: Array.isArray(control) ? BigInt(control[1] as number) : null,
+            auxiliary:
+              typeof value.auxiliary === "object"
+                ? Object.keys(value.auxiliary)[0]
+                : value.auxiliary,
+          };
+        }),
+      ).toEqual([
+        { stage: 2n, auxiliary: "ValueInputAssetWitness" },
+        { stage: 3n, auxiliary: "ValueOutputAssetWitness" },
+      ]);
+    }
   });
 
   it("retains invalid forced transactions as classified no-op sources", async () => {

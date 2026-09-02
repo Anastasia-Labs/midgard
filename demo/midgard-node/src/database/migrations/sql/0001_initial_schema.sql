@@ -670,6 +670,24 @@ CREATE TABLE public.pending_block_finalization_validation_traces (
     CONSTRAINT pending_block_finalization_validation_traces_ordinal_key UNIQUE (header_hash, ordinal)
 );
 
+-- Minimal event/execution-keyed validation witness openings retained for
+-- public deterministic fault-proof reconstruction.
+CREATE TABLE public.pending_block_finalization_validation_trace_witnesses (
+    header_hash bytea NOT NULL,
+    member_id bytea NOT NULL,
+    ordinal integer NOT NULL,
+    payload_cbor bytea NOT NULL,
+    payload_sha256 bytea NOT NULL,
+    source_table text NOT NULL,
+    source_id bytea NOT NULL,
+    source_time_stamp_tz timestamp with time zone NOT NULL,
+    CONSTRAINT pending_block_finalization_validation_trace_witnesses_ordinal_check CHECK ((ordinal >= 0)),
+    CONSTRAINT pending_block_finalization_validation_trace_witnesses_payload_check CHECK ((octet_length(payload_cbor) > 0)),
+    CONSTRAINT pending_block_finalization_validation_trace_witnesses_sha256_check CHECK ((octet_length(payload_sha256) = 32)),
+    CONSTRAINT pending_block_finalization_validation_trace_witnesses_pkey PRIMARY KEY (header_hash, member_id),
+    CONSTRAINT pending_block_finalization_validation_trace_witnesses_ordinal_key UNIQUE (header_hash, ordinal)
+);
+
 
 --
 -- Name: processed_mempool; Type: TABLE; Schema: public; Owner: -
@@ -1549,6 +1567,9 @@ ALTER TABLE ONLY public.pending_block_finalization_txs
 
 ALTER TABLE ONLY public.pending_block_finalization_validation_traces
     ADD CONSTRAINT pending_block_finalization_validation_traces_header_hash_fkey FOREIGN KEY (header_hash) REFERENCES public.pending_block_finalizations(header_hash) ON DELETE CASCADE;
+
+ALTER TABLE ONLY public.pending_block_finalization_validation_trace_witnesses
+    ADD CONSTRAINT pending_block_finalization_validation_trace_witnesses_header_hash_fkey FOREIGN KEY (header_hash) REFERENCES public.pending_block_finalizations(header_hash) ON DELETE CASCADE;
 
 
 -- Name: pending_block_finalization_withdrawals pending_block_finalization_withdrawals_header_hash_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -

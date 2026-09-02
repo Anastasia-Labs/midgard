@@ -23,6 +23,7 @@ import {
   DEPLOYMENT_MANIFEST_V1_STEP_NAMES,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import {
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   type FraudProofCatalogueDeploymentInfo,
@@ -45,12 +46,6 @@ const FIXTURE_URL = new URL(
 type FraudProofCatalogueCategoryName =
   (typeof FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER)[number];
 
-const catalogueCategoryId = (index: number): string => {
-  const bytes = Buffer.alloc(FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT);
-  bytes.writeUInt32BE(index);
-  return bytes.toString("hex");
-};
-
 const catalogueKeySchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
@@ -60,10 +55,10 @@ export const buildCanonicalFraudProofCatalogueFixture = async (
   scriptHashes: Readonly<Record<FraudProofCatalogueCategoryName, string>>,
 ): Promise<FraudProofCatalogueDeploymentInfo> => {
   const categories = Object.fromEntries(
-    FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((categoryName, index) => [
+    FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((categoryName) => [
       categoryName,
       {
-        categoryId: catalogueCategoryId(index),
+        categoryId: FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[categoryName],
         scriptHash: scriptHashes[categoryName],
         membershipProofCbor: "",
       },
@@ -241,6 +236,49 @@ export const buildDaDeploymentFixture = async (
       nativeScriptInvalid: contracts.fraudProofNativeScriptInvalid!
         .scriptHash as string,
       minAda: contracts.fraudProofMinAda!.scriptHash as string,
+      fieldPreimageLengthMismatch: contracts
+        .fraudProofFieldPreimageLengthMismatch!.scriptHash as string,
+      fieldItemWidthIllegal: contracts.fraudProofFieldItemWidthIllegal!
+        .scriptHash as string,
+      witnessScriptDecoding: contracts.fraudProofWitnessScriptDecoding!
+        .scriptHash as string,
+      scriptIntegrityHashMissing: contracts
+        .fraudProofScriptIntegrityHashMissing!.scriptHash as string,
+      transactionOutputNonCanonical: contracts
+        .fraudProofTransactionOutputNonCanonical!.scriptHash as string,
+      resolvedOutputNonCanonical: contracts
+        .fraudProofResolvedOutputNonCanonical!.scriptHash as string,
+      mintDeclaredAssetLimit: contracts.fraudProofMintDeclaredAssetLimit!
+        .scriptHash as string,
+      spendInputSignerMissing: contracts.fraudProofSpendInputSignerMissing!
+        .scriptHash as string,
+      protectedOutputSignerMissing: contracts
+        .fraudProofProtectedOutputSignerMissing!.scriptHash as string,
+      observersForbiddenOnUntaggedNetwork: contracts
+        .fraudProofObserversForbiddenOnUntaggedNetwork!.scriptHash as string,
+      observerOrderInvalid: contracts.fraudProofObserverOrderInvalid!
+        .scriptHash as string,
+      redeemerCanonicity: contracts.fraudProofRedeemerCanonicity!
+        .scriptHash as string,
+      outputReferenceScriptDecoding: contracts
+        .fraudProofOutputReferenceScriptDecoding!.scriptHash as string,
+      executionSourceScriptDecoding: contracts
+        .fraudProofExecutionSourceScriptDecoding!.scriptHash as string,
+      receivePurposeLanguage: contracts.fraudProofReceivePurposeLanguage!
+        .scriptHash as string,
+      unusedScriptWitness: contracts.fraudProofUnusedScriptWitness!
+        .scriptHash as string,
+      missingScriptSource: contracts.fraudProofMissingScriptSource!
+        .scriptHash as string,
+      missingRedeemer: contracts.fraudProofMissingRedeemer!
+        .scriptHash as string,
+      unusedRedeemer: contracts.fraudProofUnusedRedeemer!.scriptHash as string,
+      executionNativeScriptInvalid: contracts
+        .fraudProofExecutionNativeScriptInvalid!.scriptHash as string,
+      scriptIntegrityHashMismatch: contracts
+        .fraudProofScriptIntegrityHashMismatch!.scriptHash as string,
+      distinctAssetAccumulationLimit: contracts
+        .fraudProofDistinctAssetAccumulationLimit!.scriptHash as string,
     }),
   };
   const referenceScripts = Object.fromEntries(

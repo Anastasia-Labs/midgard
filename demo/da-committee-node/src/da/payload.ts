@@ -1,5 +1,11 @@
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
+  buildMidgardBoundedItemV1,
+  commitMidgardValidationMerkleFrontierV1,
+  type MidgardValidationMerkleFrontierV1,
+  verifyMidgardValidationMerkleMembershipV1,
+} from "@al-ft/midgard-core";
+import {
   assertMidgardCekProgramMaterialBundleV1,
   decodeMidgardCekProgramMaterialDaEntryV1,
   encodeMidgardCekProgramEnvelopeV1,
@@ -12,7 +18,12 @@ import {
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   deriveMidgardNativeTxProofSourceV1,
 } from "@al-ft/midgard-core/codec";
-import { readCborBytes, readCborInteger } from "@al-ft/midgard-core/codec/cbor";
+import {
+  decodeSingleCbor,
+  encodeCbor,
+  readCborBytes,
+  readCborInteger,
+} from "@al-ft/midgard-core/codec/cbor";
 import {
   MIDGARD_CONSENSUS_LIMITS_V1,
   MIDGARD_PROTOCOL_V1_VERSION,
@@ -27,10 +38,25 @@ import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
 import {
   collectMidgardV1AttachedProgramEnvelopes,
   collectMidgardV1ReferencedProgramEnvelopes,
+  hashMidgardInlineScriptSourceLeafV1,
+  hashMidgardReferenceScriptSourceLeafV1,
+  hashMidgardScriptExecutionLeafV1,
+  hashMidgardScriptPurposeLeafV1,
 } from "@al-ft/midgard-core/script-proof";
-import { decodeMidgardValidationTraceDescriptorV1 } from "@al-ft/midgard-core/validation-trace";
+import {
+  decodeMidgardValidationTraceDescriptorV1,
+  hashMidgardValidationEventKeyV1,
+  hashMidgardValidationMachineStateV1,
+  hashMidgardValidationWorkWitnessV1,
+  type MidgardValidationMachineStateV1,
+  type MidgardValidationTraceDescriptorV1,
+  verifyMidgardValidationTraceProofV1,
+} from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
-import { buildCanonicalMidgardLedgerEntryOutputMaterialV1 } from "@al-ft/midgard-validation";
+import {
+  buildCanonicalMidgardLedgerEntryOutputMaterialV1,
+  projectMidgardRawEnvelopeForPhaseAV1,
+} from "@al-ft/midgard-validation";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { sha256 } from "@noble/hashes/sha2.js";
@@ -184,6 +210,10 @@ export const decodeDaPayloadV1Strict = (
     validateEntries("transition_trace", body.transition_trace);
     validateEntries("event_to_step", body.event_to_step);
     validateEntries("validation_traces", body.validation_traces);
+    validateEntries(
+      "validation_trace_witnesses",
+      body.validation_trace_witnesses,
+    );
     validateDaPayloadCountsV1(body.counts);
     validateDaPayloadConsensusV1(body);
     validateProofTraceCoverageV1(payload);
@@ -1273,6 +1303,13 @@ const validateProofTraceCoverageV1 = (payload: SDK.DaPayloadV1): void => {
   }
 
   const observed = new Set<string>();
+  const descriptors = new Map<
+    string,
+    {
+      readonly keyCbor: Buffer;
+      readonly descriptor: MidgardValidationTraceDescriptorV1;
+    }
+  >();
   for (const [index, [keyHex, valueHex]] of body.validation_traces.entries()) {
     const eventKey = decodeCanonicalData<SDK.EventKey>(
       keyHex,
@@ -1321,6 +1358,10 @@ const validateProofTraceCoverageV1 = (payload: SDK.DaPayloadV1): void => {
       );
     }
     observed.add(fingerprint);
+    descriptors.set(fingerprint, {
+      keyCbor: Buffer.from(keyHex, "hex"),
+      descriptor,
+    });
   }
 
   for (const fingerprint of expectedVerdicts.keys()) {
@@ -1328,6 +1369,497 @@ const validateProofTraceCoverageV1 = (payload: SDK.DaPayloadV1): void => {
       throw new DaPayloadValidationError(
         "coverage_mismatch",
         "validation_traces omits a committed transaction source",
+      );
+    }
+  }
+  validateRetainedValidationWitnessesV1(
+    body.validation_trace_witnesses,
+    descriptors,
+    retainedTransactionPreimagesV1(payload),
+  );
+};
+
+const retainedTransactionPreimagesV1 = (
+  payload: SDK.DaPayloadV1,
+): ReadonlyMap<string, Buffer> => {
+  const result = new Map<string, Buffer>();
+  for (const [txId, txCbor] of payload.block_body.transaction_preimages) {
+    result.set(
+      eventKeyFingerprint({ L2TransactionEventKey: { tx_id: txId } }),
+      Buffer.from(txCbor, "hex"),
+    );
+  }
+  for (const [outRefCbor, txCbor] of payload.block_body
+    .forced_transaction_preimages) {
+    const outRef = decodeCanonicalData<SDK.OutputReference>(
+      outRefCbor,
+      SDK.OutputReference as never,
+      "forced_transaction_preimages key",
+    );
+    result.set(
+      eventKeyFingerprint({
+        ForcedTransactionEventKey: { tx_order_id: outRef },
+      }),
+      Buffer.from(txCbor, "hex"),
+    );
+  }
+  return result;
+};
+
+const PHASE_FROM_DATA = {
+  CanonicalDecode: "canonicalDecode",
+  CompactBinding: "compactBinding",
+  StaticLedgerRules: "staticLedgerRules",
+  InputSets: "inputSets",
+  Signatures: "signatures",
+  PhaseANativeScripts: "phaseANativeScripts",
+  PhaseAScriptPreconditions: "phaseAScriptPreconditions",
+  ResolveInputs: "resolveInputs",
+  ScriptSources: "scriptSources",
+  NativeScripts: "nativeScripts",
+  ScriptIntegrity: "scriptIntegrity",
+  Cek: "cek",
+  ValueAndMint: "valueAndMint",
+  LedgerDelta: "ledgerDelta",
+  Terminal: "terminal",
+} as const;
+
+const retainedSafeNumber = (value: bigint, label: string): number => {
+  const number = Number(value);
+  if (!Number.isSafeInteger(number) || number < 0) {
+    throw new DaPayloadValidationError(
+      "consensus_bound",
+      `${label} must be a non-negative safe integer`,
+    );
+  }
+  return number;
+};
+
+const stateFromRetainedData = (
+  state: SDK.ValidationMachineStateV1,
+): MidgardValidationMachineStateV1 => {
+  const machineVersion = retainedSafeNumber(
+    state.machine_version,
+    "machine version",
+  );
+  if (machineVersion !== 1) {
+    throw new DaPayloadValidationError(
+      "malformed_trace",
+      "retained validation witness has an unsupported machine version",
+    );
+  }
+  return {
+    machineVersion,
+    eventKeyHash: Buffer.from(state.event_key_hash, "hex"),
+    transactionId: Buffer.from(state.transaction_id, "hex"),
+    transactionCommitment: Buffer.from(state.transaction_commitment, "hex"),
+    validationContextHash: Buffer.from(state.validation_context_hash, "hex"),
+    sourceKind: state.source_kind === "Normal" ? "normal" : "forced",
+    priorLedgerRoot: Buffer.from(state.prior_ledger_root, "hex"),
+    phase: PHASE_FROM_DATA[state.phase],
+    programCounter: retainedSafeNumber(
+      state.program_counter,
+      "program counter",
+    ),
+    workRoot: Buffer.from(state.work_root, "hex"),
+    executionCpu: state.execution_cpu,
+    executionMemory: state.execution_memory,
+    verdict:
+      state.verdict === "Pending"
+        ? "pending"
+        : state.verdict === "Accepted"
+          ? "accepted"
+          : "rejected",
+    rejectionCodeHash: Buffer.from(state.rejection_code_hash, "hex"),
+    ledgerDeltaRoot: Buffer.from(state.ledger_delta_root, "hex"),
+  };
+};
+
+const retainedFrontier = (
+  count: bigint,
+  peaks: readonly { readonly height: bigint; readonly hash: string }[],
+): MidgardValidationMerkleFrontierV1 => ({
+  count: retainedSafeNumber(count, "frontier count"),
+  peaks: peaks.map(({ height, hash }) => ({
+    height: retainedSafeNumber(height, "frontier peak height"),
+    hash: Buffer.from(hash, "hex"),
+  })),
+});
+
+const nativeControlRoots = (witnessCbor: Buffer) => {
+  const decoded = decodeSingleCbor(witnessCbor);
+  if (!Array.isArray(decoded) || decoded.length !== 26) {
+    throw new DaPayloadValidationError(
+      "malformed_trace",
+      "retained NativeScripts control has the wrong shape",
+    );
+  }
+  const integer = (index: number) => BigInt(decoded[index] as bigint | number);
+  const peaks = (index: number) =>
+    (decoded[index] as readonly (readonly [bigint, Uint8Array])[]).map(
+      ([height, hash]) => ({
+        height: BigInt(height),
+        hash: Buffer.from(hash).toString("hex"),
+      }),
+    );
+  return {
+    signerCount: integer(8),
+    signerCommitment: Buffer.from(decoded[9] as Uint8Array),
+    source: retainedFrontier(integer(10), peaks(11)),
+    purpose: retainedFrontier(integer(14), peaks(15)),
+    execution: retainedFrontier(integer(21), peaks(22)),
+  };
+};
+
+const isScriptIntegrityStageThreeControl = (witnessCbor: Buffer): boolean => {
+  const decoded = decodeSingleCbor(witnessCbor);
+  return (
+    Array.isArray(decoded) &&
+    decoded.length === 4 &&
+    BigInt(decoded[1] as bigint | number) === 3n
+  );
+};
+
+const scriptSourcesControlStage = (witnessCbor: Buffer): bigint | null => {
+  const decoded = decodeSingleCbor(witnessCbor);
+  return Array.isArray(decoded) &&
+    (decoded.length === 30 || decoded.length === 31)
+    ? BigInt(decoded[9] as bigint | number)
+    : null;
+};
+
+const valueAndMintControlStage = (witnessCbor: Buffer): bigint | null => {
+  const decoded = decodeSingleCbor(witnessCbor);
+  return Array.isArray(decoded) && decoded.length === 12
+    ? BigInt(decoded[1] as bigint | number)
+    : null;
+};
+
+const requireRetainedMembership = (
+  frontier: MidgardValidationMerkleFrontierV1,
+  leafIndex: bigint,
+  leafHash: Buffer,
+  siblings: readonly string[],
+  label: string,
+): void => {
+  if (
+    !verifyMidgardValidationMerkleMembershipV1({
+      frontier,
+      leafIndex: retainedSafeNumber(leafIndex, `${label} index`),
+      leafHash,
+      siblings: siblings.map((sibling) => Buffer.from(sibling, "hex")),
+    })
+  ) {
+    throw new DaPayloadValidationError(
+      "coverage_mismatch",
+      `retained validation ${label} membership is invalid`,
+    );
+  }
+};
+
+const validateRetainedValidationWitnessesV1 = (
+  entries: readonly SDK.DaPayloadEntry[],
+  descriptors: ReadonlyMap<
+    string,
+    {
+      readonly keyCbor: Buffer;
+      readonly descriptor: MidgardValidationTraceDescriptorV1;
+    }
+  >,
+  rawTransactions: ReadonlyMap<string, Buffer>,
+): void => {
+  const coordinates = new Set<string>();
+  for (const [index, [keyHex, valueHex]] of entries.entries()) {
+    let key: SDK.RetainedValidationWitnessKeyV1;
+    let value: SDK.RetainedValidationWitnessV1;
+    try {
+      key = SDK.decodeRetainedValidationWitnessKeyV1(
+        Buffer.from(keyHex, "hex"),
+      );
+      value = SDK.decodeRetainedValidationWitnessV1(
+        Buffer.from(valueHex, "hex"),
+      );
+    } catch (cause) {
+      throw new DaPayloadValidationError(
+        "malformed_trace",
+        `validation_trace_witnesses[${index.toString()}] is not canonical`,
+        { cause },
+      );
+    }
+    const fingerprint = eventKeyFingerprint(key.event_key);
+    const descriptor = descriptors.get(fingerprint);
+    if (descriptor === undefined) {
+      throw new DaPayloadValidationError(
+        "coverage_mismatch",
+        "validation trace witness is orphaned from validation_traces",
+      );
+    }
+    const canonicalEventKey = Buffer.from(
+      LucidData.to(key.event_key as never, SDK.EventKeySchema as never),
+      "hex",
+    );
+    if (!canonicalEventKey.equals(descriptor.keyCbor)) {
+      throw new DaPayloadValidationError(
+        "coverage_mismatch",
+        "validation trace witness event key differs from its descriptor key",
+      );
+    }
+    const coordinate = `${fingerprint}:${key.execution_index.toString()}`;
+    if (coordinates.has(coordinate)) {
+      throw new DaPayloadValidationError(
+        "duplicate_key",
+        `duplicate retained validation witness ${coordinate}`,
+      );
+    }
+    coordinates.add(coordinate);
+    const auxiliary = value.auxiliary;
+    const native =
+      typeof auxiliary === "object" &&
+      "NativeExecutionDescriptorWitness" in auxiliary
+        ? auxiliary.NativeExecutionDescriptorWitness
+        : null;
+    const scriptSourcesStage =
+      value.phase === 8n
+        ? scriptSourcesControlStage(Buffer.from(value.witness_cbor, "hex"))
+        : null;
+    const retainedRedeemerAuxiliary =
+      typeof auxiliary === "object" &&
+      ("RedeemerScanBeginWitness" in auxiliary ||
+        "RedeemerItemStepWitness" in auxiliary) &&
+      (scriptSourcesStage === 10n || scriptSourcesStage === 12n);
+    const retainedScriptSourcesAuxiliary =
+      value.phase === 8n &&
+      (auxiliary === "NoAuxiliaryWitness" ||
+        (typeof auxiliary === "object" &&
+          ("ScriptPurposeScanWitness" in auxiliary ||
+            "ScriptSourceScanWitness" in auxiliary)) ||
+        retainedRedeemerAuxiliary);
+    const retainedScriptIntegrityTerminal =
+      value.phase === 10n &&
+      auxiliary === "NoAuxiliaryWitness" &&
+      isScriptIntegrityStageThreeControl(
+        Buffer.from(value.witness_cbor, "hex"),
+      );
+    const valueAndMintStage =
+      value.phase === 12n
+        ? valueAndMintControlStage(Buffer.from(value.witness_cbor, "hex"))
+        : null;
+    const retainedValueAndMintAsset =
+      value.phase === 12n &&
+      typeof auxiliary === "object" &&
+      (("ValueInputAssetWitness" in auxiliary && valueAndMintStage === 2n) ||
+        ("ValueOutputAssetWitness" in auxiliary && valueAndMintStage === 3n) ||
+        ("ValueMintAssetWitness" in auxiliary && valueAndMintStage === 4n));
+    if (
+      native === null &&
+      !retainedScriptSourcesAuxiliary &&
+      !retainedScriptIntegrityTerminal &&
+      !retainedValueAndMintAsset
+    ) {
+      throw new DaPayloadValidationError(
+        "malformed_trace",
+        "retained validation witness auxiliary is not an allowed reconstruction witness",
+      );
+    }
+    if (native === null && key.execution_index >= 0n) {
+      throw new DaPayloadValidationError(
+        "coverage_mismatch",
+        "retained chronological validation witness is outside its reserved negative coordinate domain",
+      );
+    }
+    if (
+      native !== null &&
+      (native.execution_index !== key.execution_index ||
+        (native.language_tag !== 0n &&
+          native.language_tag !== 3n &&
+          native.language_tag !== 128n) ||
+        (native.origin_kind !== 0n && native.origin_kind !== 1n))
+    ) {
+      throw new DaPayloadValidationError(
+        "coverage_mismatch",
+        "retained validation witness execution index differs from its key",
+      );
+    }
+    if (native !== null && native.origin_kind === 0n) {
+      if (
+        !Buffer.from(native.source_key, "hex").equals(
+          encodeCbor(native.source_index),
+        )
+      ) {
+        throw new DaPayloadValidationError(
+          "coverage_mismatch",
+          "inline retained validation witness has a non-canonical source key",
+        );
+      }
+      const rawTransaction = rawTransactions.get(fingerprint);
+      if (rawTransaction === undefined) {
+        throw new DaPayloadValidationError(
+          "coverage_mismatch",
+          "inline retained validation witness has no canonical transaction preimage",
+        );
+      }
+      const projection = projectMidgardRawEnvelopeForPhaseAV1(rawTransaction);
+      const sourceIndex = retainedSafeNumber(
+        native.source_index,
+        "source index",
+      );
+      const rawScript = projection.scriptWitnesses[sourceIndex];
+      if (rawScript === undefined) {
+        throw new DaPayloadValidationError(
+          "coverage_mismatch",
+          "inline retained validation witness source index is absent from raw field 6",
+        );
+      }
+      const bounded = buildMidgardBoundedItemV1({
+        fieldIndex: 6,
+        itemIndex: sourceIndex,
+        bytes: rawScript.versionedItemBytes,
+      });
+      if (
+        BigInt(rawScript.languageTag) !== native.language_tag ||
+        !rawScript.hash.equals(Buffer.from(native.script_hash, "hex")) ||
+        BigInt(rawScript.versionedItemBytes.length) !==
+          native.script_total_length ||
+        !bounded.commitment.equals(
+          Buffer.from(native.script_item_commitment, "hex"),
+        )
+      ) {
+        throw new DaPayloadValidationError(
+          "coverage_mismatch",
+          "inline retained validation witness differs from exact raw field-6 item",
+        );
+      }
+    }
+    const state = stateFromRetainedData(value.machine_state);
+    const proof = SDK.validationTraceProofCoreFromData(value.trace_proof);
+    const expectedPhase =
+      native !== null
+        ? ({ data: 9n, core: "nativeScripts" } as const)
+        : retainedScriptIntegrityTerminal
+          ? ({ data: 10n, core: "scriptIntegrity" } as const)
+          : retainedValueAndMintAsset
+            ? ({ data: 12n, core: "valueAndMint" } as const)
+            : ({ data: 8n, core: "scriptSources" } as const);
+    if (
+      value.phase !== expectedPhase.data ||
+      state.phase !== expectedPhase.core ||
+      value.program_counter !== value.machine_state.program_counter ||
+      state.programCounter !==
+        retainedSafeNumber(value.program_counter, "program counter") ||
+      !hashMidgardValidationMachineStateV1(state).equals(proof.stateHash) ||
+      !verifyMidgardValidationTraceProofV1({
+        descriptor: descriptor.descriptor,
+        proof,
+      })
+    ) {
+      throw new DaPayloadValidationError(
+        "coverage_mismatch",
+        "retained validation witness state/proof does not open the committed descriptor",
+      );
+    }
+    const expectedEventHash =
+      hashMidgardValidationEventKeyV1(canonicalEventKey);
+    if (!state.eventKeyHash.equals(expectedEventHash)) {
+      throw new DaPayloadValidationError(
+        "coverage_mismatch",
+        "retained validation witness state is bound to another event key",
+      );
+    }
+    const expectedWorkRoot = hashMidgardValidationWorkWitnessV1({
+      phase: expectedPhase.core,
+      programCounter: state.programCounter,
+      witnessCbor: Buffer.from(value.witness_cbor, "hex"),
+    });
+    if (!state.workRoot.equals(expectedWorkRoot)) {
+      throw new DaPayloadValidationError(
+        "coverage_mismatch",
+        "retained validation witness bytes do not match state.work_root",
+      );
+    }
+    // ScriptSources controls/frontier openings, ScriptIntegrity stage-3, and
+    // ValueAndMint asset mutations are authenticated above by the committed
+    // trace state and work root. Family reconstruction performs its
+    // phase-specific semantic checks. Native execution descriptors retain the
+    // additional eager checks below for backwards-compatible committee
+    // admission.
+    if (native === null) continue;
+    const roots = nativeControlRoots(Buffer.from(value.witness_cbor, "hex"));
+    const purposeKind = retainedSafeNumber(native.purpose_kind, "purpose kind");
+    if (purposeKind > 3) {
+      throw new DaPayloadValidationError(
+        "malformed_trace",
+        "retained validation witness purpose kind is unsupported",
+      );
+    }
+    const purposeLeaf = hashMidgardScriptPurposeLeafV1({
+      purposeKind: purposeKind as 0 | 1 | 2 | 3,
+      purposeIndex: native.purpose_index,
+      scriptHash: Buffer.from(native.script_hash, "hex"),
+      subject: Buffer.from(native.subject, "hex"),
+    });
+    const sourceLeaf =
+      native.origin_kind === 0n
+        ? hashMidgardInlineScriptSourceLeafV1({
+            sourceIndex: native.source_index,
+            scriptLanguageTag: Number(native.language_tag) as 0 | 3 | 128,
+            scriptHash: Buffer.from(native.script_hash, "hex"),
+            scriptTotalLength: retainedSafeNumber(
+              native.script_total_length,
+              "script length",
+            ),
+            itemCommitment: Buffer.from(native.script_item_commitment, "hex"),
+          })
+        : hashMidgardReferenceScriptSourceLeafV1({
+            sourceKey: Buffer.from(native.source_key, "hex"),
+            scriptLanguageTag: Number(native.language_tag) as 0 | 3 | 128,
+            scriptHash: Buffer.from(native.script_hash, "hex"),
+            scriptTotalLength: retainedSafeNumber(
+              native.script_total_length,
+              "script length",
+            ),
+            itemCommitment: Buffer.from(native.script_item_commitment, "hex"),
+          });
+    const executionLeaf = hashMidgardScriptExecutionLeafV1({
+      languageTag: Number(native.language_tag) as 0 | 3 | 128,
+      purposeLeaf,
+      sourceLeaf,
+      redeemerLeaf: Buffer.from(native.redeemer_leaf, "hex"),
+    });
+    requireRetainedMembership(
+      roots.purpose,
+      native.purpose_index,
+      purposeLeaf,
+      native.purpose_siblings,
+      "purpose",
+    );
+    requireRetainedMembership(
+      roots.source,
+      native.source_index,
+      sourceLeaf,
+      native.source_siblings,
+      "source",
+    );
+    requireRetainedMembership(
+      roots.execution,
+      native.execution_index,
+      executionLeaf,
+      native.execution_siblings,
+      "execution",
+    );
+    let signerFrontierValid = native.language_tag !== 0n;
+    if (native.language_tag === 0n) {
+      try {
+        signerFrontierValid = commitMidgardValidationMerkleFrontierV1(
+          retainedFrontier(roots.signerCount, native.signer_peaks),
+        ).equals(roots.signerCommitment);
+      } catch {
+        signerFrontierValid = false;
+      }
+    }
+    if (!signerFrontierValid) {
+      throw new DaPayloadValidationError(
+        "coverage_mismatch",
+        "retained validation signer frontier is invalid",
       );
     }
   }

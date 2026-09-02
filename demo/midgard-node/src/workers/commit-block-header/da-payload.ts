@@ -555,6 +555,14 @@ export const buildDaPayloadInsert = ({
           ),
         ),
       ),
+      validation_trace_witnesses: sortedEntries(
+        record.validationTraceWitnessMembers.map((member) =>
+          bufferEntry(
+            member[PendingBlockFinalizationsDB.MemberColumns.MEMBER_ID],
+            member[PendingBlockFinalizationsDB.MemberColumns.PAYLOAD_CBOR],
+          ),
+        ),
+      ),
     } as const;
     const payload: SDK.DaPayloadV1 = {
       version: SDK.DA_PAYLOAD_V1_VERSION,

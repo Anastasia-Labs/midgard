@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import {
   DA_ATTESTATION_ASSET_NAME_PREFIX,
   DaAttestationDatum,
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FraudProofComputationThreadRedeemer,
   FraudProofComputationThreadStepDatum,
   FraudProofTokenDatum,
@@ -307,10 +308,12 @@ export const WATCHER_PROOF_THREAD_FAMILY_AUTHORITY_V1 = Object.freeze({
   },
   inputSetUniqueness: {
     familyId: "input-set-uniqueness",
-    stepCount: 2,
+    stepCount: 4,
     deployedStepContractNames: [
       "fraudProofInputSetUniqueness",
       "fraudProofInputSetUniquenessStep02",
+      "fraudProofInputSetUniquenessStep03",
+      "fraudProofInputSetUniquenessStep04",
     ],
   },
   mintAuthorization: {
@@ -361,6 +364,254 @@ export const WATCHER_PROOF_THREAD_FAMILY_AUTHORITY_V1 = Object.freeze({
       "fraudProofMinAdaStep03",
       "fraudProofMinAdaStep04",
       "fraudProofMinAdaStep05",
+    ],
+  },
+  fieldPreimageLengthMismatch: {
+    familyId: "field-preimage-length-mismatch",
+    stepCount: 4,
+    deployedStepContractNames: [
+      "fraudProofFieldPreimageLengthMismatch",
+      "fraudProofFieldPreimageLengthMismatchStep02Accepted",
+      "fraudProofFieldPreimageLengthMismatchStep02Forced",
+      "fraudProofFieldPreimageLengthMismatchStep03",
+    ],
+  },
+  fieldItemWidthIllegal: {
+    familyId: "field-item-width-illegal",
+    stepCount: 3,
+    deployedStepContractNames: [
+      "fraudProofFieldItemWidthIllegal",
+      "fraudProofFieldItemWidthIllegalStep02",
+      "fraudProofFieldItemWidthIllegalStep03",
+    ],
+  },
+  witnessScriptDecoding: {
+    familyId: "witness-script-decoding",
+    stepCount: 4,
+    deployedStepContractNames: [
+      "fraudProofWitnessScriptDecoding",
+      "fraudProofWitnessScriptDecodingStep02",
+      "fraudProofWitnessScriptDecodingStep03",
+      "fraudProofWitnessScriptDecodingStep04",
+    ],
+  },
+  scriptIntegrityHashMissing: {
+    familyId: "script-integrity-hash-missing",
+    stepCount: 7,
+    deployedStepContractNames: [
+      "fraudProofScriptIntegrityHashMissing",
+      "fraudProofScriptIntegrityHashMissingStep02",
+      "fraudProofScriptIntegrityHashMissingStep03",
+      "fraudProofScriptIntegrityHashMissingScriptGrammar",
+      "fraudProofScriptIntegrityHashMissingScriptScan",
+      "fraudProofScriptIntegrityHashMissingRedeemerGrammar",
+      "fraudProofScriptIntegrityHashMissingStep04",
+    ],
+  },
+  transactionOutputNonCanonical: {
+    familyId: "transaction-output-non-canonical",
+    stepCount: 4,
+    deployedStepContractNames: [
+      "fraudProofTransactionOutputNonCanonical",
+      "fraudProofTransactionOutputNonCanonicalStep02",
+      "fraudProofTransactionOutputNonCanonicalStep03",
+      "fraudProofTransactionOutputNonCanonicalStep04",
+    ],
+  },
+  resolvedOutputNonCanonical: {
+    familyId: "resolved-output-non-canonical",
+    stepCount: 5,
+    deployedStepContractNames: [
+      "fraudProofResolvedOutputNonCanonical",
+      "fraudProofResolvedOutputNonCanonicalStep02",
+      "fraudProofResolvedOutputNonCanonicalStep03",
+      "fraudProofResolvedOutputNonCanonicalStep04",
+      "fraudProofResolvedOutputNonCanonicalStep05",
+    ],
+  },
+  mintDeclaredAssetLimit: {
+    familyId: "mint-declared-asset-limit",
+    stepCount: 4,
+    deployedStepContractNames: [
+      "fraudProofMintDeclaredAssetLimit",
+      "fraudProofMintDeclaredAssetLimitStep02",
+      "fraudProofMintDeclaredAssetLimitStep03",
+      "fraudProofMintDeclaredAssetLimitStep04",
+    ],
+  },
+  spendInputSignerMissing: {
+    familyId: "spend-input-signer-missing",
+    stepCount: 5,
+    deployedStepContractNames: [
+      "fraudProofSpendInputSignerMissing",
+      "fraudProofSpendInputSignerMissingStep02",
+      "fraudProofSpendInputSignerMissingStep03",
+      "fraudProofSpendInputSignerMissingStep04",
+      "fraudProofSpendInputSignerMissingStep05",
+    ],
+  },
+  protectedOutputSignerMissing: {
+    familyId: "protected-output-signer-missing",
+    stepCount: 5,
+    deployedStepContractNames: [
+      "fraudProofProtectedOutputSignerMissing",
+      "fraudProofProtectedOutputSignerMissingStep02",
+      "fraudProofProtectedOutputSignerMissingStep03",
+      "fraudProofProtectedOutputSignerMissingStep04",
+      "fraudProofProtectedOutputSignerMissingStep05",
+    ],
+  },
+  observersForbiddenOnUntaggedNetwork: {
+    familyId: "observers-forbidden-on-untagged-network",
+    stepCount: 2,
+    deployedStepContractNames: [
+      "fraudProofObserversForbiddenOnUntaggedNetwork",
+      "fraudProofObserversForbiddenOnUntaggedNetworkStep02",
+    ],
+  },
+  outputReferenceScriptDecoding: {
+    familyId: "output-reference-script-decoding",
+    stepCount: 6,
+    deployedStepContractNames: [
+      "fraudProofOutputReferenceScriptDecoding",
+      "fraudProofOutputReferenceScriptDecodingStep02",
+      "fraudProofOutputReferenceScriptDecodingStep03",
+      "fraudProofOutputReferenceScriptDecodingStep04",
+      "fraudProofOutputReferenceScriptDecodingStep05",
+      "fraudProofOutputReferenceScriptDecodingStep06",
+    ],
+  },
+  executionSourceScriptDecoding: {
+    familyId: "execution-source-script-decoding",
+    stepCount: 5,
+    deployedStepContractNames: [
+      "fraudProofExecutionSourceScriptDecoding",
+      "fraudProofExecutionSourceScriptDecodingStep02",
+      "fraudProofExecutionSourceScriptDecodingStep03",
+      "fraudProofExecutionSourceScriptDecodingStep04",
+      "fraudProofExecutionSourceScriptDecodingStep05",
+    ],
+  },
+  observerOrderInvalid: {
+    familyId: "observer-order-invalid",
+    stepCount: 4,
+    deployedStepContractNames: [
+      "fraudProofObserverOrderInvalid",
+      "fraudProofObserverOrderInvalidStep02",
+      "fraudProofObserverOrderInvalidStep03",
+      "fraudProofObserverOrderInvalidStep04",
+    ],
+  },
+  redeemerCanonicity: {
+    familyId: "redeemer-canonicity",
+    stepCount: 3,
+    deployedStepContractNames: [
+      "fraudProofRedeemerCanonicity",
+      "fraudProofRedeemerCanonicityStep02",
+      "fraudProofRedeemerCanonicityStep03",
+    ],
+  },
+  receivePurposeLanguage: {
+    familyId: "receive-purpose-language",
+    stepCount: 3,
+    deployedStepContractNames: [
+      "fraudProofReceivePurposeLanguage",
+      "fraudProofReceivePurposeLanguageStep02",
+      "fraudProofReceivePurposeLanguageStep03",
+    ],
+  },
+  unusedScriptWitness: {
+    familyId: "unused-script-witness",
+    stepCount: 6,
+    deployedStepContractNames: [
+      "fraudProofUnusedScriptWitness",
+      "fraudProofUnusedScriptWitnessStep02",
+      "fraudProofUnusedScriptWitnessStep03",
+      "fraudProofUnusedScriptWitnessStep04",
+      "fraudProofUnusedScriptWitnessStep05",
+      "fraudProofUnusedScriptWitnessStep06",
+    ],
+  },
+  missingScriptSource: {
+    familyId: "missing-script-source",
+    stepCount: 6,
+    deployedStepContractNames: [
+      "fraudProofMissingScriptSource",
+      "fraudProofMissingScriptSourceStep02",
+      "fraudProofMissingScriptSourceStep03",
+      "fraudProofMissingScriptSourceStep04",
+      "fraudProofMissingScriptSourceStep05",
+      "fraudProofMissingScriptSourceStep06",
+    ],
+  },
+  missingRedeemer: {
+    familyId: "missing-redeemer",
+    stepCount: 7,
+    deployedStepContractNames: [
+      "fraudProofMissingRedeemer",
+      "fraudProofMissingRedeemerStep02",
+      "fraudProofMissingRedeemerStep02a",
+      "fraudProofMissingRedeemerStep02b",
+      "fraudProofMissingRedeemerStep03",
+      "fraudProofMissingRedeemerStep04",
+      "fraudProofMissingRedeemerStep05",
+    ],
+  },
+  unusedRedeemer: {
+    familyId: "unused-redeemer",
+    stepCount: 9,
+    deployedStepContractNames: [
+      "fraudProofUnusedRedeemer",
+      "fraudProofUnusedRedeemerStep02",
+      "fraudProofUnusedRedeemerStep02a",
+      "fraudProofUnusedRedeemerStep02b",
+      "fraudProofUnusedRedeemerStep02c",
+      "fraudProofUnusedRedeemerStep03",
+      "fraudProofUnusedRedeemerStep04",
+      "fraudProofUnusedRedeemerStep05",
+      "fraudProofUnusedRedeemerStep06",
+    ],
+  },
+  executionNativeScriptInvalid: {
+    familyId: "execution-native-script-invalid",
+    stepCount: 13,
+    deployedStepContractNames: [
+      "fraudProofExecutionNativeScriptInvalid",
+      "fraudProofExecutionNativeScriptInvalidStep02",
+      "fraudProofExecutionNativeScriptInvalidStep03",
+      "fraudProofExecutionNativeScriptInvalidStep04",
+      "fraudProofExecutionNativeScriptInvalidStep05",
+      "fraudProofExecutionNativeScriptInvalidStep06",
+      "fraudProofExecutionNativeScriptInvalidAcceptedReconstructionInit",
+      "fraudProofExecutionNativeScriptInvalidAcceptedSpendPrefix",
+      "fraudProofExecutionNativeScriptInvalidAcceptedMintPrefix",
+      "fraudProofExecutionNativeScriptInvalidAcceptedObserverPrefix",
+      "fraudProofExecutionNativeScriptInvalidAcceptedReceivePrefix",
+      "fraudProofExecutionNativeScriptInvalidAcceptedInlineSource",
+      "fraudProofExecutionNativeScriptInvalidAcceptedReferenceSource",
+    ],
+  },
+  scriptIntegrityHashMismatch: {
+    familyId: "script-integrity-hash-mismatch",
+    stepCount: 5,
+    deployedStepContractNames: [
+      "fraudProofScriptIntegrityHashMismatch",
+      "fraudProofScriptIntegrityHashMismatchStep02",
+      "fraudProofScriptIntegrityHashMismatchStep03",
+      "fraudProofScriptIntegrityHashMismatchStep04",
+      "fraudProofScriptIntegrityHashMismatchStep05",
+    ],
+  },
+  distinctAssetAccumulationLimit: {
+    familyId: "distinct-asset-accumulation-limit",
+    stepCount: 6,
+    deployedStepContractNames: [
+      "fraudProofDistinctAssetAccumulationLimit",
+      "fraudProofDistinctAssetAccumulationLimitStep02",
+      "fraudProofDistinctAssetAccumulationLimitStep03",
+      "fraudProofDistinctAssetAccumulationLimitStep04",
+      "fraudProofDistinctAssetAccumulationLimitStep05",
+      "fraudProofDistinctAssetAccumulationLimitStep06",
     ],
   },
 } as const satisfies Readonly<
@@ -989,15 +1240,10 @@ const familyMatchesRegisteredAuthority = (
   }
   const category =
     family.catalogueCategory as DeploymentManifestV1FraudProofCatalogueCategory;
-  const categoryIndex =
-    DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.indexOf(
-      category,
-    );
   const authority = WATCHER_PROOF_THREAD_FAMILY_AUTHORITY_V1[category];
   if (
-    categoryIndex < 0 ||
     family.familyId !== authority.familyId ||
-    family.categoryId !== categoryIndex.toString(16).padStart(8, "0") ||
+    family.categoryId !== FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[category] ||
     family.stepScriptHashes.length !== authority.stepCount ||
     family.nextStepIndexes.length !== authority.stepCount
   ) {

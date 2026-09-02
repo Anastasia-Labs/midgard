@@ -1,0 +1,133 @@
+{
+  "schemaVersion": "midgard-execution-source-script-decoding-fit-ledger-v1",
+  "category": "executionSourceScriptDecoding",
+  "categoryId": "00000031",
+  "limits": {
+    "publicationReserveBytes": 15872,
+    "transactionBytes": 16384,
+    "memory": 16500000,
+    "cpu": 10000000000
+  },
+  "maximum": {
+    "scriptItemBytes": 32768,
+    "boundedChunks": 9,
+    "nodeAndDepthBoundary": 16384
+  },
+  "referencePublications": [
+    { "step": 1, "signedBytes": 15032, "reserveMarginBytes": 840 },
+    { "step": 2, "signedBytes": 15730, "reserveMarginBytes": 142 },
+    { "step": 3, "signedBytes": 6777, "reserveMarginBytes": 9095 },
+    { "step": 4, "signedBytes": 12217, "reserveMarginBytes": 3655 },
+    { "step": 5, "signedBytes": 2990, "reserveMarginBytes": 12882 }
+  ],
+  "focusedAikenMaximum": {
+    "test": "scan_resume_changes_checkpoint_and_reaches_exact_terminal",
+    "memory": 2105421,
+    "cpu": 860868927,
+    "memoryMargin": 14394579,
+    "cpuMargin": 9139131073
+  },
+  "forcedLifecycle": [
+    {
+      "stage": "init",
+      "signedBytes": 1221,
+      "byteMargin": 15163,
+      "memory": 622323,
+      "cpu": 215528475
+    },
+    {
+      "stage": "step01-forced",
+      "signedBytes": 1758,
+      "byteMargin": 14626,
+      "memory": 1086840,
+      "cpu": 446459704
+    },
+    {
+      "stage": "step02-authenticate",
+      "signedBytes": 2666,
+      "byteMargin": 13718,
+      "memory": 1479385,
+      "cpu": 654415424
+    },
+    {
+      "stage": "step03-open-item",
+      "signedBytes": 981,
+      "byteMargin": 15403,
+      "memory": 680753,
+      "cpu": 289029584
+    },
+    {
+      "stage": "step04-scan-0",
+      "signedBytes": 999,
+      "byteMargin": 15385,
+      "memory": 1461810,
+      "cpu": 575231945
+    },
+    {
+      "stage": "step05-mint",
+      "signedBytes": 916,
+      "byteMargin": 15468,
+      "memory": 357691,
+      "cpu": 148969666
+    },
+    {
+      "stage": "remove",
+      "signedBytes": 2060,
+      "byteMargin": 14324,
+      "memory": 3051446,
+      "cpu": 1035916306
+    }
+  ],
+  "acceptedMalformedLifecycle": [
+    {
+      "stage": "init",
+      "signedBytes": 1221,
+      "byteMargin": 15163,
+      "memory": 628459,
+      "cpu": 217376969
+    },
+    {
+      "stage": "step01-accepted",
+      "signedBytes": 2023,
+      "byteMargin": 14361,
+      "memory": 1325466,
+      "cpu": 450736395
+    },
+    {
+      "stage": "step02-authenticate",
+      "signedBytes": 2616,
+      "byteMargin": 13768,
+      "memory": 1403396,
+      "cpu": 620652930
+    },
+    {
+      "stage": "step03-open-item",
+      "signedBytes": 936,
+      "byteMargin": 15448,
+      "memory": 673428,
+      "cpu": 283176695
+    },
+    {
+      "stage": "step04-scan-0",
+      "signedBytes": 954,
+      "byteMargin": 15430,
+      "memory": 1075327,
+      "cpu": 426634967
+    },
+    {
+      "stage": "step05-mint",
+      "signedBytes": 916,
+      "byteMargin": 15468,
+      "memory": 365283,
+      "cpu": 149749390
+    },
+    {
+      "stage": "remove",
+      "signedBytes": 2060,
+      "byteMargin": 14324,
+      "memory": 3020900,
+      "cpu": 1032659768
+    }
+  ],
+  "evidenceDigest": "07865ef2b7d0af259ec90d161e166dbe36855d554e95851437ff29fe5617da1d"
+}

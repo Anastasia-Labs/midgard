@@ -7,14 +7,16 @@ import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profi
 import {
   buildFaultProofContracts,
   EMPTY_MERKLE_TREE_ROOT,
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   type FraudProofCatalogueDeploymentInfo,
   fraudProofContractsToFirstSteps,
   parseFaultProofBlueprint,
+  REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
   ScriptHashSchema,
 } from "@al-ft/midgard-sdk";
-import { Data } from "@lucid-evolution/lucid";
+import { Data, mintingPolicyToId } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -29,6 +31,19 @@ const blueprintPath = resolve(repoRoot, "onchain/aiken/plutus.json");
 
 const h28 = "11".repeat(28);
 const h28b = "22".repeat(28);
+const referenceScriptAuthNativeScriptCbor = `8200581c${"00".repeat(28)}`;
+const referenceScriptAuthPolicyId = mintingPolicyToId({
+  type: "Native",
+  script: referenceScriptAuthNativeScriptCbor,
+});
+const referenceScriptAuthPolicy = {
+  policyId: referenceScriptAuthPolicyId,
+  nativeScript: {
+    type: "Native",
+    cborHex: referenceScriptAuthNativeScriptCbor,
+  },
+  tokenNames: REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
+};
 const placeholderDoubleSpend = "00".repeat(28);
 const placeholderNonExistentInput = "02".repeat(28);
 const placeholderInvalidRange = "01".repeat(28);
@@ -164,7 +179,7 @@ const Q13_APPLIED_STEP_HASHES = [
 // catalogue derivation asserted on the preceding line.
 // `914d498f…` -> `85ecf82f…`.
 const Q13_CATALOGUE_ROOT =
-  "85ecf82f70e409621d5324c54ae8e2deedbb7c37698e28ba7d76481c17bb6e90";
+  "e2919c1776d2c2c358f9abbff9b13dcdd8a3f2717ec49ffecd634fcc19a91d11";
 const categoryIdSchema = Data.Bytes({
   minLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   maxLength: FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
@@ -172,15 +187,9 @@ const categoryIdSchema = Data.Bytes({
 type LucidDataSchema = Parameters<typeof Data.to>[1];
 
 const deploymentManifest = (contracts: Record<string, unknown>) => ({
-  referenceScriptAuthPolicy: {},
+  referenceScriptAuthPolicy,
   contracts,
 });
-
-const categoryId = (index: number): string => {
-  const buf = Buffer.alloc(FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT);
-  buf.writeUInt32BE(index);
-  return buf.toString("hex");
-};
 
 const encodeCatalogueKey = (id: string): Buffer =>
   Buffer.from(
@@ -209,7 +218,7 @@ const buildCatalogueFixture = async (
     FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((name, index) => [
       name,
       {
-        categoryId: categoryId(index),
+        categoryId: FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[name],
         scriptHash:
           scriptHashes[name] ??
           `${(index + 3).toString(16).padStart(2, "0")}`.repeat(28),
@@ -253,7 +262,7 @@ const buildInspectionFixture = async () => {
       network: "Preprod",
       hubOraclePolicyId: h28,
       fraudProofCataloguePolicyId: h28b,
-      referenceScriptAuthPolicyId: h28b,
+      referenceScriptAuthPolicyId,
     }),
   );
   const firstSteps = fraudProofContractsToFirstSteps(contracts);
@@ -309,7 +318,7 @@ const deploymentInfoFor = (
     }
   }
   return {
-    referenceScriptAuthPolicy: {},
+    referenceScriptAuthPolicy,
     contracts: {
       ...registeredEntries,
       hubOracleMint: { scriptHash: h28 },

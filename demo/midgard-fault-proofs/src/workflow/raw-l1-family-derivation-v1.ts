@@ -79,7 +79,7 @@ export type FraudProofRawL1FamilyStageV1 =
     }
   | {
       readonly kind: "step";
-      readonly step: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+      readonly step: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
       readonly threadOutRef: string;
       readonly stateQueueBlockOutRef: string;
     }
@@ -798,7 +798,20 @@ export const deriveFraudProofRawL1FamilyStageV1 = async ({
     });
     return [
       {
-        step: (index + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9,
+        step: (index + 1) as
+          | 1
+          | 2
+          | 3
+          | 4
+          | 5
+          | 6
+          | 7
+          | 8
+          | 9
+          | 10
+          | 11
+          | 12
+          | 13,
         raw: current,
       },
     ];

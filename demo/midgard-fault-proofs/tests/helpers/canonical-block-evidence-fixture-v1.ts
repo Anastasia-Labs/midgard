@@ -51,6 +51,8 @@ export type FixtureTransactionInputV1 = {
   readonly spendInputs: readonly Buffer[];
   readonly referenceInputs?: readonly Buffer[];
   readonly outputs?: readonly Buffer[];
+  readonly requiredObservers?: readonly Buffer[];
+  readonly mintPolicyItems?: readonly Buffer[];
   readonly fee: bigint;
   readonly networkId?: bigint;
   readonly validityIntervalStart?: bigint;
@@ -70,6 +72,8 @@ export const buildFixtureTransactionV1 = ({
   spendInputs,
   referenceInputs = [],
   outputs = [],
+  requiredObservers = [],
+  mintPolicyItems = [],
   fee,
   networkId = MIDGARD_NATIVE_NETWORK_ID_NONE,
   validityIntervalStart = MIDGARD_POSIX_TIME_NONE,
@@ -86,9 +90,9 @@ export const buildFixtureTransactionV1 = ({
       fee,
       validityIntervalStart,
       validityIntervalEnd,
-      requiredObserversPreimageCbor: EMPTY_CBOR_LIST,
+      requiredObserversPreimageCbor: encodeCbor([...requiredObservers]),
       requiredSignersPreimageCbor: EMPTY_CBOR_LIST,
-      mintPreimageCbor: EMPTY_CBOR_LIST,
+      mintPreimageCbor: encodeCbor([...mintPolicyItems]),
       scriptIntegrityHash: EMPTY_NULL_ROOT,
       auxiliaryDataHash: EMPTY_NULL_ROOT,
       networkId,
@@ -315,6 +319,7 @@ export const buildCanonicalBlockFixtureV1 = async ({
       forced_transaction_preimages: [],
       cek_program_material: [],
       validation_traces: sortEntries(validationTraceEntries),
+      validation_trace_witnesses: [],
       counts,
     },
   };

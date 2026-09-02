@@ -91,6 +91,7 @@ const oneDepositPayload = async (depositId: string) => {
       forced_transaction_preimages: [],
       cek_program_material: [],
       validation_traces: [],
+      validation_trace_witnesses: [],
       counts,
     },
   };

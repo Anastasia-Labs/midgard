@@ -779,35 +779,21 @@ const runResolverScenario = async ({
   const semanticIsOversized =
     semanticContract.spendingScript.script.length / 2 >
     PROTOCOL_PARAMETERS_DEFAULT.maxTxSize;
+  if (semanticIsOversized) {
+    throw new Error(
+      `resolver sweep refuses unpublishable semantic ${sweepSemanticGlobalIndex.toString()}; split the resolver before recording lifecycle acceptance`,
+    );
+  }
   const semanticPublication = await runEmulatorLifecycleStage(
     `reference-script.publish.validationSemanticResolver${sweepSemanticGlobalIndex.toString()}`,
-    async () => {
-      if (semanticIsOversized) {
-        const prePublicationProtocolParameters = emulator.protocolParameters;
-        emulator.protocolParameters = functionalProtocolParameters;
-        try {
-          const oversizedPublisherLucid = await Lucid(emulator, "Custom", {
-            slotConfig: functionalSlotConfig,
-          });
-          oversizedPublisherLucid.selectWallet.fromSeed(operator.seedPhrase);
-          return await publishPlainReferenceScriptUtxo({
-            lucid: oversizedPublisherLucid,
-            script: semanticContract.spendingScript,
-            label: "validation semantic resolver",
-            oversized: true,
-          });
-        } finally {
-          emulator.protocolParameters = prePublicationProtocolParameters;
-        }
-      }
-      return await withRealL1MaxTxSize(emulator, () =>
+    async () =>
+      await withRealL1MaxTxSize(emulator, () =>
         publishPlainReferenceScriptUtxo({
           lucid: referenceScriptPublisherLucid,
           script: semanticContract.spendingScript,
           label: "validation semantic resolver",
         }),
-      );
-    },
+      ),
   );
 
   const semanticCapture = await runEmulatorLifecycleStage(

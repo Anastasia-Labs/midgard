@@ -169,6 +169,7 @@ const buildPrevBlockPayload = async (
       forced_transaction_preimages: [],
       cek_program_material: [],
       validation_traces: [],
+      validation_trace_witnesses: [],
       counts: ZERO_COUNTS,
     },
   };

@@ -112,6 +112,7 @@ const inspectPrepared = ({
     observed === expectedNetworkId ||
     prepared.faultClaim.observedNetworkId !== observed ||
     prepared.fault === "TransactionNetwork" ||
+    typeof prepared.fault !== "object" ||
     !("OutputNetworkUtxo" in prepared.fault) ||
     prepared.fault.OutputNetworkUtxo.observed_network_id !== observed
   ) {
@@ -290,6 +291,7 @@ export const submitNetworkIdPostUtxoStep01 = async ({
       prev_utxos_root: header.prevUtxosRoot,
       predecessor: prepared.predecessor,
     },
+    forced_source_key: null,
   };
   const datum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: state } as never,
@@ -361,6 +363,7 @@ export const submitNetworkIdPostUtxoStep01 = async ({
               membership,
               predecessor: prepared.predecessor,
             },
+            forced_source: null,
             fault: prepared.fault,
           },
         ],

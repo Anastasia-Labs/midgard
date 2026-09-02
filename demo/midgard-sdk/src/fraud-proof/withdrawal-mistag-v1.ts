@@ -152,6 +152,7 @@ export const WithdrawalMistagLedgerEvidenceV1Schema = Data.Enum([
   Data.Object({
     PresentLedgerOutput: Data.Object({
       output_cbor: Data.Bytes(),
+      descriptor_cbor: Data.Bytes(),
       membership_proof: ProofSchema,
     }),
   }),

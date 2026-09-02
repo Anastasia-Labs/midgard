@@ -11,10 +11,15 @@ import {
   buildCommittedFieldShapeFaultProofContracts,
   buildCrossBlockDuplicateEventFaultProofContracts,
   buildDaHashPreimageFaultProofContracts,
+  buildDistinctAssetAccumulationLimitFaultProofContracts,
   buildDoubleSpendFaultProofContracts,
   buildDoubleWithdrawFaultProofContracts,
+  buildExecutionNativeScriptInvalidFaultProofContracts,
+  buildExecutionSourceScriptDecodingFaultProofContracts,
   buildFabricatedDepositFaultProofContracts,
   buildFabricatedWithdrawalFaultProofContracts,
+  buildFieldItemWidthIllegalFaultProofContracts,
+  buildFieldPreimageLengthMismatchFaultProofContracts,
   buildInputNoIdxFaultProofContracts,
   buildInputSetUniquenessFaultProofContracts,
   buildInvalidRangeFaultProofContracts,
@@ -23,21 +28,38 @@ import {
   buildMinAdaFaultProofContracts,
   buildMinFeeFaultProofContracts,
   buildMintAuthorizationFaultProofContracts,
+  buildMintDeclaredAssetLimitFaultProofContracts,
   buildMissingNativeScriptTxFaultProofContracts,
   buildMissingNativeScriptUtxoFaultProofContracts,
+  buildMissingRedeemerFaultProofContracts,
+  buildMissingScriptSourceFaultProofContracts,
   buildMissingSignatureFaultProofContracts,
   buildNativeScriptDecodingFaultProofContracts,
   buildNativeScriptInvalidFaultProofContracts,
   buildNetworkIdFaultProofContracts,
   buildNonExistentInputFaultProofContracts,
   buildNoReferenceInputFaultProofContracts,
+  buildObserverOrderInvalidFaultProofContracts,
+  buildObserversForbiddenOnUntaggedNetworkFaultProofContracts,
+  buildOutputReferenceScriptDecodingFaultProofContracts,
+  buildProtectedOutputSignerMissingFaultProofContracts,
+  buildReceivePurposeLanguageFaultProofContracts,
+  buildRedeemerCanonicityFaultProofContracts,
   buildReferenceInputNoIdxFaultProofContracts,
+  buildResolvedOutputNonCanonicalFaultProofContracts,
+  buildScriptIntegrityHashMismatchFaultProofContracts,
+  buildScriptIntegrityHashMissingFaultProofContracts,
+  buildSpendInputSignerMissingFaultProofContracts,
+  buildTransactionOutputNonCanonicalFaultProofContracts,
   buildTransitionTraceFaultProofContracts,
+  buildUnusedRedeemerFaultProofContracts,
+  buildUnusedScriptWitnessFaultProofContracts,
   buildValidationTraceDisputeFaultProofContracts,
   buildValueNotPreservedFaultProofContracts,
   buildWithdrawalMistagFaultProofContracts,
   buildWithdrawnInputFaultProofContracts,
   buildWithdrawnReferenceInputFaultProofContracts,
+  buildWitnessScriptDecodingFaultProofContracts,
   buildZeroInputFaultProofContracts,
   type DaHashPreimageFaultProofContracts,
   type DoubleSpendFaultProofContracts,
@@ -633,6 +655,8 @@ export const FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY = {
   inputSetUniqueness: [
     "fraudProofInputSetUniqueness",
     "fraudProofInputSetUniquenessStep02",
+    "fraudProofInputSetUniquenessStep03",
+    "fraudProofInputSetUniquenessStep04",
   ],
   mintAuthorization: [
     "fraudProofMintAuthorization",
@@ -664,6 +688,166 @@ export const FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY = {
     "fraudProofMinAdaStep03",
     "fraudProofMinAdaStep04",
     "fraudProofMinAdaStep05",
+  ],
+  fieldPreimageLengthMismatch: [
+    "fraudProofFieldPreimageLengthMismatch",
+    "fraudProofFieldPreimageLengthMismatchStep02Accepted",
+    "fraudProofFieldPreimageLengthMismatchStep02Forced",
+    "fraudProofFieldPreimageLengthMismatchStep03",
+  ],
+  fieldItemWidthIllegal: [
+    "fraudProofFieldItemWidthIllegal",
+    "fraudProofFieldItemWidthIllegalStep02",
+    "fraudProofFieldItemWidthIllegalStep03",
+  ],
+  witnessScriptDecoding: [
+    "fraudProofWitnessScriptDecoding",
+    "fraudProofWitnessScriptDecodingStep02",
+    "fraudProofWitnessScriptDecodingStep03",
+    "fraudProofWitnessScriptDecodingStep04",
+  ],
+  scriptIntegrityHashMissing: [
+    "fraudProofScriptIntegrityHashMissing",
+    "fraudProofScriptIntegrityHashMissingStep02",
+    "fraudProofScriptIntegrityHashMissingStep03",
+    "fraudProofScriptIntegrityHashMissingScriptGrammar",
+    "fraudProofScriptIntegrityHashMissingScriptScan",
+    "fraudProofScriptIntegrityHashMissingRedeemerGrammar",
+    "fraudProofScriptIntegrityHashMissingStep04",
+  ],
+  transactionOutputNonCanonical: [
+    "fraudProofTransactionOutputNonCanonical",
+    "fraudProofTransactionOutputNonCanonicalStep02",
+    "fraudProofTransactionOutputNonCanonicalStep03",
+    "fraudProofTransactionOutputNonCanonicalStep04",
+  ],
+  resolvedOutputNonCanonical: [
+    "fraudProofResolvedOutputNonCanonical",
+    "fraudProofResolvedOutputNonCanonicalStep02",
+    "fraudProofResolvedOutputNonCanonicalStep03",
+    "fraudProofResolvedOutputNonCanonicalStep04",
+    "fraudProofResolvedOutputNonCanonicalStep05",
+  ],
+  mintDeclaredAssetLimit: [
+    "fraudProofMintDeclaredAssetLimit",
+    "fraudProofMintDeclaredAssetLimitStep02",
+    "fraudProofMintDeclaredAssetLimitStep03",
+    "fraudProofMintDeclaredAssetLimitStep04",
+  ],
+  spendInputSignerMissing: [
+    "fraudProofSpendInputSignerMissing",
+    "fraudProofSpendInputSignerMissingStep02",
+    "fraudProofSpendInputSignerMissingStep03",
+    "fraudProofSpendInputSignerMissingStep04",
+    "fraudProofSpendInputSignerMissingStep05",
+  ],
+  protectedOutputSignerMissing: [
+    "fraudProofProtectedOutputSignerMissing",
+    "fraudProofProtectedOutputSignerMissingStep02",
+    "fraudProofProtectedOutputSignerMissingStep03",
+    "fraudProofProtectedOutputSignerMissingStep04",
+    "fraudProofProtectedOutputSignerMissingStep05",
+  ],
+  observersForbiddenOnUntaggedNetwork: [
+    "fraudProofObserversForbiddenOnUntaggedNetwork",
+    "fraudProofObserversForbiddenOnUntaggedNetworkStep02",
+  ],
+  outputReferenceScriptDecoding: [
+    "fraudProofOutputReferenceScriptDecoding",
+    "fraudProofOutputReferenceScriptDecodingStep02",
+    "fraudProofOutputReferenceScriptDecodingStep03",
+    "fraudProofOutputReferenceScriptDecodingStep04",
+    "fraudProofOutputReferenceScriptDecodingStep05",
+    "fraudProofOutputReferenceScriptDecodingStep06",
+  ],
+  executionSourceScriptDecoding: [
+    "fraudProofExecutionSourceScriptDecoding",
+    "fraudProofExecutionSourceScriptDecodingStep02",
+    "fraudProofExecutionSourceScriptDecodingStep03",
+    "fraudProofExecutionSourceScriptDecodingStep04",
+    "fraudProofExecutionSourceScriptDecodingStep05",
+  ],
+  observerOrderInvalid: [
+    "fraudProofObserverOrderInvalid",
+    "fraudProofObserverOrderInvalidStep02",
+    "fraudProofObserverOrderInvalidStep03",
+    "fraudProofObserverOrderInvalidStep04",
+  ],
+  redeemerCanonicity: [
+    "fraudProofRedeemerCanonicity",
+    "fraudProofRedeemerCanonicityStep02",
+    "fraudProofRedeemerCanonicityStep03",
+  ],
+  receivePurposeLanguage: [
+    "fraudProofReceivePurposeLanguage",
+    "fraudProofReceivePurposeLanguageStep02",
+    "fraudProofReceivePurposeLanguageStep03",
+  ],
+  unusedScriptWitness: [
+    "fraudProofUnusedScriptWitness",
+    "fraudProofUnusedScriptWitnessStep02",
+    "fraudProofUnusedScriptWitnessStep03",
+    "fraudProofUnusedScriptWitnessStep04",
+    "fraudProofUnusedScriptWitnessStep05",
+    "fraudProofUnusedScriptWitnessStep06",
+  ],
+  missingScriptSource: [
+    "fraudProofMissingScriptSource",
+    "fraudProofMissingScriptSourceStep02",
+    "fraudProofMissingScriptSourceStep03",
+    "fraudProofMissingScriptSourceStep04",
+    "fraudProofMissingScriptSourceStep05",
+    "fraudProofMissingScriptSourceStep06",
+  ],
+  missingRedeemer: [
+    "fraudProofMissingRedeemer",
+    "fraudProofMissingRedeemerStep02",
+    "fraudProofMissingRedeemerStep02a",
+    "fraudProofMissingRedeemerStep02b",
+    "fraudProofMissingRedeemerStep03",
+    "fraudProofMissingRedeemerStep04",
+    "fraudProofMissingRedeemerStep05",
+  ],
+  unusedRedeemer: [
+    "fraudProofUnusedRedeemer",
+    "fraudProofUnusedRedeemerStep02",
+    "fraudProofUnusedRedeemerStep02a",
+    "fraudProofUnusedRedeemerStep02b",
+    "fraudProofUnusedRedeemerStep02c",
+    "fraudProofUnusedRedeemerStep03",
+    "fraudProofUnusedRedeemerStep04",
+    "fraudProofUnusedRedeemerStep05",
+    "fraudProofUnusedRedeemerStep06",
+  ],
+  executionNativeScriptInvalid: [
+    "fraudProofExecutionNativeScriptInvalid",
+    "fraudProofExecutionNativeScriptInvalidStep02",
+    "fraudProofExecutionNativeScriptInvalidStep03",
+    "fraudProofExecutionNativeScriptInvalidStep04",
+    "fraudProofExecutionNativeScriptInvalidStep05",
+    "fraudProofExecutionNativeScriptInvalidStep06",
+    "fraudProofExecutionNativeScriptInvalidAcceptedReconstructionInit",
+    "fraudProofExecutionNativeScriptInvalidAcceptedSpendPrefix",
+    "fraudProofExecutionNativeScriptInvalidAcceptedMintPrefix",
+    "fraudProofExecutionNativeScriptInvalidAcceptedObserverPrefix",
+    "fraudProofExecutionNativeScriptInvalidAcceptedReceivePrefix",
+    "fraudProofExecutionNativeScriptInvalidAcceptedInlineSource",
+    "fraudProofExecutionNativeScriptInvalidAcceptedReferenceSource",
+  ],
+  scriptIntegrityHashMismatch: [
+    "fraudProofScriptIntegrityHashMismatch",
+    "fraudProofScriptIntegrityHashMismatchStep02",
+    "fraudProofScriptIntegrityHashMismatchStep03",
+    "fraudProofScriptIntegrityHashMismatchStep04",
+    "fraudProofScriptIntegrityHashMismatchStep05",
+  ],
+  distinctAssetAccumulationLimit: [
+    "fraudProofDistinctAssetAccumulationLimit",
+    "fraudProofDistinctAssetAccumulationLimitStep02",
+    "fraudProofDistinctAssetAccumulationLimitStep03",
+    "fraudProofDistinctAssetAccumulationLimitStep04",
+    "fraudProofDistinctAssetAccumulationLimitStep05",
+    "fraudProofDistinctAssetAccumulationLimitStep06",
   ],
 } as const satisfies Record<
   SupportedFaultProofCategoryName,
@@ -738,6 +922,50 @@ const categoryLabel = (
       return "native-script-invalid";
     case "minAda":
       return "min-ada";
+    case "fieldPreimageLengthMismatch":
+      return "field-preimage-length-mismatch";
+    case "fieldItemWidthIllegal":
+      return "field-item-width-illegal";
+    case "witnessScriptDecoding":
+      return "witness-script-decoding";
+    case "scriptIntegrityHashMissing":
+      return "script-integrity-hash-missing";
+    case "transactionOutputNonCanonical":
+      return "transaction-output-non-canonical";
+    case "resolvedOutputNonCanonical":
+      return "resolved-output-non-canonical";
+    case "mintDeclaredAssetLimit":
+      return "mint-declared-asset-limit";
+    case "spendInputSignerMissing":
+      return "spend-input-signer-missing";
+    case "protectedOutputSignerMissing":
+      return "protected-output-signer-missing";
+    case "observersForbiddenOnUntaggedNetwork":
+      return "observers-forbidden-on-untagged-network";
+    case "outputReferenceScriptDecoding":
+      return "output-reference-script-decoding";
+    case "executionSourceScriptDecoding":
+      return "execution-source-script-decoding";
+    case "observerOrderInvalid":
+      return "observer-order-invalid";
+    case "redeemerCanonicity":
+      return "redeemer-canonicity";
+    case "receivePurposeLanguage":
+      return "receive-purpose-language";
+    case "unusedScriptWitness":
+      return "unused-script-witness";
+    case "missingScriptSource":
+      return "missing-script-source";
+    case "missingRedeemer":
+      return "missing-redeemer";
+    case "unusedRedeemer":
+      return "unused-redeemer";
+    case "executionNativeScriptInvalid":
+      return "execution-native-script-invalid";
+    case "scriptIntegrityHashMismatch":
+      return "script-integrity-hash-mismatch";
+    case "distinctAssetAccumulationLimit":
+      return "distinct-asset-accumulation-limit";
   }
 };
 
@@ -892,6 +1120,94 @@ const buildOneCategoryFaultProofContracts = async ({
       );
     case "minAda":
       return await Effect.runPromise(buildMinAdaFaultProofContracts(params));
+    case "fieldPreimageLengthMismatch":
+      return await Effect.runPromise(
+        buildFieldPreimageLengthMismatchFaultProofContracts(params),
+      );
+    case "fieldItemWidthIllegal":
+      return await Effect.runPromise(
+        buildFieldItemWidthIllegalFaultProofContracts(params),
+      );
+    case "witnessScriptDecoding":
+      return await Effect.runPromise(
+        buildWitnessScriptDecodingFaultProofContracts(params),
+      );
+    case "scriptIntegrityHashMissing":
+      return await Effect.runPromise(
+        buildScriptIntegrityHashMissingFaultProofContracts(params),
+      );
+    case "transactionOutputNonCanonical":
+      return await Effect.runPromise(
+        buildTransactionOutputNonCanonicalFaultProofContracts(params),
+      );
+    case "resolvedOutputNonCanonical":
+      return await Effect.runPromise(
+        buildResolvedOutputNonCanonicalFaultProofContracts(params),
+      );
+    case "mintDeclaredAssetLimit":
+      return await Effect.runPromise(
+        buildMintDeclaredAssetLimitFaultProofContracts(params),
+      );
+    case "spendInputSignerMissing":
+      return await Effect.runPromise(
+        buildSpendInputSignerMissingFaultProofContracts(params),
+      );
+    case "protectedOutputSignerMissing":
+      return await Effect.runPromise(
+        buildProtectedOutputSignerMissingFaultProofContracts(params),
+      );
+    case "observersForbiddenOnUntaggedNetwork":
+      return await Effect.runPromise(
+        buildObserversForbiddenOnUntaggedNetworkFaultProofContracts(params),
+      );
+    case "outputReferenceScriptDecoding":
+      return await Effect.runPromise(
+        buildOutputReferenceScriptDecodingFaultProofContracts(params),
+      );
+    case "executionSourceScriptDecoding":
+      return await Effect.runPromise(
+        buildExecutionSourceScriptDecodingFaultProofContracts(params),
+      );
+    case "observerOrderInvalid":
+      return await Effect.runPromise(
+        buildObserverOrderInvalidFaultProofContracts(params),
+      );
+    case "redeemerCanonicity":
+      return await Effect.runPromise(
+        buildRedeemerCanonicityFaultProofContracts(params),
+      );
+    case "receivePurposeLanguage":
+      return await Effect.runPromise(
+        buildReceivePurposeLanguageFaultProofContracts(params),
+      );
+    case "unusedScriptWitness":
+      return await Effect.runPromise(
+        buildUnusedScriptWitnessFaultProofContracts(params),
+      );
+    case "missingScriptSource":
+      return await Effect.runPromise(
+        buildMissingScriptSourceFaultProofContracts(params),
+      );
+    case "missingRedeemer":
+      return await Effect.runPromise(
+        buildMissingRedeemerFaultProofContracts(params),
+      );
+    case "unusedRedeemer":
+      return await Effect.runPromise(
+        buildUnusedRedeemerFaultProofContracts(params),
+      );
+    case "executionNativeScriptInvalid":
+      return await Effect.runPromise(
+        buildExecutionNativeScriptInvalidFaultProofContracts(params),
+      );
+    case "scriptIntegrityHashMismatch":
+      return await Effect.runPromise(
+        buildScriptIntegrityHashMismatchFaultProofContracts(params),
+      );
+    case "distinctAssetAccumulationLimit":
+      return await Effect.runPromise(
+        buildDistinctAssetAccumulationLimitFaultProofContracts(params),
+      );
   }
 };
 

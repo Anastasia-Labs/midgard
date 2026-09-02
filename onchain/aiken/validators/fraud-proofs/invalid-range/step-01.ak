@@ -13,13 +13,21 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use env
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, pass_native_tx_to_next_step_carried}
-use midgard/fraud_proofs/invalid_range/step_01.{Datum, SpendRedeemer}
+use midgard/fraud_proofs/common.{
+  cancel, continue, pass_native_tx_to_next_step_carried,
+}
+use midgard/fraud_proofs/invalid_range/step_01.{
+  AcceptedSource, Args, Datum, ForcedSource, SpendRedeemer,
+}
 use midgard/fraud_proofs/invalid_range/step_02
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
+use midgard/fraud_proofs/native_tx/compact.{
+  verify_native_tx_compact_cbor_v1, verify_native_tx_proof_source_v1,
+}
 use midgard/fraud_proofs/native_tx/types.{
   MidgardTransaction, MidgardTransactionBody, NativeTxBodyCompact,
 }
+use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
 use midgard/ledger_state.{HeaderV1}
 
 fn normalize_native_validity_range(
@@ -71,7 +79,7 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(tx_inclusion_args) -> {
+      ct.Continue(Args{source: AcceptedSource { inclusion: tx_inclusion_args }}) -> {
         // 1. Generic validations for passing the provided bad tx to the next
         //    step must pass.
         let
@@ -107,6 +115,7 @@ validator main(
         //    challenged header.
         expect output_script_hash == step_02_validator_script_hash
         let expected_output_state: Data = step_02.State {
+          subject: substrate.bind_accepted_subject_v1(bad_tx_view),
           block_slot,
           bad_tx_normalized_validity_range,
         }
@@ -114,6 +123,50 @@ validator main(
 
         // Done.
         True
+      }
+      ct.Continue(Args{source: ForcedSource {
+        input_index,
+        output_index,
+        header,
+        membership,
+        direction,
+      }}) -> {
+        let Transaction { inputs, outputs, .. } = tx
+        expect Some(step_datum) = datum
+        let _, thread_name, _, input_state, output_hash, output_state <- continue(
+          computation_thread_token_policy_id,
+          step_datum,
+          input_index,
+          output_index,
+          own_out_ref,
+          inputs,
+          outputs,
+        )
+        expect None = input_state
+        let subject = substrate.bind_forced_subject_to_thread_v1(
+          thread_name,
+          header,
+          membership,
+          direction,
+        )
+        let leaf = membership.value
+        let Pair(verified, _) = verify_native_tx_proof_source_v1(
+          leaf.tx_id,
+          leaf.source.compact_cbor,
+          leaf.source.witness_set_compact_cbor,
+          leaf.source.field_preimage_lengths_cbor,
+        )
+        let expected: Data = step_02.State {
+          subject,
+          block_slot: header.block_slot,
+          bad_tx_normalized_validity_range: normalize_native_validity_range(
+            verified.tx_compact.body,
+          ),
+        }
+        and {
+          output_hash == step_02_validator_script_hash,
+          output_state == expected,
+        }
       }
     }
   }
@@ -203,6 +256,9 @@ fn run_step_01(
   expected_range: vrn.NormalizedTimeRange,
 ) -> Bool {
   let expected_output_state: Data = step_02.State {
+    subject: substrate.bind_accepted_subject_v1(
+      verify_native_tx_compact_cbor_v1(claimed.tx_id, claimed.compact_cbor),
+    ),
     block_slot: header.block_slot,
     bad_tx_normalized_validity_range: expected_range,
   }
@@ -218,7 +274,13 @@ fn run_step_01(
     fixture.computation_thread_policy_id,
     fixture.hub_oracle_script_hash,
     Some(fixture.step_datum_without_state()),
-    ct.Continue(fixture.native_inclusion_carriage_v1(claimed)),
+    ct.Continue(
+      Args {
+        source: AcceptedSource {
+          inclusion: fixture.native_inclusion_carriage_v1(claimed),
+        },
+      },
+    ),
     fixture.own_out_ref(),
     l1_tx,
   )
@@ -274,6 +336,9 @@ fn run_step_01_published(
   steps: mpf.Proof,
 ) -> Bool {
   let expected_output_state: Data = step_02.State {
+    subject: substrate.bind_accepted_subject_v1(
+      verify_native_tx_compact_cbor_v1(block.tx_id, block.compact_cbor),
+    ),
     block_slot: block.header.block_slot,
     bad_tx_normalized_validity_range: vrn.ClosedRange { lower: 5, upper: 8 },
   }
@@ -283,7 +348,14 @@ fn run_step_01_published(
     fixture.hub_oracle_script_hash,
     Some(fixture.step_datum_without_state()),
     ct.Continue(
-      fixture.published_chunk_inclusion_carriage_v1(carriage_block, chunk_count),
+      Args {
+        source: AcceptedSource {
+          inclusion: fixture.published_chunk_inclusion_carriage_v1(
+            carriage_block,
+            chunk_count,
+          ),
+        },
+      },
     ),
     fixture.own_out_ref(),
     fixture.continue_step_chunked_l1_tx_v1(

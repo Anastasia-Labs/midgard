@@ -15,6 +15,14 @@ pub type NetworkIdFaultV1 {
   /// A wrong-network address authenticated directly as a member of the
   /// challenged header's post-block `utxos_root`.
   OutputNetworkUtxo { observed_network_id: Int }
+  /// The exact authenticated forced leaf says `NetworkIdMismatch`.  The
+  /// terminal step proves the complete network-id predicate false.
+  ForcedNetworkIdMismatch
+}
+
+pub type ForcedDispatchV1 {
+  input_index: Int,
+  output_index: Int,
 }
 
 pub type PostUtxoMembershipV1 {
@@ -45,6 +53,7 @@ pub type PostUtxoStateV1 {
 pub type Args {
   tx_inclusion: Option<NativeTxInclusionCarriage>,
   post_utxo_membership: Option<PostUtxoMembershipV1>,
+  forced_source: Option<ForcedDispatchV1>,
   fault: NetworkIdFaultV1,
 }
 

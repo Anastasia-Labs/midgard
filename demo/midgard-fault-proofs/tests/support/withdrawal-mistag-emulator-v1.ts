@@ -25,6 +25,10 @@ import {
   type WithdrawalMistagCatalogueCategoryV1,
 } from "../../src/withdrawal-mistag/index.js";
 import {
+  captureEmulatorSubmission,
+  type CompleteSignedTransactionMeasurement,
+} from "./emulator/measurement.js";
+import {
   alignUnixTimeToEmulatorSlotBoundary,
   buildRemovalDeploymentInfo,
   funderPaymentKeyHash,
@@ -200,7 +204,7 @@ const buildEvidenceMaterialV1 = async (
           output_cbor: outputCbor.toString("hex"),
           membership_proof: ledgerProof,
         },
-      } as SDK.WithdrawalMistagLedgerEvidenceV1,
+      },
     },
   };
 };
@@ -274,18 +278,28 @@ export const publishWithdrawalMistagScriptsV1 = async ({
   readonly harness: Awaited<
     ReturnType<typeof makeWithdrawalMistagEmulatorHarnessV1>
   >;
-}): Promise<readonly [UTxO, UTxO, UTxO, UTxO, UTxO]> => {
+}) => {
   const refs: UTxO[] = [];
+  const publicationMeasurements = [];
   for (const [index, step] of harness.withdrawalMistag.steps.entries()) {
-    const { utxo } = await publishPlainReferenceScriptUtxo({
-      lucid: harness.funderLucid,
-      script: step.spendingScript as Script,
-      label: `withdrawal-mistag step-0${(index + 1).toString()}`,
-      oversized: true,
-    });
+    const { utxo, publicationMeasurement } =
+      await publishPlainReferenceScriptUtxo({
+        lucid: harness.funderLucid,
+        script: step.spendingScript as Script,
+        label: `withdrawal-mistag step-0${(index + 1).toString()}`,
+      });
+    if (publicationMeasurement.l1ByteMargin < 1_024) {
+      throw new Error(
+        `withdrawal-mistag step-0${(index + 1).toString()} publication has only ${publicationMeasurement.l1ByteMargin.toString()} bytes of L1 headroom`,
+      );
+    }
     refs.push(utxo);
+    publicationMeasurements.push(publicationMeasurement);
   }
-  return refs as unknown as readonly [UTxO, UTxO, UTxO, UTxO, UTxO];
+  return {
+    refs: refs as unknown as readonly [UTxO, UTxO, UTxO, UTxO, UTxO],
+    publicationMeasurements,
+  };
 };
 
 export const driveWithdrawalMistagToFraudV1 = async ({
@@ -301,9 +315,33 @@ export const driveWithdrawalMistagToFraudV1 = async ({
   >;
   readonly refs: readonly [UTxO, UTxO, UTxO, UTxO, UTxO];
 }) => {
+  const transactionMeasurements: Record<
+    string,
+    CompleteSignedTransactionMeasurement
+  > = {};
   const stage = async <T>(label: string, run: () => Promise<T>): Promise<T> => {
     try {
-      return await run();
+      const captured = await captureEmulatorSubmission(harness.emulator, run);
+      const measurement = captured.measurement;
+      const { maxTxExMem, maxTxExSteps } = harness.emulator.protocolParameters;
+      if (
+        measurement.l1ByteMargin <= 0 ||
+        measurement.executionMemory > maxTxExMem ||
+        measurement.executionSteps > maxTxExSteps
+      ) {
+        throw new Error(
+          `${label} exceeds the real L1 transaction envelope: ${JSON.stringify({
+            completeSignedBytes: measurement.completeSignedBytes,
+            l1ByteMargin: measurement.l1ByteMargin,
+            executionMemory: measurement.executionMemory.toString(),
+            maxTxExMem: maxTxExMem.toString(),
+            executionSteps: measurement.executionSteps.toString(),
+            maxTxExSteps: maxTxExSteps.toString(),
+          })}`,
+        );
+      }
+      transactionMeasurements[label] = measurement;
+      return captured.result;
     } catch (error) {
       throw new Error(
         `withdrawal-mistag ${label} failed: ${JSON.stringify(error)}`,
@@ -367,7 +405,15 @@ export const driveWithdrawalMistagToFraudV1 = async ({
       witnessReferenceScripts: harness.witnessReferenceScripts,
     }),
   );
-  return { init, step01, step02, step03, step04, fraud };
+  return {
+    init,
+    step01,
+    step02,
+    step03,
+    step04,
+    fraud,
+    transactionMeasurements,
+  };
 };
 
 export const initWithdrawalMistagThreadV1 = async ({

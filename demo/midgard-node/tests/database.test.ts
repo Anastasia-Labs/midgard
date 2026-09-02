@@ -4629,6 +4629,7 @@ describe("PendingBlockFinalizationsDB", () => {
       transitionTraceMembers: [],
       eventToStepMembers: [],
       validationTraceMembers: [],
+      validationTraceWitnessMembers: [],
       ledgerDelta: {
         spent: [],
         produced: [],
@@ -7823,6 +7824,7 @@ describe("Phase 3 MPF durable state", () => {
                 transitionTraceMembers: [],
                 eventToStepMembers: [],
                 validationTraceMembers: [],
+                validationTraceWitnessMembers: [],
                 ledgerDelta: {
                   spent,
                   produced: produced.map((item) => ({
@@ -8230,6 +8232,7 @@ describe("Phase 3 MPF durable state", () => {
             transitionTraceMembers: [],
             eventToStepMembers: [],
             validationTraceMembers: [],
+            validationTraceWitnessMembers: [],
             ledgerDelta: {
               spent: journalState.ledgerDelta.spent,
               produced: journalState.ledgerDelta.produced.map((produced) => ({

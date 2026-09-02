@@ -195,6 +195,7 @@ export const makePayloadFixture = async (
       transition_trace: transitionEntries,
       event_to_step: eventToStepEntries,
       validation_traces: validationTraceEntries,
+      validation_trace_witnesses: [],
       counts,
     },
   };

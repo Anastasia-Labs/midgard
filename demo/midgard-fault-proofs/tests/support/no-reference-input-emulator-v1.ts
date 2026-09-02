@@ -294,7 +294,6 @@ export const publishNoReferenceInputReferenceScriptsV1 = async ({
       lucid,
       script,
       label: `no-reference-input step-0${(index + 1).toString()}`,
-      oversized: true,
     });
     published.push(utxo);
   }

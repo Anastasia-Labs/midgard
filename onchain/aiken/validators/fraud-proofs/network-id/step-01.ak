@@ -26,9 +26,9 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/fraud_proofs/network_id/rule.{is_supported_network_id_v1}
 use midgard/fraud_proofs/network_id/step_01.{
-  Args, Datum, Introduced, NetworkChanged, NetworkIdFaultV1, OutputNetwork,
-  OutputNetworkUtxo, PostUtxoMembershipV1, PostUtxoStateV1, SpendRedeemer,
-  TransactionNetwork,
+  Args, Datum, ForcedDispatchV1, ForcedNetworkIdMismatch, Introduced,
+  NetworkChanged, NetworkIdFaultV1, OutputNetwork, OutputNetworkUtxo,
+  PostUtxoMembershipV1, PostUtxoStateV1, SpendRedeemer, TransactionNetwork,
 }
 use midgard/fraud_proofs/network_id/step_02 as step_02
 use midgard/fraud_proofs/transition_trace/proof.{ledger_outref_key}
@@ -42,6 +42,7 @@ use midgard/state_queue
 
 validator main(
   step_02_validator_script_hash: ScriptHash,
+  forced_step_validator_script_hash: ScriptHash,
   computation_thread_token_policy_id: PolicyId,
   hub_oracle: ScriptHash,
   expected_network_id: Int,
@@ -62,12 +63,18 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(Args { tx_inclusion, post_utxo_membership, fault }) -> {
+      ct.Continue(Args {
+        tx_inclusion,
+        post_utxo_membership,
+        forced_source,
+        fault,
+      }) -> {
         expect is_supported_network_id_v1(expected_network_id)
         when fault is {
           TransactionNetwork -> {
             expect Some(inclusion) = tx_inclusion
             expect None = post_utxo_membership
+            expect None = forced_source
             pass_transaction_claim(
               step_02_validator_script_hash,
               computation_thread_token_policy_id,
@@ -84,6 +91,7 @@ validator main(
             expect output_index >= 0
             expect Some(inclusion) = tx_inclusion
             expect None = post_utxo_membership
+            expect None = forced_source
             pass_transaction_claim(
               step_02_validator_script_hash,
               computation_thread_token_policy_id,
@@ -99,6 +107,7 @@ validator main(
           OutputNetworkUtxo { .. } -> {
             expect None = tx_inclusion
             expect Some(membership) = post_utxo_membership
+            expect None = forced_source
             pass_post_utxo_claim(
               step_02_validator_script_hash,
               computation_thread_token_policy_id,
@@ -111,6 +120,19 @@ validator main(
               tx,
             )
           }
+          ForcedNetworkIdMismatch -> {
+            expect None = tx_inclusion
+            expect None = post_utxo_membership
+            expect Some(source) = forced_source
+            pass_forced_claim(
+              forced_step_validator_script_hash,
+              computation_thread_token_policy_id,
+              datum,
+              source,
+              own_out_ref,
+              tx,
+            )
+          }
         }
       }
     }
@@ -118,6 +140,33 @@ validator main(
 
   else(_) {
     fail
+  }
+}
+
+fn pass_forced_claim(
+  forced_step_validator_script_hash: ScriptHash,
+  computation_thread_token_policy_id: PolicyId,
+  datum: Option<Datum>,
+  source: ForcedDispatchV1,
+  own_out_ref: OutputReference,
+  tx: Transaction,
+) -> Bool {
+  let Transaction { inputs, outputs, .. } = tx
+  expect Some(step_datum) = datum
+  let _, _, _, input_state, output_script_hash, output_state_data <- continue(
+    computation_thread_token_policy_id,
+    step_datum,
+    source.input_index,
+    source.output_index,
+    own_out_ref,
+    inputs,
+    outputs,
+  )
+  let empty_state: Data = None
+  and {
+    input_state == None,
+    output_script_hash == forced_step_validator_script_hash,
+    output_state_data == empty_state,
   }
 }
 
@@ -162,6 +211,7 @@ fn pass_transaction_claim(
     expected_network_id,
     fault,
     post_utxo: None,
+    forced_source_key: None,
   }
   expect output_state_data == expected_output_state
   True
@@ -246,6 +296,7 @@ fn pass_post_utxo_claim(
         predecessor: membership.predecessor,
       },
     ),
+    forced_source_key: None,
   }
   expect output_state_data == expected_output_state
   True
@@ -346,12 +397,18 @@ fn run_post_utxo_step_01_with_withdrawal_claim(
   let expected_state = post_utxo_state_data(block, membership, fault)
   main.spend(
     fixture.next_step_script_hash,
+    fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
     fixture.hub_oracle_script_hash,
     0,
     Some(fixture.step_datum_without_state()),
     ct.Continue(
-      Args { tx_inclusion: None, post_utxo_membership: Some(membership), fault },
+      Args {
+        tx_inclusion: None,
+        post_utxo_membership: Some(membership),
+        forced_source: None,
+        fault,
+      },
     ),
     fixture.own_out_ref(),
     fixture.continue_step_l1_tx_v1(
@@ -382,6 +439,7 @@ fn post_utxo_state_data(
         predecessor: membership.predecessor,
       },
     ),
+    forced_source_key: None,
   }
   state
 }
@@ -398,8 +456,10 @@ fn run_step_01(
     expected_network_id,
     fault,
     post_utxo: None,
+    forced_source_key: None,
   }
   main.spend(
+    fixture.next_step_script_hash,
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
     fixture.hub_oracle_script_hash,
@@ -409,6 +469,7 @@ fn run_step_01(
       Args {
         tx_inclusion: Some(fixture.native_inclusion_carriage_v1(block)),
         post_utxo_membership: None,
+        forced_source: None,
         fault,
       },
     ),
@@ -586,6 +647,7 @@ test network_id_step_01_authenticates_a_maximum_64_step_published_post_membershi
     ),
     main.spend(
       fixture.next_step_script_hash,
+      fixture.next_step_script_hash,
       fixture.computation_thread_policy_id,
       fixture.hub_oracle_script_hash,
       0,
@@ -594,6 +656,7 @@ test network_id_step_01_authenticates_a_maximum_64_step_published_post_membershi
         Args {
           tx_inclusion: None,
           post_utxo_membership: Some(membership),
+          forced_source: None,
           fault,
         },
       ),
@@ -654,6 +717,7 @@ test network_id_step_01_rejects_reordered_published_post_chunks() fail {
     ),
     main.spend(
       fixture.next_step_script_hash,
+      fixture.next_step_script_hash,
       fixture.computation_thread_policy_id,
       fixture.hub_oracle_script_hash,
       0,
@@ -662,6 +726,7 @@ test network_id_step_01_rejects_reordered_published_post_chunks() fail {
         Args {
           tx_inclusion: None,
           post_utxo_membership: Some(membership),
+          forced_source: None,
           fault,
         },
       ),
@@ -708,12 +773,18 @@ test network_id_step_01_rejects_a_cross_step_chunk_order_mismatch() fail {
   }
   main.spend(
     fixture.next_step_script_hash,
+    fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
     fixture.hub_oracle_script_hash,
     0,
     Some(fixture.step_datum_without_state()),
     ct.Continue(
-      Args { tx_inclusion: None, post_utxo_membership: Some(membership), fault },
+      Args {
+        tx_inclusion: None,
+        post_utxo_membership: Some(membership),
+        forced_source: None,
+        fault,
+      },
     ),
     fixture.own_out_ref(),
     fixture.continue_step_chunked_l1_tx_v1(

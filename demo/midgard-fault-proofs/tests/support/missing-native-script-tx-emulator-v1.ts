@@ -315,7 +315,6 @@ export const publishMissingNativeScriptTxReferenceScriptsV1 = async ({
       lucid,
       script: step.spendingScript as Script,
       label: `missing-native-script-tx step-0${(index + 1).toString()}`,
-      oversized: true,
     });
     published.push(utxo);
   }

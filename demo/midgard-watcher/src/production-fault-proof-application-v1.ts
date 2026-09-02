@@ -10,10 +10,15 @@ import {
   createCommittedFieldShapeProductionWorkflowRunnerV1,
   createCompleteCanonicalReplayUnionV1,
   createDaHashPreimageProductionWorkflowRunnerV1,
+  createDistinctAssetAccumulationProductionWorkflowRunnerV1,
   createDoubleSpendProductionWorkflowRunnerV1,
   createDoubleWithdrawProductionWorkflowRunnerV1,
+  createExecutionNativeScriptInvalidProductionWorkflowRunnerV1,
+  createExecutionSourceScriptDecodingProductionWorkflowRunnerV1,
   createFabricatedDepositProductionWorkflowRunnerV1,
   createFabricatedWithdrawalProductionWorkflowRunnerV1,
+  createFieldItemWidthIllegalProductionWorkflowRunnerV1,
+  createFieldPreimageLengthProductionWorkflowRunnerV1,
   createHttpStateQueueMutationLeaseCoordinator,
   createInputNoIdxProductionWorkflowRunnerV1,
   createInputSetUniquenessProductionWorkflowRunnerV1,
@@ -23,10 +28,14 @@ import {
   createManifestBoundCanonicalDecodabilityWorkflowV1,
   createManifestBoundCommittedFieldShapeWorkflowV1,
   createManifestBoundDaHashPreimageWorkflowV1,
+  createManifestBoundDistinctAssetAccumulationWorkflowV1,
   createManifestBoundDoubleSpendWorkflowV1,
   createManifestBoundDoubleWithdrawWorkflowV1,
+  createManifestBoundExecutionSourceScriptDecodingWorkflowV1,
   createManifestBoundFabricatedDepositWorkflowV1,
   createManifestBoundFabricatedWithdrawalWorkflowV1,
+  createManifestBoundFieldItemWidthIllegalWorkflowV1,
+  createManifestBoundFieldPreimageLengthWorkflowV1,
   createManifestBoundInputNoIdxWorkflowV1,
   createManifestBoundInputSetUniquenessWorkflowV1,
   createManifestBoundInvalidRangeWorkflowV1,
@@ -34,37 +43,77 @@ import {
   createManifestBoundL2TxMistagWorkflowV1,
   createManifestBoundMinAdaWorkflowV1,
   createManifestBoundMinFeeWorkflowV1,
+  createManifestBoundMintDeclaredAssetLimitWorkflowV1,
   createManifestBoundMissingNativeScriptTxWorkflowV1,
   createManifestBoundMissingNativeScriptUtxoWorkflowV1,
+  createManifestBoundMissingRedeemerWorkflowV1,
+  createManifestBoundMissingScriptSourceWorkflowV1,
   createManifestBoundMissingSignatureWorkflowV1,
   createManifestBoundNativeScriptInvalidWorkflowV1,
   createManifestBoundNetworkIdWorkflowV1,
   createManifestBoundNonExistentInputWorkflowV1,
   createManifestBoundNoReferenceInputWorkflowV1,
+  createManifestBoundObserverOrderInvalidWorkflowV1,
+  createManifestBoundObserversForbiddenWorkflowV1,
+  createManifestBoundOutputReferenceScriptDecodingWorkflowV1,
+  createManifestBoundProtectedOutputSignerMissingWorkflowV1,
+  createManifestBoundReceivePurposeLanguageWorkflowV1,
+  createManifestBoundRedeemerCanonicityWorkflowV1,
   createManifestBoundReferenceInputNoIdxWorkflowV1,
+  createManifestBoundResolvedOutputNonCanonicalWorkflowV1,
+  createManifestBoundScriptIntegrityHashMismatchWorkflowV1,
+  createManifestBoundScriptIntegrityHashMissingWorkflowV1,
+  createManifestBoundSpendInputSignerMissingWorkflowV1,
+  createManifestBoundTransactionOutputNonCanonicalWorkflowV1,
+  createManifestBoundUnusedRedeemerWorkflowV1,
+  createManifestBoundUnusedScriptWitnessWorkflowV1,
   createManifestBoundWithdrawnInputWorkflowV1,
   createManifestBoundWithdrawnReferenceInputWorkflowV1,
+  createManifestBoundWitnessScriptDecodingWorkflowV1,
   createManifestBoundZeroInputWorkflowV1,
   createMinAdaProductionWorkflowRunnerV1,
   createMinFeeProductionWorkflowRunnerV1,
+  createMintDeclaredAssetLimitProductionWorkflowRunnerV1,
   createMissingNativeScriptTxProductionWorkflowRunnerV1,
   createMissingNativeScriptUtxoProductionWorkflowRunnerV1,
+  createMissingRedeemerProductionWorkflowRunnerV1,
+  createMissingScriptSourceProductionWorkflowRunnerV1,
   createMissingSignatureProductionWorkflowRunnerV1,
   createNativeScriptInvalidProductionWorkflowRunnerV1,
   createNetworkIdProductionWorkflowRunnerV1,
   createNonExistentInputProductionWorkflowRunnerV1,
   createNoReferenceInputProductionWorkflowRunnerV1,
+  createObserverOrderInvalidProductionWorkflowRunnerV1,
+  createObserversForbiddenOnUntaggedNetworkProductionWorkflowRunnerV1,
+  createOutputReferenceScriptDecodingProductionWorkflowRunnerV1,
   createProductionExternalHistoricalNativeScriptSourceRosterV1,
   createProductionHeaderClassifierV1,
   createProductionHistoricalNativeScriptHistorySourceV1,
   createProductionHistoricalNativeScriptProviderRosterV1,
+  createProtectedOutputSignerMissingProductionWorkflowRunnerV1,
+  createReceivePurposeLanguageProductionWorkflowRunnerV1,
+  createRedeemerCanonicityProductionWorkflowRunnerV1,
   createReferenceInputNoIdxProductionWorkflowRunnerV1,
+  createResolvedOutputNonCanonicalProductionWorkflowRunnerV1,
+  createScriptIntegrityHashMismatchProductionWorkflowRunnerV1,
+  createScriptIntegrityHashMissingProductionWorkflowRunnerV1,
+  createSpendInputSignerMissingProductionWorkflowRunnerV1,
+  createTransactionOutputNonCanonicalProductionWorkflowRunnerV1,
+  createUnusedRedeemerProductionWorkflowRunnerV1,
+  createUnusedScriptWitnessProductionWorkflowRunnerV1,
   createWithdrawnInputProductionWorkflowRunnerV1,
   createWithdrawnReferenceInputProductionWorkflowRunnerV1,
+  createWitnessScriptDecodingProductionWorkflowRunnerV1,
   createZeroInputProductionWorkflowRunnerV1,
   DA_HASH_PREIMAGE_COMPLETE_CANONICAL_REPLAY_V1,
+  DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY_V1,
   DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY_V1,
   DOUBLE_WITHDRAW_COMPLETE_CANONICAL_REPLAY_V1,
+  EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY_V1,
+  EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY_V1,
+  executionNativeScriptInvalidV1,
+  FIELD_ITEM_WIDTH_ILLEGAL_COMPLETE_CANONICAL_REPLAY_V1,
+  FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY_V1,
   type HistoricalNativeScriptSourceRosterV1,
   INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY_V1,
   INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY_V1,
@@ -76,10 +125,14 @@ import {
   type ManifestBoundCanonicalDecodabilityWorkflowConfigV1,
   type ManifestBoundCommittedFieldShapeWorkflowConfigV1,
   type ManifestBoundDaHashPreimageWorkflowConfigV1,
+  type ManifestBoundDistinctAssetAccumulationWorkflowConfigV1,
   type ManifestBoundDoubleSpendWorkflowConfigV1,
   type ManifestBoundDoubleWithdrawWorkflowConfigV1,
+  type ManifestBoundExecutionSourceScriptDecodingWorkflowConfigV1,
   type ManifestBoundFabricatedDepositWorkflowConfigV1,
   type ManifestBoundFabricatedWithdrawalWorkflowConfigV1,
+  type ManifestBoundFieldItemWidthIllegalWorkflowConfigV1,
+  type ManifestBoundFieldPreimageLengthWorkflowConfigV1,
   type ManifestBoundInputNoIdxWorkflowConfigV1,
   type ManifestBoundInputSetUniquenessWorkflowConfigV1,
   type ManifestBoundInvalidRangeWorkflowConfigV1,
@@ -87,25 +140,48 @@ import {
   type ManifestBoundL2TxMistagWorkflowConfigV1,
   type ManifestBoundMinAdaWorkflowConfigV1,
   type ManifestBoundMinFeeWorkflowConfigV1,
+  type ManifestBoundMintDeclaredAssetLimitWorkflowConfigV1,
   type ManifestBoundMissingNativeScriptTxWorkflowConfigV1,
   type ManifestBoundMissingNativeScriptUtxoWorkflowConfigV1,
+  type ManifestBoundMissingRedeemerWorkflowConfigV1,
+  type ManifestBoundMissingScriptSourceWorkflowConfigV1,
   type ManifestBoundMissingSignatureWorkflowConfigV1,
   type ManifestBoundNativeScriptInvalidWorkflowConfigV1,
   type ManifestBoundNetworkIdWorkflowConfigV1,
   type ManifestBoundNonExistentInputWorkflowConfigV1,
   type ManifestBoundNoReferenceInputWorkflowConfigV1,
+  type ManifestBoundObserverOrderInvalidWorkflowConfigV1,
+  type ManifestBoundObserversForbiddenWorkflowConfigV1,
+  type ManifestBoundOutputReferenceScriptDecodingWorkflowConfigV1,
+  type ManifestBoundProtectedOutputSignerMissingWorkflowConfigV1,
+  type ManifestBoundReceivePurposeLanguageWorkflowConfigV1,
+  type ManifestBoundRedeemerCanonicityWorkflowConfigV1,
   type ManifestBoundReferenceInputNoIdxWorkflowConfigV1,
+  type ManifestBoundResolvedOutputNonCanonicalWorkflowConfigV1,
+  type ManifestBoundScriptIntegrityHashMismatchWorkflowConfigV1,
+  type ManifestBoundScriptIntegrityHashMissingWorkflowConfigV1,
+  type ManifestBoundSpendInputSignerMissingWorkflowConfigV1,
+  type ManifestBoundTransactionOutputNonCanonicalWorkflowConfigV1,
+  type ManifestBoundUnusedRedeemerWorkflowConfigV1,
+  type ManifestBoundUnusedScriptWitnessWorkflowConfigV1,
   type ManifestBoundWithdrawnInputWorkflowConfigV1,
   type ManifestBoundWithdrawnReferenceInputWorkflowConfigV1,
+  type ManifestBoundWitnessScriptDecodingWorkflowConfigV1,
   type ManifestBoundZeroInputWorkflowConfigV1,
   MIN_ADA_COMPLETE_CANONICAL_REPLAY_V1,
   MIN_FEE_COMPLETE_CANONICAL_REPLAY_V1,
+  MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY_V1,
   MISSING_NATIVE_SCRIPT_TX_COMPLETE_CANONICAL_REPLAY_V1,
+  MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY_V1,
+  MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY_V1,
   MISSING_SIGNATURE_COMPLETE_CANONICAL_REPLAY_V1,
   NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY_V1,
   NETWORK_ID_COMPLETE_CANONICAL_REPLAY_V1,
   NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY_V1,
   NON_EXISTENT_INPUT_COMPLETE_CANONICAL_REPLAY_V1,
+  OBSERVER_ORDER_INVALID_COMPLETE_CANONICAL_REPLAY_V1,
+  OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY_V1,
+  OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY_V1,
   parseContractDeploymentInfo,
   productionHeaderDecisionReplayContextV1,
   type ProductionHeaderDecisionV1,
@@ -117,15 +193,26 @@ import {
   type ProductionWorkflowAdapterRunnerV1,
   type ProductionWorkflowApplicationRegistryV1,
   type ProductionWorkflowRuntimeConfigLoaderV1,
+  PROTECTED_OUTPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY_V1,
+  RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY_V1,
+  REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY_V1,
   REFERENCE_INPUT_NO_IDX_COMPLETE_CANONICAL_REPLAY_V1,
   requireDeploymentReferenceScript,
   requireProductionHistoricalNativeScriptHistoryAuthorityV1,
+  RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY_V1,
   resolveProverSigner,
   restrictProductionWorkflowFundingSignerV1,
   runProductionFraudProofWorkflowCliV1,
+  SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY_V1,
+  SCRIPT_INTEGRITY_HASH_MISSING_COMPLETE_CANONICAL_REPLAY_V1,
+  SPEND_INPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY_V1,
   type StateQueueMutationLeaseCoordinator,
+  TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY_V1,
+  UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY_V1,
+  UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY_V1,
   WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY_V1,
   WITHDRAWN_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY_V1,
+  WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY_V1,
   ZERO_INPUT_COMPLETE_CANONICAL_REPLAY_V1,
 } from "@al-ft/midgard-fault-proofs";
 import {
@@ -199,6 +286,28 @@ export const WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1 =
     "missingNativeScriptUtxo",
     "nativeScriptInvalid",
     "minAda",
+    "fieldPreimageLengthMismatch",
+    "fieldItemWidthIllegal",
+    "witnessScriptDecoding",
+    "scriptIntegrityHashMissing",
+    "transactionOutputNonCanonical",
+    "resolvedOutputNonCanonical",
+    "mintDeclaredAssetLimit",
+    "spendInputSignerMissing",
+    "protectedOutputSignerMissing",
+    "observersForbiddenOnUntaggedNetwork",
+    "observerOrderInvalid",
+    "redeemerCanonicity",
+    "outputReferenceScriptDecoding",
+    "executionSourceScriptDecoding",
+    "receivePurposeLanguage",
+    "unusedScriptWitness",
+    "missingScriptSource",
+    "missingRedeemer",
+    "unusedRedeemer",
+    "executionNativeScriptInvalid",
+    "scriptIntegrityHashMismatch",
+    "distinctAssetAccumulationLimit",
   ] as const);
 
 export type WatcherInstalledProductionWorkflowCategoryV1 =
@@ -214,7 +323,7 @@ export const WATCHER_MISSING_PRODUCTION_WORKFLOW_CATEGORIES_V1 = Object.freeze([
   "mintAuthorization",
 ] as const);
 
-const watcherProductionWorkflowCoverageV1 = new Set([
+const watcherProductionWorkflowCoverageV1 = new Set<string>([
   ...WATCHER_INSTALLED_PRODUCTION_WORKFLOW_CATEGORIES_V1,
   ...WATCHER_MISSING_PRODUCTION_WORKFLOW_CATEGORIES_V1,
 ]);
@@ -398,6 +507,94 @@ type TaggedWorkflowConfigV1 =
   | Readonly<{
       category: "minAda";
       config: ManifestBoundMinAdaWorkflowConfigV1;
+    }>
+  | Readonly<{
+      category: "fieldPreimageLengthMismatch";
+      config: ManifestBoundFieldPreimageLengthWorkflowConfigV1;
+    }>
+  | Readonly<{
+      category: "fieldItemWidthIllegal";
+      config: ManifestBoundFieldItemWidthIllegalWorkflowConfigV1;
+    }>
+  | Readonly<{
+      category: "scriptIntegrityHashMissing";
+      config: ManifestBoundScriptIntegrityHashMissingWorkflowConfigV1;
+    }>
+  | Readonly<{
+      category: "transactionOutputNonCanonical";
+      config: ManifestBoundTransactionOutputNonCanonicalWorkflowConfigV1;
+    }>
+  | Readonly<{
+      category: "resolvedOutputNonCanonical";
+      config: ManifestBoundResolvedOutputNonCanonicalWorkflowConfigV1;
+    }>
+  | Readonly<{
+      category: "mintDeclaredAssetLimit";
+      config: ManifestBoundMintDeclaredAssetLimitWorkflowConfigV1;
+    }>
+  | Readonly<{
+      category: "spendInputSignerMissing";
+      config: ManifestBoundSpendInputSignerMissingWorkflowConfigV1;
+    }>
+  | Readonly<{
+      category: "protectedOutputSignerMissing";
+      config: ManifestBoundProtectedOutputSignerMissingWorkflowConfigV1;
+    }>
+  | Readonly<{
+      category: "observersForbiddenOnUntaggedNetwork";
+      config: ManifestBoundObserversForbiddenWorkflowConfigV1;
+    }>
+  | Readonly<{
+      category: "witnessScriptDecoding";
+      config: ManifestBoundWitnessScriptDecodingWorkflowConfigV1;
+    }>
+  | Readonly<{
+      category: "outputReferenceScriptDecoding";
+      config: ManifestBoundOutputReferenceScriptDecodingWorkflowConfigV1;
+    }>
+  | Readonly<{
+      category: "executionSourceScriptDecoding";
+      config: ManifestBoundExecutionSourceScriptDecodingWorkflowConfigV1;
+    }>
+  | Readonly<{
+      category: "executionNativeScriptInvalid";
+      config: executionNativeScriptInvalidV1.ManifestBoundExecutionNativeScriptInvalidWorkflowConfigV1;
+    }>
+  | Readonly<{
+      category: "observerOrderInvalid";
+      config: ManifestBoundObserverOrderInvalidWorkflowConfigV1;
+    }>
+  | Readonly<{
+      category: "redeemerCanonicity";
+      config: ManifestBoundRedeemerCanonicityWorkflowConfigV1;
+    }>
+  | Readonly<{
+      category: "receivePurposeLanguage";
+      config: ManifestBoundReceivePurposeLanguageWorkflowConfigV1;
+    }>
+  | Readonly<{
+      category: "unusedScriptWitness";
+      config: ManifestBoundUnusedScriptWitnessWorkflowConfigV1;
+    }>
+  | Readonly<{
+      category: "missingScriptSource";
+      config: ManifestBoundMissingScriptSourceWorkflowConfigV1;
+    }>
+  | Readonly<{
+      category: "missingRedeemer";
+      config: ManifestBoundMissingRedeemerWorkflowConfigV1;
+    }>
+  | Readonly<{
+      category: "unusedRedeemer";
+      config: ManifestBoundUnusedRedeemerWorkflowConfigV1;
+    }>
+  | Readonly<{
+      category: "scriptIntegrityHashMismatch";
+      config: ManifestBoundScriptIntegrityHashMismatchWorkflowConfigV1;
+    }>
+  | Readonly<{
+      category: "distinctAssetAccumulationLimit";
+      config: ManifestBoundDistinctAssetAccumulationWorkflowConfigV1;
     }>;
 
 type TaggedWorkflowConfigForV1<
@@ -484,6 +681,90 @@ const constructProductionWorkflow = async (
       );
     case "invalidSignature":
       return await createManifestBoundInvalidSignatureWorkflowV1(input.config);
+    case "fieldPreimageLengthMismatch":
+      return await createManifestBoundFieldPreimageLengthWorkflowV1(
+        input.config,
+      );
+    case "fieldItemWidthIllegal":
+      return await createManifestBoundFieldItemWidthIllegalWorkflowV1(
+        input.config,
+      );
+    case "scriptIntegrityHashMissing":
+      return await createManifestBoundScriptIntegrityHashMissingWorkflowV1(
+        input.config,
+      );
+    case "transactionOutputNonCanonical":
+      return await createManifestBoundTransactionOutputNonCanonicalWorkflowV1(
+        input.config,
+      );
+    case "resolvedOutputNonCanonical":
+      return await createManifestBoundResolvedOutputNonCanonicalWorkflowV1(
+        input.config,
+      );
+    case "mintDeclaredAssetLimit":
+      return await createManifestBoundMintDeclaredAssetLimitWorkflowV1(
+        input.config,
+      );
+    case "spendInputSignerMissing":
+      return await createManifestBoundSpendInputSignerMissingWorkflowV1(
+        input.config,
+      );
+    case "protectedOutputSignerMissing":
+      return await createManifestBoundProtectedOutputSignerMissingWorkflowV1(
+        input.config,
+      );
+    case "observersForbiddenOnUntaggedNetwork":
+      return await createManifestBoundObserversForbiddenWorkflowV1(
+        input.config,
+      );
+    case "witnessScriptDecoding":
+      return await createManifestBoundWitnessScriptDecodingWorkflowV1(
+        input.config,
+      );
+    case "outputReferenceScriptDecoding":
+      return await createManifestBoundOutputReferenceScriptDecodingWorkflowV1(
+        input.config,
+      );
+    case "executionSourceScriptDecoding":
+      return await createManifestBoundExecutionSourceScriptDecodingWorkflowV1(
+        input.config,
+      );
+    case "executionNativeScriptInvalid":
+      return await executionNativeScriptInvalidV1.createManifestBoundExecutionNativeScriptInvalidWorkflowV1(
+        input.config,
+      );
+    case "observerOrderInvalid":
+      return await createManifestBoundObserverOrderInvalidWorkflowV1(
+        input.config,
+      );
+    case "redeemerCanonicity":
+      return await createManifestBoundRedeemerCanonicityWorkflowV1(
+        input.config,
+      );
+    case "receivePurposeLanguage":
+      return await createManifestBoundReceivePurposeLanguageWorkflowV1(
+        input.config,
+      );
+    case "unusedScriptWitness":
+      return await createManifestBoundUnusedScriptWitnessWorkflowV1(
+        input.config,
+      );
+    case "missingScriptSource":
+      return await createManifestBoundMissingScriptSourceWorkflowV1(
+        input.config,
+      );
+    case "missingRedeemer":
+      return await createManifestBoundMissingRedeemerWorkflowV1(input.config);
+    case "unusedRedeemer":
+      return await createManifestBoundUnusedRedeemerWorkflowV1(input.config);
+    case "scriptIntegrityHashMismatch":
+      return await createManifestBoundScriptIntegrityHashMismatchWorkflowV1(
+        input.config,
+      );
+    case "distinctAssetAccumulationLimit":
+      return await createManifestBoundDistinctAssetAccumulationWorkflowV1(
+        input.config,
+      );
     case "fabricatedDeposit":
       return await createManifestBoundFabricatedDepositWorkflowV1(input.config);
     case "fabricatedWithdrawal":
@@ -904,6 +1185,8 @@ const referenceContracts = (
         step01: "fraudProofDaHashPreimage",
         step02: "fraudProofDaHashPreimageStep02",
         ...base,
+        chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
+        pexcludesWithdraw: "pexcludesWithdraw",
       });
     case "noReferenceInput":
       return Object.freeze({
@@ -965,6 +1248,8 @@ const referenceContracts = (
         step01: "fraudProofCommittedFieldShape",
         step02: "fraudProofCommittedFieldShapeStep02",
         ...base,
+        chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
+        pexcludesWithdraw: "pexcludesWithdraw",
       });
     case "minFee":
       return Object.freeze({
@@ -1031,6 +1316,8 @@ const referenceContracts = (
       return Object.freeze({
         step01: "fraudProofInputSetUniqueness",
         step02: "fraudProofInputSetUniquenessStep02",
+        step03: "fraudProofInputSetUniquenessStep03",
+        step04: "fraudProofInputSetUniquenessStep04",
         ...base,
         chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
         fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
@@ -1084,6 +1371,380 @@ const referenceContracts = (
         txYield: "fraudProofMinAdaStep02TxWithdraw",
         utxoYield: "fraudProofMinAdaStep02UtxoWithdraw",
       });
+    case "fieldPreimageLengthMismatch":
+      return Object.freeze({
+        step01: "fraudProofFieldPreimageLengthMismatch",
+        step02Accepted: "fraudProofFieldPreimageLengthMismatchStep02Accepted",
+        step02Forced: "fraudProofFieldPreimageLengthMismatchStep02Forced",
+        step03: "fraudProofFieldPreimageLengthMismatchStep03",
+        ...base,
+        fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+      });
+    case "fieldItemWidthIllegal":
+      return Object.freeze({
+        step01: "fraudProofFieldItemWidthIllegal",
+        step02: "fraudProofFieldItemWidthIllegalStep02",
+        step03: "fraudProofFieldItemWidthIllegalStep03",
+        ...base,
+        fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+      });
+    case "scriptIntegrityHashMissing":
+      return Object.freeze({
+        step01: "fraudProofScriptIntegrityHashMissing",
+        step02: "fraudProofScriptIntegrityHashMissingStep02",
+        step03: "fraudProofScriptIntegrityHashMissingStep03",
+        step04: "fraudProofScriptIntegrityHashMissingScriptGrammar",
+        step05: "fraudProofScriptIntegrityHashMissingScriptScan",
+        step06: "fraudProofScriptIntegrityHashMissingRedeemerGrammar",
+        step07: "fraudProofScriptIntegrityHashMissingStep04",
+        ...base,
+        chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
+        pexcludesWithdraw: "pexcludesWithdraw",
+        fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+        correctionLockSpend: "correctionLockSpend",
+        stateQueueSpend: "stateQueueSpend",
+        stateQueueMint: "stateQueueMint",
+        stateQueueFraudRemovalWithdraw: "stateQueueFraudRemovalWithdraw",
+        activeOperatorsSpend: "activeOperatorsSpend",
+        activeOperatorsMint: "activeOperatorsMint",
+        retiredOperatorsSpend: "retiredOperatorsSpend",
+        retiredOperatorsMint: "retiredOperatorsMint",
+        schedulerSpend: "schedulerSpend",
+      });
+    case "transactionOutputNonCanonical":
+      return Object.freeze({
+        step01: "fraudProofTransactionOutputNonCanonical",
+        step02: "fraudProofTransactionOutputNonCanonicalStep02",
+        step03: "fraudProofTransactionOutputNonCanonicalStep03",
+        step04: "fraudProofTransactionOutputNonCanonicalStep04",
+        ...base,
+        fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+      });
+    case "resolvedOutputNonCanonical":
+      return Object.freeze({
+        step01: "fraudProofResolvedOutputNonCanonical",
+        step02: "fraudProofResolvedOutputNonCanonicalStep02",
+        step03: "fraudProofResolvedOutputNonCanonicalStep03",
+        step04: "fraudProofResolvedOutputNonCanonicalStep04",
+        step05: "fraudProofResolvedOutputNonCanonicalStep05",
+        ...base,
+        fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+      });
+    case "mintDeclaredAssetLimit":
+      return Object.freeze({
+        step01: "fraudProofMintDeclaredAssetLimit",
+        step02: "fraudProofMintDeclaredAssetLimitStep02",
+        step03: "fraudProofMintDeclaredAssetLimitStep03",
+        step04: "fraudProofMintDeclaredAssetLimitStep04",
+        ...base,
+        chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
+        pexcludesWithdraw: "pexcludesWithdraw",
+        fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+        correctionLockSpend: "correctionLockSpend",
+        stateQueueSpend: "stateQueueSpend",
+        stateQueueMint: "stateQueueMint",
+        stateQueueFraudRemovalWithdraw: "stateQueueFraudRemovalWithdraw",
+        activeOperatorsSpend: "activeOperatorsSpend",
+        activeOperatorsMint: "activeOperatorsMint",
+        retiredOperatorsSpend: "retiredOperatorsSpend",
+        retiredOperatorsMint: "retiredOperatorsMint",
+        schedulerSpend: "schedulerSpend",
+      });
+    case "spendInputSignerMissing":
+      return Object.freeze({
+        step01: "fraudProofSpendInputSignerMissing",
+        step02: "fraudProofSpendInputSignerMissingStep02",
+        step03: "fraudProofSpendInputSignerMissingStep03",
+        step04: "fraudProofSpendInputSignerMissingStep04",
+        step05: "fraudProofSpendInputSignerMissingStep05",
+        ...base,
+        fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+      });
+    case "protectedOutputSignerMissing":
+      return Object.freeze({
+        step01: "fraudProofProtectedOutputSignerMissing",
+        step02: "fraudProofProtectedOutputSignerMissingStep02",
+        step03: "fraudProofProtectedOutputSignerMissingStep03",
+        step04: "fraudProofProtectedOutputSignerMissingStep04",
+        step05: "fraudProofProtectedOutputSignerMissingStep05",
+        ...base,
+        fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+      });
+    case "observersForbiddenOnUntaggedNetwork":
+      return Object.freeze({
+        step01: "fraudProofObserversForbiddenOnUntaggedNetwork",
+        step02: "fraudProofObserversForbiddenOnUntaggedNetworkStep02",
+        ...base,
+        chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
+        pexcludesWithdraw: "pexcludesWithdraw",
+        fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+        correctionLockSpend: "correctionLockSpend",
+        stateQueueSpend: "stateQueueSpend",
+        stateQueueMint: "stateQueueMint",
+        stateQueueFraudRemovalWithdraw: "stateQueueFraudRemovalWithdraw",
+        activeOperatorsSpend: "activeOperatorsSpend",
+        activeOperatorsMint: "activeOperatorsMint",
+        retiredOperatorsSpend: "retiredOperatorsSpend",
+        retiredOperatorsMint: "retiredOperatorsMint",
+        schedulerSpend: "schedulerSpend",
+      });
+    case "observerOrderInvalid":
+      return Object.freeze({
+        step01: "fraudProofObserverOrderInvalid",
+        step02: "fraudProofObserverOrderInvalidStep02",
+        step03: "fraudProofObserverOrderInvalidStep03",
+        step04: "fraudProofObserverOrderInvalidStep04",
+        ...base,
+        chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
+        pexcludesWithdraw: "pexcludesWithdraw",
+        fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+        correctionLockSpend: "correctionLockSpend",
+        stateQueueSpend: "stateQueueSpend",
+        stateQueueMint: "stateQueueMint",
+        stateQueueFraudRemovalWithdraw: "stateQueueFraudRemovalWithdraw",
+        activeOperatorsSpend: "activeOperatorsSpend",
+        activeOperatorsMint: "activeOperatorsMint",
+        retiredOperatorsSpend: "retiredOperatorsSpend",
+        retiredOperatorsMint: "retiredOperatorsMint",
+        schedulerSpend: "schedulerSpend",
+      });
+    case "redeemerCanonicity":
+      return Object.freeze({
+        step01: "fraudProofRedeemerCanonicity",
+        step02: "fraudProofRedeemerCanonicityStep02",
+        step03: "fraudProofRedeemerCanonicityStep03",
+        ...base,
+        chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
+        pexcludesWithdraw: "pexcludesWithdraw",
+        fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+        correctionLockSpend: "correctionLockSpend",
+        stateQueueSpend: "stateQueueSpend",
+        stateQueueMint: "stateQueueMint",
+        stateQueueFraudRemovalWithdraw: "stateQueueFraudRemovalWithdraw",
+        activeOperatorsSpend: "activeOperatorsSpend",
+        activeOperatorsMint: "activeOperatorsMint",
+        retiredOperatorsSpend: "retiredOperatorsSpend",
+        retiredOperatorsMint: "retiredOperatorsMint",
+        schedulerSpend: "schedulerSpend",
+      });
+    case "witnessScriptDecoding":
+      return Object.freeze({
+        step01: "fraudProofWitnessScriptDecoding",
+        step02: "fraudProofWitnessScriptDecodingStep02",
+        step03: "fraudProofWitnessScriptDecodingStep03",
+        step04: "fraudProofWitnessScriptDecodingStep04",
+        ...base,
+        fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+      });
+    case "outputReferenceScriptDecoding":
+      return Object.freeze({
+        step01: "fraudProofOutputReferenceScriptDecoding",
+        step02: "fraudProofOutputReferenceScriptDecodingStep02",
+        step03: "fraudProofOutputReferenceScriptDecodingStep03",
+        step04: "fraudProofOutputReferenceScriptDecodingStep04",
+        step05: "fraudProofOutputReferenceScriptDecodingStep05",
+        step06: "fraudProofOutputReferenceScriptDecodingStep06",
+        ...base,
+        fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+      });
+    case "executionSourceScriptDecoding":
+      return Object.freeze({
+        step01: "fraudProofExecutionSourceScriptDecoding",
+        step02: "fraudProofExecutionSourceScriptDecodingStep02",
+        step03: "fraudProofExecutionSourceScriptDecodingStep03",
+        step04: "fraudProofExecutionSourceScriptDecodingStep04",
+        step05: "fraudProofExecutionSourceScriptDecodingStep05",
+        ...base,
+        chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
+        pexcludesWithdraw: "pexcludesWithdraw",
+        correctionLockSpend: "correctionLockSpend",
+        stateQueueSpend: "stateQueueSpend",
+        stateQueueMint: "stateQueueMint",
+        stateQueueFraudRemovalWithdraw: "stateQueueFraudRemovalWithdraw",
+        activeOperatorsSpend: "activeOperatorsSpend",
+        activeOperatorsMint: "activeOperatorsMint",
+        retiredOperatorsSpend: "retiredOperatorsSpend",
+        retiredOperatorsMint: "retiredOperatorsMint",
+        schedulerSpend: "schedulerSpend",
+      });
+    case "executionNativeScriptInvalid":
+      return Object.freeze({
+        step01: "fraudProofExecutionNativeScriptInvalid",
+        step02: "fraudProofExecutionNativeScriptInvalidStep02",
+        step03: "fraudProofExecutionNativeScriptInvalidStep03",
+        step04: "fraudProofExecutionNativeScriptInvalidStep04",
+        step05: "fraudProofExecutionNativeScriptInvalidStep05",
+        step06: "fraudProofExecutionNativeScriptInvalidStep06",
+        step07:
+          "fraudProofExecutionNativeScriptInvalidAcceptedReconstructionInit",
+        step08: "fraudProofExecutionNativeScriptInvalidAcceptedSpendPrefix",
+        step09: "fraudProofExecutionNativeScriptInvalidAcceptedMintPrefix",
+        step10: "fraudProofExecutionNativeScriptInvalidAcceptedObserverPrefix",
+        step11: "fraudProofExecutionNativeScriptInvalidAcceptedReceivePrefix",
+        step12: "fraudProofExecutionNativeScriptInvalidAcceptedInlineSource",
+        step13: "fraudProofExecutionNativeScriptInvalidAcceptedReferenceSource",
+        ...base,
+        chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
+        pexcludesWithdraw: "pexcludesWithdraw",
+        fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+        correctionLockSpend: "correctionLockSpend",
+        stateQueueSpend: "stateQueueSpend",
+        stateQueueMint: "stateQueueMint",
+        stateQueueFraudRemovalWithdraw: "stateQueueFraudRemovalWithdraw",
+        activeOperatorsSpend: "activeOperatorsSpend",
+        activeOperatorsMint: "activeOperatorsMint",
+        retiredOperatorsSpend: "retiredOperatorsSpend",
+        retiredOperatorsMint: "retiredOperatorsMint",
+        schedulerSpend: "schedulerSpend",
+      });
+    case "receivePurposeLanguage":
+      return Object.freeze({
+        step01: "fraudProofReceivePurposeLanguage",
+        step02: "fraudProofReceivePurposeLanguageStep02",
+        step03: "fraudProofReceivePurposeLanguageStep03",
+        ...base,
+        chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
+        pexcludesWithdraw: "pexcludesWithdraw",
+        correctionLockSpend: "correctionLockSpend",
+        stateQueueSpend: "stateQueueSpend",
+        stateQueueMint: "stateQueueMint",
+        stateQueueFraudRemovalWithdraw: "stateQueueFraudRemovalWithdraw",
+        activeOperatorsSpend: "activeOperatorsSpend",
+        activeOperatorsMint: "activeOperatorsMint",
+        retiredOperatorsSpend: "retiredOperatorsSpend",
+        retiredOperatorsMint: "retiredOperatorsMint",
+        schedulerSpend: "schedulerSpend",
+      });
+    case "unusedScriptWitness":
+      return Object.freeze({
+        step01: "fraudProofUnusedScriptWitness",
+        step02: "fraudProofUnusedScriptWitnessStep02",
+        step03: "fraudProofUnusedScriptWitnessStep03",
+        step04: "fraudProofUnusedScriptWitnessStep04",
+        step05: "fraudProofUnusedScriptWitnessStep05",
+        step06: "fraudProofUnusedScriptWitnessStep06",
+        ...base,
+        chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
+        pexcludesWithdraw: "pexcludesWithdraw",
+        correctionLockSpend: "correctionLockSpend",
+        stateQueueSpend: "stateQueueSpend",
+        stateQueueMint: "stateQueueMint",
+        stateQueueFraudRemovalWithdraw: "stateQueueFraudRemovalWithdraw",
+        activeOperatorsSpend: "activeOperatorsSpend",
+        activeOperatorsMint: "activeOperatorsMint",
+        retiredOperatorsSpend: "retiredOperatorsSpend",
+        retiredOperatorsMint: "retiredOperatorsMint",
+        schedulerSpend: "schedulerSpend",
+      });
+    case "missingScriptSource":
+      return Object.freeze({
+        step01: "fraudProofMissingScriptSource",
+        step02: "fraudProofMissingScriptSourceStep02",
+        step03: "fraudProofMissingScriptSourceStep03",
+        step04: "fraudProofMissingScriptSourceStep04",
+        step05: "fraudProofMissingScriptSourceStep05",
+        step06: "fraudProofMissingScriptSourceStep06",
+        ...base,
+        chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
+        pexcludesWithdraw: "pexcludesWithdraw",
+        correctionLockSpend: "correctionLockSpend",
+        stateQueueSpend: "stateQueueSpend",
+        stateQueueMint: "stateQueueMint",
+        stateQueueFraudRemovalWithdraw: "stateQueueFraudRemovalWithdraw",
+        activeOperatorsSpend: "activeOperatorsSpend",
+        activeOperatorsMint: "activeOperatorsMint",
+        retiredOperatorsSpend: "retiredOperatorsSpend",
+        retiredOperatorsMint: "retiredOperatorsMint",
+        schedulerSpend: "schedulerSpend",
+      });
+    case "missingRedeemer":
+      return Object.freeze({
+        step01: "fraudProofMissingRedeemer",
+        step02: "fraudProofMissingRedeemerStep02",
+        step02a: "fraudProofMissingRedeemerStep02a",
+        step02b: "fraudProofMissingRedeemerStep02b",
+        step03: "fraudProofMissingRedeemerStep03",
+        step04: "fraudProofMissingRedeemerStep04",
+        step05: "fraudProofMissingRedeemerStep05",
+        ...base,
+        chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
+        pexcludesWithdraw: "pexcludesWithdraw",
+        fieldPreimageCertificateMint: "fieldPreimageCertificateMint",
+        correctionLockSpend: "correctionLockSpend",
+        stateQueueSpend: "stateQueueSpend",
+        stateQueueMint: "stateQueueMint",
+        stateQueueFraudRemovalWithdraw: "stateQueueFraudRemovalWithdraw",
+        activeOperatorsSpend: "activeOperatorsSpend",
+        activeOperatorsMint: "activeOperatorsMint",
+        retiredOperatorsSpend: "retiredOperatorsSpend",
+        retiredOperatorsMint: "retiredOperatorsMint",
+        schedulerSpend: "schedulerSpend",
+      });
+    case "unusedRedeemer":
+      return Object.freeze({
+        step01: "fraudProofUnusedRedeemer",
+        step02: "fraudProofUnusedRedeemerStep02",
+        step02a: "fraudProofUnusedRedeemerStep02a",
+        step02b: "fraudProofUnusedRedeemerStep02b",
+        step02c: "fraudProofUnusedRedeemerStep02c",
+        step03: "fraudProofUnusedRedeemerStep03",
+        step04: "fraudProofUnusedRedeemerStep04",
+        step05: "fraudProofUnusedRedeemerStep05",
+        step06: "fraudProofUnusedRedeemerStep06",
+        ...base,
+        chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
+        pexcludesWithdraw: "pexcludesWithdraw",
+        correctionLockSpend: "correctionLockSpend",
+        stateQueueSpend: "stateQueueSpend",
+        stateQueueMint: "stateQueueMint",
+        stateQueueFraudRemovalWithdraw: "stateQueueFraudRemovalWithdraw",
+        activeOperatorsSpend: "activeOperatorsSpend",
+        activeOperatorsMint: "activeOperatorsMint",
+        retiredOperatorsSpend: "retiredOperatorsSpend",
+        retiredOperatorsMint: "retiredOperatorsMint",
+        schedulerSpend: "schedulerSpend",
+      });
+    case "scriptIntegrityHashMismatch":
+      return Object.freeze({
+        step01: "fraudProofScriptIntegrityHashMismatch",
+        step02: "fraudProofScriptIntegrityHashMismatchStep02",
+        step03: "fraudProofScriptIntegrityHashMismatchStep03",
+        step04: "fraudProofScriptIntegrityHashMismatchStep04",
+        step05: "fraudProofScriptIntegrityHashMismatchStep05",
+        ...base,
+        chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
+        pexcludesWithdraw: "pexcludesWithdraw",
+        correctionLockSpend: "correctionLockSpend",
+        stateQueueSpend: "stateQueueSpend",
+        stateQueueMint: "stateQueueMint",
+        stateQueueFraudRemovalWithdraw: "stateQueueFraudRemovalWithdraw",
+        activeOperatorsSpend: "activeOperatorsSpend",
+        activeOperatorsMint: "activeOperatorsMint",
+        retiredOperatorsSpend: "retiredOperatorsSpend",
+        retiredOperatorsMint: "retiredOperatorsMint",
+        schedulerSpend: "schedulerSpend",
+      });
+    case "distinctAssetAccumulationLimit":
+      return Object.freeze({
+        step01: "fraudProofDistinctAssetAccumulationLimit",
+        step02: "fraudProofDistinctAssetAccumulationLimitStep02",
+        step03: "fraudProofDistinctAssetAccumulationLimitStep03",
+        step04: "fraudProofDistinctAssetAccumulationLimitStep04",
+        step05: "fraudProofDistinctAssetAccumulationLimitStep05",
+        step06: "fraudProofDistinctAssetAccumulationLimitStep06",
+        ...base,
+        chunkedVerifyWithdraw: "chunkedVerifyWithdraw",
+        pexcludesWithdraw: "pexcludesWithdraw",
+        correctionLockSpend: "correctionLockSpend",
+        stateQueueSpend: "stateQueueSpend",
+        stateQueueMint: "stateQueueMint",
+        stateQueueFraudRemovalWithdraw: "stateQueueFraudRemovalWithdraw",
+        activeOperatorsSpend: "activeOperatorsSpend",
+        activeOperatorsMint: "activeOperatorsMint",
+        retiredOperatorsSpend: "retiredOperatorsSpend",
+        retiredOperatorsMint: "retiredOperatorsMint",
+        schedulerSpend: "schedulerSpend",
+      });
   }
 };
 
@@ -1092,6 +1753,7 @@ type CommonInfrastructureV1 = Readonly<{
   blueprintJson: string;
   deploymentInfo: unknown;
   headerHash: string;
+  decisionDigest: string;
   lucid: LucidEvolution;
   signer: ReturnType<typeof resolveProverSigner>;
   source: Readonly<{
@@ -1257,6 +1919,7 @@ const buildCommonInfrastructure = async ({
     blueprintJson,
     deploymentInfo: deploymentInfoValue,
     headerHash: invocation.headerHash,
+    decisionDigest: executionInvocation.decisionDigest ?? "00".repeat(32),
     lucid,
     signer,
     source: Object.freeze({
@@ -1435,6 +2098,151 @@ function taggedConfig(
   common: CommonInfrastructureV1,
 ): Extract<TaggedWorkflowConfigV1, { readonly category: "minAda" }>;
 function taggedConfig(
+  category: "fieldPreimageLengthMismatch",
+  common: CommonInfrastructureV1,
+): Extract<
+  TaggedWorkflowConfigV1,
+  { readonly category: "fieldPreimageLengthMismatch" }
+>;
+function taggedConfig(
+  category: "fieldItemWidthIllegal",
+  common: CommonInfrastructureV1,
+): Extract<
+  TaggedWorkflowConfigV1,
+  { readonly category: "fieldItemWidthIllegal" }
+>;
+function taggedConfig(
+  category: "scriptIntegrityHashMissing",
+  common: CommonInfrastructureV1,
+): Extract<
+  TaggedWorkflowConfigV1,
+  { readonly category: "scriptIntegrityHashMissing" }
+>;
+function taggedConfig(
+  category: "transactionOutputNonCanonical",
+  common: CommonInfrastructureV1,
+): Extract<
+  TaggedWorkflowConfigV1,
+  { readonly category: "transactionOutputNonCanonical" }
+>;
+function taggedConfig(
+  category: "resolvedOutputNonCanonical",
+  common: CommonInfrastructureV1,
+): Extract<
+  TaggedWorkflowConfigV1,
+  { readonly category: "resolvedOutputNonCanonical" }
+>;
+function taggedConfig(
+  category: "mintDeclaredAssetLimit",
+  common: CommonInfrastructureV1,
+): Extract<
+  TaggedWorkflowConfigV1,
+  { readonly category: "mintDeclaredAssetLimit" }
+>;
+function taggedConfig(
+  category: "spendInputSignerMissing",
+  common: CommonInfrastructureV1,
+): Extract<
+  TaggedWorkflowConfigV1,
+  { readonly category: "spendInputSignerMissing" }
+>;
+function taggedConfig(
+  category: "protectedOutputSignerMissing",
+  common: CommonInfrastructureV1,
+): Extract<
+  TaggedWorkflowConfigV1,
+  { readonly category: "protectedOutputSignerMissing" }
+>;
+function taggedConfig(
+  category: "observersForbiddenOnUntaggedNetwork",
+  common: CommonInfrastructureV1,
+): Extract<
+  TaggedWorkflowConfigV1,
+  { readonly category: "observersForbiddenOnUntaggedNetwork" }
+>;
+function taggedConfig(
+  category: "witnessScriptDecoding",
+  common: CommonInfrastructureV1,
+): Extract<
+  TaggedWorkflowConfigV1,
+  { readonly category: "witnessScriptDecoding" }
+>;
+function taggedConfig(
+  category: "outputReferenceScriptDecoding",
+  common: CommonInfrastructureV1,
+): Extract<
+  TaggedWorkflowConfigV1,
+  { readonly category: "outputReferenceScriptDecoding" }
+>;
+function taggedConfig(
+  category: "executionSourceScriptDecoding",
+  common: CommonInfrastructureV1,
+): Extract<
+  TaggedWorkflowConfigV1,
+  { readonly category: "executionSourceScriptDecoding" }
+>;
+function taggedConfig(
+  category: "executionNativeScriptInvalid",
+  common: CommonInfrastructureV1,
+): Extract<
+  TaggedWorkflowConfigV1,
+  { readonly category: "executionNativeScriptInvalid" }
+>;
+function taggedConfig(
+  category: "observerOrderInvalid",
+  common: CommonInfrastructureV1,
+): Extract<
+  TaggedWorkflowConfigV1,
+  { readonly category: "observerOrderInvalid" }
+>;
+function taggedConfig(
+  category: "redeemerCanonicity",
+  common: CommonInfrastructureV1,
+): Extract<TaggedWorkflowConfigV1, { readonly category: "redeemerCanonicity" }>;
+function taggedConfig(
+  category: "receivePurposeLanguage",
+  common: CommonInfrastructureV1,
+): Extract<
+  TaggedWorkflowConfigV1,
+  { readonly category: "receivePurposeLanguage" }
+>;
+function taggedConfig(
+  category: "unusedScriptWitness",
+  common: CommonInfrastructureV1,
+): Extract<
+  TaggedWorkflowConfigV1,
+  { readonly category: "unusedScriptWitness" }
+>;
+function taggedConfig(
+  category: "missingScriptSource",
+  common: CommonInfrastructureV1,
+): Extract<
+  TaggedWorkflowConfigV1,
+  { readonly category: "missingScriptSource" }
+>;
+function taggedConfig(
+  category: "missingRedeemer",
+  common: CommonInfrastructureV1,
+): Extract<TaggedWorkflowConfigV1, { readonly category: "missingRedeemer" }>;
+function taggedConfig(
+  category: "unusedRedeemer",
+  common: CommonInfrastructureV1,
+): Extract<TaggedWorkflowConfigV1, { readonly category: "unusedRedeemer" }>;
+function taggedConfig(
+  category: "scriptIntegrityHashMismatch",
+  common: CommonInfrastructureV1,
+): Extract<
+  TaggedWorkflowConfigV1,
+  { readonly category: "scriptIntegrityHashMismatch" }
+>;
+function taggedConfig(
+  category: "distinctAssetAccumulationLimit",
+  common: CommonInfrastructureV1,
+): Extract<
+  TaggedWorkflowConfigV1,
+  { readonly category: "distinctAssetAccumulationLimit" }
+>;
+function taggedConfig(
   category: WatcherInstalledProductionWorkflowCategoryV1,
   common: CommonInfrastructureV1,
 ): TaggedWorkflowConfigV1;
@@ -1502,6 +2310,77 @@ function taggedConfig(
             fieldPreimageCertificateMint: reference(
               "fieldPreimageCertificateMint",
             ),
+          }),
+        }),
+      });
+    case "scriptIntegrityHashMismatch":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          decisionDigest: common.decisionDigest,
+          referenceScripts: Object.freeze({
+            steps: Object.freeze([
+              reference("step01"),
+              reference("step02"),
+              reference("step03"),
+              reference("step04"),
+              reference("step05"),
+            ] as const),
+            witnesses: Object.freeze({
+              ...baseWitnesses(common.references),
+              chunkedVerifyWithdraw: reference("chunkedVerifyWithdraw"),
+              pexcludesWithdraw: reference("pexcludesWithdraw"),
+            }),
+            removal: Object.freeze({
+              correctionLockSpend: reference("correctionLockSpend"),
+              stateQueueSpend: reference("stateQueueSpend"),
+              stateQueueMint: reference("stateQueueMint"),
+              stateQueueFraudRemovalWithdraw: reference(
+                "stateQueueFraudRemovalWithdraw",
+              ),
+              activeOperatorsSpend: reference("activeOperatorsSpend"),
+              activeOperatorsMint: reference("activeOperatorsMint"),
+              retiredOperatorsSpend: reference("retiredOperatorsSpend"),
+              retiredOperatorsMint: reference("retiredOperatorsMint"),
+              schedulerSpend: reference("schedulerSpend"),
+            }),
+          }),
+        }),
+      });
+    case "distinctAssetAccumulationLimit":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          decisionDigest: common.decisionDigest,
+          referenceScripts: Object.freeze({
+            steps: Object.freeze([
+              reference("step01"),
+              reference("step02"),
+              reference("step03"),
+              reference("step04"),
+              reference("step05"),
+              reference("step06"),
+            ] as const),
+            witnesses: Object.freeze({
+              ...baseWitnesses(common.references),
+              chunkedVerifyWithdraw: reference("chunkedVerifyWithdraw"),
+              pexcludesWithdraw: reference("pexcludesWithdraw"),
+            }),
+            removal: Object.freeze({
+              correctionLockSpend: reference("correctionLockSpend"),
+              stateQueueSpend: reference("stateQueueSpend"),
+              stateQueueMint: reference("stateQueueMint"),
+              stateQueueFraudRemovalWithdraw: reference(
+                "stateQueueFraudRemovalWithdraw",
+              ),
+              activeOperatorsSpend: reference("activeOperatorsSpend"),
+              activeOperatorsMint: reference("activeOperatorsMint"),
+              retiredOperatorsSpend: reference("retiredOperatorsSpend"),
+              retiredOperatorsMint: reference("retiredOperatorsMint"),
+              schedulerSpend: reference("schedulerSpend"),
+            }),
           }),
         }),
       });
@@ -1576,7 +2455,11 @@ function taggedConfig(
               reference("step01"),
               reference("step02"),
             ] as const),
-            witnesses: Object.freeze(baseWitnesses(common.references)),
+            witnesses: Object.freeze({
+              ...baseWitnesses(common.references),
+              chunkedVerifyWithdraw: reference("chunkedVerifyWithdraw"),
+              pexcludesWithdraw: reference("pexcludesWithdraw"),
+            }),
           }),
         }),
       });
@@ -1630,7 +2513,11 @@ function taggedConfig(
               reference("step01"),
               reference("step02"),
             ] as const),
-            witnesses: Object.freeze(baseWitnesses(common.references)),
+            witnesses: Object.freeze({
+              ...baseWitnesses(common.references),
+              chunkedVerifyWithdraw: reference("chunkedVerifyWithdraw"),
+              pexcludesWithdraw: reference("pexcludesWithdraw"),
+            }),
           }),
         }),
       });
@@ -1782,6 +2669,8 @@ function taggedConfig(
             steps: Object.freeze([
               reference("step01"),
               reference("step02"),
+              reference("step03"),
+              reference("step04"),
             ] as const),
             witnesses: Object.freeze({
               ...baseWitnesses(common.references),
@@ -1902,6 +2791,592 @@ function taggedConfig(
             common.historicalNativeScriptAuthority.historySource,
         }),
       });
+    case "fieldPreimageLengthMismatch":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          decisionDigest: common.decisionDigest,
+          stateQueueMutationLeaseCoordinator:
+            common.stateQueueMutationLeaseCoordinator,
+          referenceScripts: Object.freeze({
+            step01: reference("step01"),
+            step02Accepted: reference("step02Accepted"),
+            step02Forced: reference("step02Forced"),
+            step03: reference("step03"),
+            fieldPreimageCertificateMint: reference(
+              "fieldPreimageCertificateMint",
+            ),
+            witnesses: Object.freeze(baseWitnesses(common.references)),
+          }),
+        }),
+      });
+    case "fieldItemWidthIllegal":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          decisionDigest: common.decisionDigest,
+          stateQueueMutationLeaseCoordinator:
+            common.stateQueueMutationLeaseCoordinator,
+          referenceScripts: Object.freeze({
+            step01: reference("step01"),
+            step02: reference("step02"),
+            step03: reference("step03"),
+            fieldPreimageCertificateMint: reference(
+              "fieldPreimageCertificateMint",
+            ),
+            witnesses: Object.freeze(baseWitnesses(common.references)),
+          }),
+        }),
+      });
+    case "scriptIntegrityHashMissing":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          decisionDigest: common.decisionDigest,
+          stateQueueMutationLeaseCoordinator:
+            common.stateQueueMutationLeaseCoordinator,
+          referenceScripts: Object.freeze({
+            steps: Object.freeze([
+              reference("step01"),
+              reference("step02"),
+              reference("step03"),
+              reference("step04"),
+              reference("step05"),
+              reference("step06"),
+              reference("step07"),
+            ] as const),
+            witnesses: Object.freeze({
+              ...baseWitnesses(common.references),
+              chunkedVerifyWithdraw: reference("chunkedVerifyWithdraw"),
+              pexcludesWithdraw: reference("pexcludesWithdraw"),
+            }),
+            fieldPreimageCertificateMint: reference(
+              "fieldPreimageCertificateMint",
+            ),
+            removal: Object.freeze({
+              correctionLockSpend: reference("correctionLockSpend"),
+              stateQueueSpend: reference("stateQueueSpend"),
+              stateQueueMint: reference("stateQueueMint"),
+              stateQueueFraudRemovalWithdraw: reference(
+                "stateQueueFraudRemovalWithdraw",
+              ),
+              activeOperatorsSpend: reference("activeOperatorsSpend"),
+              activeOperatorsMint: reference("activeOperatorsMint"),
+              retiredOperatorsSpend: reference("retiredOperatorsSpend"),
+              retiredOperatorsMint: reference("retiredOperatorsMint"),
+              schedulerSpend: reference("schedulerSpend"),
+            }),
+          }),
+        }),
+      });
+    case "transactionOutputNonCanonical":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          decisionDigest: common.decisionDigest,
+          stateQueueMutationLeaseCoordinator:
+            common.stateQueueMutationLeaseCoordinator,
+          referenceScripts: Object.freeze({
+            step01: reference("step01"),
+            step02: reference("step02"),
+            step03: reference("step03"),
+            step04: reference("step04"),
+            fieldPreimageCertificateMint: reference(
+              "fieldPreimageCertificateMint",
+            ),
+            witnesses: Object.freeze(baseWitnesses(common.references)),
+          }),
+        }),
+      });
+    case "resolvedOutputNonCanonical":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          decisionDigest: common.decisionDigest,
+          stateQueueMutationLeaseCoordinator:
+            common.stateQueueMutationLeaseCoordinator,
+          historicalCheckpointStore:
+            common.historicalNativeScriptAuthority.checkpointStore,
+          historicalSource:
+            common.historicalNativeScriptAuthority.historySource,
+          referenceScripts: Object.freeze({
+            step01: reference("step01"),
+            step02: reference("step02"),
+            step03: reference("step03"),
+            step04: reference("step04"),
+            step05: reference("step05"),
+            fieldPreimageCertificateMint: reference(
+              "fieldPreimageCertificateMint",
+            ),
+            witnesses: Object.freeze(baseWitnesses(common.references)),
+          }),
+        }),
+      });
+    case "mintDeclaredAssetLimit":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          decisionDigest: common.decisionDigest,
+          stateQueueMutationLeaseCoordinator:
+            common.stateQueueMutationLeaseCoordinator,
+          referenceScripts: Object.freeze({
+            steps: Object.freeze([
+              reference("step01"),
+              reference("step02"),
+              reference("step03"),
+              reference("step04"),
+            ] as const),
+            witnesses: Object.freeze({
+              ...baseWitnesses(common.references),
+              chunkedVerifyWithdraw: reference("chunkedVerifyWithdraw"),
+              pexcludesWithdraw: reference("pexcludesWithdraw"),
+            }),
+            fieldPreimageCertificateMint: reference(
+              "fieldPreimageCertificateMint",
+            ),
+            removal: Object.freeze({
+              correctionLockSpend: reference("correctionLockSpend"),
+              stateQueueSpend: reference("stateQueueSpend"),
+              stateQueueMint: reference("stateQueueMint"),
+              stateQueueFraudRemovalWithdraw: reference(
+                "stateQueueFraudRemovalWithdraw",
+              ),
+              activeOperatorsSpend: reference("activeOperatorsSpend"),
+              activeOperatorsMint: reference("activeOperatorsMint"),
+              retiredOperatorsSpend: reference("retiredOperatorsSpend"),
+              retiredOperatorsMint: reference("retiredOperatorsMint"),
+              schedulerSpend: reference("schedulerSpend"),
+            }),
+          }),
+        }),
+      });
+    case "spendInputSignerMissing":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          decisionDigest: common.decisionDigest,
+          historicalCheckpointStore:
+            common.historicalNativeScriptAuthority.checkpointStore,
+          historicalSource:
+            common.historicalNativeScriptAuthority.historySource,
+          referenceScripts: Object.freeze({
+            step01: reference("step01"),
+            step02: reference("step02"),
+            step03: reference("step03"),
+            step04: reference("step04"),
+            step05: reference("step05"),
+            fieldPreimageCertificateMint: reference(
+              "fieldPreimageCertificateMint",
+            ),
+            witnesses: Object.freeze(baseWitnesses(common.references)),
+          }),
+        }),
+      });
+    case "protectedOutputSignerMissing":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          decisionDigest: common.decisionDigest,
+          referenceScripts: Object.freeze({
+            step01: reference("step01"),
+            step02: reference("step02"),
+            step03: reference("step03"),
+            step04: reference("step04"),
+            step05: reference("step05"),
+            fieldPreimageCertificateMint: reference(
+              "fieldPreimageCertificateMint",
+            ),
+            witnesses: Object.freeze(baseWitnesses(common.references)),
+          }),
+        }),
+      });
+    case "observersForbiddenOnUntaggedNetwork":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          decisionDigest: common.decisionDigest,
+          referenceScripts: Object.freeze({
+            steps: Object.freeze([
+              reference("step01"),
+              reference("step02"),
+            ] as const),
+            witnesses: Object.freeze({
+              ...baseWitnesses(common.references),
+              chunkedVerifyWithdraw: reference("chunkedVerifyWithdraw"),
+              pexcludesWithdraw: reference("pexcludesWithdraw"),
+            }),
+            fieldPreimageCertificateMint: reference(
+              "fieldPreimageCertificateMint",
+            ),
+            removal: Object.freeze({
+              correctionLockSpend: reference("correctionLockSpend"),
+              stateQueueSpend: reference("stateQueueSpend"),
+              stateQueueMint: reference("stateQueueMint"),
+              stateQueueFraudRemovalWithdraw: reference(
+                "stateQueueFraudRemovalWithdraw",
+              ),
+              activeOperatorsSpend: reference("activeOperatorsSpend"),
+              activeOperatorsMint: reference("activeOperatorsMint"),
+              retiredOperatorsSpend: reference("retiredOperatorsSpend"),
+              retiredOperatorsMint: reference("retiredOperatorsMint"),
+              schedulerSpend: reference("schedulerSpend"),
+            }),
+          }),
+        }),
+      });
+    case "witnessScriptDecoding":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          decisionDigest: common.decisionDigest,
+          referenceScripts: Object.freeze({
+            step01: reference("step01"),
+            step02: reference("step02"),
+            step03: reference("step03"),
+            step04: reference("step04"),
+            fieldPreimageCertificateMint: reference(
+              "fieldPreimageCertificateMint",
+            ),
+            witnesses: Object.freeze(baseWitnesses(common.references)),
+          }),
+        }),
+      });
+    case "outputReferenceScriptDecoding":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          decisionDigest: common.decisionDigest,
+          referenceScripts: Object.freeze({
+            step01: reference("step01"),
+            step02: reference("step02"),
+            step03: reference("step03"),
+            step04: reference("step04"),
+            step05: reference("step05"),
+            step06: reference("step06"),
+            fieldPreimageCertificateMint: reference(
+              "fieldPreimageCertificateMint",
+            ),
+            witnesses: Object.freeze(baseWitnesses(common.references)),
+          }),
+        }),
+      });
+    case "executionSourceScriptDecoding":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          decisionDigest: common.decisionDigest,
+          referenceScripts: Object.freeze({
+            steps: Object.freeze([
+              reference("step01"),
+              reference("step02"),
+              reference("step03"),
+              reference("step04"),
+              reference("step05"),
+            ] as const),
+            witnesses: Object.freeze({
+              ...baseWitnesses(common.references),
+              chunkedVerifyWithdraw: reference("chunkedVerifyWithdraw"),
+              pexcludesWithdraw: reference("pexcludesWithdraw"),
+            }),
+            removal: Object.freeze({
+              correctionLockSpend: reference("correctionLockSpend"),
+              stateQueueSpend: reference("stateQueueSpend"),
+              stateQueueMint: reference("stateQueueMint"),
+              stateQueueFraudRemovalWithdraw: reference(
+                "stateQueueFraudRemovalWithdraw",
+              ),
+              activeOperatorsSpend: reference("activeOperatorsSpend"),
+              activeOperatorsMint: reference("activeOperatorsMint"),
+              retiredOperatorsSpend: reference("retiredOperatorsSpend"),
+              retiredOperatorsMint: reference("retiredOperatorsMint"),
+              schedulerSpend: reference("schedulerSpend"),
+            }),
+          }),
+        }),
+      });
+    case "executionNativeScriptInvalid":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          historicalCheckpointStore:
+            common.historicalNativeScriptAuthority.checkpointStore,
+          historicalSource:
+            common.historicalNativeScriptAuthority.historySource,
+          referenceScripts: Object.freeze({
+            steps: Object.freeze([
+              reference("step01"),
+              reference("step02"),
+              reference("step03"),
+              reference("step04"),
+              reference("step05"),
+              reference("step06"),
+              reference("step07"),
+              reference("step08"),
+              reference("step09"),
+              reference("step10"),
+              reference("step11"),
+              reference("step12"),
+              reference("step13"),
+            ] as const),
+            witnesses: Object.freeze({
+              ...baseWitnesses(common.references),
+              chunkedVerifyWithdraw: reference("chunkedVerifyWithdraw"),
+              pexcludesWithdraw: reference("pexcludesWithdraw"),
+            }),
+            fieldPreimageCertificateMint: reference(
+              "fieldPreimageCertificateMint",
+            ),
+            removal: Object.freeze({
+              correctionLockSpend: reference("correctionLockSpend"),
+              stateQueueSpend: reference("stateQueueSpend"),
+              stateQueueMint: reference("stateQueueMint"),
+              stateQueueFraudRemovalWithdraw: reference(
+                "stateQueueFraudRemovalWithdraw",
+              ),
+              activeOperatorsSpend: reference("activeOperatorsSpend"),
+              activeOperatorsMint: reference("activeOperatorsMint"),
+              retiredOperatorsSpend: reference("retiredOperatorsSpend"),
+              retiredOperatorsMint: reference("retiredOperatorsMint"),
+              schedulerSpend: reference("schedulerSpend"),
+            }),
+          }),
+        }),
+      });
+    case "observerOrderInvalid":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          decisionDigest: common.decisionDigest,
+          referenceScripts: Object.freeze({
+            steps: Object.freeze([
+              reference("step01"),
+              reference("step02"),
+              reference("step03"),
+              reference("step04"),
+            ] as const),
+            witnesses: Object.freeze({
+              ...baseWitnesses(common.references),
+              chunkedVerifyWithdraw: reference("chunkedVerifyWithdraw"),
+              pexcludesWithdraw: reference("pexcludesWithdraw"),
+            }),
+            fieldPreimageCertificateMint: reference(
+              "fieldPreimageCertificateMint",
+            ),
+            removal: Object.freeze({
+              correctionLockSpend: reference("correctionLockSpend"),
+              stateQueueSpend: reference("stateQueueSpend"),
+              stateQueueMint: reference("stateQueueMint"),
+              stateQueueFraudRemovalWithdraw: reference(
+                "stateQueueFraudRemovalWithdraw",
+              ),
+              activeOperatorsSpend: reference("activeOperatorsSpend"),
+              activeOperatorsMint: reference("activeOperatorsMint"),
+              retiredOperatorsSpend: reference("retiredOperatorsSpend"),
+              retiredOperatorsMint: reference("retiredOperatorsMint"),
+              schedulerSpend: reference("schedulerSpend"),
+            }),
+          }),
+        }),
+      });
+    case "redeemerCanonicity":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          decisionDigest: common.decisionDigest,
+          referenceScripts: Object.freeze({
+            steps: Object.freeze([
+              reference("step01"),
+              reference("step02"),
+              reference("step03"),
+            ] as const),
+            witnesses: Object.freeze({
+              ...baseWitnesses(common.references),
+              chunkedVerifyWithdraw: reference("chunkedVerifyWithdraw"),
+              pexcludesWithdraw: reference("pexcludesWithdraw"),
+            }),
+            fieldPreimageCertificateMint: reference(
+              "fieldPreimageCertificateMint",
+            ),
+            removal: Object.freeze({
+              correctionLockSpend: reference("correctionLockSpend"),
+              stateQueueSpend: reference("stateQueueSpend"),
+              stateQueueMint: reference("stateQueueMint"),
+              stateQueueFraudRemovalWithdraw: reference(
+                "stateQueueFraudRemovalWithdraw",
+              ),
+              activeOperatorsSpend: reference("activeOperatorsSpend"),
+              activeOperatorsMint: reference("activeOperatorsMint"),
+              retiredOperatorsSpend: reference("retiredOperatorsSpend"),
+              retiredOperatorsMint: reference("retiredOperatorsMint"),
+              schedulerSpend: reference("schedulerSpend"),
+            }),
+          }),
+        }),
+      });
+    case "receivePurposeLanguage":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          decisionDigest: common.decisionDigest,
+          referenceScripts: Object.freeze({
+            steps: Object.freeze([
+              reference("step01"),
+              reference("step02"),
+              reference("step03"),
+            ] as const),
+            witnesses: Object.freeze({
+              ...baseWitnesses(common.references),
+              chunkedVerifyWithdraw: reference("chunkedVerifyWithdraw"),
+              pexcludesWithdraw: reference("pexcludesWithdraw"),
+            }),
+            removal: Object.freeze({
+              correctionLockSpend: reference("correctionLockSpend"),
+              stateQueueSpend: reference("stateQueueSpend"),
+              stateQueueMint: reference("stateQueueMint"),
+              stateQueueFraudRemovalWithdraw: reference(
+                "stateQueueFraudRemovalWithdraw",
+              ),
+              activeOperatorsSpend: reference("activeOperatorsSpend"),
+              activeOperatorsMint: reference("activeOperatorsMint"),
+              retiredOperatorsSpend: reference("retiredOperatorsSpend"),
+              retiredOperatorsMint: reference("retiredOperatorsMint"),
+              schedulerSpend: reference("schedulerSpend"),
+            }),
+          }),
+        }),
+      });
+    case "unusedScriptWitness":
+    case "missingScriptSource":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          decisionDigest: common.decisionDigest,
+          referenceScripts: Object.freeze({
+            steps: Object.freeze([
+              reference("step01"),
+              reference("step02"),
+              reference("step03"),
+              reference("step04"),
+              reference("step05"),
+              reference("step06"),
+            ] as const),
+            witnesses: Object.freeze({
+              ...baseWitnesses(common.references),
+              chunkedVerifyWithdraw: reference("chunkedVerifyWithdraw"),
+              pexcludesWithdraw: reference("pexcludesWithdraw"),
+            }),
+            removal: Object.freeze({
+              correctionLockSpend: reference("correctionLockSpend"),
+              stateQueueSpend: reference("stateQueueSpend"),
+              stateQueueMint: reference("stateQueueMint"),
+              stateQueueFraudRemovalWithdraw: reference(
+                "stateQueueFraudRemovalWithdraw",
+              ),
+              activeOperatorsSpend: reference("activeOperatorsSpend"),
+              activeOperatorsMint: reference("activeOperatorsMint"),
+              retiredOperatorsSpend: reference("retiredOperatorsSpend"),
+              retiredOperatorsMint: reference("retiredOperatorsMint"),
+              schedulerSpend: reference("schedulerSpend"),
+            }),
+          }),
+        }),
+      });
+    case "missingRedeemer":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          decisionDigest: common.decisionDigest,
+          referenceScripts: Object.freeze({
+            steps: Object.freeze([
+              reference("step01"),
+              reference("step02"),
+              reference("step02a"),
+              reference("step02b"),
+              reference("step03"),
+              reference("step04"),
+              reference("step05"),
+            ] as const),
+            witnesses: Object.freeze({
+              ...baseWitnesses(common.references),
+              chunkedVerifyWithdraw: reference("chunkedVerifyWithdraw"),
+              pexcludesWithdraw: reference("pexcludesWithdraw"),
+            }),
+            fieldPreimageCertificateMint: reference(
+              "fieldPreimageCertificateMint",
+            ),
+            removal: Object.freeze({
+              correctionLockSpend: reference("correctionLockSpend"),
+              stateQueueSpend: reference("stateQueueSpend"),
+              stateQueueMint: reference("stateQueueMint"),
+              stateQueueFraudRemovalWithdraw: reference(
+                "stateQueueFraudRemovalWithdraw",
+              ),
+              activeOperatorsSpend: reference("activeOperatorsSpend"),
+              activeOperatorsMint: reference("activeOperatorsMint"),
+              retiredOperatorsSpend: reference("retiredOperatorsSpend"),
+              retiredOperatorsMint: reference("retiredOperatorsMint"),
+              schedulerSpend: reference("schedulerSpend"),
+            }),
+          }),
+        }),
+      });
+    case "unusedRedeemer":
+      return Object.freeze({
+        category,
+        config: Object.freeze({
+          ...base,
+          decisionDigest: common.decisionDigest,
+          referenceScripts: Object.freeze({
+            steps: Object.freeze([
+              reference("step01"),
+              reference("step02"),
+              reference("step02a"),
+              reference("step02b"),
+              reference("step02c"),
+              reference("step03"),
+              reference("step04"),
+              reference("step05"),
+              reference("step06"),
+            ] as const),
+            witnesses: Object.freeze({
+              ...baseWitnesses(common.references),
+              chunkedVerifyWithdraw: reference("chunkedVerifyWithdraw"),
+              pexcludesWithdraw: reference("pexcludesWithdraw"),
+            }),
+            removal: Object.freeze({
+              correctionLockSpend: reference("correctionLockSpend"),
+              stateQueueSpend: reference("stateQueueSpend"),
+              stateQueueMint: reference("stateQueueMint"),
+              stateQueueFraudRemovalWithdraw: reference(
+                "stateQueueFraudRemovalWithdraw",
+              ),
+              activeOperatorsSpend: reference("activeOperatorsSpend"),
+              activeOperatorsMint: reference("activeOperatorsMint"),
+              retiredOperatorsSpend: reference("retiredOperatorsSpend"),
+              retiredOperatorsMint: reference("retiredOperatorsMint"),
+              schedulerSpend: reference("schedulerSpend"),
+            }),
+          }),
+        }),
+      });
   }
 }
 
@@ -1982,6 +3457,128 @@ const taggedReferenceOutRefs = (
           tagged.config.referenceScripts.fieldPreimageCertificateMint,
           ...Object.values(tagged.config.referenceScripts.yields),
         ];
+      case "fieldPreimageLengthMismatch":
+        return [
+          tagged.config.referenceScripts.step01,
+          tagged.config.referenceScripts.step02Accepted,
+          tagged.config.referenceScripts.step02Forced,
+          tagged.config.referenceScripts.step03,
+          ...Object.values(tagged.config.referenceScripts.witnesses),
+          tagged.config.referenceScripts.fieldPreimageCertificateMint,
+        ];
+      case "fieldItemWidthIllegal":
+        return [
+          tagged.config.referenceScripts.step01,
+          tagged.config.referenceScripts.step02,
+          tagged.config.referenceScripts.step03,
+          ...Object.values(tagged.config.referenceScripts.witnesses),
+          tagged.config.referenceScripts.fieldPreimageCertificateMint,
+        ];
+      case "scriptIntegrityHashMissing":
+        return [
+          ...tagged.config.referenceScripts.steps,
+          ...Object.values(tagged.config.referenceScripts.witnesses),
+          tagged.config.referenceScripts.fieldPreimageCertificateMint,
+          ...Object.values(tagged.config.referenceScripts.removal),
+        ];
+      case "transactionOutputNonCanonical":
+        return [
+          tagged.config.referenceScripts.step01,
+          tagged.config.referenceScripts.step02,
+          tagged.config.referenceScripts.step03,
+          tagged.config.referenceScripts.step04,
+          ...Object.values(tagged.config.referenceScripts.witnesses),
+          tagged.config.referenceScripts.fieldPreimageCertificateMint,
+        ];
+      case "resolvedOutputNonCanonical":
+        return [
+          tagged.config.referenceScripts.step01,
+          tagged.config.referenceScripts.step02,
+          tagged.config.referenceScripts.step03,
+          tagged.config.referenceScripts.step04,
+          tagged.config.referenceScripts.step05,
+          ...Object.values(tagged.config.referenceScripts.witnesses),
+          tagged.config.referenceScripts.fieldPreimageCertificateMint,
+        ];
+      case "mintDeclaredAssetLimit":
+        return [
+          ...tagged.config.referenceScripts.steps,
+          ...Object.values(tagged.config.referenceScripts.witnesses),
+          tagged.config.referenceScripts.fieldPreimageCertificateMint,
+          ...Object.values(tagged.config.referenceScripts.removal),
+        ];
+      case "spendInputSignerMissing":
+      case "protectedOutputSignerMissing":
+        return [
+          tagged.config.referenceScripts.step01,
+          tagged.config.referenceScripts.step02,
+          tagged.config.referenceScripts.step03,
+          tagged.config.referenceScripts.step04,
+          tagged.config.referenceScripts.step05,
+          ...Object.values(tagged.config.referenceScripts.witnesses),
+          tagged.config.referenceScripts.fieldPreimageCertificateMint,
+        ];
+      case "observersForbiddenOnUntaggedNetwork":
+        return [
+          ...tagged.config.referenceScripts.steps,
+          ...Object.values(tagged.config.referenceScripts.witnesses),
+          tagged.config.referenceScripts.fieldPreimageCertificateMint,
+          ...Object.values(tagged.config.referenceScripts.removal),
+        ];
+      case "witnessScriptDecoding":
+        return [
+          tagged.config.referenceScripts.step01,
+          tagged.config.referenceScripts.step02,
+          tagged.config.referenceScripts.step03,
+          tagged.config.referenceScripts.step04,
+          tagged.config.referenceScripts.fieldPreimageCertificateMint,
+          ...Object.values(tagged.config.referenceScripts.witnesses),
+        ];
+      case "outputReferenceScriptDecoding":
+        return [
+          tagged.config.referenceScripts.step01,
+          tagged.config.referenceScripts.step02,
+          tagged.config.referenceScripts.step03,
+          tagged.config.referenceScripts.step04,
+          tagged.config.referenceScripts.step05,
+          tagged.config.referenceScripts.step06,
+          tagged.config.referenceScripts.fieldPreimageCertificateMint,
+          ...Object.values(tagged.config.referenceScripts.witnesses),
+        ];
+      case "executionSourceScriptDecoding":
+      case "receivePurposeLanguage":
+      case "unusedScriptWitness":
+      case "missingScriptSource":
+      case "unusedRedeemer":
+      case "scriptIntegrityHashMismatch":
+      case "distinctAssetAccumulationLimit":
+        return [
+          ...tagged.config.referenceScripts.steps,
+          ...Object.values(tagged.config.referenceScripts.witnesses),
+          ...Object.values(tagged.config.referenceScripts.removal),
+        ];
+      case "executionNativeScriptInvalid":
+        return [
+          ...tagged.config.referenceScripts.steps,
+          ...Object.values(tagged.config.referenceScripts.witnesses),
+          tagged.config.referenceScripts.fieldPreimageCertificateMint,
+          ...Object.values(tagged.config.referenceScripts.removal),
+        ];
+      case "missingRedeemer":
+        return [
+          ...tagged.config.referenceScripts.steps,
+          ...Object.values(tagged.config.referenceScripts.witnesses),
+          tagged.config.referenceScripts.fieldPreimageCertificateMint,
+          ...Object.values(tagged.config.referenceScripts.removal),
+        ];
+      case "observerOrderInvalid":
+      case "redeemerCanonicity":
+        return [
+          ...tagged.config.referenceScripts.steps,
+          ...Object.values(tagged.config.referenceScripts.witnesses),
+          tagged.config.referenceScripts.fieldPreimageCertificateMint,
+          ...Object.values(tagged.config.referenceScripts.removal),
+        ];
       case "invalidRange":
       case "zeroInput":
       case "daHashPreimage":
@@ -1997,7 +3594,9 @@ const taggedReferenceOutRefs = (
   })();
   const roles = Object.keys(references);
   if (roles.length !== utxos.length) {
-    throw new Error("workflow reference roster changed after admission");
+    throw new Error(
+      `workflow reference roster changed after admission for ${tagged.category}: admitted ${roles.length.toString()}, configured ${utxos.length.toString()}`,
+    );
   }
   return Object.freeze(
     Object.fromEntries(
@@ -2084,6 +3683,28 @@ const WATCHER_INSTALLED_COMPLETE_REPLAY_V1 =
     NETWORK_ID_COMPLETE_CANONICAL_REPLAY_V1,
     NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY_V1,
     MIN_ADA_COMPLETE_CANONICAL_REPLAY_V1,
+    FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY_V1,
+    FIELD_ITEM_WIDTH_ILLEGAL_COMPLETE_CANONICAL_REPLAY_V1,
+    WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY_V1,
+    SCRIPT_INTEGRITY_HASH_MISSING_COMPLETE_CANONICAL_REPLAY_V1,
+    TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY_V1,
+    RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY_V1,
+    MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY_V1,
+    SPEND_INPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY_V1,
+    PROTECTED_OUTPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY_V1,
+    OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY_V1,
+    OBSERVER_ORDER_INVALID_COMPLETE_CANONICAL_REPLAY_V1,
+    REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY_V1,
+    OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY_V1,
+    EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY_V1,
+    RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY_V1,
+    UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY_V1,
+    MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY_V1,
+    MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY_V1,
+    UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY_V1,
+    EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY_V1,
+    SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY_V1,
+    DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY_V1,
   ]);
 
 const createApplication = ({
@@ -2259,6 +3880,72 @@ const createApplication = ({
     category: "minAda",
   ): TaggedWorkflowLoaderForV1<"minAda">;
   function makeTaggedLoader(
+    category: "fieldPreimageLengthMismatch",
+  ): TaggedWorkflowLoaderForV1<"fieldPreimageLengthMismatch">;
+  function makeTaggedLoader(
+    category: "fieldItemWidthIllegal",
+  ): TaggedWorkflowLoaderForV1<"fieldItemWidthIllegal">;
+  function makeTaggedLoader(
+    category: "scriptIntegrityHashMissing",
+  ): TaggedWorkflowLoaderForV1<"scriptIntegrityHashMissing">;
+  function makeTaggedLoader(
+    category: "transactionOutputNonCanonical",
+  ): TaggedWorkflowLoaderForV1<"transactionOutputNonCanonical">;
+  function makeTaggedLoader(
+    category: "resolvedOutputNonCanonical",
+  ): TaggedWorkflowLoaderForV1<"resolvedOutputNonCanonical">;
+  function makeTaggedLoader(
+    category: "mintDeclaredAssetLimit",
+  ): TaggedWorkflowLoaderForV1<"mintDeclaredAssetLimit">;
+  function makeTaggedLoader(
+    category: "spendInputSignerMissing",
+  ): TaggedWorkflowLoaderForV1<"spendInputSignerMissing">;
+  function makeTaggedLoader(
+    category: "protectedOutputSignerMissing",
+  ): TaggedWorkflowLoaderForV1<"protectedOutputSignerMissing">;
+  function makeTaggedLoader(
+    category: "observersForbiddenOnUntaggedNetwork",
+  ): TaggedWorkflowLoaderForV1<"observersForbiddenOnUntaggedNetwork">;
+  function makeTaggedLoader(
+    category: "witnessScriptDecoding",
+  ): TaggedWorkflowLoaderForV1<"witnessScriptDecoding">;
+  function makeTaggedLoader(
+    category: "outputReferenceScriptDecoding",
+  ): TaggedWorkflowLoaderForV1<"outputReferenceScriptDecoding">;
+  function makeTaggedLoader(
+    category: "executionSourceScriptDecoding",
+  ): TaggedWorkflowLoaderForV1<"executionSourceScriptDecoding">;
+  function makeTaggedLoader(
+    category: "executionNativeScriptInvalid",
+  ): TaggedWorkflowLoaderForV1<"executionNativeScriptInvalid">;
+  function makeTaggedLoader(
+    category: "observerOrderInvalid",
+  ): TaggedWorkflowLoaderForV1<"observerOrderInvalid">;
+  function makeTaggedLoader(
+    category: "redeemerCanonicity",
+  ): TaggedWorkflowLoaderForV1<"redeemerCanonicity">;
+  function makeTaggedLoader(
+    category: "receivePurposeLanguage",
+  ): TaggedWorkflowLoaderForV1<"receivePurposeLanguage">;
+  function makeTaggedLoader(
+    category: "unusedScriptWitness",
+  ): TaggedWorkflowLoaderForV1<"unusedScriptWitness">;
+  function makeTaggedLoader(
+    category: "missingScriptSource",
+  ): TaggedWorkflowLoaderForV1<"missingScriptSource">;
+  function makeTaggedLoader(
+    category: "missingRedeemer",
+  ): TaggedWorkflowLoaderForV1<"missingRedeemer">;
+  function makeTaggedLoader(
+    category: "unusedRedeemer",
+  ): TaggedWorkflowLoaderForV1<"unusedRedeemer">;
+  function makeTaggedLoader(
+    category: "scriptIntegrityHashMismatch",
+  ): TaggedWorkflowLoaderForV1<"scriptIntegrityHashMismatch">;
+  function makeTaggedLoader(
+    category: "distinctAssetAccumulationLimit",
+  ): TaggedWorkflowLoaderForV1<"distinctAssetAccumulationLimit">;
+  function makeTaggedLoader(
     category: WatcherInstalledProductionWorkflowCategoryV1,
   ): ProductionWorkflowRuntimeConfigLoaderV1<TaggedWorkflowConfigV1> {
     return createWatcherProductionWorkflowRuntimeLoaderV1({
@@ -2306,6 +3993,46 @@ const createApplication = ({
     missingNativeScriptUtxo: makeTaggedLoader("missingNativeScriptUtxo"),
     nativeScriptInvalid: makeTaggedLoader("nativeScriptInvalid"),
     minAda: makeTaggedLoader("minAda"),
+    fieldPreimageLengthMismatch: makeTaggedLoader(
+      "fieldPreimageLengthMismatch",
+    ),
+    fieldItemWidthIllegal: makeTaggedLoader("fieldItemWidthIllegal"),
+    scriptIntegrityHashMissing: makeTaggedLoader("scriptIntegrityHashMissing"),
+    transactionOutputNonCanonical: makeTaggedLoader(
+      "transactionOutputNonCanonical",
+    ),
+    resolvedOutputNonCanonical: makeTaggedLoader("resolvedOutputNonCanonical"),
+    mintDeclaredAssetLimit: makeTaggedLoader("mintDeclaredAssetLimit"),
+    spendInputSignerMissing: makeTaggedLoader("spendInputSignerMissing"),
+    protectedOutputSignerMissing: makeTaggedLoader(
+      "protectedOutputSignerMissing",
+    ),
+    observersForbiddenOnUntaggedNetwork: makeTaggedLoader(
+      "observersForbiddenOnUntaggedNetwork",
+    ),
+    witnessScriptDecoding: makeTaggedLoader("witnessScriptDecoding"),
+    outputReferenceScriptDecoding: makeTaggedLoader(
+      "outputReferenceScriptDecoding",
+    ),
+    executionSourceScriptDecoding: makeTaggedLoader(
+      "executionSourceScriptDecoding",
+    ),
+    executionNativeScriptInvalid: makeTaggedLoader(
+      "executionNativeScriptInvalid",
+    ),
+    observerOrderInvalid: makeTaggedLoader("observerOrderInvalid"),
+    redeemerCanonicity: makeTaggedLoader("redeemerCanonicity"),
+    receivePurposeLanguage: makeTaggedLoader("receivePurposeLanguage"),
+    unusedScriptWitness: makeTaggedLoader("unusedScriptWitness"),
+    missingScriptSource: makeTaggedLoader("missingScriptSource"),
+    missingRedeemer: makeTaggedLoader("missingRedeemer"),
+    unusedRedeemer: makeTaggedLoader("unusedRedeemer"),
+    scriptIntegrityHashMismatch: makeTaggedLoader(
+      "scriptIntegrityHashMismatch",
+    ),
+    distinctAssetAccumulationLimit: makeTaggedLoader(
+      "distinctAssetAccumulationLimit",
+    ),
   } as const;
 
   const doubleSpendLoader = async (
@@ -2658,6 +4385,329 @@ const createApplication = ({
       tagged: loaded.config,
     });
   };
+  const fieldPreimageLengthMismatchLoader = async (
+    input: Parameters<(typeof taggedLoaders)["fieldPreimageLengthMismatch"]>[0],
+  ) => {
+    const loaded = await taggedLoaders.fieldPreimageLengthMismatch(input);
+    if (loaded.config.category !== "fieldPreimageLengthMismatch") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const fieldItemWidthIllegalLoader = async (
+    input: Parameters<(typeof taggedLoaders)["fieldItemWidthIllegal"]>[0],
+  ) => {
+    const loaded = await taggedLoaders.fieldItemWidthIllegal(input);
+    if (loaded.config.category !== "fieldItemWidthIllegal") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const scriptIntegrityHashMissingLoader = async (
+    input: Parameters<(typeof taggedLoaders)["scriptIntegrityHashMissing"]>[0],
+  ) => {
+    const loaded = await taggedLoaders.scriptIntegrityHashMissing(input);
+    if (loaded.config.category !== "scriptIntegrityHashMissing") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const transactionOutputNonCanonicalLoader = async (
+    input: Parameters<
+      (typeof taggedLoaders)["transactionOutputNonCanonical"]
+    >[0],
+  ) => {
+    const loaded = await taggedLoaders.transactionOutputNonCanonical(input);
+    if (loaded.config.category !== "transactionOutputNonCanonical") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const resolvedOutputNonCanonicalLoader = async (
+    input: Parameters<(typeof taggedLoaders)["resolvedOutputNonCanonical"]>[0],
+  ) => {
+    const loaded = await taggedLoaders.resolvedOutputNonCanonical(input);
+    if (loaded.config.category !== "resolvedOutputNonCanonical") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const mintDeclaredAssetLimitLoader = async (
+    input: Parameters<(typeof taggedLoaders)["mintDeclaredAssetLimit"]>[0],
+  ) => {
+    const loaded = await taggedLoaders.mintDeclaredAssetLimit(input);
+    if (loaded.config.category !== "mintDeclaredAssetLimit") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const spendInputSignerMissingLoader = async (
+    input: Parameters<(typeof taggedLoaders)["spendInputSignerMissing"]>[0],
+  ) => {
+    const loaded = await taggedLoaders.spendInputSignerMissing(input);
+    if (loaded.config.category !== "spendInputSignerMissing") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const protectedOutputSignerMissingLoader = async (
+    input: Parameters<
+      (typeof taggedLoaders)["protectedOutputSignerMissing"]
+    >[0],
+  ) => {
+    const loaded = await taggedLoaders.protectedOutputSignerMissing(input);
+    if (loaded.config.category !== "protectedOutputSignerMissing") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const observersForbiddenOnUntaggedNetworkLoader = async (
+    input: Parameters<
+      (typeof taggedLoaders)["observersForbiddenOnUntaggedNetwork"]
+    >[0],
+  ) => {
+    const loaded =
+      await taggedLoaders.observersForbiddenOnUntaggedNetwork(input);
+    if (loaded.config.category !== "observersForbiddenOnUntaggedNetwork") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const witnessScriptDecodingLoader = async (
+    input: Parameters<(typeof taggedLoaders)["witnessScriptDecoding"]>[0],
+  ) => {
+    const loaded = await taggedLoaders.witnessScriptDecoding(input);
+    if (loaded.config.category !== "witnessScriptDecoding") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const outputReferenceScriptDecodingLoader = async (
+    input: Parameters<
+      (typeof taggedLoaders)["outputReferenceScriptDecoding"]
+    >[0],
+  ) => {
+    const loaded = await taggedLoaders.outputReferenceScriptDecoding(input);
+    if (loaded.config.category !== "outputReferenceScriptDecoding") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const executionSourceScriptDecodingLoader = async (
+    input: Parameters<
+      (typeof taggedLoaders)["executionSourceScriptDecoding"]
+    >[0],
+  ) => {
+    const loaded = await taggedLoaders.executionSourceScriptDecoding(input);
+    if (loaded.config.category !== "executionSourceScriptDecoding") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const executionNativeScriptInvalidLoader = async (
+    input: Parameters<
+      (typeof taggedLoaders)["executionNativeScriptInvalid"]
+    >[0],
+  ) => {
+    const loaded = await taggedLoaders.executionNativeScriptInvalid(input);
+    if (loaded.config.category !== "executionNativeScriptInvalid") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const observerOrderInvalidLoader = async (
+    input: Parameters<(typeof taggedLoaders)["observerOrderInvalid"]>[0],
+  ) => {
+    const loaded = await taggedLoaders.observerOrderInvalid(input);
+    if (loaded.config.category !== "observerOrderInvalid") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const redeemerCanonicityLoader = async (
+    input: Parameters<(typeof taggedLoaders)["redeemerCanonicity"]>[0],
+  ) => {
+    const loaded = await taggedLoaders.redeemerCanonicity(input);
+    if (loaded.config.category !== "redeemerCanonicity") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const receivePurposeLanguageLoader = async (
+    input: Parameters<(typeof taggedLoaders)["receivePurposeLanguage"]>[0],
+  ) => {
+    const loaded = await taggedLoaders.receivePurposeLanguage(input);
+    if (loaded.config.category !== "receivePurposeLanguage") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const unusedScriptWitnessLoader = async (
+    input: Parameters<(typeof taggedLoaders)["unusedScriptWitness"]>[0],
+  ) => {
+    const loaded = await taggedLoaders.unusedScriptWitness(input);
+    if (loaded.config.category !== "unusedScriptWitness") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const missingScriptSourceLoader = async (
+    input: Parameters<(typeof taggedLoaders)["missingScriptSource"]>[0],
+  ) => {
+    const loaded = await taggedLoaders.missingScriptSource(input);
+    if (loaded.config.category !== "missingScriptSource") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const missingRedeemerLoader = async (
+    input: Parameters<(typeof taggedLoaders)["missingRedeemer"]>[0],
+  ) => {
+    const loaded = await taggedLoaders.missingRedeemer(input);
+    if (loaded.config.category !== "missingRedeemer") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const unusedRedeemerLoader = async (
+    input: Parameters<(typeof taggedLoaders)["unusedRedeemer"]>[0],
+  ) => {
+    const loaded = await taggedLoaders.unusedRedeemer(input);
+    if (loaded.config.category !== "unusedRedeemer") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const scriptIntegrityHashMismatchLoader = async (
+    input: Parameters<(typeof taggedLoaders)["scriptIntegrityHashMismatch"]>[0],
+  ) => {
+    const loaded = await taggedLoaders.scriptIntegrityHashMismatch(input);
+    if (loaded.config.category !== "scriptIntegrityHashMismatch") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
+  const distinctAssetAccumulationLimitLoader = async (
+    input: Parameters<
+      (typeof taggedLoaders)["distinctAssetAccumulationLimit"]
+    >[0],
+  ) => {
+    const loaded = await taggedLoaders.distinctAssetAccumulationLimit(input);
+    if (loaded.config.category !== "distinctAssetAccumulationLimit") {
+      await loaded.close();
+      throw new Error("workflow loader changed its fixed category");
+    }
+    return Object.freeze({
+      ...loaded,
+      config: loaded.config.config,
+      tagged: loaded.config,
+    });
+  };
 
   const runners = Object.freeze({
     doubleSpend: createDoubleSpendProductionWorkflowRunnerV1(
@@ -2764,6 +4814,110 @@ const createApplication = ({
       minAdaLoader,
       fundingProfile("minAda"),
     ),
+    fieldPreimageLengthMismatch:
+      createFieldPreimageLengthProductionWorkflowRunnerV1(
+        fieldPreimageLengthMismatchLoader,
+        fundingProfile("fieldPreimageLengthMismatch"),
+      ),
+    fieldItemWidthIllegal:
+      createFieldItemWidthIllegalProductionWorkflowRunnerV1(
+        fieldItemWidthIllegalLoader,
+        fundingProfile("fieldItemWidthIllegal"),
+      ),
+    scriptIntegrityHashMissing:
+      createScriptIntegrityHashMissingProductionWorkflowRunnerV1(
+        scriptIntegrityHashMissingLoader,
+        fundingProfile("scriptIntegrityHashMissing"),
+      ),
+    transactionOutputNonCanonical:
+      createTransactionOutputNonCanonicalProductionWorkflowRunnerV1(
+        transactionOutputNonCanonicalLoader,
+        fundingProfile("transactionOutputNonCanonical"),
+      ),
+    resolvedOutputNonCanonical:
+      createResolvedOutputNonCanonicalProductionWorkflowRunnerV1(
+        resolvedOutputNonCanonicalLoader,
+        fundingProfile("resolvedOutputNonCanonical"),
+      ),
+    mintDeclaredAssetLimit:
+      createMintDeclaredAssetLimitProductionWorkflowRunnerV1(
+        mintDeclaredAssetLimitLoader,
+        fundingProfile("mintDeclaredAssetLimit"),
+      ),
+    spendInputSignerMissing:
+      createSpendInputSignerMissingProductionWorkflowRunnerV1(
+        spendInputSignerMissingLoader,
+        fundingProfile("spendInputSignerMissing"),
+      ),
+    protectedOutputSignerMissing:
+      createProtectedOutputSignerMissingProductionWorkflowRunnerV1(
+        protectedOutputSignerMissingLoader,
+        fundingProfile("protectedOutputSignerMissing"),
+      ),
+    observersForbiddenOnUntaggedNetwork:
+      createObserversForbiddenOnUntaggedNetworkProductionWorkflowRunnerV1(
+        observersForbiddenOnUntaggedNetworkLoader,
+        fundingProfile("observersForbiddenOnUntaggedNetwork"),
+      ),
+    witnessScriptDecoding:
+      createWitnessScriptDecodingProductionWorkflowRunnerV1(
+        witnessScriptDecodingLoader,
+        fundingProfile("witnessScriptDecoding"),
+      ),
+    outputReferenceScriptDecoding:
+      createOutputReferenceScriptDecodingProductionWorkflowRunnerV1(
+        outputReferenceScriptDecodingLoader,
+        fundingProfile("outputReferenceScriptDecoding"),
+      ),
+    executionSourceScriptDecoding:
+      createExecutionSourceScriptDecodingProductionWorkflowRunnerV1(
+        executionSourceScriptDecodingLoader,
+        fundingProfile("executionSourceScriptDecoding"),
+      ),
+    executionNativeScriptInvalid:
+      createExecutionNativeScriptInvalidProductionWorkflowRunnerV1(
+        executionNativeScriptInvalidLoader,
+        fundingProfile("executionNativeScriptInvalid"),
+      ),
+    observerOrderInvalid: createObserverOrderInvalidProductionWorkflowRunnerV1(
+      observerOrderInvalidLoader,
+      fundingProfile("observerOrderInvalid"),
+    ),
+    redeemerCanonicity: createRedeemerCanonicityProductionWorkflowRunnerV1(
+      redeemerCanonicityLoader,
+      fundingProfile("redeemerCanonicity"),
+    ),
+    receivePurposeLanguage:
+      createReceivePurposeLanguageProductionWorkflowRunnerV1(
+        receivePurposeLanguageLoader,
+        fundingProfile("receivePurposeLanguage"),
+      ),
+    unusedScriptWitness: createUnusedScriptWitnessProductionWorkflowRunnerV1(
+      unusedScriptWitnessLoader,
+      fundingProfile("unusedScriptWitness"),
+    ),
+    missingScriptSource: createMissingScriptSourceProductionWorkflowRunnerV1(
+      missingScriptSourceLoader,
+      fundingProfile("missingScriptSource"),
+    ),
+    missingRedeemer: createMissingRedeemerProductionWorkflowRunnerV1(
+      missingRedeemerLoader,
+      fundingProfile("missingRedeemer"),
+    ),
+    unusedRedeemer: createUnusedRedeemerProductionWorkflowRunnerV1(
+      unusedRedeemerLoader,
+      fundingProfile("unusedRedeemer"),
+    ),
+    scriptIntegrityHashMismatch:
+      createScriptIntegrityHashMismatchProductionWorkflowRunnerV1(
+        scriptIntegrityHashMismatchLoader,
+        fundingProfile("scriptIntegrityHashMismatch"),
+      ),
+    distinctAssetAccumulationLimit:
+      createDistinctAssetAccumulationProductionWorkflowRunnerV1(
+        distinctAssetAccumulationLimitLoader,
+        fundingProfile("distinctAssetAccumulationLimit"),
+      ),
   });
   const applicationRegistry = installProductionWorkflowApplicationRegistryV1({
     deploymentFingerprint: deploymentIdentity.manifestId,
@@ -2786,6 +4940,10 @@ const createApplication = ({
       replayer: WATCHER_INSTALLED_COMPLETE_REPLAY_V1,
       releaseFinalityAuthority:
         watcherDeploymentReleaseFinalityAuthorityV1(deploymentIdentity),
+      historicalReplayAuthority: Object.freeze({
+        checkpointStore: historicalNativeScriptAuthority.checkpointStore,
+        historySource: historicalNativeScriptAuthority.historySource,
+      }),
     });
     return classifierPromise;
   };

@@ -1,4 +1,10 @@
-import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
+import {
+  decodeMidgardNativeTxProofFieldLengthsV1,
+  encodeMidgardNativeTxProofFieldLengthsV1,
+  encodeMidgardTxOutput,
+} from "@al-ft/midgard-core/codec";
+import * as SDK from "@al-ft/midgard-sdk";
+import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import type { RetainedDaPayloadSource } from "../src/transition-trace/fetch.js";
@@ -7,8 +13,13 @@ import {
   type CompleteCanonicalReplayV1,
   createCompleteCanonicalReplayUnionV1,
   DOUBLE_SPEND_COMPLETE_CANONICAL_REPLAY_V1,
+  FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY_V1,
+  MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY_V1,
   NETWORK_ID_COMPLETE_CANONICAL_REPLAY_V1,
   NO_REFERENCE_INPUT_COMPLETE_CANONICAL_REPLAY_V1,
+  OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY_V1,
+  PROTECTED_OUTPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY_V1,
+  RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY_V1,
 } from "../src/workflow/complete-replay-v1.js";
 import {
   authenticatedStateQueueObservationDigestV1,
@@ -99,6 +110,16 @@ describe("production authenticated-header classifier V1", () => {
         releaseFinalityAuthority: finalityAuthority(),
       }),
     ).rejects.toThrow("closed canonical replay bundle");
+
+    await expect(
+      createProductionHeaderClassifierV1({
+        deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+        replayer: RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY_V1,
+        releaseFinalityAuthority: finalityAuthority(),
+      }),
+    ).rejects.toThrow(
+      "resolved-output complete replay requires an admitted historical replay authority",
+    );
   });
 
   it("fetches public DA once and mints an opaque exact fault selection", async () => {
@@ -144,6 +165,210 @@ describe("production authenticated-header classifier V1", () => {
     });
     expect(decision.decisionDigest).toMatch(/^[0-9a-f]{64}$/u);
     expect(requireRunnableProductionHeaderFaultV1(decision)).toBe(decision);
+  });
+
+  it("routes an authenticated raw field-length defect with one DA fetch", async () => {
+    const canonical = buildFixtureTransactionV1({
+      spendInputs: [],
+      fee: 1n,
+    });
+    const lengths = [
+      ...decodeMidgardNativeTxProofFieldLengthsV1(
+        Buffer.from(canonical.source.source.field_preimage_lengths_cbor, "hex"),
+      ),
+    ];
+    lengths[0] = lengths[0]! + 1;
+    const source: SDK.L2TransactionSourceV1 = {
+      ...canonical.source,
+      source: {
+        ...canonical.source.source,
+        field_preimage_lengths_cbor:
+          encodeMidgardNativeTxProofFieldLengthsV1(lengths).toString("hex"),
+      },
+    };
+    const fixture = await buildCanonicalBlockFixtureV1({
+      transactions: [
+        {
+          ...canonical,
+          source,
+          sourceValueBytes: Buffer.from(
+            Data.to(source as never, SDK.L2TransactionSourceV1Schema as never),
+            "hex",
+          ),
+        },
+      ],
+    });
+    const observation = authenticatedHeaderObservationV1(fixture);
+    const classifier = await createProductionHeaderClassifierV1({
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      replayer: FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY_V1,
+      releaseFinalityAuthority: finalityAuthority(),
+    });
+    const authenticatedObservationDigest =
+      await authenticatedStateQueueObservationDigestV1({
+        observation,
+        minimumConfirmationDepth: 30,
+      });
+    const fetched = { count: 0 };
+    const decision = await classifyProductionHeaderV1({
+      classifier,
+      observation,
+      authenticatedObservationDigest,
+      sources: [
+        retainedDaSource({
+          payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
+          fetched,
+        }),
+      ],
+    });
+    expect(fetched.count).toBe(1);
+    expect(decision).toMatchObject({
+      decision: "fault_detected",
+      category: "fieldPreimageLengthMismatch",
+      violationId: "field-preimage-length-mismatch",
+      position: "0",
+    });
+  });
+
+  it("routes an accepted untagged transaction with observers before canonical parsing", async () => {
+    const transaction = buildFixtureTransactionV1({
+      spendInputs: [],
+      fee: 1n,
+      networkId: 255n,
+      requiredObservers: [Buffer.alloc(28, 0x42)],
+    });
+    const fixture = await buildCanonicalBlockFixtureV1({
+      transactions: [transaction],
+    });
+    const observation = authenticatedHeaderObservationV1(fixture);
+    const classifier = await createProductionHeaderClassifierV1({
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      replayer:
+        OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY_V1,
+      releaseFinalityAuthority: finalityAuthority(),
+    });
+    const authenticatedObservationDigest =
+      await authenticatedStateQueueObservationDigestV1({
+        observation,
+        minimumConfirmationDepth: 30,
+      });
+    const fetched = { count: 0 };
+    const decision = await classifyProductionHeaderV1({
+      classifier,
+      observation,
+      authenticatedObservationDigest,
+      sources: [
+        retainedDaSource({
+          payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
+          fetched,
+        }),
+      ],
+    });
+    expect(fetched.count).toBe(1);
+    expect(decision).toMatchObject({
+      decision: "fault_detected",
+      category: "observersForbiddenOnUntaggedNetwork",
+      violationId: "observers-forbidden-on-untagged-network",
+      position: "0",
+    });
+  });
+
+  it("preserves catalogue priority across accepted raw replay routes", async () => {
+    const declaredAssetLimitCrossing = Buffer.concat([
+      Buffer.from([0x82, 0x58, 0x1c]),
+      Buffer.alloc(28, 0x31),
+      Buffer.from([0xb9, 0x40, 0x01, 0x00]),
+    ]);
+    const transaction = buildFixtureTransactionV1({
+      spendInputs: [],
+      fee: 1n,
+      networkId: 255n,
+      requiredObservers: [Buffer.alloc(28, 0x42)],
+      mintPolicyItems: [declaredAssetLimitCrossing],
+    });
+    const fixture = await buildCanonicalBlockFixtureV1({
+      transactions: [transaction],
+    });
+    const observation = authenticatedHeaderObservationV1(fixture);
+    const classifier = await createProductionHeaderClassifierV1({
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      replayer: createCompleteCanonicalReplayUnionV1([
+        MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY_V1,
+        OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY_V1,
+      ]),
+      releaseFinalityAuthority: finalityAuthority(),
+    });
+    const authenticatedObservationDigest =
+      await authenticatedStateQueueObservationDigestV1({
+        observation,
+        minimumConfirmationDepth: 30,
+      });
+    const decision = await classifyProductionHeaderV1({
+      classifier,
+      observation,
+      authenticatedObservationDigest,
+      sources: [
+        retainedDaSource({
+          payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
+          fetched: { count: 0 },
+        }),
+      ],
+    });
+    expect(decision).toMatchObject({
+      decision: "fault_detected",
+      category: "mintDeclaredAssetLimit",
+      violationId: "mint-declared-asset-limit",
+    });
+  });
+
+  it("keeps signer-family positions on the authenticated transaction frontier", async () => {
+    const protectedOutput = encodeMidgardTxOutput({
+      address: Buffer.concat([Buffer.from([0x68]), Buffer.alloc(28, 0x42)]),
+      value: { lovelace: 2_000_000n, assets: new Map() },
+    });
+    const faulty = buildFixtureTransactionV1({
+      spendInputs: [],
+      outputs: [protectedOutput],
+      fee: 2n,
+    });
+    const earlierHealthy = Array.from({ length: 256 }, (_, index) =>
+      buildFixtureTransactionV1({
+        spendInputs: [],
+        fee: BigInt(index + 10),
+      }),
+    ).find((transaction) => transaction.txId < faulty.txId);
+    expect(earlierHealthy).toBeDefined();
+    const fixture = await buildCanonicalBlockFixtureV1({
+      transactions: [earlierHealthy!, faulty],
+    });
+    const observation = authenticatedHeaderObservationV1(fixture);
+    const classifier = await createProductionHeaderClassifierV1({
+      deploymentFingerprint: DEPLOYMENT_FINGERPRINT,
+      replayer: PROTECTED_OUTPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY_V1,
+      releaseFinalityAuthority: finalityAuthority(),
+    });
+    const authenticatedObservationDigest =
+      await authenticatedStateQueueObservationDigestV1({
+        observation,
+        minimumConfirmationDepth: 30,
+      });
+    const decision = await classifyProductionHeaderV1({
+      classifier,
+      observation,
+      authenticatedObservationDigest,
+      sources: [
+        retainedDaSource({
+          payloadEnvelopeCbor: fixture.payloadEnvelopeCbor,
+          fetched: { count: 0 },
+        }),
+      ],
+    });
+    expect(decision).toMatchObject({
+      decision: "fault_detected",
+      category: "protectedOutputSignerMissing",
+      violationId: "protected-output-signer-missing",
+      position: "1",
+    });
   });
 
   it("keeps healthy decisions non-runnable and rejects structural forgeries", async () => {

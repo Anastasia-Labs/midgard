@@ -43,6 +43,45 @@ const sortedEntries = (
     left < right ? -1 : left > right ? 1 : 0,
   );
 
+const dummyRetainedWitnessEntry = (
+  eventKey: SDK.EventKey,
+  executionIndex = 0n,
+): SDK.DaPayloadEntry => {
+  const key = SDK.encodeRetainedValidationWitnessKeyV1({
+    event_key: eventKey,
+    execution_index: executionIndex,
+  });
+  const value = SDK.encodeRetainedValidationWitnessV1({
+    machine_state: {
+      machine_version: 1n,
+      event_key_hash: "01".repeat(32),
+      transaction_id: "02".repeat(32),
+      transaction_commitment: "03".repeat(32),
+      validation_context_hash: "04".repeat(32),
+      source_kind: "Normal",
+      prior_ledger_root: "05".repeat(32),
+      phase: "NativeScripts",
+      program_counter: 9n,
+      work_root: "06".repeat(32),
+      execution_cpu: 0n,
+      execution_memory: 0n,
+      verdict: "Pending",
+      rejection_code_hash: "07".repeat(32),
+      ledger_delta_root: "08".repeat(32),
+    },
+    trace_proof: {
+      state_index: 9n,
+      state_hash: "09".repeat(32),
+      siblings: [],
+    },
+    phase: 9n,
+    program_counter: 9n,
+    witness_cbor: "80",
+    auxiliary: "NoAuxiliaryWitness",
+  });
+  return [key.toString("hex"), value.toString("hex")];
+};
+
 const rewriteL2EventTxId = (
   event: SDK.EventKey,
   txIds: ReadonlyMap<string, string>,
@@ -299,6 +338,62 @@ const makeDaBytesConstantMaterial = (
 };
 
 describe("canonical V1 DA payload verification", () => {
+  it("rejects duplicate and orphan retained validation witness coordinates", async () => {
+    const fixture = await makePayloadFixture();
+    const existingEvent = LucidData.from(
+      fixture.payload.block_body.validation_traces[0]![0],
+      SDK.EventKeySchema as never,
+    ) as SDK.EventKey;
+    const duplicate = dummyRetainedWitnessEntry(existingEvent);
+    expect(() =>
+      decodeDaPayloadV1Strict(
+        SDK.encodeDaPayloadV1({
+          ...fixture.payload,
+          block_body: {
+            ...fixture.payload.block_body,
+            validation_trace_witnesses: [duplicate, duplicate],
+          },
+        }),
+      ),
+    ).toThrow(/duplicate/u);
+
+    const orphan = dummyRetainedWitnessEntry({
+      L2TransactionEventKey: { tx_id: "ff".repeat(32) },
+    });
+    expect(() =>
+      decodeDaPayloadV1Strict(
+        SDK.encodeDaPayloadV1({
+          ...fixture.payload,
+          block_body: {
+            ...fixture.payload.block_body,
+            validation_trace_witnesses: [orphan],
+          },
+        }),
+      ),
+    ).toThrow(/orphaned/u);
+  });
+
+  it("rejects a retained no-aux witness outside admitted phases", async () => {
+    const fixture = await makePayloadFixture();
+    const eventKey = LucidData.from(
+      fixture.payload.block_body.validation_traces[0]![0],
+      SDK.EventKeySchema as never,
+    ) as SDK.EventKey;
+    expect(() =>
+      decodeDaPayloadV1Strict(
+        SDK.encodeDaPayloadV1({
+          ...fixture.payload,
+          block_body: {
+            ...fixture.payload.block_body,
+            validation_trace_witnesses: [
+              dummyRetainedWitnessEntry(eventKey, -1n),
+            ],
+          },
+        }),
+      ),
+    ).toThrow(/not an allowed reconstruction witness/u);
+  });
+
   it("decodes the canonical inner payload and derives every committed root", async () => {
     const fixture = await makePayloadFixture();
 

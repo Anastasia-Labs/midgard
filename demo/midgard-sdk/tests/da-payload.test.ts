@@ -19,8 +19,12 @@ import {
   daPayloadV1EncodedSize,
   daPayloadV1EncodedSizeFromUtxoAggregate,
   decodeDaPayloadV1,
+  decodeRetainedValidationWitnessKeyV1,
+  decodeRetainedValidationWitnessV1,
   EMPTY_MERKLE_TREE_ROOT,
   encodeDaPayloadV1,
+  encodeRetainedValidationWitnessKeyV1,
+  encodeRetainedValidationWitnessV1,
 } from "../src/index.js";
 
 const bytes = (value: number, length: number): string =>
@@ -97,6 +101,7 @@ const payload = (seed: number): DaPayloadV1Type => {
       transition_trace: transitionTrace,
       event_to_step: eventToStep,
       validation_traces: validationTraces,
+      validation_trace_witnesses: [],
       counts,
     },
   };
@@ -134,6 +139,7 @@ const emptyPayload = (): DaPayloadV1Type => {
       transition_trace: [],
       event_to_step: [],
       validation_traces: [],
+      validation_trace_witnesses: [],
       counts,
     },
   };
@@ -154,14 +160,60 @@ const replaceFirst = (
 };
 
 describe("DaPayloadV1 canonical codec", () => {
+  it("round-trips a chronological ScriptSources retained witness canonically", () => {
+    const key = {
+      event_key: { L2TransactionEventKey: { tx_id: bytes(1, 32) } },
+      execution_index: -2n,
+    } as const;
+    const value = {
+      machine_state: {
+        machine_version: 1n,
+        event_key_hash: bytes(2, 32),
+        transaction_id: bytes(3, 32),
+        transaction_commitment: bytes(4, 32),
+        validation_context_hash: bytes(5, 32),
+        source_kind: "Normal" as const,
+        prior_ledger_root: bytes(6, 32),
+        phase: "ScriptSources" as const,
+        program_counter: 9n,
+        work_root: bytes(7, 32),
+        execution_cpu: 1n,
+        execution_memory: 2n,
+        verdict: "Pending" as const,
+        rejection_code_hash: bytes(8, 32),
+        ledger_delta_root: bytes(9, 32),
+      },
+      trace_proof: {
+        state_index: 9n,
+        state_hash: bytes(10, 32),
+        siblings: [bytes(11, 32)],
+      },
+      phase: 8n,
+      program_counter: 9n,
+      witness_cbor: "80",
+      auxiliary: "NoAuxiliaryWitness" as const,
+    };
+    const keyCbor = encodeRetainedValidationWitnessKeyV1(key);
+    const valueCbor = encodeRetainedValidationWitnessV1(value);
+    expect(decodeRetainedValidationWitnessKeyV1(keyCbor)).toEqual(key);
+    expect(decodeRetainedValidationWitnessV1(valueCbor)).toEqual(value);
+    const withWitness = payload(1);
+    withWitness.block_body.validation_trace_witnesses = [
+      [keyCbor.toString("hex"), valueCbor.toString("hex")],
+    ];
+    expect(daPayloadV1EncodedSize(withWitness)).toBe(
+      encodeDaPayloadV1(withWitness).length,
+    );
+  });
+
   it("pins the exact V1 body/count field order and constructor arities", () => {
     const value = emptyPayload();
     const encoded = encodeDaPayloadV1(value);
 
     expect(encoded).toEqual(Buffer.from(Data.to(value, DaPayloadV1), "hex"));
-    expect(encoded).toHaveLength(445);
+    expect(encoded).toHaveLength(446);
     expect(Buffer.from(sha256(encoded)).toString("hex")).toBe(
-      "2f3caa41a48bbf5a5609accecd95ddf8e27af29a2bf9a3043f3394e18e2b334c",
+      "e033dde650d6160e438b2b061adc17d481260f95b875eb8634a6eeefb7f23b71",
     );
 
     for (const trailingBreaks of [1, 2, 3]) {
@@ -301,7 +353,7 @@ describe("DaPayloadV1 canonical codec", () => {
       },
     });
 
-    expect(daPayloadV1EncodedSize(empty)).toBe(445);
+    expect(daPayloadV1EncodedSize(empty)).toBe(446);
     expect(tupleBytes).toBe(MIDGARD_CEK_MIN_PROGRAM_MATERIAL_DA_TUPLE_BYTES_V1);
     expect(nonEmptyBytes).toBe(
       MIDGARD_CEK_PROGRAM_MATERIAL_DA_FIXED_BYTES_V1 + tupleBytes,

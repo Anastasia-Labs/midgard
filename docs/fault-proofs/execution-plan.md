@@ -13,8 +13,9 @@ result before block maturity.
 ## P0 — Make every lifecycle fit Van Rossem limits
 
 The standalone Lucid Evolution journeys for `missingNativeScriptUtxo`,
-`nativeScriptInvalid`, and both `minAda` polarities now exist. Fabricated
-deposit/withdrawal removal and value/mint cancellation/resume are also covered.
+`nativeScriptInvalid`, and both `minAda` polarities exist and pass under the
+shared limits. Fabricated deposit/withdrawal removal and value/mint
+cancellation/resume are also covered.
 
 The shared state-queue publication blocker is resolved. `InitV1` and `Deinit`
 remain in the minting policy; commit, unattested-timeout removal,
@@ -24,13 +25,33 @@ minting policy is 5,222 bytes and publishes in a 5,498-byte signed transaction.
 The rewarding scripts are 5,652–8,347 bytes and publish in signed transactions
 of 6,161–8,842 bytes, all below the 16,384-byte limit.
 
-The current family-specific blockers are transaction fit for the 28,658-byte
-`fraudProofMinAdaStep02` script (28,727-byte publication transaction), a
-validation failure in the direct `missingNativeScriptUtxo` lifecycle, and the
-`nativeScriptInvalid` maximum frontier. The direct native-script-invalid
-lifecycle is green, but its maximum frontier must also fit the
-16.5M-memory/10B-CPU budget, directly or through its deterministic staged
-route.
+The former min-ADA blocker is resolved. Step 02 is a 3,319-byte authenticated
+dispatcher (`onchain/aiken/validators/fraud-proofs/min-ada/step-02.ak`) whose
+transaction and UTxO branches are separate withdraw-zero rewarding validators
+(`step-02-yields.ak`, 15,522 and 6,571 bytes in the generated blueprint) with
+their own reference-script role NFTs, and the standalone suite asserts that all
+three signed publications fit within 16,384 bytes. The native-script-invalid
+29-signer and 33-signer frontiers pass through the deterministic staged route
+with Van Rossem headroom, and both the direct and the staged
+missing-native-script-UTxO paths submit.
+
+Remaining P0 work:
+
+- Split or redesign the 51 compiled scripts whose raw bodies exceed the
+  16,384-byte publication limit: 47 `validationTraceDispute` resolver bodies
+  (CEK step, script-sources, resolve-inputs, phase-A, and value-and-mint
+  semantics), the two `transitionTrace` finals, `withdrawalMistag` step 03,
+  and the availability challenge. Their Lucid lifecycles currently pass only
+  through the harness's raised-limit oversized publication path. One plan
+  per script, with the shared primer, is indexed in
+  [size-plans/README.md](size-plans/README.md).
+- Repair the fixture drift that keeps `inspect-contracts.test.ts` and
+  `submit-init-emulator-min-ada-v1.test.ts` red after the reference-script
+  role-NFT change, so the catalogue-root pin and the validation-dispute
+  min-ADA journey are verified again.
+- Drive every other category's maximum supported shape through the same
+  limits (P2); the three final families are the only ones with explicit
+  maximum-frontier assertions today.
 
 Completion: every catalogue lifecycle passes using the shared Van Rossem
 limits, including its maximum supported shape, and finishes with the target
@@ -91,7 +112,12 @@ prover exactly once, and leaves the node and L1 views reconciled.
 
 - Expose stable retained payload, proof artifact, membership witness, field
   opening, and verifier-version schemas to an unprivileged challenger.
-- Specify and accept the remedy for data withheld after attestation.
+- Specify and accept the remedy for data withheld after attestation. The
+  implemented availability-challenge validator applies one 20,017-byte script
+  (19,927-byte raw blueprint body) to both its spending and minting roles, so
+  it cannot be published under the 16,384-byte limit; an authenticated
+  split/withdraw-zero redesign, new manifest roles, and matching builder ABI
+  changes are required before this remedy exists on chain.
 - Keep all proof evidence available for at least maturity plus execution/retry
   margin.
 - Publish watcher and manual recovery runbooks.

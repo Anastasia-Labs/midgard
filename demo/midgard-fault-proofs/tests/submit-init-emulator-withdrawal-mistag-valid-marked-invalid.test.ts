@@ -22,12 +22,23 @@ describe("withdrawal-mistag valid marked invalid emulator lifecycle", () => {
     expect(scenario.prepared.direction).toBe("valid-marked-invalid");
     expect(scenario.prepared.actualValid).toBe(true);
 
-    const refs = await publishWithdrawalMistagScriptsV1({ harness });
+    const published = await publishWithdrawalMistagScriptsV1({ harness });
+    for (const measurement of published.publicationMeasurements) {
+      expect(measurement.l1ByteMargin).toBeGreaterThanOrEqual(1_024);
+    }
     const lifecycle = await driveWithdrawalMistagToFraudV1({
       harness,
       scenario,
-      refs,
+      refs: published.refs,
     });
+    expect(Object.keys(lifecycle.transactionMeasurements)).toEqual([
+      "init",
+      "step-01",
+      "step-02",
+      "step-03",
+      "step-04",
+      "step-05",
+    ]);
     const threadUnit = toUnit(
       harness.withdrawalMistag.computationThread.policyId,
       lifecycle.fraud.fraudProofAssetName,

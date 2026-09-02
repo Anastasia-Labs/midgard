@@ -1,0 +1,232 @@
+import { createHash } from "node:crypto";
+
+import {
+  unusedScriptWitnessEvidenceIdentityV1,
+  type UnusedScriptWitnessEvidenceV1,
+} from "./family-v1.js";
+
+export const UNUSED_SCRIPT_WITNESS_WORKFLOW_STAGES_V1 = [
+  "none",
+  "step01",
+  "step02",
+  "step03",
+  "step04",
+  "step05",
+  "step06",
+  "proven",
+  "removed",
+  "cancelled",
+] as const;
+export type UnusedScriptWitnessWorkflowStageV1 =
+  (typeof UNUSED_SCRIPT_WITNESS_WORKFLOW_STAGES_V1)[number];
+export type UnusedScriptWitnessWorkflowActionV1 =
+  | "submitInit"
+  | "submitStep01"
+  | "submitStep02"
+  | "submitStep03"
+  | "submitStep04"
+  | "submitStep05"
+  | "submitStep06"
+  | "removeDescendants"
+  | "cancel";
+export type UnusedScriptWitnessCursorV1 = Readonly<{
+  stage: UnusedScriptWitnessWorkflowStageV1;
+  threadOutRef: string;
+  checkpointDigest: string;
+}>;
+export type UnusedScriptWitnessJournalEntryV1 = Readonly<{
+  sequence: number;
+  identity: string;
+  action: UnusedScriptWitnessWorkflowActionV1;
+  phase: "intent" | "submitted" | "confirmed";
+  source: UnusedScriptWitnessCursorV1;
+  target: UnusedScriptWitnessCursorV1;
+  txHash: string;
+}>;
+export interface UnusedScriptWitnessJournalV1 {
+  load(identity: string): Promise<readonly UnusedScriptWitnessJournalEntryV1[]>;
+  append(entry: UnusedScriptWitnessJournalEntryV1): Promise<void>;
+}
+export interface UnusedScriptWitnessActuatorV1 {
+  observe(identity: string): Promise<UnusedScriptWitnessCursorV1>;
+  capture(input: {
+    action: UnusedScriptWitnessWorkflowActionV1;
+    evidence: UnusedScriptWitnessEvidenceV1;
+    source: UnusedScriptWitnessCursorV1;
+  }): Promise<
+    Readonly<{
+      txHash: string;
+      target: UnusedScriptWitnessCursorV1;
+      submit: () => Promise<string>;
+    }>
+  >;
+  transactionConfirmed(txHash: string): Promise<boolean>;
+}
+const actions: Record<
+  UnusedScriptWitnessWorkflowStageV1,
+  UnusedScriptWitnessWorkflowActionV1 | "done"
+> = {
+  none: "submitInit",
+  step01: "submitStep01",
+  step02: "submitStep02",
+  step03: "submitStep03",
+  step04: "submitStep04",
+  step05: "submitStep05",
+  step06: "submitStep06",
+  proven: "removeDescendants",
+  removed: "done",
+  cancelled: "done",
+};
+const digest = (value: unknown) =>
+  createHash("sha256").update(JSON.stringify(value)).digest("hex");
+const validate = (
+  entries: readonly UnusedScriptWitnessJournalEntryV1[],
+  identity: string,
+) =>
+  entries.forEach((entry, sequence) => {
+    if (
+      entry.identity !== identity ||
+      entry.sequence !== sequence ||
+      !/^[0-9a-f]{64}$/u.test(entry.txHash)
+    )
+      throw new Error("unusedScriptWitness journal identity changed");
+  });
+export const runUnusedScriptWitnessWorkflowV1 = async ({
+  evidence,
+  journal,
+  actuator,
+}: {
+  evidence: UnusedScriptWitnessEvidenceV1;
+  journal: UnusedScriptWitnessJournalV1;
+  actuator: UnusedScriptWitnessActuatorV1;
+}): Promise<UnusedScriptWitnessWorkflowStageV1> => {
+  const identity = unusedScriptWitnessEvidenceIdentityV1(evidence);
+  const entries = await journal.load(identity);
+  validate(entries, identity);
+  const intent = [...entries]
+    .reverse()
+    .find(
+      (entry) =>
+        entry.phase === "intent" &&
+        !entries.some(
+          (later) =>
+            later.sequence > entry.sequence &&
+            later.txHash === entry.txHash &&
+            later.phase === "confirmed",
+        ),
+    );
+  if (intent !== undefined) {
+    if (!(await actuator.transactionConfirmed(intent.txHash)))
+      throw new Error(
+        "unusedScriptWitness exact intended transaction unresolved",
+      );
+    const observed = await actuator.observe(identity);
+    if (digest(observed) !== digest(intent.target))
+      throw new Error("unusedScriptWitness restart cursor substitution");
+    await journal.append({
+      ...intent,
+      sequence: entries.length,
+      phase: "confirmed",
+    });
+    return observed.stage;
+  }
+  const source = await actuator.observe(identity);
+  const action = actions[source.stage];
+  if (action === "done") return source.stage;
+  const captured = await actuator.capture({ action, evidence, source });
+  if (!/^[0-9a-f]{64}$/u.test(captured.txHash))
+    throw new Error("unusedScriptWitness captured transaction is malformed");
+  const nextSequence = entries.length;
+  const next: UnusedScriptWitnessJournalEntryV1 = {
+    sequence: nextSequence,
+    identity,
+    action,
+    phase: "intent",
+    source,
+    target: captured.target,
+    txHash: captured.txHash,
+  };
+  await journal.append(next);
+  if ((await captured.submit()) !== captured.txHash)
+    throw new Error(
+      "unusedScriptWitness provider substituted transaction identity",
+    );
+  await journal.append({
+    ...next,
+    sequence: nextSequence + 1,
+    phase: "submitted",
+  });
+  return source.stage;
+};
+
+export const cancelUnusedScriptWitnessWorkflowV1 = async ({
+  evidence,
+  journal,
+  actuator,
+}: {
+  evidence: UnusedScriptWitnessEvidenceV1;
+  journal: UnusedScriptWitnessJournalV1;
+  actuator: UnusedScriptWitnessActuatorV1;
+}): Promise<"cancelled"> => {
+  const identity = unusedScriptWitnessEvidenceIdentityV1(evidence);
+  const entries = await journal.load(identity);
+  validate(entries, identity);
+  const unresolved = [...entries]
+    .reverse()
+    .find(
+      (entry) =>
+        entry.phase === "intent" &&
+        !entries.some(
+          (later) =>
+            later.sequence > entry.sequence &&
+            later.txHash === entry.txHash &&
+            later.phase === "confirmed",
+        ),
+    );
+  if (unresolved !== undefined)
+    throw new Error("unusedScriptWitness must reconcile before cancellation");
+  const source = await actuator.observe(identity);
+  if (
+    source.stage === "none" ||
+    source.stage === "proven" ||
+    source.stage === "removed" ||
+    source.stage === "cancelled"
+  )
+    throw new Error("unusedScriptWitness stage cannot cancel");
+  const captured = await actuator.capture({
+    action: "cancel",
+    evidence,
+    source,
+  });
+  if (captured.target.stage !== "cancelled")
+    throw new Error("unusedScriptWitness cancellation target changed");
+  const sequence = entries.length;
+  const intent: UnusedScriptWitnessJournalEntryV1 = {
+    sequence,
+    identity,
+    action: "cancel",
+    phase: "intent",
+    source,
+    target: captured.target,
+    txHash: captured.txHash,
+  };
+  await journal.append(intent);
+  if ((await captured.submit()) !== captured.txHash)
+    throw new Error("unusedScriptWitness provider substituted cancellation");
+  await journal.append({
+    ...intent,
+    sequence: sequence + 1,
+    phase: "submitted",
+  });
+  if (!(await actuator.transactionConfirmed(captured.txHash)))
+    throw new Error("unusedScriptWitness cancellation is unconfirmed");
+  const observed = await actuator.observe(identity);
+  if (observed.stage !== "cancelled")
+    throw new Error("unusedScriptWitness cancellation cursor was substituted");
+  await journal.append({
+    ...intent,
+    sequence: sequence + 2,
+    phase: "confirmed",
+  });
+  return "cancelled";
+};

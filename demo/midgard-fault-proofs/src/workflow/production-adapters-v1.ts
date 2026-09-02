@@ -514,6 +514,225 @@ const productionWorkflowAdapterRegistrationRowsV1 = [
     "min-ada-v1 SDK wire schema",
     "min-ada deployed step-01/step-02 validators",
   ]),
+  {
+    category: "fieldPreimageLengthMismatch",
+    status: "missing",
+    reason: "partial_resume_surface_has_no_complete_driver",
+    existingSurface: [
+      "field-preimage-length-mismatch/production-config-v1.ts",
+      "field-preimage-length-mismatch/workflow-v1.ts",
+    ],
+    requiredClosure:
+      "install and lifecycle-prove both manifest-bound direction branches through canonical removal",
+  },
+  {
+    category: "fieldItemWidthIllegal",
+    status: "missing",
+    reason: "partial_resume_surface_has_no_complete_driver",
+    existingSurface: [
+      "field-item-width-illegal/contracts-v1.ts",
+      "field-item-width-illegal/field-item-width-illegal-v1.ts",
+    ],
+    requiredClosure:
+      "install and lifecycle-prove the manifest-bound three-step driver through canonical removal",
+  },
+  {
+    category: "witnessScriptDecoding",
+    status: "missing",
+    reason: "partial_resume_surface_has_no_complete_driver",
+    existingSurface: ["witness-script-decoding/workflow-v1.ts"],
+    requiredClosure:
+      "install and lifecycle-prove the resumable manifest-bound structural scan through canonical removal",
+  },
+  {
+    category: "scriptIntegrityHashMissing",
+    status: "missing",
+    reason: "partial_resume_surface_has_no_complete_driver",
+    existingSurface: ["script-integrity-hash-missing/family-v1.ts"],
+    requiredClosure:
+      "install and lifecycle-prove the seven-script staged driver through canonical removal",
+  },
+  {
+    category: "transactionOutputNonCanonical",
+    status: "missing",
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "transaction-output-non-canonical/production-workflow-v1.ts",
+      "workflow/production-runtime-v1.ts#createTransactionOutputNonCanonicalProductionWorkflowRunnerV1",
+    ],
+    requiredClosure:
+      "install and exercise the manifest-bound four-step runner in the compiled watcher application with public retained DA",
+  },
+  {
+    category: "resolvedOutputNonCanonical",
+    status: "missing",
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "resolved-output-non-canonical production runner surface is centrally installed",
+    ],
+    requiredClosure:
+      "replace this static readiness row with the admitted central runner after the Wave 2 integration gate",
+  },
+  {
+    category: "mintDeclaredAssetLimit",
+    status: "missing",
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "mint-declared-asset-limit production runner surface is centrally installed",
+    ],
+    requiredClosure:
+      "replace this static readiness row with the admitted central runner after the Wave 2 integration gate",
+  },
+  {
+    category: "spendInputSignerMissing",
+    status: "missing",
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "spend-input-signer-missing production runner surface is centrally installed",
+    ],
+    requiredClosure:
+      "replace this static readiness row with the admitted central runner after the Wave 3 integration gate",
+  },
+  {
+    category: "protectedOutputSignerMissing",
+    status: "missing",
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "protected-output-signer-missing production runner surface is centrally installed",
+    ],
+    requiredClosure:
+      "replace this static readiness row with the admitted central runner after the Wave 3 integration gate",
+  },
+  {
+    category: "observersForbiddenOnUntaggedNetwork",
+    status: "missing",
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "observers-forbidden-on-untagged-network production runner surface is centrally installed",
+    ],
+    requiredClosure:
+      "replace this static readiness row with the admitted central runner after the Wave 3 integration gate",
+  },
+  {
+    category: "observerOrderInvalid",
+    status: "missing",
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "observer-order-invalid production runner surface is centrally installed",
+    ],
+    requiredClosure:
+      "install the manifest-bound four-script runner in the compiled watcher application with authenticated retained DA",
+  },
+  {
+    category: "redeemerCanonicity",
+    status: "missing",
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "redeemer-canonicity production runner surface is centrally installed",
+    ],
+    requiredClosure:
+      "install the manifest-bound three-script runner in the compiled watcher application with authenticated retained DA",
+  },
+  {
+    category: "outputReferenceScriptDecoding",
+    status: "missing",
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "output-reference-script-decoding production runner surface is centrally installed",
+    ],
+    requiredClosure:
+      "install the manifest-bound six-script runner in the compiled watcher application with public retained DA",
+  },
+  {
+    category: "executionSourceScriptDecoding",
+    status: "missing",
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "execution-source-script-decoding production runner surface is centrally installed",
+    ],
+    requiredClosure:
+      "install the manifest-bound five-script runner in the compiled watcher application with authenticated retained validation witnesses",
+  },
+  {
+    category: "receivePurposeLanguage",
+    status: "missing",
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "receive-purpose-language production runner surface is centrally installed",
+    ],
+    requiredClosure:
+      "install the manifest-bound three-script runner in the compiled watcher application with authenticated retained DA",
+  },
+  {
+    category: "unusedScriptWitness",
+    status: "missing",
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "unused-script-witness production runner surface is being centrally installed",
+    ],
+    requiredClosure:
+      "install the manifest-bound six-script runner in the compiled watcher application with authenticated retained DA",
+  },
+  {
+    category: "missingScriptSource",
+    status: "missing",
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "missing-script-source production runner surface is being centrally installed",
+    ],
+    requiredClosure:
+      "install the manifest-bound six-script runner in the compiled watcher application with authenticated retained DA",
+  },
+  {
+    category: "missingRedeemer",
+    status: "missing",
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "missing-redeemer production runner surface is being centrally installed",
+    ],
+    requiredClosure:
+      "install the manifest-bound seven-script runner in the compiled watcher application with authenticated retained DA",
+  },
+  {
+    category: "unusedRedeemer",
+    status: "missing",
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "unused-redeemer production runner surface is being centrally installed",
+    ],
+    requiredClosure:
+      "install the manifest-bound nine-script runner in the compiled watcher application with authenticated retained DA",
+  },
+  {
+    category: "executionNativeScriptInvalid",
+    status: "missing",
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "execution-native-script-invalid transaction-driving 13-script production runner surface is centrally installed",
+    ],
+    requiredClosure:
+      "retain the manifest-bound 13-script runner in the compiled watcher application with authenticated retained DA and historical L1 state",
+  },
+  {
+    category: "scriptIntegrityHashMismatch",
+    status: "missing",
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "script-integrity-hash-mismatch production runner surface is being centrally installed",
+    ],
+    requiredClosure:
+      "install the manifest-bound five-script runner in the compiled watcher application with authenticated retained DA",
+  },
+  {
+    category: "distinctAssetAccumulationLimit",
+    status: "missing",
+    reason: "constrained_adapter_is_not_launch_scope_complete",
+    existingSurface: [
+      "distinct-asset-accumulation-limit production runner surface is being centrally installed",
+    ],
+    requiredClosure:
+      "install the manifest-bound six-script runner in the compiled watcher application with authenticated retained DA",
+  },
 ] as const satisfies readonly ProductionWorkflowAdapterRegistrationV1[];
 
 export const PRODUCTION_WORKFLOW_ADAPTER_REGISTRATIONS_V1 = Object.freeze(

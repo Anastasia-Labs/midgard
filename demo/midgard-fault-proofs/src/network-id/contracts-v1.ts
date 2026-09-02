@@ -5,6 +5,7 @@ export const NETWORK_ID_CATEGORY_LABEL = "network-id";
 /** Human-readable family label; the canonical SDK catalogue key is networkId. */
 export const NETWORK_ID_BLUEPRINT_TITLES_V1 = {
   step01: "fraud_proofs/network_id/step_01.main.spend",
+  forcedStep: "fraud_proofs/network_id/forced_step.main.spend",
   step02: "fraud_proofs/network_id/step_02.main.spend",
 } as const;
 
@@ -21,6 +22,7 @@ export type NetworkIdStepContractV1 = {
  */
 export type NetworkIdContractsV1 = {
   readonly steps: readonly [NetworkIdStepContractV1, NetworkIdStepContractV1];
+  readonly forcedStep?: NetworkIdStepContractV1;
   readonly expectedNetworkId: 0n | 1n;
   readonly computationThread: {
     readonly policyId: string;

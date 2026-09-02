@@ -127,8 +127,9 @@ driven autonomously.
   attestation withholding.
 - The implemented availability-challenge validator is not publishable under
   the current 16,384-byte L1 transaction limit. Its applied spending and
-  minting roles are the same 20,017-byte multipurpose script, so the raw body
-  alone exceeds the complete-transaction limit. Production publication rejects
+  minting roles are the same 20,017-byte applied multipurpose script
+  (19,927-byte raw blueprint body), so the script alone exceeds the
+  complete-transaction limit. Production publication rejects
   it before funding selection. Activating
   this remedy requires an authenticated split or withdraw-zero-yielding
   redesign, new manifest roles, reward-account registration, and matching

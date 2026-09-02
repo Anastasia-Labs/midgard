@@ -19,15 +19,15 @@ negative passes, and its full correction lifecycle is exercised.
 | Invalid address signature                  | Ed25519 verification                                            | `invalidSignature`                             | Implemented; emulator removal covered                | watcher/preprod                                                         |
 | Missing required signature                 | required-signer/witness frontier                                | `missingSignature`                             | Implemented; maximum-field emulator coverage         | watcher/preprod                                                         |
 | Missing native script in transaction       | script credential/witness-set proof                             | `missingNativeScriptTx`                        | Implemented; direct/staged emulator coverage         | watcher/preprod                                                         |
-| Missing native script at predecessor UTxO  | predecessor membership plus script-material proof               | `missingNativeScriptUtxo`                      | Aiken and off-chain implemented                      | standalone emulator, watcher install, preprod                           |
-| Invalid native script                      | bounded signer scan and resumable evaluator                     | `nativeScriptInvalid`                          | Aiken/off-chain implemented; watcher installed       | standalone emulator and preprod                                         |
+| Missing native script at predecessor UTxO  | predecessor membership plus script-material proof               | `missingNativeScriptUtxo`                      | Implemented; direct/staged emulator removal covered  | preprod                                                                 |
+| Invalid native script                      | bounded signer scan and resumable evaluator                     | `nativeScriptInvalid`                          | Implemented; direct and staged-frontier emulator     | preprod                                                                 |
 | Withdrawn spend/reference input            | withdrawal/event and ledger proofs                              | `withdrawnInput`, `withdrawnReferenceInput`    | Implemented; emulator coverage                       | watcher/preprod                                                         |
 | Duplicate/overlapping input sets           | ordered set scan                                                | `inputSetUniqueness`                           | Implemented; tier-2 emulator removal covered         | watcher/preprod                                                         |
 | Value not preserved                        | authenticated input/output/mint comparison                      | `valueNotPreserved`                            | Implemented; ADA/token emulator removal covered      | cancel drive, watcher install, preprod                                  |
 | Unauthorized native-policy mint            | policy/script evidence                                          | `mintAuthorization`                            | Implemented; both-direction emulator removal covered | cancel drive, watcher install, preprod                                  |
 | Wrong transaction/output network           | transaction/output address proof                                | `networkId`                                    | Implemented; emulator removal/cancel covered         | preprod                                                                 |
 | Minimum fee violation                      | exact canonical transaction size and fee formula                | `minFee`                                       | Implemented; both-polarity emulator removal covered  | preprod                                                                 |
-| Minimum Ada violation                      | exact output size and canonical minimum-Ada formula             | `minAda`                                       | Aiken and off-chain implemented                      | standalone emulator, watcher install, preprod                           |
+| Minimum Ada violation                      | exact output size and canonical minimum-Ada formula             | `minAda`                                       | Implemented; both-polarity emulator removal covered  | preprod                                                                 |
 | Non-canonical or malformed committed field | canonical decode/shape proofs                                   | `canonicalDecodability`, `committedFieldShape` | Implemented; emulator removal covered                | watcher/preprod and remaining tier-3 cases                              |
 | Plutus/MidgardV1 execution failure         | interactive validation-machine bisection and CEK one-step proof | `validationTraceDispute`                       | Implemented locally across major semantic routes     | exhaustive differential/rejection-terminal, proof-fit, watcher, preprod |
 
@@ -61,9 +61,11 @@ These are intentionally not additional catalogue entries:
 
 ## Cross-cutting gaps
 
-1. **Emulator catalogue closure:** standalone Lucid lifecycles exist for all
-   three final families, but the shared setup path is red under Van Rossem's
-   16,384-byte limit.
+1. **Emulator catalogue closure:** standalone Lucid lifecycles for all three
+   final families pass under the shared Van Rossem limits. The inspection
+   suite and the min-ADA validation-dispute journey are red on
+   reference-script fixture drift, and no all-category maximum-shape sweep is
+   gated yet.
 2. **Autonomous application coverage:** the watcher installs 25 of 32
    categories; topology and classification are broader than executable
    installation.

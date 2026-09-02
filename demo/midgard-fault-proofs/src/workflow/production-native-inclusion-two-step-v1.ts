@@ -1,19 +1,36 @@
 import { Proof as MpfProof } from "@aiken-lang/merkle-patricia-forestry";
-import { decodeMidgardNativeTxCompactV1 } from "@al-ft/midgard-core";
+import {
+  computeHash28,
+  decodeMidgardNativeTxCompactV1,
+  deriveMidgardNativeTxFaultEvidenceMaterialV1,
+  midgardFieldCommitmentV1,
+} from "@al-ft/midgard-core";
+import * as SDK from "@al-ft/midgard-sdk";
 import {
   FraudProofComputationThreadStepDatum,
   InvalidRangeStep02Datum,
   invalidRangeViolationReason,
   nativeTxBodyHasZeroInputViolation,
   normalizeNativeTxValidityRange,
-  ZeroInputStep02Datum,
 } from "@al-ft/midgard-sdk";
-import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
+import { Data, type LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
 
 import {
   prepareInvalidRangeFromCanonicalEvidenceV1,
   prepareZeroInputFromCanonicalEvidenceV1,
 } from "../evidence/prepare-from-evidence-v1.js";
+import type { InvalidRangeContractsV1 } from "../invalid-range/contracts-v1.js";
+import {
+  invalidRangeEvidenceClosesV1,
+  type InvalidRangeEvidenceV1,
+  prepareInvalidRangeEvidenceV1,
+} from "../invalid-range/family-v1.js";
+import { prepareInvalidRangeForcedProductionPlanV1 } from "../invalid-range/production-v1.js";
+import {
+  submitInvalidRangeStep01ForcedV1,
+  submitInvalidRangeStep02V1,
+} from "../invalid-range/submit-v1.js";
+import { requireLinearFaultThreadUtxoV1 } from "../linear-fault-family-v1.js";
 import type { PreparedTxInclusionJson } from "../prepare-double-spend.js";
 import {
   type StateQueueMutationLease,
@@ -23,15 +40,28 @@ import {
 import type { ResolvedProverSigner } from "../runtime.js";
 import { submitInit } from "../submit-init.js";
 import { submitInvalidRangeStep01 } from "../submit-invalid-range-step-01.js";
-import { submitInvalidRangeStep02 } from "../submit-invalid-range-step-02.js";
 import {
   nativeTxFromCoreCompact,
   parseSubmitStep01TxInclusion,
 } from "../submit-step-01.js";
-import { submitZeroInputStep01 } from "../submit-zero-input-step-01.js";
-import { submitZeroInputStep02 } from "../submit-zero-input-step-02.js";
 import type { RetainedDaPayloadSource } from "../transition-trace/fetch.js";
 import type { FaultProofWitnessReferenceScriptsV1 } from "../witness-reference-scripts-v1.js";
+import type { ZeroInputContractsV1 } from "../zero-input/contracts-v1.js";
+import {
+  prepareZeroInputEvidenceV1,
+  type ZeroInputEvidenceV1,
+  ZeroInputVerdictSubjectV1Schema,
+} from "../zero-input/family-v1.js";
+import { prepareZeroInputForcedProductionPlanV1 } from "../zero-input/production-v1.js";
+import {
+  ZeroInputForcedSourcePayloadV1Schema,
+  ZeroInputStep02DatumV1Schema,
+} from "../zero-input/schemas-v1.js";
+import {
+  submitZeroInputStep01AcceptedV1,
+  submitZeroInputStep01ForcedV1,
+} from "../zero-input/submit-step-01-v1.js";
+import { submitZeroInputStep02V1 } from "../zero-input/submit-step-02-v1.js";
 import type { CanonicalBlockClassificationV1 } from "./classification-v1.js";
 import {
   INVALID_RANGE_COMPLETE_CANONICAL_REPLAY_V1,
@@ -101,11 +131,17 @@ export type ProductionNativeInclusionTwoStepArtifactV1 = JournalJsonObjectV1 &
     l2TransactionSourceCbor: string;
     transactionsPhasRoot: string;
     txMembershipProofCbor: string;
+    sourceKind: "accepted" | "forced";
+    subjectCbor: string;
+    inputFieldPreimageCbor: string;
+    inputFieldCommitment: string;
+    forcedSourceCbor: string;
   }>;
 
 const HEX_28 = /^[0-9a-f]{56}$/u;
 const HEX_32 = /^[0-9a-f]{64}$/u;
 const EVEN_HEX = /^(?:[0-9a-f]{2})+$/u;
+const OPTIONAL_HEX = /^(?:[0-9a-f]{2})*$/u;
 const NATURAL = /^(?:0|[1-9][0-9]*)$/u;
 
 const record = (
@@ -206,12 +242,18 @@ const parseArtifact = (
       "l2TransactionSourceCbor",
       "transactionsPhasRoot",
       "txMembershipProofCbor",
+      "sourceKind",
+      "subjectCbor",
+      "inputFieldPreimageCbor",
+      "inputFieldCommitment",
+      "forcedSourceCbor",
     ],
     "native-inclusion two-step artifact",
   );
   if (
     parsed.schemaVersion !== PRODUCTION_NATIVE_INCLUSION_TWO_STEP_ARTIFACT_V1 ||
     (parsed.category !== "invalidRange" && parsed.category !== "zeroInput") ||
+    (parsed.sourceKind !== "accepted" && parsed.sourceKind !== "forced") ||
     typeof parsed.detectionId !== "string" ||
     parsed.detectionId.trim() !== parsed.detectionId
   ) {
@@ -266,8 +308,29 @@ const parseArtifact = (
     ),
     txMembershipProofCbor: canonicalHex(
       parsed.txMembershipProofCbor,
-      EVEN_HEX,
+      OPTIONAL_HEX,
       "artifact membership proof",
+    ),
+    sourceKind: parsed.sourceKind,
+    subjectCbor: canonicalHex(
+      parsed.subjectCbor,
+      OPTIONAL_HEX,
+      "artifact subject",
+    ),
+    inputFieldPreimageCbor: canonicalHex(
+      parsed.inputFieldPreimageCbor,
+      OPTIONAL_HEX,
+      "artifact input field preimage",
+    ),
+    inputFieldCommitment: canonicalHex(
+      parsed.inputFieldCommitment,
+      HEX_32,
+      "artifact input field commitment",
+    ),
+    forcedSourceCbor: canonicalHex(
+      parsed.forcedSourceCbor,
+      OPTIONAL_HEX,
+      "artifact forced source",
     ),
   });
 };
@@ -276,44 +339,58 @@ export const admitProductionNativeInclusionTwoStepArtifactV1 = (
   value: unknown,
 ): Readonly<{
   artifact: ProductionNativeInclusionTwoStepArtifactV1;
-  inclusion: ReturnType<typeof parseSubmitStep01TxInclusion>;
+  inclusion: ReturnType<typeof parseSubmitStep01TxInclusion> | null;
+  zeroInputEvidence: ZeroInputEvidenceV1 | null;
+  invalidRangeEvidence: InvalidRangeEvidenceV1 | null;
+  forcedSource: Readonly<Record<string, unknown>> | null;
 }> => {
   const artifact = parseArtifact(value);
   const compact = decodeMidgardNativeTxCompactV1(
     Buffer.from(artifact.nativeTxCompactCbor, "hex"),
   );
-  const inclusion = parseSubmitStep01TxInclusion({
-    nativeTxId: artifact.nativeTxId,
-    nativeTx: nativeTxFromCoreCompact(compact),
-    nativeTxCompactCbor: artifact.nativeTxCompactCbor,
-    l2TransactionSourceCbor: artifact.l2TransactionSourceCbor,
-    transactionsPhasRoot: artifact.transactionsPhasRoot,
-    txMembershipProofCbor: artifact.txMembershipProofCbor,
-  });
+  const inclusion =
+    artifact.sourceKind === "accepted"
+      ? parseSubmitStep01TxInclusion({
+          nativeTxId: artifact.nativeTxId,
+          nativeTx: nativeTxFromCoreCompact(compact),
+          nativeTxCompactCbor: artifact.nativeTxCompactCbor,
+          l2TransactionSourceCbor: artifact.l2TransactionSourceCbor,
+          transactionsPhasRoot: artifact.transactionsPhasRoot,
+          txMembershipProofCbor: artifact.txMembershipProofCbor,
+        })
+      : null;
   let openedRoot: Buffer | null;
   try {
+    if (inclusion === null) throw new Error("forced source");
     openedRoot = MpfProof.fromJSON(
       Buffer.from(artifact.nativeTxId, "hex"),
       Buffer.from(artifact.l2TransactionSourceCbor, "hex"),
       proofSteps(inclusion.txMembershipProof),
     ).verify(true);
   } catch {
-    throw new Error(
-      "native-inclusion artifact membership proof cannot be replayed",
-    );
+    if (artifact.sourceKind === "forced") openedRoot = null;
+    else
+      throw new Error(
+        "native-inclusion artifact membership proof cannot be replayed",
+      );
   }
   if (
-    openedRoot === null ||
-    openedRoot.toString("hex") !== artifact.transactionsPhasRoot
+    artifact.sourceKind === "accepted" &&
+    (openedRoot === null ||
+      openedRoot.toString("hex") !== artifact.transactionsPhasRoot)
   ) {
     throw new Error(
       "native-inclusion artifact membership proof does not open its PHAS root",
     );
   }
-  if (artifact.category === "invalidRange") {
+  let invalidRangeEvidence: InvalidRangeEvidenceV1 | null = null;
+  if (
+    artifact.category === "invalidRange" &&
+    artifact.sourceKind === "accepted"
+  ) {
     const reason = invalidRangeViolationReason({
       blockSlot: BigInt(artifact.blockSlot!),
-      normalizedRange: normalizeNativeTxValidityRange(inclusion.nativeTx.body),
+      normalizedRange: normalizeNativeTxValidityRange(inclusion!.nativeTx.body),
     });
     const expectedDetection = `invalid-range:${artifact.position.toString()}:${artifact.nativeTxId}:${reason ?? "none"}`;
     if (
@@ -325,18 +402,232 @@ export const admitProductionNativeInclusionTwoStepArtifactV1 = (
         "invalid-range artifact does not re-derive its selected violation",
       );
     }
-  } else {
+    const subject = Data.from(
+      artifact.subjectCbor,
+      SDK.InvalidRangeVerdictSubjectV1Schema as never,
+    ) as SDK.VerdictSubjectV1;
+    invalidRangeEvidence = prepareInvalidRangeEvidenceV1({
+      subject,
+      blockSlot: BigInt(artifact.blockSlot!),
+      txBody: inclusion!.nativeTx.body,
+    });
     if (
-      !nativeTxBodyHasZeroInputViolation({ txBody: inclusion.nativeTx.body }) ||
-      artifact.detectionId !==
-        `zero-input:${artifact.position.toString()}:${artifact.nativeTxId}`
+      subject.direction !== 0n ||
+      !invalidRangeEvidenceClosesV1(invalidRangeEvidence) ||
+      artifact.forcedSourceCbor !== ""
+    )
+      throw new Error("invalid-range accepted artifact source changed");
+  } else if (artifact.category === "zeroInput") {
+    if (
+      artifact.sourceKind === "accepted" &&
+      (!nativeTxBodyHasZeroInputViolation({
+        txBody: inclusion!.nativeTx.body,
+      }) ||
+        artifact.detectionId !==
+          `zero-input:${artifact.position.toString()}:${artifact.nativeTxId}`)
     ) {
       throw new Error(
         "zero-input artifact does not re-derive its selected violation",
       );
     }
   }
-  return Object.freeze({ artifact, inclusion });
+  let zeroInputEvidence: ZeroInputEvidenceV1 | null = null;
+  let forcedSource: Readonly<Record<string, unknown>> | null = null;
+  if (artifact.category === "zeroInput") {
+    const subject = Data.from(
+      artifact.subjectCbor,
+      ZeroInputVerdictSubjectV1Schema as never,
+    ) as SDK.VerdictSubjectV1;
+    zeroInputEvidence = prepareZeroInputEvidenceV1({
+      finding: { subject },
+      inputFieldPreimage: Buffer.from(artifact.inputFieldPreimageCbor, "hex"),
+      committedFieldHashHex: artifact.inputFieldCommitment,
+    });
+    if (
+      compact.transactionBody.spendInputsHash.toString("hex") !==
+        artifact.inputFieldCommitment ||
+      zeroInputEvidence.subject.transaction_id !== artifact.nativeTxId
+    ) {
+      throw new Error("zero-input artifact field evidence changed transaction");
+    }
+    if (artifact.sourceKind === "accepted") {
+      if (artifact.forcedSourceCbor !== "" || subject.direction !== 0n)
+        throw new Error("zero-input accepted artifact source changed");
+    } else {
+      if (
+        artifact.txMembershipProofCbor !== "" ||
+        artifact.transactionsPhasRoot !== "00".repeat(32)
+      )
+        throw new Error("zero-input forced artifact carried accepted evidence");
+      forcedSource = Data.from(
+        artifact.forcedSourceCbor,
+        ZeroInputForcedSourcePayloadV1Schema as never,
+      ) as Readonly<Record<string, unknown>>;
+      const source = forcedSource as {
+        readonly header: SDK.HeaderV1;
+        readonly membership: SDK.ForcedTransactionSourceMembershipProof;
+        readonly direction: bigint;
+      };
+      const leaf = source.membership.value;
+      if (
+        computeHash28(SDK.encodeHeaderV1Cbor(source.header)).toString("hex") !==
+          artifact.headerHash ||
+        source.direction !== 1n ||
+        source.membership.root !== source.header.forcedTransactionsRoot ||
+        source.membership.count !== source.header.forcedTransactionCount ||
+        leaf.tx_id !== artifact.nativeTxId ||
+        leaf.source.compact_cbor !== artifact.nativeTxCompactCbor ||
+        Data.to(
+          { tx_id: leaf.tx_id, source: leaf.source } as never,
+          SDK.L2TransactionSourceV1 as never,
+        ) !== artifact.l2TransactionSourceCbor ||
+        leaf.verdict === "ForcedTxValid" ||
+        leaf.verdict.ForcedTxInvalid.reason !== "EmptyInputs"
+      )
+        throw new Error(
+          "zero-input forced artifact changed authenticated leaf",
+        );
+      const derivedSubject = SDK.forcedVerdictSubjectV1({
+        transactionId: leaf.tx_id,
+        sourceKey: source.membership.key,
+        rejectionReason: leaf.verdict.ForcedTxInvalid.reason,
+      });
+      if (
+        Data.to(
+          derivedSubject as never,
+          ZeroInputVerdictSubjectV1Schema as never,
+        ) !== artifact.subjectCbor
+      )
+        throw new Error(
+          "zero-input forced artifact injected its verdict subject",
+        );
+      let forcedRoot: Buffer | null;
+      try {
+        forcedRoot = MpfProof.fromJSON(
+          Buffer.from(
+            Data.to(
+              source.membership.key as never,
+              SDK.OutputReferenceSchema as never,
+            ),
+            "hex",
+          ),
+          Buffer.from(
+            Data.to(leaf as never, SDK.ForcedInclusionTxV1Schema as never),
+            "hex",
+          ),
+          proofSteps(source.membership.proof as never),
+        ).verify(true);
+      } catch {
+        throw new Error(
+          "zero-input forced artifact membership cannot be replayed",
+        );
+      }
+      if (forcedRoot?.toString("hex") !== source.membership.phas_root)
+        throw new Error("zero-input forced artifact membership root changed");
+    }
+  } else if (artifact.sourceKind === "forced") {
+    const subject = Data.from(
+      artifact.subjectCbor,
+      SDK.InvalidRangeVerdictSubjectV1Schema as never,
+    ) as SDK.VerdictSubjectV1;
+    const source = Data.from(
+      artifact.forcedSourceCbor,
+      SDK.InvalidRangeForcedSourcePayloadV1Schema as never,
+    ) as {
+      header: SDK.HeaderV1;
+      membership: SDK.ForcedTransactionSourceMembershipProof;
+      direction: bigint;
+    };
+    const leaf = source.membership.value;
+    if (
+      computeHash28(SDK.encodeHeaderV1Cbor(source.header)).toString("hex") !==
+        artifact.headerHash ||
+      source.direction !== 1n ||
+      source.membership.root !== source.header.forcedTransactionsRoot ||
+      source.membership.count !== source.header.forcedTransactionCount ||
+      leaf.tx_id !== artifact.nativeTxId ||
+      leaf.source.compact_cbor !== artifact.nativeTxCompactCbor ||
+      Data.to(
+        { tx_id: leaf.tx_id, source: leaf.source } as never,
+        SDK.L2TransactionSourceV1 as never,
+      ) !== artifact.l2TransactionSourceCbor ||
+      artifact.txMembershipProofCbor !== "" ||
+      artifact.transactionsPhasRoot !== "00".repeat(32) ||
+      leaf.verdict === "ForcedTxValid" ||
+      (leaf.verdict.ForcedTxInvalid.reason !== "ValidityIntervalMalformed" &&
+        leaf.verdict.ForcedTxInvalid.reason !==
+          "ValidityIntervalExcludesBlockSlot")
+    )
+      throw new Error(
+        "invalid-range forced artifact changed authenticated leaf",
+      );
+    const derived = SDK.forcedVerdictSubjectV1({
+      transactionId: leaf.tx_id,
+      sourceKey: source.membership.key,
+      rejectionReason: leaf.verdict.ForcedTxInvalid.reason,
+    });
+    if (
+      Data.to(
+        derived as never,
+        SDK.InvalidRangeVerdictSubjectV1Schema as never,
+      ) !== artifact.subjectCbor
+    )
+      throw new Error(
+        "invalid-range forced artifact injected its verdict subject",
+      );
+    let root: Buffer | null;
+    try {
+      root = MpfProof.fromJSON(
+        Buffer.from(
+          Data.to(
+            source.membership.key as never,
+            SDK.OutputReferenceSchema as never,
+          ),
+          "hex",
+        ),
+        Buffer.from(
+          Data.to(leaf as never, SDK.ForcedInclusionTxV1Schema as never),
+          "hex",
+        ),
+        proofSteps(source.membership.proof as never),
+      ).verify(true);
+    } catch {
+      throw new Error(
+        "invalid-range forced artifact membership cannot be replayed",
+      );
+    }
+    if (root?.toString("hex") !== source.membership.phas_root)
+      throw new Error("invalid-range forced artifact membership root changed");
+    invalidRangeEvidence = prepareInvalidRangeEvidenceV1({
+      subject,
+      blockSlot: source.header.blockSlot,
+      txBody: nativeTxFromCoreCompact(compact).body,
+    });
+    if (
+      !invalidRangeEvidenceClosesV1(invalidRangeEvidence) ||
+      artifact.blockSlot !== source.header.blockSlot.toString() ||
+      artifact.violationReason !== leaf.verdict.ForcedTxInvalid.reason ||
+      artifact.detectionId !==
+        `invalid-range:forced:${artifact.position.toString()}:${artifact.nativeTxId}:${leaf.verdict.ForcedTxInvalid.reason}`
+    )
+      throw new Error(
+        "invalid-range forced artifact does not contradict rejection",
+      );
+    forcedSource = source as unknown as Readonly<Record<string, unknown>>;
+  } else if (
+    artifact.inputFieldPreimageCbor !== "" ||
+    artifact.inputFieldCommitment !== "00".repeat(32) ||
+    artifact.forcedSourceCbor !== ""
+  ) {
+    throw new Error("invalid-range artifact carried zero-input authority");
+  }
+  return Object.freeze({
+    artifact,
+    inclusion,
+    invalidRangeEvidence,
+    zeroInputEvidence,
+    forcedSource,
+  });
 };
 
 const selectedTxId = (
@@ -345,6 +636,34 @@ const selectedTxId = (
     { readonly decision: "fault_detected" }
   >,
 ): string => {
+  if (
+    classification.category === "invalidRange" &&
+    classification.selected.detectionId.startsWith("invalid-range:forced:")
+  ) {
+    const fields = classification.selected.detectionId.split(":");
+    if (
+      fields.length !== 5 ||
+      !NATURAL.test(fields[2] ?? "") ||
+      !HEX_32.test(fields[3] ?? "") ||
+      classification.selected.position !== BigInt(fields[2]!)
+    )
+      throw new Error("invalidRange forced classification is malformed");
+    return fields[3]!;
+  }
+  if (
+    classification.category === "zeroInput" &&
+    classification.selected.detectionId.startsWith("zero-input:forced:")
+  ) {
+    const fields = classification.selected.detectionId.split(":");
+    if (
+      fields.length !== 4 ||
+      !NATURAL.test(fields[2] ?? "") ||
+      !HEX_32.test(fields[3] ?? "") ||
+      classification.selected.position !== BigInt(fields[2]!)
+    )
+      throw new Error("zeroInput forced classification is malformed");
+    return fields[3]!;
+  }
   const prefix =
     classification.category === "invalidRange" ? "invalid-range" : "zero-input";
   const fields = classification.selected.detectionId.split(":");
@@ -391,7 +710,15 @@ export const prepareProductionNativeInclusionTwoStepArtifactV1 = async <
   let preparedInclusion: PreparedTxInclusionJson;
   let violationReason: string | null;
   let blockSlot: string | null;
-  if (category === "invalidRange") {
+  let sourceKind: "accepted" | "forced" = "accepted";
+  let subjectCbor = "";
+  let inputFieldPreimageCbor = "";
+  let inputFieldCommitment = "00".repeat(32);
+  let forcedSourceCbor = "";
+  if (
+    category === "invalidRange" &&
+    !classification.selected.detectionId.startsWith("invalid-range:forced:")
+  ) {
     const prepared = await prepareInvalidRangeFromCanonicalEvidenceV1({
       evidence,
       txId,
@@ -401,7 +728,61 @@ export const prepareProductionNativeInclusionTwoStepArtifactV1 = async <
     preparedInclusion = prepared.tx.txInclusion;
     violationReason = prepared.tx.violationReason;
     blockSlot = prepared.blockSlot.toString();
-  } else {
+    subjectCbor = Data.to(
+      SDK.acceptedVerdictSubjectV1(preparedNodeTxId) as never,
+      SDK.InvalidRangeVerdictSubjectV1Schema as never,
+    );
+  } else if (category === "invalidRange") {
+    const forced = await prepareInvalidRangeForcedProductionPlanV1({
+      block: evidence,
+    });
+    if (
+      forced.detectionId !== classification.selected.detectionId ||
+      forced.evidence.subject.transaction_id !== txId
+    )
+      throw new Error("invalidRange forced plan changed classification");
+    const transaction =
+      evidence.reconstruction.forcedTransactions[
+        Number(classification.selected.position)
+      ];
+    if (transaction === undefined)
+      throw new Error(
+        "invalidRange forced transaction disappeared from retained DA",
+      );
+    sourceKind = "forced";
+    preparedHeaderHash = forced.headerHash;
+    preparedNodeTxId = txId;
+    preparedInclusion = {
+      nativeTxId: txId,
+      nativeTx: nativeTxFromCoreCompact(
+        decodeMidgardNativeTxCompactV1(
+          Buffer.from(forced.nativeTxCompactCbor, "hex"),
+        ),
+      ),
+      nativeTxCompactCbor: forced.nativeTxCompactCbor,
+      l2TransactionSourceCbor: Data.to(
+        {
+          tx_id: transaction.value.tx_id,
+          source: transaction.value.source,
+        } as never,
+        SDK.L2TransactionSourceV1 as never,
+      ),
+      transactionsPhasRoot: "00".repeat(32),
+      txMembershipProofCbor: "",
+    };
+    violationReason = forced.evidence.subject.rejection_reason as string;
+    blockSlot = forced.evidence.blockSlot.toString();
+    subjectCbor = Data.to(
+      forced.evidence.subject as never,
+      SDK.InvalidRangeVerdictSubjectV1Schema as never,
+    );
+    forcedSourceCbor = Data.to(
+      forced.forcedSource as never,
+      SDK.InvalidRangeForcedSourcePayloadV1Schema as never,
+    );
+  } else if (
+    !classification.selected.detectionId.startsWith("zero-input:forced:")
+  ) {
     const prepared = await prepareZeroInputFromCanonicalEvidenceV1({
       evidence,
       txId,
@@ -411,12 +792,90 @@ export const prepareProductionNativeInclusionTwoStepArtifactV1 = async <
     preparedInclusion = prepared.tx.txInclusion;
     violationReason = null;
     blockSlot = null;
+    const retained = evidence.transactions.find(
+      (transaction) => transaction.nodeTxId === preparedNodeTxId,
+    );
+    if (retained === undefined)
+      throw new Error(
+        "zeroInput accepted transaction disappeared from retained DA",
+      );
+    const material = deriveMidgardNativeTxFaultEvidenceMaterialV1(
+      Buffer.from(retained.txCbor, "hex"),
+    );
+    const field = material.fieldPreimages[0];
+    if (field === undefined)
+      throw new Error("zeroInput accepted field 0 disappeared");
+    const acceptedEvidence = prepareZeroInputEvidenceV1({
+      finding: { subject: SDK.acceptedVerdictSubjectV1(preparedNodeTxId) },
+      inputFieldPreimage: field,
+      committedFieldHashHex: midgardFieldCommitmentV1(field).toString("hex"),
+    });
+    subjectCbor = Data.to(
+      acceptedEvidence.subject as never,
+      ZeroInputVerdictSubjectV1Schema as never,
+    );
+    inputFieldPreimageCbor = acceptedEvidence.inputFieldPreimageCbor;
+    inputFieldCommitment = acceptedEvidence.inputFieldCommitment;
+  } else {
+    const forced = await prepareZeroInputForcedProductionPlanV1({
+      block: evidence,
+    });
+    if (
+      forced.detectionId !== classification.selected.detectionId ||
+      forced.evidence.subject.transaction_id !== txId
+    )
+      throw new Error("zeroInput forced plan changed classification");
+    const transaction =
+      evidence.reconstruction.forcedTransactions[
+        Number(classification.selected.position)
+      ];
+    if (transaction === undefined)
+      throw new Error(
+        "zeroInput forced transaction disappeared from retained DA",
+      );
+    sourceKind = "forced";
+    preparedHeaderHash = forced.headerHash;
+    preparedNodeTxId = forced.evidence.subject.transaction_id;
+    preparedInclusion = {
+      nativeTxId: preparedNodeTxId,
+      nativeTx: nativeTxFromCoreCompact(
+        decodeMidgardNativeTxCompactV1(
+          Buffer.from(forced.nativeTxCompactCbor, "hex"),
+        ),
+      ),
+      nativeTxCompactCbor: forced.nativeTxCompactCbor,
+      l2TransactionSourceCbor: Data.to(
+        {
+          tx_id: transaction.value.tx_id,
+          source: transaction.value.source,
+        } as never,
+        SDK.L2TransactionSourceV1 as never,
+      ),
+      transactionsPhasRoot: "00".repeat(32),
+      txMembershipProofCbor: "",
+    };
+    violationReason = null;
+    blockSlot = null;
+    subjectCbor = Data.to(
+      forced.evidence.subject as never,
+      ZeroInputVerdictSubjectV1Schema as never,
+    );
+    inputFieldPreimageCbor = forced.evidence.inputFieldPreimageCbor;
+    inputFieldCommitment = forced.evidence.inputFieldCommitment;
+    forcedSourceCbor = Data.to(
+      forced.forcedSource as never,
+      ZeroInputForcedSourcePayloadV1Schema as never,
+    );
   }
   if (
     classification.selected.detectionId !==
     (category === "invalidRange"
-      ? `invalid-range:${classification.selected.position.toString()}:${preparedNodeTxId}:${violationReason}`
-      : `zero-input:${classification.selected.position.toString()}:${preparedNodeTxId}`)
+      ? sourceKind === "forced"
+        ? `invalid-range:forced:${classification.selected.position.toString()}:${preparedNodeTxId}:${violationReason}`
+        : `invalid-range:${classification.selected.position.toString()}:${preparedNodeTxId}:${violationReason}`
+      : sourceKind === "forced"
+        ? `zero-input:forced:${classification.selected.position.toString()}:${preparedNodeTxId}`
+        : `zero-input:${classification.selected.position.toString()}:${preparedNodeTxId}`)
   ) {
     throw new Error(`${category} prepared transaction changed classification`);
   }
@@ -436,6 +895,11 @@ export const prepareProductionNativeInclusionTwoStepArtifactV1 = async <
     l2TransactionSourceCbor: preparedInclusion.l2TransactionSourceCbor,
     transactionsPhasRoot: preparedInclusion.transactionsPhasRoot,
     txMembershipProofCbor: preparedInclusion.txMembershipProofCbor,
+    sourceKind,
+    subjectCbor,
+    inputFieldPreimageCbor,
+    inputFieldCommitment,
+    forcedSourceCbor,
   }) as ProductionNativeInclusionTwoStepArtifactV1;
   admitProductionNativeInclusionTwoStepArtifactV1(artifact);
   return Object.freeze(artifact);
@@ -464,6 +928,9 @@ type BoundConfigV1<
   referenceScripts: NativeInclusionTwoStepWorkflowReferenceScriptsV1;
   stateQueueMutationLeaseCoordinator: StateQueueMutationLeaseCoordinator;
   fraudProverRewardLovelace: bigint;
+  zeroInputContracts: ZeroInputContractsV1 | null;
+  invalidRangeContracts: InvalidRangeContractsV1 | null;
+  categoryId: string;
 }>;
 
 const actionInput = ({
@@ -604,12 +1071,15 @@ const createTransactionPort = <
       });
     }
     if (input.stage === "step_01") {
-      const chunks = await resolveDirectFirstProofChunksV1({
-        action,
-        lucid: config.lucid,
-        address: config.signer.address,
-        proofCbor: admitted.artifact.txMembershipProofCbor,
-      });
+      const chunks =
+        admitted.artifact.sourceKind === "accepted"
+          ? await resolveDirectFirstProofChunksV1({
+              action,
+              lucid: config.lucid,
+              address: config.signer.address,
+              proofCbor: admitted.artifact.txMembershipProofCbor,
+            })
+          : undefined;
       return Object.freeze({
         transaction: await captureLocallyEvaluatedTransactionV1(
           async (preSubmitBoundary) => {
@@ -631,10 +1101,88 @@ const createTransactionPort = <
               preSubmitBoundary,
               awaitConfirmation: false,
             } as const;
+            void common;
             if (config.category === "invalidRange") {
-              await submitInvalidRangeStep01(common);
+              if (admitted.artifact.sourceKind === "forced") {
+                if (
+                  config.invalidRangeContracts === null ||
+                  admitted.invalidRangeEvidence === null ||
+                  admitted.forcedSource === null
+                )
+                  throw new Error("invalidRange forced authority disappeared");
+                await submitInvalidRangeStep01ForcedV1({
+                  lucid: config.lucid,
+                  contracts: config.invalidRangeContracts,
+                  categoryId: config.categoryId,
+                  signer: config.signer,
+                  threadOutRef: stringField(input, "threadOutRef"),
+                  evidence: admitted.invalidRangeEvidence,
+                  forcedSource: admitted.forcedSource,
+                  referenceScriptUtxo: config.referenceScripts.steps[0],
+                  preSubmitBoundary,
+                  awaitConfirmation: false,
+                });
+              } else {
+                if (admitted.inclusion === null)
+                  throw new Error(
+                    "invalidRange accepted inclusion disappeared",
+                  );
+                await submitInvalidRangeStep01({
+                  ...common,
+                  txInclusion: admitted.inclusion,
+                });
+              }
             } else {
-              await submitZeroInputStep01(common);
+              const contracts = config.zeroInputContracts;
+              const evidence = admitted.zeroInputEvidence;
+              if (contracts === null || evidence === null)
+                throw new Error("zeroInput workflow omitted family authority");
+              if (admitted.artifact.sourceKind === "forced") {
+                if (admitted.forcedSource === null)
+                  throw new Error("zeroInput forced source disappeared");
+                await submitZeroInputStep01ForcedV1({
+                  lucid: config.lucid,
+                  contracts,
+                  categoryId: config.categoryId,
+                  signer: config.signer,
+                  threadOutRef: stringField(input, "threadOutRef"),
+                  finding: evidence,
+                  forcedSource: admitted.forcedSource,
+                  referenceScriptUtxo: config.referenceScripts.steps[0],
+                  preSubmitBoundary,
+                  awaitConfirmation: false,
+                });
+              } else {
+                if (admitted.inclusion === null)
+                  throw new Error("zeroInput accepted inclusion disappeared");
+                const thread = await requireLinearFaultThreadUtxoV1({
+                  lucid: config.lucid,
+                  contracts,
+                  categoryId: config.categoryId,
+                  family: "zero-input",
+                  stepIndex: 0,
+                  threadOutRef: stringField(input, "threadOutRef"),
+                });
+                await submitZeroInputStep01AcceptedV1({
+                  lucid: config.lucid,
+                  blueprint: config.blueprint,
+                  network: config.network,
+                  contracts,
+                  signer: config.signer,
+                  finding: evidence,
+                  threadUtxo: thread.threadUtxo,
+                  threadToken: thread.threadToken,
+                  stateQueueBlockOutRef: stringField(
+                    input,
+                    "stateQueueBlockOutRef",
+                  ),
+                  txInclusion: admitted.inclusion,
+                  referenceScriptUtxo: config.referenceScripts.steps[0],
+                  witnessReferenceScripts: config.referenceScripts.witnesses,
+                  preSubmitBoundary,
+                  awaitConfirmation: false,
+                });
+              }
             }
           },
         ),
@@ -656,12 +1204,45 @@ const createTransactionPort = <
               preSubmitBoundary,
               awaitConfirmation: false,
             } as const;
+            void common;
             if (config.category === "invalidRange") {
-              await submitInvalidRangeStep02(common);
+              if (
+                config.invalidRangeContracts === null ||
+                admitted.invalidRangeEvidence === null
+              )
+                throw new Error("invalidRange terminal authority disappeared");
+              await submitInvalidRangeStep02V1({
+                lucid: config.lucid,
+                contracts: config.invalidRangeContracts,
+                categoryId: config.categoryId,
+                signer: config.signer,
+                threadOutRef: stringField(input, "threadOutRef"),
+                evidence: admitted.invalidRangeEvidence,
+                referenceScriptUtxo: config.referenceScripts.steps[1],
+                witnessReferenceScripts: config.referenceScripts.witnesses,
+                preSubmitBoundary,
+                awaitConfirmation: false,
+              });
             } else {
-              await submitZeroInputStep02({
-                ...common,
+              if (
+                config.zeroInputContracts === null ||
+                admitted.zeroInputEvidence === null
+              )
+                throw new Error(
+                  "zeroInput workflow omitted terminal authority",
+                );
+              await submitZeroInputStep02V1({
+                lucid: config.lucid,
+                contracts: config.zeroInputContracts,
+                categoryId: config.categoryId,
+                signer: config.signer,
+                threadOutRef: stringField(input, "threadOutRef"),
+                evidence: admitted.zeroInputEvidence,
                 nativeTxCompactCbor: admitted.artifact.nativeTxCompactCbor,
+                referenceScriptUtxo: config.referenceScripts.steps[1],
+                witnessReferenceScripts: config.referenceScripts.witnesses,
+                preSubmitBoundary,
+                awaitConfirmation: false,
               });
             }
           },
@@ -778,7 +1359,7 @@ const createWorkflow = async <
     stepDatumSchemas:
       category === "invalidRange"
         ? [FraudProofComputationThreadStepDatum, InvalidRangeStep02Datum]
-        : [FraudProofComputationThreadStepDatum, ZeroInputStep02Datum],
+        : [FraudProofComputationThreadStepDatum, ZeroInputStep02DatumV1Schema],
   });
   assertManifestBoundWorkflowSignerV1({
     network: binding.network,
@@ -789,6 +1370,73 @@ const createWorkflow = async <
     binding,
     supplied: config.referenceScripts,
   });
+  const zeroInputChain = binding.resolvedContracts.contracts.zeroInput;
+  const invalidRangeChain = binding.resolvedContracts.contracts.invalidRange;
+  const stateQueuePolicyId = binding.resolvedContracts.stateQueuePolicyId;
+  const certificatePolicyId =
+    binding.fieldPreimageCertificate?.policyId ??
+    binding.deploymentInfo.fieldPreimageCertificateMint?.scriptHash;
+  const zeroInputContracts: ZeroInputContractsV1 | null =
+    category !== "zeroInput"
+      ? null
+      : zeroInputChain === undefined ||
+          stateQueuePolicyId === undefined ||
+          certificatePolicyId === undefined
+        ? (() => {
+            throw new Error("zeroInput deployment chain is incomplete");
+          })()
+        : {
+            steps: zeroInputChain.steps.map((step, index) => ({
+              ...step,
+              blueprintTitle: [
+                "fraud_proofs/zero_input/step_01.main.spend",
+                "fraud_proofs/zero_input/step_02.main.spend",
+              ][index]!,
+              referenceOutRef: `${references.steps[index]!.txHash}#${references.steps[index]!.outputIndex.toString()}`,
+            })) as unknown as ZeroInputContractsV1["steps"],
+            computationThread:
+              binding.resolvedContracts.contracts.computationThread,
+            fraudProof: {
+              policyId: binding.resolvedContracts.contracts.fraudProof.policyId,
+              mintingScript:
+                binding.resolvedContracts.contracts.fraudProof.mintingScript,
+              spendingScriptAddress:
+                binding.resolvedContracts.contracts.fraudProof
+                  .spendingScriptAddress,
+            },
+            hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
+            stateQueuePolicyId,
+            fieldPreimageCertificatePolicyId: certificatePolicyId,
+          };
+  const invalidRangeContracts: InvalidRangeContractsV1 | null =
+    category !== "invalidRange"
+      ? null
+      : invalidRangeChain === undefined || stateQueuePolicyId === undefined
+        ? (() => {
+            throw new Error("invalidRange deployment chain is incomplete");
+          })()
+        : {
+            steps: invalidRangeChain.steps.map((step, index) => ({
+              ...step,
+              blueprintTitle: [
+                "fraud_proofs/invalid_range/step_01.main.spend",
+                "fraud_proofs/invalid_range/step_02.main.spend",
+              ][index]!,
+              referenceOutRef: `${references.steps[index]!.txHash}#${references.steps[index]!.outputIndex.toString()}`,
+            })) as unknown as InvalidRangeContractsV1["steps"],
+            computationThread:
+              binding.resolvedContracts.contracts.computationThread,
+            fraudProof: {
+              policyId: binding.resolvedContracts.contracts.fraudProof.policyId,
+              mintingScript:
+                binding.resolvedContracts.contracts.fraudProof.mintingScript,
+              spendingScriptAddress:
+                binding.resolvedContracts.contracts.fraudProof
+                  .spendingScriptAddress,
+            },
+            hubOraclePolicyId: binding.resolvedContracts.hubOraclePolicyId,
+            stateQueuePolicyId,
+          };
   const l1 = createFraudProofFamilyLocalKupmiosL1ObservationPortV1({
     source: config.source,
     releaseFinality: binding.releaseFinality,
@@ -814,6 +1462,9 @@ const createWorkflow = async <
     fraudProverRewardLovelace: BigInt(
       binding.releaseEconomics.policy.fraudProverRewardLovelace,
     ),
+    zeroInputContracts,
+    invalidRangeContracts,
+    categoryId: binding.resolvedContracts.category.categoryId,
   });
   const linear = createProductionLinearFamilyWorkflowAdapterV1({
     category,
@@ -832,7 +1483,8 @@ const createWorkflow = async <
     proofCborForAction: ({ action, artifact }) => {
       const admitted =
         admitProductionNativeInclusionTwoStepArtifactV1(artifact);
-      return action.input.stage === "step_01"
+      return action.input.stage === "step_01" &&
+        admitted.artifact.sourceKind === "accepted"
         ? admitted.artifact.txMembershipProofCbor
         : null;
     },

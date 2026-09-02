@@ -57,6 +57,7 @@ export const APPLICATION_TABLE_NAMES = [
   "pending_block_finalization_transition_trace",
   "pending_block_finalization_event_to_step",
   "pending_block_finalization_validation_traces",
+  "pending_block_finalization_validation_trace_witnesses",
   "tx_admissions",
   "tx_admission_payloads",
   "local_mutation_jobs",

@@ -73,17 +73,27 @@ import {
   requireNetworkIdStepStateV1,
   requireNetworkIdThreadUtxoV1,
 } from "./submit-common-v1.js";
+import {
+  networkIdWrongfulRejectionClosesV1,
+  type PreparedNetworkIdWrongfulRejectionV1,
+} from "./wrongful-rejection-v1.js";
 
 const STEP_LABEL = networkIdStepLabelV1(1);
 
 type PreparedNetworkIdFinalProofV1 =
   | PreparedNetworkIdProofV1
-  | PreparedNetworkIdPostUtxoProofV1;
+  | PreparedNetworkIdPostUtxoProofV1
+  | PreparedNetworkIdWrongfulRejectionV1;
 
 const isPostUtxoPrepared = (
   prepared: PreparedNetworkIdFinalProofV1,
 ): prepared is PreparedNetworkIdPostUtxoProofV1 =>
   prepared.faultClaim.kind === "post-utxo-network";
+
+const isForcedPrepared = (
+  prepared: PreparedNetworkIdFinalProofV1,
+): prepared is PreparedNetworkIdWrongfulRejectionV1 =>
+  prepared.faultClaim.kind === "forced-network-mismatch";
 
 const uniqueUtxos = (utxos: readonly UTxO[]): readonly UTxO[] => {
   const seen = new Set<string>();
@@ -99,7 +109,12 @@ const sameFault = (
   left: NetworkIdStep02State["fault"],
   right: NetworkIdStep02State["fault"],
 ): boolean => {
-  if (left === "TransactionNetwork" || right === "TransactionNetwork") {
+  if (
+    left === "TransactionNetwork" ||
+    right === "TransactionNetwork" ||
+    left === "ForcedNetworkIdMismatch" ||
+    right === "ForcedNetworkIdMismatch"
+  ) {
     return left === right;
   }
   if ("OutputNetwork" in left || "OutputNetwork" in right) {
@@ -188,12 +203,17 @@ export const submitNetworkIdStep02 = async ({
     stepIndex: 1,
   });
   const postUtxo = isPostUtxoPrepared(prepared);
+  const forcedPrepared = isForcedPrepared(prepared) ? prepared : null;
+  const forced = forcedPrepared !== null;
   const preparedBadTxId = postUtxo
     ? prepared.outRef.transactionId
     : prepared.badTxId;
   const preparedCommittedNetworkId = postUtxo
     ? 255n
-    : prepared.txInclusion.nativeTx.body.network_id;
+    : forced
+      ? forcedPrepared!.evidence.committedNetworkId
+      : (prepared as PreparedNetworkIdProofV1).txInclusion.nativeTx.body
+          .network_id;
   if (
     state.bad_tx_id !== preparedBadTxId ||
     state.committed_tx_network_id !== preparedCommittedNetworkId ||
@@ -214,6 +234,7 @@ export const submitNetworkIdStep02 = async ({
     }
     if (
       state.fault === "TransactionNetwork" ||
+      typeof state.fault !== "object" ||
       !("OutputNetworkUtxo" in state.fault) ||
       state.fault.OutputNetworkUtxo.observed_network_id ===
         state.expected_network_id
@@ -244,6 +265,35 @@ export const submitNetworkIdStep02 = async ({
         "post-UTxO finalization requires the Aiken blueprint and Cardano network",
       );
     }
+  } else if (forced) {
+    if (
+      state.fault !== "ForcedNetworkIdMismatch" ||
+      state.forced_source_key === null ||
+      state.forced_source_key !== forcedPrepared!.subject.source_key ||
+      !networkIdWrongfulRejectionClosesV1(forcedPrepared!.evidence)
+    ) {
+      throw networkIdSubmitError(
+        "forced step state or retained evidence does not contradict NetworkIdMismatch",
+      );
+    }
+    if (outputsOpeningPlan === undefined) {
+      throw networkIdSubmitError(
+        "forced NetworkIdMismatch contradiction requires the complete field-2 opening",
+      );
+    }
+    if (
+      outputsOpeningPlan.fieldIndex !== 2 ||
+      outputsOpeningPlan.nativeTxId !== state.bad_tx_id ||
+      outputsOpeningPlan.nativeTxCompactCbor !==
+        forcedPrepared!.nativeTxCompactCbor ||
+      outputsOpeningPlan.itemCount !==
+        forcedPrepared!.evidence.outputNetworkIds.length
+    ) {
+      throw networkIdSubmitError(
+        "forced outputs opening changed the authenticated transaction",
+      );
+    }
+    planned = outputsOpeningPlan;
   } else if (prepared.faultClaim.kind === "transaction-network") {
     if (outputsOpeningPlan !== undefined) {
       throw networkIdSubmitError(
@@ -258,7 +308,7 @@ export const submitNetworkIdStep02 = async ({
         "live step-02 state does not describe an explicit transaction network mismatch",
       );
     }
-  } else {
+  } else if (prepared.faultClaim.kind === "output-network") {
     if (outputsOpeningPlan === undefined) {
       throw networkIdSubmitError(
         "output-network finalization requires the authenticated field-2 opening",
@@ -282,6 +332,10 @@ export const submitNetworkIdStep02 = async ({
       );
     }
     planned = outputsOpeningPlan;
+  } else {
+    throw networkIdSubmitError(
+      "prepared network-id proof has an unknown authenticated fault kind",
+    );
   }
 
   signer.selectWallet(lucid);

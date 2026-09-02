@@ -150,6 +150,8 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
   "V1 fraud-proof value-not-preserved step-04": "V1FpValueNotPreservedS04",
   "V1 fraud-proof input-set-uniqueness step-01": "V1FpInputSetUniquenessS01",
   "V1 fraud-proof input-set-uniqueness step-02": "V1FpInputSetUniquenessS02",
+  "V1 fraud-proof input-set-uniqueness step-03": "V1FpInputSetUniquenessS03",
+  "V1 fraud-proof input-set-uniqueness step-04": "V1FpInputSetUniquenessS04",
   "V1 fraud-proof mint-authorization step-01": "V1FpMintAuthorizationS01",
   "V1 fraud-proof mint-authorization step-02": "V1FpMintAuthorizationS02",
   "V1 fraud-proof mint-authorization step-03": "V1FpMintAuthorizationS03",
@@ -218,6 +220,182 @@ export const REFERENCE_SCRIPT_AUTH_TOKEN_NAMES = {
   "V1 fraud-proof min-ada step-03": "V1FpMinAdaS03",
   "V1 fraud-proof min-ada step-04": "V1FpMinAdaS04",
   "V1 fraud-proof min-ada step-05": "V1FpMinAdaS05",
+  "V1 fraud-proof field-preimage-length-mismatch step-01": "V1FpFieldLenS01",
+  "V1 fraud-proof field-preimage-length-mismatch step-02 accepted":
+    "V1FpFieldLenS02Accepted",
+  "V1 fraud-proof field-preimage-length-mismatch step-02 forced":
+    "V1FpFieldLenS02Forced",
+  "V1 fraud-proof field-preimage-length-mismatch step-03": "V1FpFieldLenS03",
+  "V1 fraud-proof field-item-width-illegal step-01": "V1FpItemWidthS01",
+  "V1 fraud-proof field-item-width-illegal step-02": "V1FpItemWidthS02",
+  "V1 fraud-proof field-item-width-illegal step-03": "V1FpItemWidthS03",
+  "V1 fraud-proof witness-script-decoding step-01": "V1FpWitnessDecodeS01",
+  "V1 fraud-proof witness-script-decoding step-02": "V1FpWitnessDecodeS02",
+  "V1 fraud-proof witness-script-decoding step-03": "V1FpWitnessDecodeS03",
+  "V1 fraud-proof witness-script-decoding step-04": "V1FpWitnessDecodeS04",
+  "V1 fraud-proof script-integrity-hash-missing step-01":
+    "V1FpIntegrityMissingS01",
+  "V1 fraud-proof script-integrity-hash-missing step-02":
+    "V1FpIntegrityMissingS02",
+  "V1 fraud-proof script-integrity-hash-missing step-03":
+    "V1FpIntegrityMissingS03",
+  "V1 fraud-proof script-integrity-hash-missing script-grammar":
+    "V1FpIntegrityMissingGrammar",
+  "V1 fraud-proof script-integrity-hash-missing script-scan":
+    "V1FpIntegrityMissingScan",
+  "V1 fraud-proof script-integrity-hash-missing redeemer-grammar":
+    "V1FpIntegrityMissingRedeemer",
+  "V1 fraud-proof script-integrity-hash-missing step-04":
+    "V1FpIntegrityMissingS04",
+  "V1 fraud-proof transaction-output-non-canonical step-01":
+    "V1FpTxOutputCanonicalS01",
+  "V1 fraud-proof transaction-output-non-canonical step-02":
+    "V1FpTxOutputCanonicalS02",
+  "V1 fraud-proof transaction-output-non-canonical step-03":
+    "V1FpTxOutputCanonicalS03",
+  "V1 fraud-proof transaction-output-non-canonical step-04":
+    "V1FpTxOutputCanonicalS04",
+  "V1 fraud-proof resolved-output-non-canonical step-01":
+    "V1FpResolvedOutputS01",
+  "V1 fraud-proof resolved-output-non-canonical step-02":
+    "V1FpResolvedOutputS02",
+  "V1 fraud-proof resolved-output-non-canonical step-03":
+    "V1FpResolvedOutputS03",
+  "V1 fraud-proof resolved-output-non-canonical step-04":
+    "V1FpResolvedOutputS04",
+  "V1 fraud-proof resolved-output-non-canonical step-05":
+    "V1FpResolvedOutputS05",
+  "V1 fraud-proof mint-declared-asset-limit step-01": "V1FpMintAssetLimitS01",
+  "V1 fraud-proof mint-declared-asset-limit step-02": "V1FpMintAssetLimitS02",
+  "V1 fraud-proof mint-declared-asset-limit step-03": "V1FpMintAssetLimitS03",
+  "V1 fraud-proof mint-declared-asset-limit step-04": "V1FpMintAssetLimitS04",
+  "V1 fraud-proof spend-input-signer-missing step-01": "V1FpSpendSignerS01",
+  "V1 fraud-proof spend-input-signer-missing step-02": "V1FpSpendSignerS02",
+  "V1 fraud-proof spend-input-signer-missing step-03": "V1FpSpendSignerS03",
+  "V1 fraud-proof spend-input-signer-missing step-04": "V1FpSpendSignerS04",
+  "V1 fraud-proof spend-input-signer-missing step-05": "V1FpSpendSignerS05",
+  "V1 fraud-proof protected-output-signer-missing step-01":
+    "V1FpProtectedSignerS01",
+  "V1 fraud-proof protected-output-signer-missing step-02":
+    "V1FpProtectedSignerS02",
+  "V1 fraud-proof protected-output-signer-missing step-03":
+    "V1FpProtectedSignerS03",
+  "V1 fraud-proof protected-output-signer-missing step-04":
+    "V1FpProtectedSignerS04",
+  "V1 fraud-proof protected-output-signer-missing step-05":
+    "V1FpProtectedSignerS05",
+  "V1 fraud-proof observers-forbidden-on-untagged-network step-01":
+    "V1FpObserversForbiddenS01",
+  "V1 fraud-proof observers-forbidden-on-untagged-network step-02":
+    "V1FpObserversForbiddenS02",
+  "V1 fraud-proof output-reference-script-decoding step-01":
+    "V1FpOutputRefDecodeS01",
+  "V1 fraud-proof output-reference-script-decoding step-02":
+    "V1FpOutputRefDecodeS02",
+  "V1 fraud-proof output-reference-script-decoding step-03":
+    "V1FpOutputRefDecodeS03",
+  "V1 fraud-proof output-reference-script-decoding step-04":
+    "V1FpOutputRefDecodeS04",
+  "V1 fraud-proof output-reference-script-decoding step-05":
+    "V1FpOutputRefDecodeS05",
+  "V1 fraud-proof output-reference-script-decoding step-06":
+    "V1FpOutputRefDecodeS06",
+  "V1 fraud-proof execution-source-script-decoding step-01":
+    "V1FpExecSourceDecodeS01",
+  "V1 fraud-proof execution-source-script-decoding step-02":
+    "V1FpExecSourceDecodeS02",
+  "V1 fraud-proof execution-source-script-decoding step-03":
+    "V1FpExecSourceDecodeS03",
+  "V1 fraud-proof execution-source-script-decoding step-04":
+    "V1FpExecSourceDecodeS04",
+  "V1 fraud-proof execution-source-script-decoding step-05":
+    "V1FpExecSourceDecodeS05",
+  "V1 fraud-proof observer-order-invalid step-01": "V1FpObserverOrderS01",
+  "V1 fraud-proof observer-order-invalid step-02": "V1FpObserverOrderS02",
+  "V1 fraud-proof observer-order-invalid step-03": "V1FpObserverOrderS03",
+  "V1 fraud-proof observer-order-invalid step-04": "V1FpObserverOrderS04",
+  "V1 fraud-proof redeemer-canonicity step-01": "V1FpRedeemerCanonS01",
+  "V1 fraud-proof redeemer-canonicity step-02": "V1FpRedeemerCanonS02",
+  "V1 fraud-proof redeemer-canonicity step-03": "V1FpRedeemerCanonS03",
+  "V1 fraud-proof receive-purpose-language step-01": "V1FpReceivePurposeS01",
+  "V1 fraud-proof receive-purpose-language step-02": "V1FpReceivePurposeS02",
+  "V1 fraud-proof receive-purpose-language step-03": "V1FpReceivePurposeS03",
+  "V1 fraud-proof unused-script-witness step-01": "V1FpUnusedScriptWitnessS01",
+  "V1 fraud-proof unused-script-witness step-02": "V1FpUnusedScriptWitnessS02",
+  "V1 fraud-proof unused-script-witness step-03": "V1FpUnusedScriptWitnessS03",
+  "V1 fraud-proof unused-script-witness step-04": "V1FpUnusedScriptWitnessS04",
+  "V1 fraud-proof unused-script-witness step-05": "V1FpUnusedScriptWitnessS05",
+  "V1 fraud-proof unused-script-witness step-06": "V1FpUnusedScriptWitnessS06",
+  "V1 fraud-proof missing-script-source step-01": "V1FpMissingScriptSourceS01",
+  "V1 fraud-proof missing-script-source step-02": "V1FpMissingScriptSourceS02",
+  "V1 fraud-proof missing-script-source step-03": "V1FpMissingScriptSourceS03",
+  "V1 fraud-proof missing-script-source step-04": "V1FpMissingScriptSourceS04",
+  "V1 fraud-proof missing-script-source step-05": "V1FpMissingScriptSourceS05",
+  "V1 fraud-proof missing-script-source step-06": "V1FpMissingScriptSourceS06",
+  "V1 fraud-proof missing-redeemer step-01": "V1FpMissingRedeemerS01",
+  "V1 fraud-proof missing-redeemer step-02": "V1FpMissingRedeemerS02",
+  "V1 fraud-proof missing-redeemer step-02a": "V1FpMissingRedeemerS02a",
+  "V1 fraud-proof missing-redeemer step-02b": "V1FpMissingRedeemerS02b",
+  "V1 fraud-proof missing-redeemer step-03": "V1FpMissingRedeemerS03",
+  "V1 fraud-proof missing-redeemer step-04": "V1FpMissingRedeemerS04",
+  "V1 fraud-proof missing-redeemer step-05": "V1FpMissingRedeemerS05",
+  "V1 fraud-proof unused-redeemer step-01": "V1FpUnusedRedeemerS01",
+  "V1 fraud-proof unused-redeemer step-02": "V1FpUnusedRedeemerS02",
+  "V1 fraud-proof unused-redeemer step-02a": "V1FpUnusedRedeemerS02a",
+  "V1 fraud-proof unused-redeemer step-02b": "V1FpUnusedRedeemerS02b",
+  "V1 fraud-proof unused-redeemer step-02c": "V1FpUnusedRedeemerS02c",
+  "V1 fraud-proof unused-redeemer step-03": "V1FpUnusedRedeemerS03",
+  "V1 fraud-proof unused-redeemer step-04": "V1FpUnusedRedeemerS04",
+  "V1 fraud-proof unused-redeemer step-05": "V1FpUnusedRedeemerS05",
+  "V1 fraud-proof unused-redeemer step-06": "V1FpUnusedRedeemerS06",
+  "V1 fraud-proof execution-native-script-invalid step-01":
+    "V1FpExecNativeInvalidS01",
+  "V1 fraud-proof execution-native-script-invalid step-02":
+    "V1FpExecNativeInvalidS02",
+  "V1 fraud-proof execution-native-script-invalid step-03":
+    "V1FpExecNativeInvalidS03",
+  "V1 fraud-proof execution-native-script-invalid step-04":
+    "V1FpExecNativeInvalidS04",
+  "V1 fraud-proof execution-native-script-invalid step-05":
+    "V1FpExecNativeInvalidS05",
+  "V1 fraud-proof execution-native-script-invalid step-06":
+    "V1FpExecNativeInvalidS06",
+  "V1 fraud-proof execution-native-script-invalid accepted-reconstruction-init":
+    "V1FpExecNativeInvAccInit",
+  "V1 fraud-proof execution-native-script-invalid accepted-spend-prefix":
+    "V1FpExecNativeInvAccSpend",
+  "V1 fraud-proof execution-native-script-invalid accepted-mint-prefix":
+    "V1FpExecNativeInvAccMint",
+  "V1 fraud-proof execution-native-script-invalid accepted-observer-prefix":
+    "V1FpExecNativeInvAccObserver",
+  "V1 fraud-proof execution-native-script-invalid accepted-receive-prefix":
+    "V1FpExecNativeInvAccReceive",
+  "V1 fraud-proof execution-native-script-invalid accepted-inline-source":
+    "V1FpExecNativeInvAccInline",
+  "V1 fraud-proof execution-native-script-invalid accepted-reference-source":
+    "V1FpExecNativeInvAccRef",
+  "V1 fraud-proof script-integrity-hash-mismatch step-01":
+    "V1FpIntegrityMismatchS01",
+  "V1 fraud-proof script-integrity-hash-mismatch step-02":
+    "V1FpIntegrityMismatchS02",
+  "V1 fraud-proof script-integrity-hash-mismatch step-03":
+    "V1FpIntegrityMismatchS03",
+  "V1 fraud-proof script-integrity-hash-mismatch step-04":
+    "V1FpIntegrityMismatchS04",
+  "V1 fraud-proof script-integrity-hash-mismatch step-05":
+    "V1FpIntegrityMismatchS05",
+  "V1 fraud-proof distinct-asset-accumulation-limit step-01":
+    "V1FpDistinctAssetLimitS01",
+  "V1 fraud-proof distinct-asset-accumulation-limit step-02":
+    "V1FpDistinctAssetLimitS02",
+  "V1 fraud-proof distinct-asset-accumulation-limit step-03":
+    "V1FpDistinctAssetLimitS03",
+  "V1 fraud-proof distinct-asset-accumulation-limit step-04":
+    "V1FpDistinctAssetLimitS04",
+  "V1 fraud-proof distinct-asset-accumulation-limit step-05":
+    "V1FpDistinctAssetLimitS05",
+  "V1 fraud-proof distinct-asset-accumulation-limit step-06":
+    "V1FpDistinctAssetLimitS06",
   // Mirrors `midgard-core`'s
   // `DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES` role for role: the
   // node's manifest verifier compares a manifest's

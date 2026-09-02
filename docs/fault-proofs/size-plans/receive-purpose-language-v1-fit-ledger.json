@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "midgard-receive-purpose-language-fit-ledger-v1",
+  "category": "receivePurposeLanguage",
+  "categoryId": "00000034",
+  "compilerVersion": "aiken v1.1.23+5adf783",
+  "blueprintSha256": "d7e0fa22551385f259b956240add81a30dc103c3e6fd9b68fbd568e6bc392841",
+  "limits": { "publicationReserveBytes": 15872, "transactionBytes": 16384, "memory": 16500000, "cpu": 10000000000 },
+  "maximum": { "validationTraceLeaves": 65536, "purposeLeaves": 65536, "sourceLeaves": 65536, "executionLeaves": 65536 },
+  "measurementMethod": "Fully applied testnet blueprint payloads plus the signed reference-publication envelope measured for the identical ID31 step templates; lifecycle rows are conservative signed ID31 superset transactions (ID34 removes item opening and scan evidence).",
+  "referencePublications": [
+    { "step": 1, "compiledBytes": 14592, "signedBytes": 14975, "reserveMarginBytes": 897 },
+    { "step": 2, "compiledBytes": 15388, "signedBytes": 15736, "reserveMarginBytes": 136 },
+    { "step": 3, "compiledBytes": 1860, "signedBytes": 2253, "reserveMarginBytes": 13619 }
+  ],
+  "focusedAikenMaximum": { "test": "receive_authenticates_exact_purpose_source_language_and_execution", "memory": 1464637, "cpu": 713365704, "memoryMargin": 15035363, "cpuMargin": 9286634296 },
+  "forcedLifecycleUpperBounds": [
+    { "stage": "init", "signedBytes": 1221, "byteMargin": 15163, "memory": 622323, "cpu": 215528475 },
+    { "stage": "step01-forced", "signedBytes": 1758, "byteMargin": 14626, "memory": 1086840, "cpu": 446459704 },
+    { "stage": "step02-authenticate", "signedBytes": 2666, "byteMargin": 13718, "memory": 1479385, "cpu": 654415424 },
+    { "stage": "step03-mint", "signedBytes": 916, "byteMargin": 15468, "memory": 357691, "cpu": 148969666 },
+    { "stage": "remove", "signedBytes": 2060, "byteMargin": 14324, "memory": 3051446, "cpu": 1035916306 }
+  ],
+  "acceptedLifecycleUpperBounds": [
+    { "stage": "init", "signedBytes": 1221, "byteMargin": 15163, "memory": 628459, "cpu": 217376969 },
+    { "stage": "step01-accepted", "signedBytes": 2023, "byteMargin": 14361, "memory": 1325466, "cpu": 450736395 },
+    { "stage": "step02-authenticate", "signedBytes": 2616, "byteMargin": 13768, "memory": 1403396, "cpu": 620652930 },
+    { "stage": "step03-mint", "signedBytes": 916, "byteMargin": 15468, "memory": 365283, "cpu": 149749390 },
+    { "stage": "remove", "signedBytes": 2060, "byteMargin": 14324, "memory": 3020900, "cpu": 1032659768 }
+  ],
+  "evidenceDigest": "126bb8570c34c064ca17188807f5fdc11d1404ab02d300ea2dabd8ab2fa39f21"
+}

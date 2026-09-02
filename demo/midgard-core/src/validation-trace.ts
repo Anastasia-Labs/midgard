@@ -205,6 +205,15 @@ const hashDomain = (domain: Uint8Array, bytes: Uint8Array): Hash32 =>
     "domain_hash",
   );
 
+/** Exact event-key hash committed into every validation-machine state. */
+export const hashMidgardValidationEventKeyV1 = (
+  canonicalEventKeyCbor: Uint8Array,
+): Hash32 =>
+  ensureHash32(
+    blake2b(Buffer.from(canonicalEventKeyCbor), { dkLen: 32 }),
+    "validation_event_key_hash",
+  );
+
 export const encodeMidgardValidationMachineStateV1 = (
   state: MidgardValidationMachineStateV1,
 ): Buffer => {

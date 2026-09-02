@@ -18,6 +18,9 @@ pub type State {
   expected_network_id: Int,
   fault: NetworkIdFaultV1,
   post_utxo: Option<PostUtxoStateV1>,
+  /// Canonical CBOR of the authenticated forced root key. `None` preserves
+  /// every accepted-invalid route; `Some` fixes wrongful-rejection polarity.
+  forced_source_key: Option<ByteArray>,
 }
 
 pub type Args {

@@ -13,11 +13,16 @@ use midgard/fraud_proofs/field_opening_v1.{
   BodyAnchor, opened_field_view, spend_inputs_field_index,
 }
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
+use midgard/fraud_proofs/native_tx/compact.{verify_native_tx_compact_cbor_v1}
 use midgard/fraud_proofs/native_tx/components.{encode_midgard_tx_input}
 use midgard/fraud_proofs/native_tx/types.{
   MidgardTransaction, MidgardTransactionBody,
 }
-use midgard/fraud_proofs/zero_input/step_02.{Args, Datum, SpendRedeemer, State}
+use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
+use midgard/fraud_proofs/zero_input/rule.{
+  StateV1, bind_state_v1, terminal_contradiction_v1,
+}
+use midgard/fraud_proofs/zero_input/step_02.{Args, Datum, SpendRedeemer}
 use midgard/native_tx_field_access_v1.{field_item_count}
 
 validator main(
@@ -73,7 +78,7 @@ validator main(
           redeemers,
         )
 
-        expect Some(State { bad_tx_id }) = m_input_state_data
+        expect Some(state) = m_input_state_data
 
         // 2. Field 0 of the disputed transaction must hold no items.
         //
@@ -87,15 +92,13 @@ validator main(
         //    identity lives inside the door, and this is how the family gets it.
         let spend_inputs_view = opened_field_view(
           spend_inputs_opening,
-          BodyAnchor { tx_id: bad_tx_id },
+          BodyAnchor { tx_id: state.subject.transaction_id },
           spend_inputs_field_index,
           reference_inputs,
           field_preimage_certificate_policy_id,
         )
-        expect field_item_count(spend_inputs_view) == 0
-
-        // Done.
-        True
+        // Done: the terminal rule applies the authenticated verdict polarity.
+        terminal_contradiction_v1(state, field_item_count(spend_inputs_view))
       }
     }
   }
@@ -118,6 +121,9 @@ fn zero_input_bad_tx() -> MidgardTransaction {
 
 fn run_finalize(block: fixture.NativeBlockFixtureV1) -> Bool {
   let asset_name = fixture.ct_token_asset_name(block)
+  let subject = substrate.bind_accepted_subject_v1(
+    verify_native_tx_compact_cbor_v1(block.tx_id, block.compact_cbor),
+  )
   main.spend(
     fixture.fraud_proof_policy_id,
     fixture.fraud_proof_token_address(),
@@ -126,7 +132,7 @@ fn run_finalize(block: fixture.NativeBlockFixtureV1) -> Bool {
     Some(
       ct.StepDatum {
         fraud_prover: fixture.fraud_prover_key_hash,
-        data: Some(State { bad_tx_id: block.tx_id }),
+        data: Some(bind_state_v1(subject)),
       },
     ),
     ct.Continue(
@@ -175,7 +181,13 @@ test zero_input_step_02_rejects_an_empty_preimage_for_a_spending_transaction() f
     Some(
       ct.StepDatum {
         fraud_prover: fixture.fraud_prover_key_hash,
-        data: Some(State { bad_tx_id: block.tx_id }),
+        data: Some(
+          bind_state_v1(
+            substrate.bind_accepted_subject_v1(
+              verify_native_tx_compact_cbor_v1(block.tx_id, block.compact_cbor),
+            ),
+          ),
+        ),
       },
     ),
     ct.Continue(

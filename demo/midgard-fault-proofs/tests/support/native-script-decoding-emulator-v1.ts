@@ -164,6 +164,14 @@ export const decodingMalformedMultiChunkItemV1 = (): Buffer => {
   );
 };
 
+/** Maximum field-6 shape: `[item]` is exactly 32,768 bytes. */
+export const decodingMalformedMaximumItemV1 = (): Buffer => {
+  const core = Buffer.from(`820182${SIGNATURE_NODE_HEX}820700`, "hex");
+  return decodingItemFromPayloadV1(
+    Buffer.concat([core, Buffer.alloc(32_759 - core.length, 0)]),
+  );
+};
+
 /** `all(sig)`: canonical, four primitive steps, one chunk. */
 export const decodingCanonicalItemV1 = (): Buffer =>
   decodingItemFromPayloadV1(
@@ -646,6 +654,7 @@ export const buildDecodingBlockFixtureV1 = async ({
       forced_transaction_preimages: sorted(forcedTransactionPreimages),
       cek_program_material: [],
       validation_traces: sorted(validationTraces),
+      validation_trace_witnesses: [],
       counts,
     },
   };
@@ -767,7 +776,6 @@ export const publishDecodingReferenceScriptsV1 = async ({
       lucid,
       script,
       label: `native-script-decoding step-0${(index + 1).toString()}`,
-      oversized: true,
     });
     published.push(utxo);
   }

@@ -173,6 +173,9 @@ importers:
         specifier: ^4.5.8
         version: 4.5.8
     devDependencies:
+      '@aiken-lang/merkle-patricia-forestry':
+        specifier: github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain
+        version: https://codeload.github.com/Anastasia-Labs/merkle-patricia-forestry/tar.gz/b139785f7c118854f9824c26cc443e2df95cb50e#path:/off-chain
       '@harmoniclabs/cardano-costmodels-ts':
         specifier: 1.4.0
         version: 1.4.0
@@ -565,6 +568,9 @@ importers:
         specifier: 3.3.4
         version: 3.3.4
     devDependencies:
+      '@aiken-lang/merkle-patricia-forestry':
+        specifier: github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain
+        version: https://codeload.github.com/Anastasia-Labs/merkle-patricia-forestry/tar.gz/b139785f7c118854f9824c26cc443e2df95cb50e#path:/off-chain
       '@types/node':
         specifier: ^22.17.0
         version: 22.19.17

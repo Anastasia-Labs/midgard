@@ -43,6 +43,7 @@ import {
   type NetworkIdFaultClaimV1,
   type RetainedDaNetworkIdEvidenceV1,
 } from "./evidence-v1.js";
+import type { PreparedNetworkIdWrongfulRejectionV1 } from "./wrongful-rejection-v1.js";
 
 export type PreparedNetworkIdProofV1 = {
   readonly headerHash: string;
@@ -343,11 +344,16 @@ export const planNetworkIdOutputsOpeningV1 = ({
   owner,
   publish = false,
 }: {
-  readonly prepared: PreparedNetworkIdProofV1;
+  readonly prepared:
+    | PreparedNetworkIdProofV1
+    | PreparedNetworkIdWrongfulRejectionV1;
   readonly owner: string;
   readonly publish?: boolean;
 }): FaultProofFieldOpeningPlanV1 => {
-  if (prepared.faultClaim.kind !== "output-network") {
+  if (
+    prepared.faultClaim.kind !== "output-network" &&
+    prepared.faultClaim.kind !== "forced-network-mismatch"
+  ) {
     throw new Error(
       "transaction-network claims do not carry an outputs field opening",
     );

@@ -43,7 +43,7 @@ export const inputSetUniquenessSubmitError = (message: string): Error =>
   new Error(`${INPUT_SET_UNIQUENESS_CATEGORY_LABEL}: ${message}`);
 
 /** One-based step number → human label used in failure messages. */
-export const inputSetUniquenessStepLabelV1 = (stepIndex: 0 | 1) =>
+export const inputSetUniquenessStepLabelV1 = (stepIndex: 0 | 1 | 2 | 3) =>
   `${INPUT_SET_UNIQUENESS_CATEGORY_LABEL} step 0${(stepIndex + 1).toString()}`;
 
 /**
@@ -60,7 +60,7 @@ export const requireInputSetUniquenessThreadUtxoV1 = async ({
   readonly lucid: Parameters<typeof fetchUtxoByOutRef>[0]["lucid"];
   readonly contracts: InputSetUniquenessContractsV1;
   readonly categoryId: string;
-  readonly stepIndex: 0 | 1;
+  readonly stepIndex: 0 | 1 | 2 | 3;
   readonly threadOutRef: string;
 }): Promise<{
   readonly threadUtxo: UTxO;
@@ -99,7 +99,7 @@ export const requireInputSetUniquenessReferenceScriptV1 = ({
 }: {
   readonly utxo: UTxO;
   readonly expectedScriptHash: string;
-  readonly stepIndex: 0 | 1;
+  readonly stepIndex: 0 | 1 | 2 | 3;
 }): UTxO => {
   if (utxo.scriptRef == null) {
     throw inputSetUniquenessSubmitError(
@@ -129,7 +129,7 @@ export const requireInputSetUniquenessStepStateV1 = <State>({
   readonly threadUtxo: UTxO;
   readonly signer: ResolvedProverSigner;
   readonly schema: { fraud_prover: string; data: State | null };
-  readonly stepIndex: 0 | 1;
+  readonly stepIndex: 0 | 1 | 2 | 3;
 }): State => {
   const label = inputSetUniquenessStepLabelV1(stepIndex);
   if (threadUtxo.datum == null) {

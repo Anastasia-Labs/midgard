@@ -779,7 +779,6 @@ export const publishValueNotPreservedReferenceScriptsV1 = async ({
       lucid,
       script,
       label: `value-not-preserved step-0${(index + 1).toString()}`,
-      oversized: true,
     });
     published.push(utxo);
   }

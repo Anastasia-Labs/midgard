@@ -101,6 +101,69 @@ describe("DA deployment fixture", () => {
       ],
       ["l2TxMistag", "00000017", "fraudProofL2TxMistag"],
       ["withdrawnInput", "00000018", "fraudProofWithdrawnInput"],
+      [
+        "fieldPreimageLengthMismatch",
+        "00000020",
+        "fraudProofFieldPreimageLengthMismatch",
+      ],
+      ["fieldItemWidthIllegal", "00000021", "fraudProofFieldItemWidthIllegal"],
+      ["witnessScriptDecoding", "00000022", "fraudProofWitnessScriptDecoding"],
+      [
+        "scriptIntegrityHashMissing",
+        "00000023",
+        "fraudProofScriptIntegrityHashMissing",
+      ],
+      [
+        "spendInputSignerMissing",
+        "00000027",
+        "fraudProofSpendInputSignerMissing",
+      ],
+      [
+        "protectedOutputSignerMissing",
+        "0000002b",
+        "fraudProofProtectedOutputSignerMissing",
+      ],
+      [
+        "observersForbiddenOnUntaggedNetwork",
+        "00000024",
+        "fraudProofObserversForbiddenOnUntaggedNetwork",
+      ],
+      ["observerOrderInvalid", "00000025", "fraudProofObserverOrderInvalid"],
+      ["redeemerCanonicity", "00000028", "fraudProofRedeemerCanonicity"],
+      [
+        "outputReferenceScriptDecoding",
+        "0000002a",
+        "fraudProofOutputReferenceScriptDecoding",
+      ],
+      [
+        "executionSourceScriptDecoding",
+        "00000031",
+        "fraudProofExecutionSourceScriptDecoding",
+      ],
+      [
+        "receivePurposeLanguage",
+        "00000034",
+        "fraudProofReceivePurposeLanguage",
+      ],
+      ["unusedScriptWitness", "0000002f", "fraudProofUnusedScriptWitness"],
+      ["missingScriptSource", "0000002d", "fraudProofMissingScriptSource"],
+      ["missingRedeemer", "0000002e", "fraudProofMissingRedeemer"],
+      ["unusedRedeemer", "00000030", "fraudProofUnusedRedeemer"],
+      [
+        "executionNativeScriptInvalid",
+        "00000032",
+        "fraudProofExecutionNativeScriptInvalid",
+      ],
+      [
+        "scriptIntegrityHashMismatch",
+        "00000033",
+        "fraudProofScriptIntegrityHashMismatch",
+      ],
+      [
+        "distinctAssetAccumulationLimit",
+        "00000035",
+        "fraudProofDistinctAssetAccumulationLimit",
+      ],
     ] as const;
 
     for (const [categoryName, categoryId, contractName] of appendedCategories) {

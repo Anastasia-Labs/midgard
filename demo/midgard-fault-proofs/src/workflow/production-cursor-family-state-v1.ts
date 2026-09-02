@@ -14,7 +14,20 @@ import type { FraudProofRawL1FamilyStageV1 } from "./raw-l1-family-derivation-v1
 export const PRODUCTION_CURSOR_FAMILY_ACTION_V1 =
   "midgard-production-cursor-family-action-v1" as const;
 
-export type ProductionCursorFamilyStepV1 = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+export type ProductionCursorFamilyStepV1 =
+  | 1
+  | 2
+  | 3
+  | 4
+  | 5
+  | 6
+  | 7
+  | 8
+  | 9
+  | 10
+  | 11
+  | 12
+  | 13;
 export type ProductionCursorFamilySuccessorV1 =
   | ProductionCursorFamilyStepV1
   | "proof_token";
@@ -60,7 +73,7 @@ const validateSpec = <Category extends FraudProofCatalogueCategoryName>(
   if (
     !Number.isSafeInteger(spec.stepCount) ||
     spec.stepCount < 1 ||
-    spec.stepCount > 9
+    spec.stepCount > 13
   ) {
     throw new Error(`${spec.category} cursor spec has an invalid step count`);
   }
@@ -261,10 +274,12 @@ const parsedAction = <Category extends FraudProofCatalogueCategoryName>(
       ),
     };
   }
-  if (!/^step_0[1-8]$/u.test(input.stage)) {
+  if (!/^step_(?:0[1-9]|1[0-3])$/u.test(input.stage)) {
     throw new Error(`${spec.category} cursor action names an unknown stage`);
   }
-  const ordinal = Number(input.stage.slice(-1)) as ProductionCursorFamilyStepV1;
+  const ordinal = Number(
+    input.stage.slice("step_".length),
+  ) as ProductionCursorFamilyStepV1;
   if (
     ordinal > spec.stepCount ||
     input.ordinal !== ordinal ||

@@ -222,6 +222,7 @@ const daPayloadBodyV1Fixture: SDK.DaPayloadBodyV1 = {
   forced_transaction_preimages: [["11", "12"]],
   cek_program_material: [["13", "14"]],
   validation_traces: [["15", "16"]],
+  validation_trace_witnesses: [],
   counts: {
     withdrawalCount: 1n,
     forcedTransactionCount: 1n,

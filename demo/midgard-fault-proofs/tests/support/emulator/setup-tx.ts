@@ -764,6 +764,7 @@ const submitHeaderCommitTx = async ({
   stateQueueRootUtxo,
   appointedSchedulerUtxo,
   activeOperatorNode,
+  confirmedStateRefInput,
 }: {
   readonly lucid: SetupLucid;
   readonly contracts: MidgardValidators;
@@ -775,6 +776,7 @@ const submitHeaderCommitTx = async ({
   readonly stateQueueRootUtxo: UTxO;
   readonly appointedSchedulerUtxo: UTxO;
   readonly activeOperatorNode: UTxO;
+  readonly confirmedStateRefInput?: UTxO;
 }): Promise<{
   readonly fraudulentBlockUtxo: UTxO;
   readonly continuedActiveOperatorNode: UTxO;
@@ -856,6 +858,9 @@ const submitHeaderCommitTx = async ({
           datum: "Idle",
           assetName: CORRECTION_LOCK_ASSET_NAME,
         },
+        ...(confirmedStateRefInput === undefined
+          ? {}
+          : { confirmedStateRefInput }),
         additionalRefInputs: [hubOracleUtxo],
         activeOperatorInput: activeOperatorNode,
         activeOperatorSpendRedeemer: activeOperatorCommitRedeemer,
@@ -911,7 +916,14 @@ const submitHeaderCommitTx = async ({
   const continuedRoot = await Effect.runPromise(
     utxoToStateQueueUTxO(continuedRootUtxo, contracts.stateQueue.policyId),
   );
-  expect(continuedRoot.datum.next).toEqual({ Key: { key: headerHash } });
+  expect(continuedRoot.datum.next).toEqual({
+    Key: {
+      key:
+        confirmedStateRefInput === undefined
+          ? headerHash
+          : header.prevHeaderHash,
+    },
+  });
   return { fraudulentBlockUtxo, continuedActiveOperatorNode };
 };
 
@@ -1058,5 +1070,86 @@ export const submitSetupTx = async ({
     ...(minAdaYieldReferenceScripts === undefined
       ? {}
       : { minAdaYieldReferenceScripts }),
+  };
+};
+
+/**
+ * Commit one additional authenticated header after `submitSetupTx` has
+ * established the operator, scheduler, and state-queue root. Existing setup
+ * callers retain the original single-header behavior; this helper only
+ * advances when explicitly invoked by a multi-header lifecycle fixture.
+ */
+export const submitSecondHeaderTxV1 = async ({
+  lucid,
+  contracts,
+  header,
+}: {
+  readonly lucid: SetupLucid;
+  readonly contracts: MidgardValidators;
+  readonly header: HeaderV1;
+}): Promise<{
+  readonly blockOutRef: string;
+  readonly headerHash: string;
+}> => {
+  const headerHash = await Effect.runPromise(hashBlockHeaderV1(header));
+  const units = setupUnits(contracts, header, headerHash);
+  const hubOracleUtxo = await requireUtxoWithUnit(
+    lucid,
+    credentialToAddress(
+      network,
+      scriptHashToCredential(contracts.hubOracle.policyId),
+    ),
+    units.hubOracle,
+    "hub oracle before second header",
+  );
+  const correctionLockUtxo = await requireUtxoWithUnit(
+    lucid,
+    contracts.correctionLock.spendingScriptAddress,
+    units.correctionLock,
+    "correction lock before second header",
+  );
+  const stateQueueRootUtxo = await requireUtxoWithUnit(
+    lucid,
+    contracts.stateQueue.spendingScriptAddress,
+    units.stateQueueRoot,
+    "state-queue root before second header",
+  );
+  const previousBlockUtxo = await requireUtxoWithUnit(
+    lucid,
+    contracts.stateQueue.spendingScriptAddress,
+    toUnit(
+      contracts.stateQueue.policyId,
+      STATE_QUEUE_NODE_ASSET_NAME_PREFIX + header.prevHeaderHash,
+    ),
+    "previous block before second header",
+  );
+  const appointedSchedulerUtxo = await requireUtxoWithUnit(
+    lucid,
+    contracts.scheduler.spendingScriptAddress,
+    units.scheduler,
+    "scheduler before second header",
+  );
+  const activeOperatorNode = await requireUtxoWithUnit(
+    lucid,
+    contracts.activeOperators.spendingScriptAddress,
+    units.activeOperatorNode,
+    "active operator before second header",
+  );
+  const committed = await submitHeaderCommitTx({
+    lucid,
+    contracts,
+    header,
+    headerHash,
+    units,
+    hubOracleUtxo,
+    correctionLockUtxo,
+    stateQueueRootUtxo: previousBlockUtxo,
+    confirmedStateRefInput: stateQueueRootUtxo,
+    appointedSchedulerUtxo,
+    activeOperatorNode,
+  });
+  return {
+    blockOutRef: `${committed.fraudulentBlockUtxo.txHash}#${committed.fraudulentBlockUtxo.outputIndex.toString()}`,
+    headerHash,
   };
 };

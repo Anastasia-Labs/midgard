@@ -14,6 +14,7 @@ import {
   EMPTY_MERKLE_TREE_ROOT,
   FAULT_PROOF_SHARED_TITLES,
   type FaultProofBlueprint,
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT,
   type FraudProofCatalogueDeploymentInfo,
@@ -80,12 +81,6 @@ const deploymentManifest = (contracts: Record<string, unknown>) => ({
   contracts,
 });
 
-const categoryId = (index: number): string => {
-  const buf = Buffer.alloc(FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT);
-  buf.writeUInt32BE(index);
-  return buf.toString("hex");
-};
-
 const readBlueprint = (): FaultProofBlueprint =>
   parseFaultProofBlueprint(
     JSON.parse(readFileSync(blueprintPath, "utf8")) as unknown,
@@ -133,7 +128,7 @@ const catalogueFor = async (
     FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((name, index) => [
       name,
       {
-        categoryId: categoryId(index),
+        categoryId: FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[name],
         scriptHash:
           scriptHashes[name] ??
           `${(index + 3).toString(16).padStart(2, "0")}`.repeat(28),

@@ -162,6 +162,8 @@ export const DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES = Object.freeze([
   "fraudProofValueNotPreservedStep04",
   "fraudProofInputSetUniqueness",
   "fraudProofInputSetUniquenessStep02",
+  "fraudProofInputSetUniquenessStep03",
+  "fraudProofInputSetUniquenessStep04",
   "fraudProofMintAuthorization",
   "fraudProofMintAuthorizationStep02",
   "fraudProofMintAuthorizationStep03",
@@ -217,6 +219,122 @@ export const DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES = Object.freeze([
   "fraudProofMinAdaStep03",
   "fraudProofMinAdaStep04",
   "fraudProofMinAdaStep05",
+  "fraudProofFieldPreimageLengthMismatch",
+  "fraudProofFieldPreimageLengthMismatchStep02Accepted",
+  "fraudProofFieldPreimageLengthMismatchStep02Forced",
+  "fraudProofFieldPreimageLengthMismatchStep03",
+  "fraudProofFieldItemWidthIllegal",
+  "fraudProofFieldItemWidthIllegalStep02",
+  "fraudProofFieldItemWidthIllegalStep03",
+  "fraudProofWitnessScriptDecoding",
+  "fraudProofWitnessScriptDecodingStep02",
+  "fraudProofWitnessScriptDecodingStep03",
+  "fraudProofWitnessScriptDecodingStep04",
+  "fraudProofScriptIntegrityHashMissing",
+  "fraudProofScriptIntegrityHashMissingStep02",
+  "fraudProofScriptIntegrityHashMissingStep03",
+  "fraudProofScriptIntegrityHashMissingScriptGrammar",
+  "fraudProofScriptIntegrityHashMissingScriptScan",
+  "fraudProofScriptIntegrityHashMissingRedeemerGrammar",
+  "fraudProofScriptIntegrityHashMissingStep04",
+  "fraudProofTransactionOutputNonCanonical",
+  "fraudProofTransactionOutputNonCanonicalStep02",
+  "fraudProofTransactionOutputNonCanonicalStep03",
+  "fraudProofTransactionOutputNonCanonicalStep04",
+  "fraudProofResolvedOutputNonCanonical",
+  "fraudProofResolvedOutputNonCanonicalStep02",
+  "fraudProofResolvedOutputNonCanonicalStep03",
+  "fraudProofResolvedOutputNonCanonicalStep04",
+  "fraudProofResolvedOutputNonCanonicalStep05",
+  "fraudProofMintDeclaredAssetLimit",
+  "fraudProofMintDeclaredAssetLimitStep02",
+  "fraudProofMintDeclaredAssetLimitStep03",
+  "fraudProofMintDeclaredAssetLimitStep04",
+  "fraudProofSpendInputSignerMissing",
+  "fraudProofSpendInputSignerMissingStep02",
+  "fraudProofSpendInputSignerMissingStep03",
+  "fraudProofSpendInputSignerMissingStep04",
+  "fraudProofSpendInputSignerMissingStep05",
+  "fraudProofProtectedOutputSignerMissing",
+  "fraudProofProtectedOutputSignerMissingStep02",
+  "fraudProofProtectedOutputSignerMissingStep03",
+  "fraudProofProtectedOutputSignerMissingStep04",
+  "fraudProofProtectedOutputSignerMissingStep05",
+  "fraudProofObserversForbiddenOnUntaggedNetwork",
+  "fraudProofObserversForbiddenOnUntaggedNetworkStep02",
+  "fraudProofOutputReferenceScriptDecoding",
+  "fraudProofOutputReferenceScriptDecodingStep02",
+  "fraudProofOutputReferenceScriptDecodingStep03",
+  "fraudProofOutputReferenceScriptDecodingStep04",
+  "fraudProofOutputReferenceScriptDecodingStep05",
+  "fraudProofOutputReferenceScriptDecodingStep06",
+  "fraudProofExecutionSourceScriptDecoding",
+  "fraudProofExecutionSourceScriptDecodingStep02",
+  "fraudProofExecutionSourceScriptDecodingStep03",
+  "fraudProofExecutionSourceScriptDecodingStep04",
+  "fraudProofExecutionSourceScriptDecodingStep05",
+  "fraudProofObserverOrderInvalid",
+  "fraudProofObserverOrderInvalidStep02",
+  "fraudProofObserverOrderInvalidStep03",
+  "fraudProofObserverOrderInvalidStep04",
+  "fraudProofRedeemerCanonicity",
+  "fraudProofRedeemerCanonicityStep02",
+  "fraudProofRedeemerCanonicityStep03",
+  "fraudProofReceivePurposeLanguage",
+  "fraudProofReceivePurposeLanguageStep02",
+  "fraudProofReceivePurposeLanguageStep03",
+  "fraudProofUnusedScriptWitness",
+  "fraudProofUnusedScriptWitnessStep02",
+  "fraudProofUnusedScriptWitnessStep03",
+  "fraudProofUnusedScriptWitnessStep04",
+  "fraudProofUnusedScriptWitnessStep05",
+  "fraudProofUnusedScriptWitnessStep06",
+  "fraudProofMissingScriptSource",
+  "fraudProofMissingScriptSourceStep02",
+  "fraudProofMissingScriptSourceStep03",
+  "fraudProofMissingScriptSourceStep04",
+  "fraudProofMissingScriptSourceStep05",
+  "fraudProofMissingScriptSourceStep06",
+  "fraudProofMissingRedeemer",
+  "fraudProofMissingRedeemerStep02",
+  "fraudProofMissingRedeemerStep02a",
+  "fraudProofMissingRedeemerStep02b",
+  "fraudProofMissingRedeemerStep03",
+  "fraudProofMissingRedeemerStep04",
+  "fraudProofMissingRedeemerStep05",
+  "fraudProofUnusedRedeemer",
+  "fraudProofUnusedRedeemerStep02",
+  "fraudProofUnusedRedeemerStep02a",
+  "fraudProofUnusedRedeemerStep02b",
+  "fraudProofUnusedRedeemerStep02c",
+  "fraudProofUnusedRedeemerStep03",
+  "fraudProofUnusedRedeemerStep04",
+  "fraudProofUnusedRedeemerStep05",
+  "fraudProofUnusedRedeemerStep06",
+  "fraudProofExecutionNativeScriptInvalid",
+  "fraudProofExecutionNativeScriptInvalidStep02",
+  "fraudProofExecutionNativeScriptInvalidStep03",
+  "fraudProofExecutionNativeScriptInvalidStep04",
+  "fraudProofExecutionNativeScriptInvalidStep05",
+  "fraudProofExecutionNativeScriptInvalidStep06",
+  "fraudProofExecutionNativeScriptInvalidAcceptedReconstructionInit",
+  "fraudProofExecutionNativeScriptInvalidAcceptedSpendPrefix",
+  "fraudProofExecutionNativeScriptInvalidAcceptedMintPrefix",
+  "fraudProofExecutionNativeScriptInvalidAcceptedObserverPrefix",
+  "fraudProofExecutionNativeScriptInvalidAcceptedReceivePrefix",
+  "fraudProofExecutionNativeScriptInvalidAcceptedInlineSource",
+  "fraudProofExecutionNativeScriptInvalidAcceptedReferenceSource",
+  "fraudProofScriptIntegrityHashMismatch",
+  "fraudProofScriptIntegrityHashMismatchStep02",
+  "fraudProofScriptIntegrityHashMismatchStep03",
+  "fraudProofScriptIntegrityHashMismatchStep04",
+  "fraudProofScriptIntegrityHashMismatchStep05",
+  "fraudProofDistinctAssetAccumulationLimit",
+  "fraudProofDistinctAssetAccumulationLimitStep02",
+  "fraudProofDistinctAssetAccumulationLimitStep03",
+  "fraudProofDistinctAssetAccumulationLimitStep04",
+  "fraudProofDistinctAssetAccumulationLimitStep05",
+  "fraudProofDistinctAssetAccumulationLimitStep06",
   "availabilityChallengeSpend",
   "availabilityChallengeMint",
   "stateQueueCommitWithdraw",
@@ -260,10 +378,156 @@ export const DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER =
     "missingNativeScriptUtxo",
     "nativeScriptInvalid",
     "minAda",
+    "fieldPreimageLengthMismatch",
+    "fieldItemWidthIllegal",
+    "witnessScriptDecoding",
+    "scriptIntegrityHashMissing",
+    "transactionOutputNonCanonical",
+    "resolvedOutputNonCanonical",
+    "mintDeclaredAssetLimit",
+    "spendInputSignerMissing",
+    "protectedOutputSignerMissing",
+    "observersForbiddenOnUntaggedNetwork",
+    "observerOrderInvalid",
+    "redeemerCanonicity",
+    "outputReferenceScriptDecoding",
+    "executionSourceScriptDecoding",
+    "receivePurposeLanguage",
+    "unusedScriptWitness",
+    "missingScriptSource",
+    "missingRedeemer",
+    "unusedRedeemer",
+    "executionNativeScriptInvalid",
+    "scriptIntegrityHashMismatch",
+    "distinctAssetAccumulationLimit",
   ] as const);
 
 export type DeploymentManifestV1FraudProofCatalogueCategory =
   (typeof DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER)[number];
+
+/** Canonical first-step deployment contract for each catalogue category. */
+export const DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CONTRACT_BY_CATEGORY =
+  Object.freeze({
+    doubleSpend: "fraudProofDoubleSpend",
+    nonExistentInput: "fraudProofNonExistentInput",
+    nonExistentInputNoIndex: "fraudProofNonExistentInputNoIndex",
+    invalidRange: "fraudProofInvalidRange",
+    transitionTrace: "fraudProofTransitionTrace",
+    zeroInput: "fraudProofZeroInput",
+    validationTraceDispute: "validationTraceDispute",
+    daHashPreimage: "fraudProofDaHashPreimage",
+    noReferenceInput: "fraudProofNoReferenceInput",
+    referenceInputNoIdx: "fraudProofReferenceInputNoIdx",
+    invalidSignature: "fraudProofInvalidSignature",
+    fabricatedDeposit: "fraudProofFabricatedDeposit",
+    fabricatedWithdrawal: "fraudProofFabricatedWithdrawal",
+    nativeScriptDecoding: "fraudProofNativeScriptDecoding",
+    missingSignature: "fraudProofMissingSignature",
+    missingNativeScriptTx: "fraudProofMissingNativeScriptTx",
+    withdrawnReferenceInput: "fraudProofWithdrawnReferenceInput",
+    canonicalDecodability: "fraudProofCanonicalDecodability",
+    committedFieldShape: "fraudProofCommittedFieldShape",
+    minFee: "fraudProofMinFee",
+    withdrawalMistag: "fraudProofWithdrawalMistag",
+    doubleWithdraw: "fraudProofDoubleWithdraw",
+    crossBlockDuplicateEvent: "fraudProofCrossBlockDuplicateEvent",
+    l2TxMistag: "fraudProofL2TxMistag",
+    withdrawnInput: "fraudProofWithdrawnInput",
+    valueNotPreserved: "fraudProofValueNotPreserved",
+    inputSetUniqueness: "fraudProofInputSetUniqueness",
+    mintAuthorization: "fraudProofMintAuthorization",
+    networkId: "fraudProofNetworkId",
+    missingNativeScriptUtxo: "fraudProofMissingNativeScriptUtxo",
+    nativeScriptInvalid: "fraudProofNativeScriptInvalid",
+    minAda: "fraudProofMinAda",
+    fieldPreimageLengthMismatch: "fraudProofFieldPreimageLengthMismatch",
+    fieldItemWidthIllegal: "fraudProofFieldItemWidthIllegal",
+    witnessScriptDecoding: "fraudProofWitnessScriptDecoding",
+    scriptIntegrityHashMissing: "fraudProofScriptIntegrityHashMissing",
+    transactionOutputNonCanonical: "fraudProofTransactionOutputNonCanonical",
+    resolvedOutputNonCanonical: "fraudProofResolvedOutputNonCanonical",
+    mintDeclaredAssetLimit: "fraudProofMintDeclaredAssetLimit",
+    spendInputSignerMissing: "fraudProofSpendInputSignerMissing",
+    protectedOutputSignerMissing: "fraudProofProtectedOutputSignerMissing",
+    observersForbiddenOnUntaggedNetwork:
+      "fraudProofObserversForbiddenOnUntaggedNetwork",
+    outputReferenceScriptDecoding: "fraudProofOutputReferenceScriptDecoding",
+    executionSourceScriptDecoding: "fraudProofExecutionSourceScriptDecoding",
+    observerOrderInvalid: "fraudProofObserverOrderInvalid",
+    redeemerCanonicity: "fraudProofRedeemerCanonicity",
+    receivePurposeLanguage: "fraudProofReceivePurposeLanguage",
+    unusedScriptWitness: "fraudProofUnusedScriptWitness",
+    missingScriptSource: "fraudProofMissingScriptSource",
+    missingRedeemer: "fraudProofMissingRedeemer",
+    unusedRedeemer: "fraudProofUnusedRedeemer",
+    executionNativeScriptInvalid: "fraudProofExecutionNativeScriptInvalid",
+    scriptIntegrityHashMismatch: "fraudProofScriptIntegrityHashMismatch",
+    distinctAssetAccumulationLimit: "fraudProofDistinctAssetAccumulationLimit",
+  } as const satisfies Record<
+    DeploymentManifestV1FraudProofCatalogueCategory,
+    string
+  >);
+
+/** Frozen wire identities; category array position is presentation only. */
+export const DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS =
+  Object.freeze({
+    doubleSpend: "00000000",
+    nonExistentInput: "00000001",
+    nonExistentInputNoIndex: "00000002",
+    invalidRange: "00000003",
+    transitionTrace: "00000004",
+    zeroInput: "00000005",
+    validationTraceDispute: "00000006",
+    daHashPreimage: "00000007",
+    noReferenceInput: "00000008",
+    referenceInputNoIdx: "00000009",
+    invalidSignature: "0000000a",
+    fabricatedDeposit: "0000000b",
+    fabricatedWithdrawal: "0000000c",
+    nativeScriptDecoding: "0000000d",
+    missingSignature: "0000000e",
+    missingNativeScriptTx: "0000000f",
+    withdrawnReferenceInput: "00000010",
+    canonicalDecodability: "00000011",
+    committedFieldShape: "00000012",
+    minFee: "00000013",
+    withdrawalMistag: "00000014",
+    doubleWithdraw: "00000015",
+    crossBlockDuplicateEvent: "00000016",
+    l2TxMistag: "00000017",
+    withdrawnInput: "00000018",
+    valueNotPreserved: "00000019",
+    inputSetUniqueness: "0000001a",
+    mintAuthorization: "0000001b",
+    networkId: "0000001c",
+    missingNativeScriptUtxo: "0000001d",
+    nativeScriptInvalid: "0000001e",
+    minAda: "0000001f",
+    fieldPreimageLengthMismatch: "00000020",
+    fieldItemWidthIllegal: "00000021",
+    witnessScriptDecoding: "00000022",
+    scriptIntegrityHashMissing: "00000023",
+    transactionOutputNonCanonical: "00000029",
+    resolvedOutputNonCanonical: "00000026",
+    mintDeclaredAssetLimit: "0000002c",
+    spendInputSignerMissing: "00000027",
+    protectedOutputSignerMissing: "0000002b",
+    observersForbiddenOnUntaggedNetwork: "00000024",
+    outputReferenceScriptDecoding: "0000002a",
+    executionSourceScriptDecoding: "00000031",
+    observerOrderInvalid: "00000025",
+    redeemerCanonicity: "00000028",
+    receivePurposeLanguage: "00000034",
+    unusedScriptWitness: "0000002f",
+    missingScriptSource: "0000002d",
+    missingRedeemer: "0000002e",
+    unusedRedeemer: "00000030",
+    executionNativeScriptInvalid: "00000032",
+    scriptIntegrityHashMismatch: "00000033",
+    distinctAssetAccumulationLimit: "00000035",
+  } as const satisfies Readonly<
+    Record<DeploymentManifestV1FraudProofCatalogueCategory, string>
+  >);
 
 export type DeploymentManifestV1FraudProofCatalogueCategoryIdentity = {
   readonly categoryId: string;
@@ -424,6 +688,10 @@ export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
       "fraudProofInputSetUniqueness",
     "V1 fraud-proof input-set-uniqueness step-02":
       "fraudProofInputSetUniquenessStep02",
+    "V1 fraud-proof input-set-uniqueness step-03":
+      "fraudProofInputSetUniquenessStep03",
+    "V1 fraud-proof input-set-uniqueness step-04":
+      "fraudProofInputSetUniquenessStep04",
     "V1 fraud-proof mint-authorization step-01": "fraudProofMintAuthorization",
     "V1 fraud-proof mint-authorization step-02":
       "fraudProofMintAuthorizationStep02",
@@ -529,6 +797,231 @@ export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE =
     "V1 fraud-proof min-ada step-03": "fraudProofMinAdaStep03",
     "V1 fraud-proof min-ada step-04": "fraudProofMinAdaStep04",
     "V1 fraud-proof min-ada step-05": "fraudProofMinAdaStep05",
+    "V1 fraud-proof field-preimage-length-mismatch step-01":
+      "fraudProofFieldPreimageLengthMismatch",
+    "V1 fraud-proof field-preimage-length-mismatch step-02 accepted":
+      "fraudProofFieldPreimageLengthMismatchStep02Accepted",
+    "V1 fraud-proof field-preimage-length-mismatch step-02 forced":
+      "fraudProofFieldPreimageLengthMismatchStep02Forced",
+    "V1 fraud-proof field-preimage-length-mismatch step-03":
+      "fraudProofFieldPreimageLengthMismatchStep03",
+    "V1 fraud-proof field-item-width-illegal step-01":
+      "fraudProofFieldItemWidthIllegal",
+    "V1 fraud-proof field-item-width-illegal step-02":
+      "fraudProofFieldItemWidthIllegalStep02",
+    "V1 fraud-proof field-item-width-illegal step-03":
+      "fraudProofFieldItemWidthIllegalStep03",
+    "V1 fraud-proof witness-script-decoding step-01":
+      "fraudProofWitnessScriptDecoding",
+    "V1 fraud-proof witness-script-decoding step-02":
+      "fraudProofWitnessScriptDecodingStep02",
+    "V1 fraud-proof witness-script-decoding step-03":
+      "fraudProofWitnessScriptDecodingStep03",
+    "V1 fraud-proof witness-script-decoding step-04":
+      "fraudProofWitnessScriptDecodingStep04",
+    "V1 fraud-proof script-integrity-hash-missing step-01":
+      "fraudProofScriptIntegrityHashMissing",
+    "V1 fraud-proof script-integrity-hash-missing step-02":
+      "fraudProofScriptIntegrityHashMissingStep02",
+    "V1 fraud-proof script-integrity-hash-missing step-03":
+      "fraudProofScriptIntegrityHashMissingStep03",
+    "V1 fraud-proof script-integrity-hash-missing script-grammar":
+      "fraudProofScriptIntegrityHashMissingScriptGrammar",
+    "V1 fraud-proof script-integrity-hash-missing script-scan":
+      "fraudProofScriptIntegrityHashMissingScriptScan",
+    "V1 fraud-proof script-integrity-hash-missing redeemer-grammar":
+      "fraudProofScriptIntegrityHashMissingRedeemerGrammar",
+    "V1 fraud-proof script-integrity-hash-missing step-04":
+      "fraudProofScriptIntegrityHashMissingStep04",
+    "V1 fraud-proof transaction-output-non-canonical step-01":
+      "fraudProofTransactionOutputNonCanonical",
+    "V1 fraud-proof transaction-output-non-canonical step-02":
+      "fraudProofTransactionOutputNonCanonicalStep02",
+    "V1 fraud-proof transaction-output-non-canonical step-03":
+      "fraudProofTransactionOutputNonCanonicalStep03",
+    "V1 fraud-proof transaction-output-non-canonical step-04":
+      "fraudProofTransactionOutputNonCanonicalStep04",
+    "V1 fraud-proof resolved-output-non-canonical step-01":
+      "fraudProofResolvedOutputNonCanonical",
+    "V1 fraud-proof resolved-output-non-canonical step-02":
+      "fraudProofResolvedOutputNonCanonicalStep02",
+    "V1 fraud-proof resolved-output-non-canonical step-03":
+      "fraudProofResolvedOutputNonCanonicalStep03",
+    "V1 fraud-proof resolved-output-non-canonical step-04":
+      "fraudProofResolvedOutputNonCanonicalStep04",
+    "V1 fraud-proof resolved-output-non-canonical step-05":
+      "fraudProofResolvedOutputNonCanonicalStep05",
+    "V1 fraud-proof mint-declared-asset-limit step-01":
+      "fraudProofMintDeclaredAssetLimit",
+    "V1 fraud-proof mint-declared-asset-limit step-02":
+      "fraudProofMintDeclaredAssetLimitStep02",
+    "V1 fraud-proof mint-declared-asset-limit step-03":
+      "fraudProofMintDeclaredAssetLimitStep03",
+    "V1 fraud-proof mint-declared-asset-limit step-04":
+      "fraudProofMintDeclaredAssetLimitStep04",
+    "V1 fraud-proof spend-input-signer-missing step-01":
+      "fraudProofSpendInputSignerMissing",
+    "V1 fraud-proof spend-input-signer-missing step-02":
+      "fraudProofSpendInputSignerMissingStep02",
+    "V1 fraud-proof spend-input-signer-missing step-03":
+      "fraudProofSpendInputSignerMissingStep03",
+    "V1 fraud-proof spend-input-signer-missing step-04":
+      "fraudProofSpendInputSignerMissingStep04",
+    "V1 fraud-proof spend-input-signer-missing step-05":
+      "fraudProofSpendInputSignerMissingStep05",
+    "V1 fraud-proof protected-output-signer-missing step-01":
+      "fraudProofProtectedOutputSignerMissing",
+    "V1 fraud-proof protected-output-signer-missing step-02":
+      "fraudProofProtectedOutputSignerMissingStep02",
+    "V1 fraud-proof protected-output-signer-missing step-03":
+      "fraudProofProtectedOutputSignerMissingStep03",
+    "V1 fraud-proof protected-output-signer-missing step-04":
+      "fraudProofProtectedOutputSignerMissingStep04",
+    "V1 fraud-proof protected-output-signer-missing step-05":
+      "fraudProofProtectedOutputSignerMissingStep05",
+    "V1 fraud-proof observers-forbidden-on-untagged-network step-01":
+      "fraudProofObserversForbiddenOnUntaggedNetwork",
+    "V1 fraud-proof observers-forbidden-on-untagged-network step-02":
+      "fraudProofObserversForbiddenOnUntaggedNetworkStep02",
+    "V1 fraud-proof output-reference-script-decoding step-01":
+      "fraudProofOutputReferenceScriptDecoding",
+    "V1 fraud-proof output-reference-script-decoding step-02":
+      "fraudProofOutputReferenceScriptDecodingStep02",
+    "V1 fraud-proof output-reference-script-decoding step-03":
+      "fraudProofOutputReferenceScriptDecodingStep03",
+    "V1 fraud-proof output-reference-script-decoding step-04":
+      "fraudProofOutputReferenceScriptDecodingStep04",
+    "V1 fraud-proof output-reference-script-decoding step-05":
+      "fraudProofOutputReferenceScriptDecodingStep05",
+    "V1 fraud-proof output-reference-script-decoding step-06":
+      "fraudProofOutputReferenceScriptDecodingStep06",
+    "V1 fraud-proof execution-source-script-decoding step-01":
+      "fraudProofExecutionSourceScriptDecoding",
+    "V1 fraud-proof execution-source-script-decoding step-02":
+      "fraudProofExecutionSourceScriptDecodingStep02",
+    "V1 fraud-proof execution-source-script-decoding step-03":
+      "fraudProofExecutionSourceScriptDecodingStep03",
+    "V1 fraud-proof execution-source-script-decoding step-04":
+      "fraudProofExecutionSourceScriptDecodingStep04",
+    "V1 fraud-proof execution-source-script-decoding step-05":
+      "fraudProofExecutionSourceScriptDecodingStep05",
+    "V1 fraud-proof observer-order-invalid step-01":
+      "fraudProofObserverOrderInvalid",
+    "V1 fraud-proof observer-order-invalid step-02":
+      "fraudProofObserverOrderInvalidStep02",
+    "V1 fraud-proof observer-order-invalid step-03":
+      "fraudProofObserverOrderInvalidStep03",
+    "V1 fraud-proof observer-order-invalid step-04":
+      "fraudProofObserverOrderInvalidStep04",
+    "V1 fraud-proof redeemer-canonicity step-01":
+      "fraudProofRedeemerCanonicity",
+    "V1 fraud-proof redeemer-canonicity step-02":
+      "fraudProofRedeemerCanonicityStep02",
+    "V1 fraud-proof redeemer-canonicity step-03":
+      "fraudProofRedeemerCanonicityStep03",
+    "V1 fraud-proof receive-purpose-language step-01":
+      "fraudProofReceivePurposeLanguage",
+    "V1 fraud-proof receive-purpose-language step-02":
+      "fraudProofReceivePurposeLanguageStep02",
+    "V1 fraud-proof receive-purpose-language step-03":
+      "fraudProofReceivePurposeLanguageStep03",
+    "V1 fraud-proof unused-script-witness step-01":
+      "fraudProofUnusedScriptWitness",
+    "V1 fraud-proof unused-script-witness step-02":
+      "fraudProofUnusedScriptWitnessStep02",
+    "V1 fraud-proof unused-script-witness step-03":
+      "fraudProofUnusedScriptWitnessStep03",
+    "V1 fraud-proof unused-script-witness step-04":
+      "fraudProofUnusedScriptWitnessStep04",
+    "V1 fraud-proof unused-script-witness step-05":
+      "fraudProofUnusedScriptWitnessStep05",
+    "V1 fraud-proof unused-script-witness step-06":
+      "fraudProofUnusedScriptWitnessStep06",
+    "V1 fraud-proof missing-script-source step-01":
+      "fraudProofMissingScriptSource",
+    "V1 fraud-proof missing-script-source step-02":
+      "fraudProofMissingScriptSourceStep02",
+    "V1 fraud-proof missing-script-source step-03":
+      "fraudProofMissingScriptSourceStep03",
+    "V1 fraud-proof missing-script-source step-04":
+      "fraudProofMissingScriptSourceStep04",
+    "V1 fraud-proof missing-script-source step-05":
+      "fraudProofMissingScriptSourceStep05",
+    "V1 fraud-proof missing-script-source step-06":
+      "fraudProofMissingScriptSourceStep06",
+    "V1 fraud-proof missing-redeemer step-01": "fraudProofMissingRedeemer",
+    "V1 fraud-proof missing-redeemer step-02":
+      "fraudProofMissingRedeemerStep02",
+    "V1 fraud-proof missing-redeemer step-02a":
+      "fraudProofMissingRedeemerStep02a",
+    "V1 fraud-proof missing-redeemer step-02b":
+      "fraudProofMissingRedeemerStep02b",
+    "V1 fraud-proof missing-redeemer step-03":
+      "fraudProofMissingRedeemerStep03",
+    "V1 fraud-proof missing-redeemer step-04":
+      "fraudProofMissingRedeemerStep04",
+    "V1 fraud-proof missing-redeemer step-05":
+      "fraudProofMissingRedeemerStep05",
+    "V1 fraud-proof unused-redeemer step-01": "fraudProofUnusedRedeemer",
+    "V1 fraud-proof unused-redeemer step-02": "fraudProofUnusedRedeemerStep02",
+    "V1 fraud-proof unused-redeemer step-02a":
+      "fraudProofUnusedRedeemerStep02a",
+    "V1 fraud-proof unused-redeemer step-02b":
+      "fraudProofUnusedRedeemerStep02b",
+    "V1 fraud-proof unused-redeemer step-02c":
+      "fraudProofUnusedRedeemerStep02c",
+    "V1 fraud-proof unused-redeemer step-03": "fraudProofUnusedRedeemerStep03",
+    "V1 fraud-proof unused-redeemer step-04": "fraudProofUnusedRedeemerStep04",
+    "V1 fraud-proof unused-redeemer step-05": "fraudProofUnusedRedeemerStep05",
+    "V1 fraud-proof unused-redeemer step-06": "fraudProofUnusedRedeemerStep06",
+    "V1 fraud-proof execution-native-script-invalid step-01":
+      "fraudProofExecutionNativeScriptInvalid",
+    "V1 fraud-proof execution-native-script-invalid step-02":
+      "fraudProofExecutionNativeScriptInvalidStep02",
+    "V1 fraud-proof execution-native-script-invalid step-03":
+      "fraudProofExecutionNativeScriptInvalidStep03",
+    "V1 fraud-proof execution-native-script-invalid step-04":
+      "fraudProofExecutionNativeScriptInvalidStep04",
+    "V1 fraud-proof execution-native-script-invalid step-05":
+      "fraudProofExecutionNativeScriptInvalidStep05",
+    "V1 fraud-proof execution-native-script-invalid step-06":
+      "fraudProofExecutionNativeScriptInvalidStep06",
+    "V1 fraud-proof execution-native-script-invalid accepted-reconstruction-init":
+      "fraudProofExecutionNativeScriptInvalidAcceptedReconstructionInit",
+    "V1 fraud-proof execution-native-script-invalid accepted-spend-prefix":
+      "fraudProofExecutionNativeScriptInvalidAcceptedSpendPrefix",
+    "V1 fraud-proof execution-native-script-invalid accepted-mint-prefix":
+      "fraudProofExecutionNativeScriptInvalidAcceptedMintPrefix",
+    "V1 fraud-proof execution-native-script-invalid accepted-observer-prefix":
+      "fraudProofExecutionNativeScriptInvalidAcceptedObserverPrefix",
+    "V1 fraud-proof execution-native-script-invalid accepted-receive-prefix":
+      "fraudProofExecutionNativeScriptInvalidAcceptedReceivePrefix",
+    "V1 fraud-proof execution-native-script-invalid accepted-inline-source":
+      "fraudProofExecutionNativeScriptInvalidAcceptedInlineSource",
+    "V1 fraud-proof execution-native-script-invalid accepted-reference-source":
+      "fraudProofExecutionNativeScriptInvalidAcceptedReferenceSource",
+    "V1 fraud-proof script-integrity-hash-mismatch step-01":
+      "fraudProofScriptIntegrityHashMismatch",
+    "V1 fraud-proof script-integrity-hash-mismatch step-02":
+      "fraudProofScriptIntegrityHashMismatchStep02",
+    "V1 fraud-proof script-integrity-hash-mismatch step-03":
+      "fraudProofScriptIntegrityHashMismatchStep03",
+    "V1 fraud-proof script-integrity-hash-mismatch step-04":
+      "fraudProofScriptIntegrityHashMismatchStep04",
+    "V1 fraud-proof script-integrity-hash-mismatch step-05":
+      "fraudProofScriptIntegrityHashMismatchStep05",
+    "V1 fraud-proof distinct-asset-accumulation-limit step-01":
+      "fraudProofDistinctAssetAccumulationLimit",
+    "V1 fraud-proof distinct-asset-accumulation-limit step-02":
+      "fraudProofDistinctAssetAccumulationLimitStep02",
+    "V1 fraud-proof distinct-asset-accumulation-limit step-03":
+      "fraudProofDistinctAssetAccumulationLimitStep03",
+    "V1 fraud-proof distinct-asset-accumulation-limit step-04":
+      "fraudProofDistinctAssetAccumulationLimitStep04",
+    "V1 fraud-proof distinct-asset-accumulation-limit step-05":
+      "fraudProofDistinctAssetAccumulationLimitStep05",
+    "V1 fraud-proof distinct-asset-accumulation-limit step-06":
+      "fraudProofDistinctAssetAccumulationLimitStep06",
     "availability-challenge spending": "availabilityChallengeSpend",
     "availability-challenge minting": "availabilityChallengeMint",
   } as const);
@@ -659,6 +1152,8 @@ export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES =
     "V1 fraud-proof value-not-preserved step-04": "V1FpValueNotPreservedS04",
     "V1 fraud-proof input-set-uniqueness step-01": "V1FpInputSetUniquenessS01",
     "V1 fraud-proof input-set-uniqueness step-02": "V1FpInputSetUniquenessS02",
+    "V1 fraud-proof input-set-uniqueness step-03": "V1FpInputSetUniquenessS03",
+    "V1 fraud-proof input-set-uniqueness step-04": "V1FpInputSetUniquenessS04",
     "V1 fraud-proof mint-authorization step-01": "V1FpMintAuthorizationS01",
     "V1 fraud-proof mint-authorization step-02": "V1FpMintAuthorizationS02",
     "V1 fraud-proof mint-authorization step-03": "V1FpMintAuthorizationS03",
@@ -743,6 +1238,194 @@ export const DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES =
     "V1 fraud-proof min-ada step-03": "V1FpMinAdaS03",
     "V1 fraud-proof min-ada step-04": "V1FpMinAdaS04",
     "V1 fraud-proof min-ada step-05": "V1FpMinAdaS05",
+    "V1 fraud-proof field-preimage-length-mismatch step-01": "V1FpFieldLenS01",
+    "V1 fraud-proof field-preimage-length-mismatch step-02 accepted":
+      "V1FpFieldLenS02Accepted",
+    "V1 fraud-proof field-preimage-length-mismatch step-02 forced":
+      "V1FpFieldLenS02Forced",
+    "V1 fraud-proof field-preimage-length-mismatch step-03": "V1FpFieldLenS03",
+    "V1 fraud-proof field-item-width-illegal step-01": "V1FpItemWidthS01",
+    "V1 fraud-proof field-item-width-illegal step-02": "V1FpItemWidthS02",
+    "V1 fraud-proof field-item-width-illegal step-03": "V1FpItemWidthS03",
+    "V1 fraud-proof witness-script-decoding step-01": "V1FpWitnessDecodeS01",
+    "V1 fraud-proof witness-script-decoding step-02": "V1FpWitnessDecodeS02",
+    "V1 fraud-proof witness-script-decoding step-03": "V1FpWitnessDecodeS03",
+    "V1 fraud-proof witness-script-decoding step-04": "V1FpWitnessDecodeS04",
+    "V1 fraud-proof script-integrity-hash-missing step-01":
+      "V1FpIntegrityMissingS01",
+    "V1 fraud-proof script-integrity-hash-missing step-02":
+      "V1FpIntegrityMissingS02",
+    "V1 fraud-proof script-integrity-hash-missing step-03":
+      "V1FpIntegrityMissingS03",
+    "V1 fraud-proof script-integrity-hash-missing script-grammar":
+      "V1FpIntegrityMissingGrammar",
+    "V1 fraud-proof script-integrity-hash-missing script-scan":
+      "V1FpIntegrityMissingScan",
+    "V1 fraud-proof script-integrity-hash-missing redeemer-grammar":
+      "V1FpIntegrityMissingRedeemer",
+    "V1 fraud-proof script-integrity-hash-missing step-04":
+      "V1FpIntegrityMissingS04",
+    "V1 fraud-proof transaction-output-non-canonical step-01":
+      "V1FpTxOutputCanonicalS01",
+    "V1 fraud-proof transaction-output-non-canonical step-02":
+      "V1FpTxOutputCanonicalS02",
+    "V1 fraud-proof transaction-output-non-canonical step-03":
+      "V1FpTxOutputCanonicalS03",
+    "V1 fraud-proof transaction-output-non-canonical step-04":
+      "V1FpTxOutputCanonicalS04",
+    "V1 fraud-proof resolved-output-non-canonical step-01":
+      "V1FpResolvedOutputS01",
+    "V1 fraud-proof resolved-output-non-canonical step-02":
+      "V1FpResolvedOutputS02",
+    "V1 fraud-proof resolved-output-non-canonical step-03":
+      "V1FpResolvedOutputS03",
+    "V1 fraud-proof resolved-output-non-canonical step-04":
+      "V1FpResolvedOutputS04",
+    "V1 fraud-proof resolved-output-non-canonical step-05":
+      "V1FpResolvedOutputS05",
+    "V1 fraud-proof mint-declared-asset-limit step-01": "V1FpMintAssetLimitS01",
+    "V1 fraud-proof mint-declared-asset-limit step-02": "V1FpMintAssetLimitS02",
+    "V1 fraud-proof mint-declared-asset-limit step-03": "V1FpMintAssetLimitS03",
+    "V1 fraud-proof mint-declared-asset-limit step-04": "V1FpMintAssetLimitS04",
+    "V1 fraud-proof spend-input-signer-missing step-01": "V1FpSpendSignerS01",
+    "V1 fraud-proof spend-input-signer-missing step-02": "V1FpSpendSignerS02",
+    "V1 fraud-proof spend-input-signer-missing step-03": "V1FpSpendSignerS03",
+    "V1 fraud-proof spend-input-signer-missing step-04": "V1FpSpendSignerS04",
+    "V1 fraud-proof spend-input-signer-missing step-05": "V1FpSpendSignerS05",
+    "V1 fraud-proof protected-output-signer-missing step-01":
+      "V1FpProtectedSignerS01",
+    "V1 fraud-proof protected-output-signer-missing step-02":
+      "V1FpProtectedSignerS02",
+    "V1 fraud-proof protected-output-signer-missing step-03":
+      "V1FpProtectedSignerS03",
+    "V1 fraud-proof protected-output-signer-missing step-04":
+      "V1FpProtectedSignerS04",
+    "V1 fraud-proof protected-output-signer-missing step-05":
+      "V1FpProtectedSignerS05",
+    "V1 fraud-proof observers-forbidden-on-untagged-network step-01":
+      "V1FpObserversForbiddenS01",
+    "V1 fraud-proof observers-forbidden-on-untagged-network step-02":
+      "V1FpObserversForbiddenS02",
+    "V1 fraud-proof output-reference-script-decoding step-01":
+      "V1FpOutputRefDecodeS01",
+    "V1 fraud-proof output-reference-script-decoding step-02":
+      "V1FpOutputRefDecodeS02",
+    "V1 fraud-proof output-reference-script-decoding step-03":
+      "V1FpOutputRefDecodeS03",
+    "V1 fraud-proof output-reference-script-decoding step-04":
+      "V1FpOutputRefDecodeS04",
+    "V1 fraud-proof output-reference-script-decoding step-05":
+      "V1FpOutputRefDecodeS05",
+    "V1 fraud-proof output-reference-script-decoding step-06":
+      "V1FpOutputRefDecodeS06",
+    "V1 fraud-proof execution-source-script-decoding step-01":
+      "V1FpExecSourceDecodeS01",
+    "V1 fraud-proof execution-source-script-decoding step-02":
+      "V1FpExecSourceDecodeS02",
+    "V1 fraud-proof execution-source-script-decoding step-03":
+      "V1FpExecSourceDecodeS03",
+    "V1 fraud-proof execution-source-script-decoding step-04":
+      "V1FpExecSourceDecodeS04",
+    "V1 fraud-proof execution-source-script-decoding step-05":
+      "V1FpExecSourceDecodeS05",
+    "V1 fraud-proof observer-order-invalid step-01": "V1FpObserverOrderS01",
+    "V1 fraud-proof observer-order-invalid step-02": "V1FpObserverOrderS02",
+    "V1 fraud-proof observer-order-invalid step-03": "V1FpObserverOrderS03",
+    "V1 fraud-proof observer-order-invalid step-04": "V1FpObserverOrderS04",
+    "V1 fraud-proof redeemer-canonicity step-01": "V1FpRedeemerCanonS01",
+    "V1 fraud-proof redeemer-canonicity step-02": "V1FpRedeemerCanonS02",
+    "V1 fraud-proof redeemer-canonicity step-03": "V1FpRedeemerCanonS03",
+    "V1 fraud-proof receive-purpose-language step-01": "V1FpReceivePurposeS01",
+    "V1 fraud-proof receive-purpose-language step-02": "V1FpReceivePurposeS02",
+    "V1 fraud-proof receive-purpose-language step-03": "V1FpReceivePurposeS03",
+    "V1 fraud-proof unused-script-witness step-01":
+      "V1FpUnusedScriptWitnessS01",
+    "V1 fraud-proof unused-script-witness step-02":
+      "V1FpUnusedScriptWitnessS02",
+    "V1 fraud-proof unused-script-witness step-03":
+      "V1FpUnusedScriptWitnessS03",
+    "V1 fraud-proof unused-script-witness step-04":
+      "V1FpUnusedScriptWitnessS04",
+    "V1 fraud-proof unused-script-witness step-05":
+      "V1FpUnusedScriptWitnessS05",
+    "V1 fraud-proof unused-script-witness step-06":
+      "V1FpUnusedScriptWitnessS06",
+    "V1 fraud-proof missing-script-source step-01":
+      "V1FpMissingScriptSourceS01",
+    "V1 fraud-proof missing-script-source step-02":
+      "V1FpMissingScriptSourceS02",
+    "V1 fraud-proof missing-script-source step-03":
+      "V1FpMissingScriptSourceS03",
+    "V1 fraud-proof missing-script-source step-04":
+      "V1FpMissingScriptSourceS04",
+    "V1 fraud-proof missing-script-source step-05":
+      "V1FpMissingScriptSourceS05",
+    "V1 fraud-proof missing-script-source step-06":
+      "V1FpMissingScriptSourceS06",
+    "V1 fraud-proof missing-redeemer step-01": "V1FpMissingRedeemerS01",
+    "V1 fraud-proof missing-redeemer step-02": "V1FpMissingRedeemerS02",
+    "V1 fraud-proof missing-redeemer step-02a": "V1FpMissingRedeemerS02a",
+    "V1 fraud-proof missing-redeemer step-02b": "V1FpMissingRedeemerS02b",
+    "V1 fraud-proof missing-redeemer step-03": "V1FpMissingRedeemerS03",
+    "V1 fraud-proof missing-redeemer step-04": "V1FpMissingRedeemerS04",
+    "V1 fraud-proof missing-redeemer step-05": "V1FpMissingRedeemerS05",
+    "V1 fraud-proof unused-redeemer step-01": "V1FpUnusedRedeemerS01",
+    "V1 fraud-proof unused-redeemer step-02": "V1FpUnusedRedeemerS02",
+    "V1 fraud-proof unused-redeemer step-02a": "V1FpUnusedRedeemerS02a",
+    "V1 fraud-proof unused-redeemer step-02b": "V1FpUnusedRedeemerS02b",
+    "V1 fraud-proof unused-redeemer step-02c": "V1FpUnusedRedeemerS02c",
+    "V1 fraud-proof unused-redeemer step-03": "V1FpUnusedRedeemerS03",
+    "V1 fraud-proof unused-redeemer step-04": "V1FpUnusedRedeemerS04",
+    "V1 fraud-proof unused-redeemer step-05": "V1FpUnusedRedeemerS05",
+    "V1 fraud-proof unused-redeemer step-06": "V1FpUnusedRedeemerS06",
+    "V1 fraud-proof execution-native-script-invalid step-01":
+      "V1FpExecNativeInvalidS01",
+    "V1 fraud-proof execution-native-script-invalid step-02":
+      "V1FpExecNativeInvalidS02",
+    "V1 fraud-proof execution-native-script-invalid step-03":
+      "V1FpExecNativeInvalidS03",
+    "V1 fraud-proof execution-native-script-invalid step-04":
+      "V1FpExecNativeInvalidS04",
+    "V1 fraud-proof execution-native-script-invalid step-05":
+      "V1FpExecNativeInvalidS05",
+    "V1 fraud-proof execution-native-script-invalid step-06":
+      "V1FpExecNativeInvalidS06",
+    "V1 fraud-proof execution-native-script-invalid accepted-reconstruction-init":
+      "V1FpExecNativeInvAccInit",
+    "V1 fraud-proof execution-native-script-invalid accepted-spend-prefix":
+      "V1FpExecNativeInvAccSpend",
+    "V1 fraud-proof execution-native-script-invalid accepted-mint-prefix":
+      "V1FpExecNativeInvAccMint",
+    "V1 fraud-proof execution-native-script-invalid accepted-observer-prefix":
+      "V1FpExecNativeInvAccObserver",
+    "V1 fraud-proof execution-native-script-invalid accepted-receive-prefix":
+      "V1FpExecNativeInvAccReceive",
+    "V1 fraud-proof execution-native-script-invalid accepted-inline-source":
+      "V1FpExecNativeInvAccInline",
+    "V1 fraud-proof execution-native-script-invalid accepted-reference-source":
+      "V1FpExecNativeInvAccRef",
+    "V1 fraud-proof script-integrity-hash-mismatch step-01":
+      "V1FpIntegrityMismatchS01",
+    "V1 fraud-proof script-integrity-hash-mismatch step-02":
+      "V1FpIntegrityMismatchS02",
+    "V1 fraud-proof script-integrity-hash-mismatch step-03":
+      "V1FpIntegrityMismatchS03",
+    "V1 fraud-proof script-integrity-hash-mismatch step-04":
+      "V1FpIntegrityMismatchS04",
+    "V1 fraud-proof script-integrity-hash-mismatch step-05":
+      "V1FpIntegrityMismatchS05",
+    "V1 fraud-proof distinct-asset-accumulation-limit step-01":
+      "V1FpDistinctAssetLimitS01",
+    "V1 fraud-proof distinct-asset-accumulation-limit step-02":
+      "V1FpDistinctAssetLimitS02",
+    "V1 fraud-proof distinct-asset-accumulation-limit step-03":
+      "V1FpDistinctAssetLimitS03",
+    "V1 fraud-proof distinct-asset-accumulation-limit step-04":
+      "V1FpDistinctAssetLimitS04",
+    "V1 fraud-proof distinct-asset-accumulation-limit step-05":
+      "V1FpDistinctAssetLimitS05",
+    "V1 fraud-proof distinct-asset-accumulation-limit step-06":
+      "V1FpDistinctAssetLimitS06",
     "availability-challenge spending": "AvailabilityChallengeSpend",
     "availability-challenge minting": "AvailabilityChallengeMint",
   } as const);
@@ -2008,12 +2691,6 @@ const encodeFraudProofCatalogueKey = (categoryId: string): Buffer =>
 const encodeFraudProofCatalogueValue = (scriptHash: string): Buffer =>
   encodeCbor(Buffer.from(scriptHash, "hex"));
 
-const expectedFraudProofCatalogueCategoryId = (index: number): string => {
-  const bytes = Buffer.alloc(4);
-  bytes.writeUInt32BE(index);
-  return bytes.toString("hex");
-};
-
 const proofDataToMpfSteps = (
   proof: FraudProofCatalogueProofData,
 ): readonly MidgardMpfProofStepV1[] =>
@@ -2075,7 +2752,7 @@ export const verifyDeploymentManifestV1FraudProofCatalogueIdentity = (
   >;
 
   DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.forEach(
-    (categoryName, index) => {
+    (categoryName) => {
       const field = `contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories.${categoryName}`;
       const candidate = requireRecord(
         (catalogue.categories as unknown as Record<string, unknown>)[
@@ -2099,7 +2776,8 @@ export const verifyDeploymentManifestV1FraudProofCatalogueIdentity = (
         ),
       } satisfies DeploymentManifestV1FraudProofCatalogueCategoryIdentity;
       parsedCategories[categoryName] = category;
-      const expectedCategoryId = expectedFraudProofCatalogueCategoryId(index);
+      const expectedCategoryId =
+        DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[categoryName];
       if (category.categoryId !== expectedCategoryId) {
         throw new Error(
           `Deployment manifest ${field}.categoryId must be ${expectedCategoryId}`,
@@ -2286,43 +2964,6 @@ const validateFinalizedContracts = (
     catalogue.categories,
     "contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories",
   );
-  const contractByCategory = {
-    doubleSpend: "fraudProofDoubleSpend",
-    nonExistentInput: "fraudProofNonExistentInput",
-    nonExistentInputNoIndex: "fraudProofNonExistentInputNoIndex",
-    invalidRange: "fraudProofInvalidRange",
-    transitionTrace: "fraudProofTransitionTrace",
-    zeroInput: "fraudProofZeroInput",
-    validationTraceDispute: "validationTraceDispute",
-    daHashPreimage: "fraudProofDaHashPreimage",
-    noReferenceInput: "fraudProofNoReferenceInput",
-    referenceInputNoIdx: "fraudProofReferenceInputNoIdx",
-    invalidSignature: "fraudProofInvalidSignature",
-    fabricatedDeposit: "fraudProofFabricatedDeposit",
-    fabricatedWithdrawal: "fraudProofFabricatedWithdrawal",
-    nativeScriptDecoding: "fraudProofNativeScriptDecoding",
-    missingSignature: "fraudProofMissingSignature",
-    missingNativeScriptTx: "fraudProofMissingNativeScriptTx",
-    withdrawnReferenceInput: "fraudProofWithdrawnReferenceInput",
-    canonicalDecodability: "fraudProofCanonicalDecodability",
-    committedFieldShape: "fraudProofCommittedFieldShape",
-    minFee: "fraudProofMinFee",
-    withdrawalMistag: "fraudProofWithdrawalMistag",
-    doubleWithdraw: "fraudProofDoubleWithdraw",
-    crossBlockDuplicateEvent: "fraudProofCrossBlockDuplicateEvent",
-    l2TxMistag: "fraudProofL2TxMistag",
-    withdrawnInput: "fraudProofWithdrawnInput",
-    valueNotPreserved: "fraudProofValueNotPreserved",
-    inputSetUniqueness: "fraudProofInputSetUniqueness",
-    mintAuthorization: "fraudProofMintAuthorization",
-    networkId: "fraudProofNetworkId",
-    missingNativeScriptUtxo: "fraudProofMissingNativeScriptUtxo",
-    nativeScriptInvalid: "fraudProofNativeScriptInvalid",
-    minAda: "fraudProofMinAda",
-  } as const satisfies Record<
-    DeploymentManifestV1FraudProofCatalogueCategory,
-    string
-  >;
   requireExactKeys(
     categories,
     DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
@@ -2334,7 +2975,8 @@ const validateFinalizedContracts = (
     DeploymentManifestV1FraudProofCatalogueCategoryIdentity
   >;
   for (const categoryName of DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER) {
-    const contractName = contractByCategory[categoryName];
+    const contractName =
+      DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CONTRACT_BY_CATEGORY[categoryName];
     const field = `contracts.fraudProofCatalogueMint.fraudProofCatalogue.categories.${categoryName}`;
     const category = requireRecord(categories[categoryName], field);
     requireExactKeys(

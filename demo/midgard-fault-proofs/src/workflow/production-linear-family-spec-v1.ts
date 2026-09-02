@@ -166,6 +166,8 @@ const rows = [
   spec("inputSetUniqueness", [
     "fraudProofInputSetUniqueness",
     "fraudProofInputSetUniquenessStep02",
+    "fraudProofInputSetUniquenessStep03",
+    "fraudProofInputSetUniquenessStep04",
   ]),
 ] as const satisfies readonly ProductionLinearFamilySpecV1[];
 

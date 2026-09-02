@@ -165,6 +165,7 @@ export const FRAUD_PROOF_CLASSIFICATION_RULES_V1 = Object.freeze([
     category: "inputSetUniqueness",
     violationIds: [
       "input-set-uniqueness",
+      "input-set-uniqueness-wrongful-rejection",
       "duplicate-spend-input",
       "duplicate-reference-input",
       "spend-reference-overlap",
@@ -184,6 +185,111 @@ export const FRAUD_PROOF_CLASSIFICATION_RULES_V1 = Object.freeze([
     violationIds: [NATIVE_SCRIPT_INVALID_VIOLATION_ID_V1],
   },
   { category: "minAda", violationIds: [MIN_ADA_VIOLATION_ID_V1] },
+  {
+    category: "fieldPreimageLengthMismatch",
+    violationIds: ["field-preimage-length-mismatch"],
+  },
+  {
+    category: "fieldItemWidthIllegal",
+    violationIds: ["field-item-width-illegal"],
+  },
+  {
+    category: "witnessScriptDecoding",
+    violationIds: [
+      "witness-script-header-malformed",
+      "witness-native-script-malformed",
+      "witness-native-script-node-limit",
+      "witness-native-script-depth-limit",
+    ],
+  },
+  {
+    category: "scriptIntegrityHashMissing",
+    violationIds: ["script-integrity-hash-missing"],
+  },
+  {
+    category: "transactionOutputNonCanonical",
+    violationIds: ["transaction-output-non-canonical"],
+  },
+  {
+    category: "resolvedOutputNonCanonical",
+    violationIds: ["resolved-output-non-canonical"],
+  },
+  {
+    category: "mintDeclaredAssetLimit",
+    violationIds: ["mint-declared-asset-limit"],
+  },
+  {
+    category: "spendInputSignerMissing",
+    violationIds: ["spend-input-signer-missing"],
+  },
+  {
+    category: "protectedOutputSignerMissing",
+    violationIds: ["protected-output-signer-missing"],
+  },
+  {
+    category: "observersForbiddenOnUntaggedNetwork",
+    violationIds: ["observers-forbidden-on-untagged-network"],
+  },
+  {
+    category: "observerOrderInvalid",
+    violationIds: ["observer-order-invalid"],
+  },
+  {
+    category: "redeemerCanonicity",
+    violationIds: ["redeemer-malformed"],
+  },
+  {
+    category: "outputReferenceScriptDecoding",
+    violationIds: [
+      "output-reference-script-malformed",
+      "output-reference-script-node-limit",
+      "output-reference-script-depth-limit",
+    ],
+  },
+  {
+    category: "executionSourceScriptDecoding",
+    violationIds: [
+      "execution-native-script-malformed",
+      "execution-native-script-node-limit",
+      "execution-native-script-depth-limit",
+    ],
+  },
+  {
+    category: "receivePurposeLanguage",
+    violationIds: ["receive-purpose-plutus-v3-forbidden"],
+  },
+  {
+    category: "unusedScriptWitness",
+    violationIds: ["unused-script-witness"],
+  },
+  {
+    category: "missingScriptSource",
+    violationIds: ["script-source-missing"],
+  },
+  {
+    category: "missingRedeemer",
+    violationIds: ["redeemer-missing"],
+  },
+  {
+    category: "unusedRedeemer",
+    violationIds: ["unused-redeemer"],
+  },
+  {
+    category: "executionNativeScriptInvalid",
+    violationIds: ["execution-native-script-invalid"],
+  },
+  {
+    category: "scriptIntegrityHashMismatch",
+    violationIds: ["script-integrity-hash-mismatch"],
+  },
+  {
+    category: "distinctAssetAccumulationLimit",
+    violationIds: [
+      "input-asset-accumulation-limit",
+      "output-asset-accumulation-limit",
+      "mint-asset-accumulation-limit",
+    ],
+  },
 ] as const satisfies readonly FraudProofClassificationRuleV1[]);
 
 type RegisteredClassificationRuleV1 =

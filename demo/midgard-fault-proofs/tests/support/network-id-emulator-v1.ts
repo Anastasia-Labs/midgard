@@ -219,12 +219,24 @@ export const makeNetworkIdEmulatorHarnessV1 = async () => {
       ],
     ),
   );
+  const forcedStep = makeSpendingValidator(
+    applyCompiledScript(
+      harness.realBlueprint,
+      NETWORK_ID_BLUEPRINT_TITLES_V1.forcedStep,
+      [
+        step02.spendingScriptHash,
+        harness.contracts.computationThread.policyId,
+        0n,
+      ],
+    ),
+  );
   const step01 = makeSpendingValidator(
     applyCompiledScript(
       harness.realBlueprint,
       NETWORK_ID_BLUEPRINT_TITLES_V1.step01,
       [
         step02.spendingScriptHash,
+        forcedStep.spendingScriptHash,
         harness.contracts.computationThread.policyId,
         harness.contracts.hubOracle.policyId,
         0n,
@@ -233,6 +245,7 @@ export const makeNetworkIdEmulatorHarnessV1 = async () => {
   );
   const networkId: NetworkIdContractsV1 = {
     steps: [step01, step02],
+    forcedStep,
     expectedNetworkId: 0n,
     computationThread: harness.contracts.computationThread,
     fraudProof: harness.contracts.fraudProof,
@@ -271,7 +284,6 @@ export const publishNetworkIdReferenceScriptsV1 = async ({
           lucid,
           script: step.spendingScript as Script,
           label: `network-id step-0${(index + 1).toString()}`,
-          oversized: true,
         })
       ).utxo,
     );

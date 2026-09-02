@@ -1,0 +1,26 @@
+{
+  "category": "invalidRange",
+  "categoryId": "00000003",
+  "referencePublications": [
+    { "step": 1, "signedBytes": 14794, "reserveMarginBytes": 1078 },
+    { "step": 2, "signedBytes": 2476, "reserveMarginBytes": 13396 }
+  ],
+  "acceptedLifecycle": [
+    { "stage": "init", "signedBytes": 1497, "memory": "673740", "cpu": "231595402" },
+    { "stage": "step01", "signedBytes": 1992, "memory": "1311829", "cpu": "445504851" },
+    { "stage": "step02", "signedBytes": 916, "memory": "268075", "cpu": "97837222" },
+    { "stage": "remove", "signedBytes": 2060, "memory": "3050178", "cpu": "1039772647" }
+  ],
+  "forcedLifecycle": [
+    { "stage": "init-cancel", "signedBytes": 1497, "memory": "686012", "cpu": "235292390" },
+    { "stage": "cancel-step01", "signedBytes": 611, "memory": "122608", "cpu": "42100566" },
+    { "stage": "restart-init", "signedBytes": 1497, "memory": "686012", "cpu": "235292390" },
+    { "stage": "step01-cancel", "signedBytes": 1719, "memory": "977910", "cpu": "410116961" },
+    { "stage": "cancel-step02", "signedBytes": 611, "memory": "112076", "cpu": "40400424" },
+    { "stage": "final-init", "signedBytes": 1497, "memory": "686012", "cpu": "235292390" },
+    { "stage": "forced-step01", "signedBytes": 1719, "memory": "977910", "cpu": "410116961" },
+    { "stage": "permanent-mint", "signedBytes": 916, "memory": "361005", "cpu": "132724435" },
+    { "stage": "leased-remove", "signedBytes": 2048, "memory": "2032874", "cpu": "696462108" }
+  ],
+  "ledgerDigest": "6f7d222c480be6da9e83fc5b4a6e4c5e3ee88309136396ffdc5789483e395be3"
+}

@@ -218,10 +218,15 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
     );
     const scheduler = yield* mkAuthVal("scheduler");
     const stateQueueAuthenticated = yield* mkAuthVal("state_queue");
-    const stateQueueYield = yield* makeWithdrawalValidator(
-      "midgard",
-      "state_queue",
-    );
+    // The compact always-succeeds blueprint intentionally publishes only the
+    // state-queue spend/mint pair. Reuse that same untyped Plutus script for
+    // the dev/test withdrawal roles instead of looking up a validator title
+    // that the fixture does not contain.
+    const stateQueueYield: SDK.WithdrawalValidator = {
+      withdrawalScriptCBOR: stateQueueAuthenticated.spendingScriptCBOR,
+      withdrawalScript: stateQueueAuthenticated.spendingScript,
+      withdrawalScriptHash: stateQueueAuthenticated.spendingScriptHash,
+    };
     const stateQueue: SDK.StateQueueValidatorV1 = {
       ...stateQueueAuthenticated,
       yields: {
@@ -416,12 +421,52 @@ const makeAlwaysSucceedsService: Effect.Effect<SDK.MidgardValidators> =
       l2TxMistag: repeatedFaultProofChain(invalidRange, 2),
       withdrawnInput: repeatedFaultProofChain(nonExistentInput, 3),
       valueNotPreserved: repeatedFaultProofChain(zeroInput, 4),
-      inputSetUniqueness: repeatedFaultProofChain(doubleSpend, 2),
+      inputSetUniqueness: repeatedFaultProofChain(doubleSpend, 4),
       mintAuthorization: repeatedFaultProofChain(zeroInput, 5),
       networkId: repeatedFaultProofChain(invalidRange, 2),
       missingNativeScriptUtxo: repeatedFaultProofChain(zeroInput, 5),
       nativeScriptInvalid: repeatedFaultProofChain(zeroInput, 3),
-      minAda: repeatedFaultProofChain(invalidRange, 5),
+      minAda: {
+        ...repeatedFaultProofChain(invalidRange, 5),
+        yields: {
+          tx: stateQueueYield,
+          utxo: stateQueueYield,
+        },
+      },
+      fieldPreimageLengthMismatch: {
+        ...repeatedFaultProofChain(zeroInput, 4),
+        acceptedStep02: zeroInput,
+        forcedStep02: zeroInput,
+      },
+      fieldItemWidthIllegal: repeatedFaultProofChain(zeroInput, 3),
+      witnessScriptDecoding: repeatedFaultProofChain(zeroInput, 4),
+      scriptIntegrityHashMissing: {
+        ...repeatedFaultProofChain(zeroInput, 7),
+        scriptGrammar: zeroInput,
+        scriptScan: zeroInput,
+        redeemerGrammar: zeroInput,
+      },
+      transactionOutputNonCanonical: repeatedFaultProofChain(zeroInput, 4),
+      resolvedOutputNonCanonical: repeatedFaultProofChain(zeroInput, 5),
+      mintDeclaredAssetLimit: repeatedFaultProofChain(zeroInput, 4),
+      spendInputSignerMissing: repeatedFaultProofChain(zeroInput, 5),
+      protectedOutputSignerMissing: repeatedFaultProofChain(zeroInput, 5),
+      observersForbiddenOnUntaggedNetwork: repeatedFaultProofChain(
+        zeroInput,
+        2,
+      ),
+      outputReferenceScriptDecoding: repeatedFaultProofChain(zeroInput, 6),
+      executionSourceScriptDecoding: repeatedFaultProofChain(zeroInput, 5),
+      observerOrderInvalid: repeatedFaultProofChain(zeroInput, 4),
+      redeemerCanonicity: repeatedFaultProofChain(zeroInput, 3),
+      receivePurposeLanguage: repeatedFaultProofChain(zeroInput, 3),
+      unusedScriptWitness: repeatedFaultProofChain(zeroInput, 6),
+      missingScriptSource: repeatedFaultProofChain(zeroInput, 6),
+      missingRedeemer: repeatedFaultProofChain(zeroInput, 7),
+      unusedRedeemer: repeatedFaultProofChain(zeroInput, 9),
+      executionNativeScriptInvalid: repeatedFaultProofChain(zeroInput, 13),
+      scriptIntegrityHashMismatch: repeatedFaultProofChain(zeroInput, 5),
+      distinctAssetAccumulationLimit: repeatedFaultProofChain(zeroInput, 6),
     };
     const fraudProofs =
       SDK.fraudProofContractsToFirstSteps(fraudProofContracts);

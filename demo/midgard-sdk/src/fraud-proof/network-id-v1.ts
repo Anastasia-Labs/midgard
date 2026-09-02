@@ -12,6 +12,8 @@
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema, OutputReferenceSchema } from "@/common.js";
+import { ForcedInclusionTxV1Schema, HeaderV1Schema } from "@/ledger-state.js";
+import { rootMembershipProofSchema } from "@/transition-trace.js";
 
 import { FieldOpeningV1Schema } from "./field-opening-v1.js";
 import {
@@ -30,6 +32,7 @@ export const NetworkIdFaultV1Schema = Data.Enum([
       observed_network_id: Data.Integer(),
     }),
   }),
+  Data.Literal("ForcedNetworkIdMismatch"),
 ]);
 export type NetworkIdFaultV1 = Data.Static<typeof NetworkIdFaultV1Schema>;
 export const NetworkIdFaultV1 =
@@ -67,11 +70,30 @@ export const NetworkIdPostUtxoMembershipV1 =
 export const NetworkIdStep01ArgsSchema = Data.Object({
   tx_inclusion: Data.Nullable(NativeTxInclusionCarriageSchema),
   post_utxo_membership: Data.Nullable(NetworkIdPostUtxoMembershipV1Schema),
+  forced_source: Data.Nullable(
+    Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+    }),
+  ),
   fault: NetworkIdFaultV1Schema,
 });
 export const NetworkIdStep01SpendRedeemerSchema = faultProofStepRedeemerSchema(
   NetworkIdStep01ArgsSchema,
 );
+
+export const NetworkIdForcedStepArgsSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  header: HeaderV1Schema,
+  membership: rootMembershipProofSchema(
+    OutputReferenceSchema,
+    ForcedInclusionTxV1Schema,
+  ),
+  direction: Data.Integer(),
+});
+export const NetworkIdForcedStepSpendRedeemerSchema =
+  faultProofStepRedeemerSchema(NetworkIdForcedStepArgsSchema);
 
 export const NetworkIdStep02StateSchema = Data.Object({
   bad_tx_id: H32Schema,
@@ -86,6 +108,7 @@ export const NetworkIdStep02StateSchema = Data.Object({
       predecessor: NetworkIdPostUtxoPredecessorV1Schema,
     }),
   ),
+  forced_source_key: Data.Nullable(Data.Bytes()),
 });
 export type NetworkIdStep02State = Data.Static<
   typeof NetworkIdStep02StateSchema
@@ -133,3 +156,18 @@ export const isExplicitTransactionNetworkMismatchV1 = ({
   readonly expectedNetworkId: 0n | 1n;
 }): boolean =>
   committedNetworkId !== 255n && committedNetworkId !== expectedNetworkId;
+
+/** Complete twin used for wrongful forced-rejection contradiction. */
+export const isAnyNetworkIdMismatchV1 = ({
+  committedNetworkId,
+  outputNetworkIds,
+  expectedNetworkId,
+}: {
+  readonly committedNetworkId: bigint;
+  readonly outputNetworkIds: readonly bigint[];
+  readonly expectedNetworkId: 0n | 1n;
+}): boolean =>
+  isExplicitTransactionNetworkMismatchV1({
+    committedNetworkId,
+    expectedNetworkId,
+  }) || outputNetworkIds.some((networkId) => networkId !== expectedNetworkId);

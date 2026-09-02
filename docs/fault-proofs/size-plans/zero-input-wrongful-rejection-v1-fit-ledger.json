@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "midgard-zero-input-wrongful-rejection-fit-ledger-v1",
+  "category": "zeroInput",
+  "categoryId": "00000005",
+  "compiler": "aiken v1.1.23+5adf783",
+  "environment": "testnet",
+  "blueprintSha256": "9cf123cdddb8dbca32ace056a565f2bfa6eec80e06cc9e868483a1ea11f05da3",
+  "limits": {
+    "signedTransactionBytes": 16384,
+    "publicationReserveBytes": 15872,
+    "memory": "16500000",
+    "cpu": "10000000000"
+  },
+  "referencePublications": [
+    {
+      "step": 1,
+      "scriptHash": "828be18df40f36e31430a875a1ab5b751bd8ca5d7afe3c6840cca660",
+      "signedBytes": 14766,
+      "reserveMarginBytes": 1106
+    },
+    {
+      "step": 2,
+      "scriptHash": "9f2283dcebba18190410218cfe3c54ee71ffc184426936d2eb5bed00",
+      "signedBytes": 7190,
+      "reserveMarginBytes": 8682
+    }
+  ],
+  "acceptedLifecycle": [
+    { "stage": "init", "signedBytes": 1497, "memory": "672932", "cpu": "231062570" },
+    { "stage": "step01", "signedBytes": 1975, "memory": "1303546", "cpu": "443146847" },
+    { "stage": "step02PermanentMint", "signedBytes": 1285, "memory": "555069", "cpu": "181337609" }
+  ],
+  "forcedLifecycle": [
+    { "stage": "initCancel01", "signedBytes": 1497, "memory": "676000", "cpu": "231986817" },
+    { "stage": "cancel01", "signedBytes": 611, "memory": "124408", "cpu": "42388566" },
+    { "stage": "restartInitCancel02", "signedBytes": 1497, "memory": "676000", "cpu": "231986817" },
+    { "stage": "step01BeforeCancel", "signedBytes": 1712, "memory": "1006302", "cpu": "422131064" },
+    { "stage": "cancel02", "signedBytes": 611, "memory": "113608", "cpu": "40660566" },
+    { "stage": "restartInit", "signedBytes": 1497, "memory": "676000", "cpu": "231986817" },
+    { "stage": "step01", "signedBytes": 1712, "memory": "1006302", "cpu": "422131064" },
+    { "stage": "step02PermanentMint", "signedBytes": 1285, "memory": "594608", "cpu": "194361898" },
+    { "stage": "leasedRemoval", "signedBytes": 2048, "memory": "1976691", "cpu": "678305959" }
+  ],
+  "minimumMargins": {
+    "publicationBytes": 1106,
+    "lifecycleBytes": 14336,
+    "memory": "14523309",
+    "cpu": "9321694041"
+  },
+  "ledgerDigest": "36f5046dc7954e222a3a638d81916ff8f30b33167b950b0de426b5508916afc9"
+}

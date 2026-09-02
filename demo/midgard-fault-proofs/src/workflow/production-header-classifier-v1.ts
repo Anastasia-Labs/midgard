@@ -17,6 +17,7 @@ import {
   fetchProductionFraudProofEvidenceV1,
   PRODUCTION_FRAUD_PROOF_EVIDENCE_ROUTE_V1,
 } from "../evidence/production-fraud-proof-evidence-v1.js";
+import { FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID_V1 } from "../field-preimage-length-mismatch/production-evidence-v1.js";
 import {
   fetchRetainedDaPayloadByHeaderHash,
   type RetainedDaPayloadSource,
@@ -27,6 +28,7 @@ import {
   classifyCanonicalBlockViolationsV1,
 } from "./classification-v1.js";
 import {
+  admitCompleteCanonicalReplayHistoricalCorpusV1,
   admitCompleteCanonicalReplayPredecessorV1,
   COMPLETE_CANONICAL_REPLAY_V1,
   type CompleteCanonicalReplayContextV1,
@@ -35,6 +37,12 @@ import {
   requireCompleteCanonicalReplayBundleV1,
   requireCompleteCanonicalReplayDecisionV1,
 } from "./complete-replay-v1.js";
+import {
+  type ProductionHistoricalNativeScriptCheckpointStoreV1,
+  type ProductionHistoricalNativeScriptHistorySourceV1,
+  requireProductionHistoricalNativeScriptHistoryAuthorityV1,
+  resolveProductionHistoricalNativeScriptCorpusV1,
+} from "./production-historical-native-script-corpus-v1.js";
 import {
   FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY_V1,
   type FraudProofReleaseFinalityAuthorityV1,
@@ -47,6 +55,8 @@ export const PRODUCTION_HEADER_DECISION_V1 =
   "midgard-production-header-decision-v1" as const;
 export const PRODUCTION_PREDECESSOR_CONTEXT_REQUIRED_V1 =
   "production-predecessor-context-required-v1" as const;
+const MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID_V1 =
+  "mint-declared-asset-limit" as const;
 
 const HEX_32 = /^[0-9a-f]{64}$/u;
 
@@ -210,6 +220,10 @@ const admittedClassifiers = new WeakMap<
   Readonly<{
     replayer: CompleteCanonicalReplayV1;
     confirmationDepth: number;
+    historicalReplayAuthority?: Readonly<{
+      checkpointStore: ProductionHistoricalNativeScriptCheckpointStoreV1;
+      historySource: ProductionHistoricalNativeScriptHistorySourceV1;
+    }>;
   }>
 >();
 const admittedDecisions = new WeakSet<object>();
@@ -241,15 +255,38 @@ export const createProductionHeaderClassifierV1 = async ({
   deploymentFingerprint,
   replayer,
   releaseFinalityAuthority,
+  historicalReplayAuthority,
 }: {
   readonly deploymentFingerprint: string;
   readonly replayer: CompleteCanonicalReplayV1;
   readonly releaseFinalityAuthority: FraudProofReleaseFinalityAuthorityV1;
+  readonly historicalReplayAuthority?: Readonly<{
+    checkpointStore: ProductionHistoricalNativeScriptCheckpointStoreV1;
+    historySource: ProductionHistoricalNativeScriptHistorySourceV1;
+  }>;
 }): Promise<ProductionHeaderClassifierV1> => {
   const normalizedDeploymentFingerprint = normalizeDaDeploymentFingerprintHex(
     deploymentFingerprint,
   );
   requireCompleteCanonicalReplayBundleV1(replayer);
+  const requiresHistoricalReplay = replayer.launchScope.some((category) =>
+    ["resolvedOutputNonCanonical", "spendInputSignerMissing"].includes(
+      category,
+    ),
+  );
+  if (requiresHistoricalReplay && historicalReplayAuthority === undefined) {
+    throw new Error(
+      replayer.launchScope.includes("resolvedOutputNonCanonical")
+        ? "resolved-output complete replay requires an admitted historical replay authority"
+        : "spend-input-signer complete replay requires an admitted historical replay authority",
+    );
+  }
+  if (historicalReplayAuthority !== undefined) {
+    requireProductionHistoricalNativeScriptHistoryAuthorityV1({
+      deploymentFingerprint: normalizedDeploymentFingerprint,
+      ...historicalReplayAuthority,
+    });
+  }
   if (
     releaseFinalityAuthority.authorityVersion !==
     FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY_V1
@@ -280,6 +317,9 @@ export const createProductionHeaderClassifierV1 = async ({
     Object.freeze({
       replayer,
       confirmationDepth: releaseFinality.policy.confirmationDepth,
+      ...(historicalReplayAuthority === undefined
+        ? {}
+        : { historicalReplayAuthority }),
     }),
   );
   return classifier;
@@ -367,6 +407,106 @@ export const classifyProductionHeaderV1 = async ({
     throw new Error("production evidence route version changed");
   }
   const launchScopeDigest = digest(classifier.launchScope);
+  if (routed.kind === "observers_forbidden_on_untagged_network") {
+    const selected: CanonicalViolationDetectionV1 = {
+      detectionId: routed.selected.detectionId,
+      headerHash: routed.selected.headerHash,
+      violationId: "observers-forbidden-on-untagged-network",
+      position: routed.selected.position,
+    };
+    const installed = classifier.launchScope.includes(
+      "observersForbiddenOnUntaggedNetwork",
+    );
+    const classification = {
+      decision: installed ? "fault_detected" : "unprovable",
+      selected: detectionJson(selected),
+      reason: installed ? null : "category_not_installed",
+    } as const;
+    const common = {
+      schemaVersion: PRODUCTION_HEADER_DECISION_V1,
+      classifierVersion: PRODUCTION_HEADER_CLASSIFIER_V1,
+      deploymentFingerprint: classifier.deploymentFingerprint,
+      headerHash: routed.evidence.headerHash,
+      authenticatedObservationDigest: observationDigest,
+      payloadEnvelopeSha256: routed.evidence.payloadEnvelopeSha256,
+      payloadSha256: routed.evidence.payloadSha256,
+      replayVersion: COMPLETE_CANONICAL_REPLAY_V1,
+      replayDigest: digest({
+        route: "authenticated_observers_forbidden_raw_v1",
+        launchScope: classifier.launchScope,
+        selected: detectionJson(selected),
+      }),
+      launchScope: classifier.launchScope,
+      launchScopeDigest,
+      classificationDigest: digest(classification),
+    } as const;
+    return installed
+      ? sealDecision({
+          ...common,
+          decision: "fault_detected",
+          category: "observersForbiddenOnUntaggedNetwork",
+          violationId: selected.violationId,
+          detectionId: selected.detectionId,
+          position: selected.position.toString(),
+        })
+      : sealDecision({
+          ...common,
+          decision: "unprovable",
+          reason: "category_not_installed",
+          violationId: selected.violationId,
+          detectionId: selected.detectionId,
+          position: selected.position.toString(),
+        });
+  }
+  if (routed.kind === "mint_declared_asset_limit") {
+    const selected: CanonicalViolationDetectionV1 = {
+      detectionId: routed.selected.detectionId,
+      headerHash: routed.selected.headerHash,
+      violationId: MINT_DECLARED_ASSET_LIMIT_VIOLATION_ID_V1,
+      position: routed.selected.position,
+    };
+    const installed = classifier.launchScope.includes("mintDeclaredAssetLimit");
+    const classification = {
+      decision: installed ? "fault_detected" : "unprovable",
+      selected: detectionJson(selected),
+      reason: installed ? null : "category_not_installed",
+    } as const;
+    const common = {
+      schemaVersion: PRODUCTION_HEADER_DECISION_V1,
+      classifierVersion: PRODUCTION_HEADER_CLASSIFIER_V1,
+      deploymentFingerprint: classifier.deploymentFingerprint,
+      headerHash: routed.evidence.headerHash,
+      authenticatedObservationDigest: observationDigest,
+      payloadEnvelopeSha256: routed.evidence.payloadEnvelopeSha256,
+      payloadSha256: routed.evidence.payloadSha256,
+      replayVersion: COMPLETE_CANONICAL_REPLAY_V1,
+      replayDigest: digest({
+        route: "authenticated_mint_declared_asset_limit_v1",
+        launchScope: classifier.launchScope,
+        selected: detectionJson(selected),
+      }),
+      launchScope: classifier.launchScope,
+      launchScopeDigest,
+      classificationDigest: digest(classification),
+    } as const;
+    return installed
+      ? sealDecision({
+          ...common,
+          decision: "fault_detected",
+          category: "mintDeclaredAssetLimit",
+          violationId: selected.violationId,
+          detectionId: selected.detectionId,
+          position: selected.position.toString(),
+        })
+      : sealDecision({
+          ...common,
+          decision: "unprovable",
+          reason: "category_not_installed",
+          violationId: selected.violationId,
+          detectionId: selected.detectionId,
+          position: selected.position.toString(),
+        });
+  }
   if (routed.kind === "canonical_decodability") {
     const selected: CanonicalViolationDetectionV1 = {
       detectionId: `${CANONICAL_DECODABILITY_VIOLATION_ID_V1}:${routed.evidence.selected.transactionIndex.toString()}:${routed.evidence.selected.nodeTxId}:${routed.evidence.selected.fieldIndex.toString()}:${routed.evidence.selected.verdict.toString()}`,
@@ -465,10 +605,66 @@ export const classifyProductionHeaderV1 = async ({
           position: selected.position.toString(),
         });
   }
+  if (routed.kind === "field_preimage_length_mismatch") {
+    const selected: CanonicalViolationDetectionV1 = {
+      detectionId: `${FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID_V1}:${routed.evidence.position.toString()}:${routed.evidence.prepared.transactionId}:${routed.evidence.prepared.fieldIndex.toString()}:${routed.evidence.prepared.direction}`,
+      headerHash: routed.evidence.prepared.headerHash,
+      violationId: FIELD_PREIMAGE_LENGTH_MISMATCH_VIOLATION_ID_V1,
+      position: routed.evidence.position,
+    };
+    const installed = classifier.launchScope.includes(
+      "fieldPreimageLengthMismatch",
+    );
+    const classification = {
+      decision: installed ? "fault_detected" : "unprovable",
+      selected: detectionJson(selected),
+      reason: installed ? null : "category_not_installed",
+    } as const;
+    const common = {
+      schemaVersion: PRODUCTION_HEADER_DECISION_V1,
+      classifierVersion: PRODUCTION_HEADER_CLASSIFIER_V1,
+      deploymentFingerprint: classifier.deploymentFingerprint,
+      headerHash: routed.evidence.prepared.headerHash,
+      authenticatedObservationDigest: observationDigest,
+      payloadEnvelopeSha256: routed.evidence.payloadEnvelopeSha256,
+      payloadSha256: routed.evidence.payloadSha256,
+      replayVersion: COMPLETE_CANONICAL_REPLAY_V1,
+      replayDigest: digest({
+        route: "authenticated_field_preimage_length_mismatch_v1",
+        launchScope: classifier.launchScope,
+        selected: detectionJson(selected),
+      }),
+      launchScope: classifier.launchScope,
+      launchScopeDigest,
+      classificationDigest: digest(classification),
+    } as const;
+    return installed
+      ? sealDecision({
+          ...common,
+          decision: "fault_detected",
+          category: "fieldPreimageLengthMismatch",
+          violationId: selected.violationId,
+          detectionId: selected.detectionId,
+          position: selected.position.toString(),
+        })
+      : sealDecision({
+          ...common,
+          decision: "unprovable",
+          reason: "category_not_installed",
+          violationId: selected.violationId,
+          detectionId: selected.detectionId,
+          position: selected.position.toString(),
+        });
+  }
 
   if (replayContext !== undefined && predecessorObservation !== undefined) {
     throw new Error(
       "production classifier accepts either an admitted replay context or a predecessor observation, never both",
+    );
+  }
+  if (replayContext?.historicalCorpus !== undefined) {
+    throw new Error(
+      "production classifier rejects caller-supplied historical replay authority",
     );
   }
   let admittedReplayContext = replayContext;
@@ -542,6 +738,36 @@ export const classifyProductionHeaderV1 = async ({
       violationId: selected.violationId,
       detectionId: selected.detectionId,
       position: selected.position.toString(),
+    });
+  }
+  if (
+    classifier.launchScope.some((category) =>
+      ["resolvedOutputNonCanonical", "spendInputSignerMissing"].includes(
+        category,
+      ),
+    )
+  ) {
+    const historicalAuthority = authority.historicalReplayAuthority;
+    if (historicalAuthority === undefined) {
+      throw new Error(
+        "historical-output complete replay lost its admitted historical authority",
+      );
+    }
+    const corpus = await resolveProductionHistoricalNativeScriptCorpusV1({
+      deploymentFingerprint: classifier.deploymentFingerprint,
+      ...historicalAuthority,
+      currentEvidence: routed.evidence,
+      sources,
+      ...(retries === undefined ? {} : { retries }),
+    });
+    admittedReplayContext = Object.freeze({
+      ...(admittedReplayContext?.predecessor === undefined
+        ? {}
+        : { predecessor: admittedReplayContext.predecessor }),
+      historicalCorpus: admitCompleteCanonicalReplayHistoricalCorpusV1({
+        evidence: routed.evidence,
+        corpus,
+      }),
     });
   }
   const replayDecision = await authority.replayer.replay(

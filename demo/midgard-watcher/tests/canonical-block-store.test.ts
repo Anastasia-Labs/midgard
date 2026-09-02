@@ -206,6 +206,7 @@ const daPayload = (headerHash: string): DaPayloadV1 => {
       transition_trace: [[repeatHex(0x0c, 32), repeatHex(0x0d, 48)]],
       event_to_step: [[repeatHex(0x0e, 32), repeatHex(0x0f, 8)]],
       validation_traces: [[repeatHex(0x10, 32), repeatHex(0x11, 24)]],
+      validation_trace_witnesses: [],
       counts,
     },
   };

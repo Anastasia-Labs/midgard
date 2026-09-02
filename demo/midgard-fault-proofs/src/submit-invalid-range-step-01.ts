@@ -1,4 +1,5 @@
 import {
+  acceptedVerdictSubjectV1,
   getHeaderV1FromStateQueueDatum,
   getLinkedListNodeViewFromUTxO,
   HUB_ORACLE_ASSET_NAME,
@@ -296,6 +297,7 @@ export const submitInvalidRangeStep01 = async ({
     {
       fraud_prover: signer.paymentKeyHash,
       data: {
+        subject: acceptedVerdictSubjectV1(txInclusion.nativeTxId),
         block_slot: header.blockSlot,
         bad_tx_normalized_validity_range: normalizedValidityRange,
       },
@@ -372,7 +374,10 @@ export const submitInvalidRangeStep01 = async ({
             },
           ],
         };
-    return Data.to({ Continue: [carriage] }, InvalidRangeStep01SpendRedeemer);
+    return Data.to(
+      { Continue: [{ source: { AcceptedSource: { inclusion: carriage } } }] },
+      InvalidRangeStep01SpendRedeemer,
+    );
   }) satisfies BuildTxWithRedeemer;
   const threadAssets = {
     lovelace: threadUtxo.assets.lovelace ?? 0n,

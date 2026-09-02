@@ -1,6 +1,10 @@
 import { MIDGARD_POSIX_TIME_NONE } from "@al-ft/midgard-core";
 import { Data } from "@lucid-evolution/lucid";
 
+import { OutputReferenceSchema } from "../common.js";
+import { ForcedInclusionTxV1Schema, HeaderV1Schema } from "../ledger-state.js";
+import { RejectionReasonV1Schema } from "../rejection-reason-v1.js";
+import { rootMembershipProofSchema } from "../transition-trace.js";
 import {
   FaultProofStepCancel,
   FaultProofStepCancelSchema,
@@ -22,8 +26,43 @@ export type InvalidRangeStep01Datum = Data.Static<
 export const InvalidRangeStep01Datum =
   InvalidRangeStep01DatumSchema as unknown as InvalidRangeStep01Datum;
 
+export const InvalidRangeVerdictSubjectV1Schema = Data.Object({
+  version: Data.Integer(),
+  direction: Data.Integer(),
+  source_kind: Data.Integer(),
+  transaction_id: Data.Bytes(),
+  source_key: Data.Bytes(),
+  rejection_reason: Data.Nullable(RejectionReasonV1Schema),
+});
+export const InvalidRangeStep01SourceV1Schema = Data.Enum([
+  Data.Object({
+    AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
+  }),
+  Data.Object({
+    ForcedSource: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      header: HeaderV1Schema,
+      membership: rootMembershipProofSchema(
+        OutputReferenceSchema,
+        ForcedInclusionTxV1Schema,
+      ),
+      direction: Data.Integer(),
+    }),
+  }),
+]);
+export const InvalidRangeForcedSourcePayloadV1Schema = Data.Object({
+  header: HeaderV1Schema,
+  membership: rootMembershipProofSchema(
+    OutputReferenceSchema,
+    ForcedInclusionTxV1Schema,
+  ),
+  direction: Data.Integer(),
+});
 export const InvalidRangeStep01SpendRedeemerSchema =
-  faultProofStepRedeemerSchema(NativeTxInclusionCarriageSchema);
+  faultProofStepRedeemerSchema(
+    Data.Object({ source: InvalidRangeStep01SourceV1Schema }),
+  );
 export type InvalidRangeStep01SpendRedeemer = Data.Static<
   typeof InvalidRangeStep01SpendRedeemerSchema
 >;
@@ -47,6 +86,7 @@ export const NormalizedTimeRange =
   NormalizedTimeRangeSchema as unknown as NormalizedTimeRange;
 
 export const InvalidRangeStep02StateSchema = Data.Object({
+  subject: InvalidRangeVerdictSubjectV1Schema,
   block_slot: Data.Integer(),
   bad_tx_normalized_validity_range: NormalizedTimeRangeSchema,
 });

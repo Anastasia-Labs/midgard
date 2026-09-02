@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "midgard-observers-forbidden-on-untagged-network-fit-ledger-v1",
+  "category": "observersForbiddenOnUntaggedNetwork",
+  "categoryId": "00000024",
+  "aikenVersion": "v1.1.23+5adf783",
+  "blueprintSha256": "61ec67157434a1904ddac0a355337a1656d1ef62448744fa2856d0a1aa1602cb",
+  "maximumShape": {
+    "observerCount": 505,
+    "fieldPreimageBytes": 15153,
+    "carriage": "Certified"
+  },
+  "referencePublications": [
+    { "role": "step-01", "completeSignedBytes": 14794, "reserveMarginBytes": 1078 },
+    { "role": "step-02", "completeSignedBytes": 7318, "reserveMarginBytes": 8554 }
+  ],
+  "carriage": [
+    { "role": "chunk-0", "completeSignedBytes": 15872, "ledgerByteMargin": 512 },
+    { "role": "chunk-1", "completeSignedBytes": 252, "ledgerByteMargin": 16132 },
+    { "role": "certificate", "completeSignedBytes": 1247, "ledgerByteMargin": 15137, "executionMemory": "456313", "executionSteps": "173874890" }
+  ],
+  "lifecycle": [
+    { "role": "init", "completeSignedBytes": 1221, "ledgerByteMargin": 15163, "executionMemory": "622727", "executionSteps": "215794891" },
+    { "role": "cancel-step-01", "completeSignedBytes": 611, "ledgerByteMargin": 15773, "executionMemory": "124608", "executionSteps": "42420566" },
+    { "role": "step-01", "completeSignedBytes": 1983, "ledgerByteMargin": 14401, "executionMemory": "1309530", "executionSteps": "445493980" },
+    { "role": "cancel-step-02", "completeSignedBytes": 611, "ledgerByteMargin": 15773, "executionMemory": "113608", "executionSteps": "40660566" },
+    { "role": "permanent-proof-mint", "completeSignedBytes": 1361, "ledgerByteMargin": 15023, "executionMemory": "917217", "executionSteps": "291501006" },
+    { "role": "fraudulent-block-removal", "completeSignedBytes": 2060, "ledgerByteMargin": 14324, "executionMemory": "3054590", "executionSteps": "1037458598" }
+  ],
+  "ledgerDigest": "b6a279c9f211ee1e289c29335e5b47d11efd55d7f9b2b3aaf834e6ebc7e84499"
+}

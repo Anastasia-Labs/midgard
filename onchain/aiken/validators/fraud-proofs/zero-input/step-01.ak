@@ -8,13 +8,21 @@ use aiken/merkle_patricia_forestry as mpf
 use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
-use midgard/fraud_proofs/common.{cancel, pass_native_tx_to_next_step_carried}
+use midgard/fraud_proofs/common.{
+  cancel, continue, pass_native_tx_to_next_step_carried,
+}
 use midgard/fraud_proofs/native_binding_fixture_v1 as fixture
+use midgard/fraud_proofs/native_tx/compact.{
+  verify_native_tx_compact_cbor_v1, verify_native_tx_proof_source_v1,
+}
 use midgard/fraud_proofs/native_tx/types.{
   MidgardTransaction, MidgardTransactionBody,
 }
-use midgard/fraud_proofs/zero_input/step_01.{Datum, SpendRedeemer}
-use midgard/fraud_proofs/zero_input/step_02
+use midgard/fraud_proofs/proof_thread_substrate_v1 as substrate
+use midgard/fraud_proofs/zero_input/rule.{bind_state_v1}
+use midgard/fraud_proofs/zero_input/step_01.{
+  AcceptedSource, Args, Datum, ForcedSource, SpendRedeemer,
+}
 
 validator main(
   step_02_validator_script_hash: ScriptHash,
@@ -37,7 +45,7 @@ validator main(
           computation_thread_mint_redeemer_index,
           tx,
         )
-      ct.Continue(tx_inclusion_args) -> {
+      ct.Continue(Args{source: AcceptedSource { inclusion }}) -> {
         // 1. Generic validations for passing the provided bad tx to the next
         //    step must pass.
         let
@@ -48,13 +56,13 @@ validator main(
             output_script_hash,
             output_state_data,
             _header,
-            bad_tx_id,
+            _bad_tx_id,
             bad_tx_view
           <- pass_native_tx_to_next_step_carried(
           computation_thread_token_policy_id,
           hub_oracle,
           datum,
-          tx_inclusion_args,
+          inclusion,
           own_out_ref,
           tx,
         )
@@ -67,11 +75,51 @@ validator main(
         //    item count, so neither a field commitment nor any block root needs
         //    to be threaded forward.
         expect output_script_hash == step_02_validator_script_hash
-        let expected_output_state: Data = step_02.State { bad_tx_id }
+        let expected_output_state: Data = bind_state_v1(
+          substrate.bind_accepted_subject_v1(bad_tx_view),
+        )
         expect output_state_data == expected_output_state
 
         // Done.
         True
+      }
+      ct.Continue(Args{source: ForcedSource {
+        input_index,
+        output_index,
+        header,
+        membership,
+        direction,
+      }}) -> {
+        let Transaction { inputs, outputs, .. } = tx
+        expect Some(step_datum) = datum
+        let _, thread_name, _, _, output_script_hash, output_state_data <- continue(
+          computation_thread_token_policy_id,
+          step_datum,
+          input_index,
+          output_index,
+          own_out_ref,
+          inputs,
+          outputs,
+        )
+        let subject = substrate.bind_forced_subject_to_thread_v1(
+          thread_name,
+          header,
+          membership,
+          direction,
+        )
+        let leaf = membership.value
+        let Pair(verified, _) = verify_native_tx_proof_source_v1(
+          leaf.tx_id,
+          leaf.source.compact_cbor,
+          leaf.source.witness_set_compact_cbor,
+          leaf.source.field_preimage_lengths_cbor,
+        )
+        let expected_output_state: Data = bind_state_v1(subject)
+        and {
+          verified.tx_id == subject.transaction_id,
+          output_script_hash == step_02_validator_script_hash,
+          output_state_data == expected_output_state,
+        }
       }
     }
   }
@@ -94,7 +142,11 @@ fn zero_input_bad_tx() -> MidgardTransaction {
 /// the first step and forwards its §2.5 anchor.
 test zero_input_step_01_binds_native_v1_block_fixture() {
   let block = fixture.native_block_fixture_v1(zero_input_bad_tx())
-  let expected_output_state: Data = step_02.State { bad_tx_id: block.tx_id }
+  let expected_output_state: Data = bind_state_v1(
+    substrate.bind_accepted_subject_v1(
+      verify_native_tx_compact_cbor_v1(block.tx_id, block.compact_cbor),
+    ),
+  )
   let l1_tx = fixture.continue_step_l1_tx_v1(
     block,
     expected_output_state,
@@ -107,7 +159,13 @@ test zero_input_step_01_binds_native_v1_block_fixture() {
     fixture.computation_thread_policy_id,
     fixture.hub_oracle_script_hash,
     Some(fixture.step_datum_without_state()),
-    ct.Continue(fixture.native_inclusion_carriage_v1(block)),
+    ct.Continue(
+      Args {
+        source: AcceptedSource {
+          inclusion: fixture.native_inclusion_carriage_v1(block),
+        },
+      },
+    ),
     fixture.own_out_ref(),
     l1_tx,
   )
@@ -144,14 +202,25 @@ fn run_zero_input_step_01_published(
   claim_chunk_count: Int,
   steps: mpf.Proof,
 ) -> Bool {
-  let expected_output_state: Data = step_02.State { bad_tx_id: block.tx_id }
+  let expected_output_state: Data = bind_state_v1(
+    substrate.bind_accepted_subject_v1(
+      verify_native_tx_compact_cbor_v1(block.tx_id, block.compact_cbor),
+    ),
+  )
   main.spend(
     fixture.next_step_script_hash,
     fixture.computation_thread_policy_id,
     fixture.hub_oracle_script_hash,
     Some(fixture.step_datum_without_state()),
     ct.Continue(
-      fixture.published_chunk_inclusion_carriage_v1(carriage_block, chunk_count),
+      Args {
+        source: AcceptedSource {
+          inclusion: fixture.published_chunk_inclusion_carriage_v1(
+            carriage_block,
+            chunk_count,
+          ),
+        },
+      },
     ),
     fixture.own_out_ref(),
     fixture.continue_step_chunked_l1_tx_v1(
@@ -222,9 +291,14 @@ test zero_input_step_01_rejects_forged_transactions_root() fail {
     fixture.valid_native_tx_v1(),
   )
   let forged_block = fixture.native_block_fixture_v1(zero_input_bad_tx())
-  let expected_output_state: Data = step_02.State {
-    bad_tx_id: forged_block.tx_id,
-  }
+  let expected_output_state: Data = bind_state_v1(
+    substrate.bind_accepted_subject_v1(
+      verify_native_tx_compact_cbor_v1(
+        forged_block.tx_id,
+        forged_block.compact_cbor,
+      ),
+    ),
+  )
   // The prover claims the forged bad tx under the valid block's header by
   // supplying the forged raw root; the counted-root unwrap must reject it.
   let claimed_block = fixture.NativeBlockFixtureV1 {
@@ -244,7 +318,13 @@ test zero_input_step_01_rejects_forged_transactions_root() fail {
     fixture.computation_thread_policy_id,
     fixture.hub_oracle_script_hash,
     Some(fixture.step_datum_without_state()),
-    ct.Continue(fixture.native_inclusion_carriage_v1(claimed_block)),
+    ct.Continue(
+      Args {
+        source: AcceptedSource {
+          inclusion: fixture.native_inclusion_carriage_v1(claimed_block),
+        },
+      },
+    ),
     fixture.own_out_ref(),
     l1_tx,
   )

@@ -379,6 +379,7 @@ const buildFixture = async ({
       forced_transaction_preimages: [],
       cek_program_material: [],
       validation_traces: sortEntries(validationTraceEntries),
+      validation_trace_witnesses: [],
       counts,
     },
   };

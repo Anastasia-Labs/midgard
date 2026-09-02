@@ -45,7 +45,6 @@ import {
   reachFraudProofPreSubmitBoundaryV1,
   workflowReferenceScriptV1,
 } from "../workflow/transaction-boundary-v1.js";
-import type { MissingNativeScriptTxContractsV1 } from "./contracts-v1.js";
 import {
   type MissingNativeScriptTxStepIndexV1,
   missingNativeScriptTxStepLabelV1,
@@ -85,7 +84,15 @@ export const submitMissingNativeScriptTxBindingV1 = async ({
   readonly lucid: LucidEvolution;
   readonly blueprint: unknown;
   readonly network: Network;
-  readonly contracts: MissingNativeScriptTxContractsV1;
+  readonly contracts: {
+    readonly steps: readonly {
+      readonly spendingScript: Script;
+      readonly spendingScriptHash: string;
+      readonly spendingScriptAddress: string;
+    }[];
+    readonly hubOraclePolicyId: string;
+    readonly stateQueuePolicyId: string;
+  };
   readonly signer: ResolvedProverSigner;
   readonly stepIndex: 0 | 2;
   readonly threadUtxo: UTxO;
@@ -146,6 +153,9 @@ export const submitMissingNativeScriptTxBindingV1 = async ({
   };
   const phasAddress = phasMembershipRewardAddress(network, phasScript);
   const nextStep = contracts.steps[stepIndex + 1];
+  if (nextStep === undefined) {
+    throw missingNativeScriptTxSubmitError(`${label} has no successor step.`);
+  }
   const outputMatches = computationThreadOutputPredicate({
     address: nextStep.spendingScriptAddress,
     datum: nextDatum,

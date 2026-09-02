@@ -9,6 +9,7 @@
 
 import { outRefLabel } from "@al-ft/midgard-core";
 import {
+  acceptedVerdictSubjectV1,
   FraudProofTokenDatum,
   InvalidRangeStep02Datum,
   ZeroInputStep02Datum,
@@ -213,6 +214,9 @@ describe("fault-proof emulator integration", () => {
     expect(step02Datum).toEqual({
       fraud_prover: proverPaymentKeyHash,
       data: {
+        subject: acceptedVerdictSubjectV1(
+          invalidRangeInclusion.badTx.nativeTxId,
+        ),
         block_slot: fraudulentHeader.blockSlot,
         bad_tx_normalized_validity_range:
           invalidRangeInclusion.normalizedValidityRange,

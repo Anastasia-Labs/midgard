@@ -449,6 +449,7 @@ const buildPayloadFixture = async ({
       forced_transaction_preimages: sorted(forcedTransactionPreimages),
       cek_program_material: [],
       validation_traces: sorted(validationTraces),
+      validation_trace_witnesses: [],
       counts,
     },
   };

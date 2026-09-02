@@ -123,7 +123,6 @@ export const publishWithdrawnReferenceInputReferenceScriptsV1 = async ({
       lucid,
       script,
       label: `withdrawn-reference-input step-0${(index + 1).toString()}`,
-      oversized: true,
     });
     published.push(utxo);
   }

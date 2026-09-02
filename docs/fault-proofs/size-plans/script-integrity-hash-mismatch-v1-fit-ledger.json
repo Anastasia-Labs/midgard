@@ -1,0 +1,157 @@
+{
+  "schemaVersion": "midgard-script-integrity-hash-mismatch-fit-ledger-v1",
+  "category": "scriptIntegrityHashMismatch",
+  "categoryId": "00000033",
+  "compilerVersion": "aiken v1.1.23+5adf783",
+  "blueprintSha256": "ff06bdfca25e8b5f2ec71ff32c599d89c4bf737a93f4e6826992f5af8762e78f",
+  "limits": {
+    "publicationReserveBytes": 15872,
+    "transactionBytes": 16384,
+    "memory": 16500000,
+    "cpu": 10000000000
+  },
+  "measurementMethod": "Fresh testnet blueprint; fully applied scripts published by ordinary signed Lucid emulator transactions with local UPLC evaluation. Focused Aiken rows are exact semantic vector execution units.",
+  "referencePublications": [
+    {
+      "step": 1,
+      "appliedBytes": 14692,
+      "signedBytes": 14968,
+      "reserveMarginBytes": 904,
+      "transactionMarginBytes": 1416
+    },
+    {
+      "step": 2,
+      "appliedBytes": 11817,
+      "signedBytes": 12093,
+      "reserveMarginBytes": 3779,
+      "transactionMarginBytes": 4291
+    },
+    {
+      "step": 3,
+      "appliedBytes": 1603,
+      "signedBytes": 1879,
+      "reserveMarginBytes": 13993,
+      "transactionMarginBytes": 14505
+    },
+    {
+      "step": 4,
+      "appliedBytes": 5401,
+      "signedBytes": 5677,
+      "reserveMarginBytes": 10195,
+      "transactionMarginBytes": 10707
+    },
+    {
+      "step": 5,
+      "appliedBytes": 1957,
+      "signedBytes": 2271,
+      "reserveMarginBytes": 13601,
+      "transactionMarginBytes": 14113
+    }
+  ],
+  "focusedAikenMaximum": {
+    "test": "equality_contradicts_wrongful_rejection",
+    "memory": 221775,
+    "cpu": 79009581,
+    "memoryMargin": 16278225,
+    "cpuMargin": 9920990419
+  },
+  "signedLifecycle": [
+    {
+      "step": "cancel-step01",
+      "signedBytes": 611,
+      "memory": 125008,
+      "cpu": 42484566,
+      "transactionMarginBytes": 15773
+    },
+    {
+      "step": "cancel-step02",
+      "signedBytes": 611,
+      "memory": 116376,
+      "cpu": 41088424,
+      "transactionMarginBytes": 15773
+    },
+    {
+      "step": "cancel-step03",
+      "signedBytes": 611,
+      "memory": 110676,
+      "cpu": 40176424,
+      "transactionMarginBytes": 15773
+    },
+    {
+      "step": "cancel-step04",
+      "signedBytes": 611,
+      "memory": 110876,
+      "cpu": 40208424,
+      "transactionMarginBytes": 15773
+    },
+    {
+      "step": "cancel-step05",
+      "signedBytes": 611,
+      "memory": 111876,
+      "cpu": 40368424,
+      "transactionMarginBytes": 15773
+    },
+    {
+      "step": "init",
+      "signedBytes": 1497,
+      "memory": 676404,
+      "cpu": 232253233,
+      "transactionMarginBytes": 14887
+    },
+    {
+      "step": "step01",
+      "signedBytes": 2054,
+      "memory": 1331260,
+      "cpu": 453209414,
+      "transactionMarginBytes": 14330
+    },
+    {
+      "step": "step02",
+      "signedBytes": 2543,
+      "memory": 1123496,
+      "cpu": 513539133,
+      "transactionMarginBytes": 13841
+    },
+    {
+      "step": "step03",
+      "signedBytes": 806,
+      "memory": 124669,
+      "cpu": 47985803,
+      "transactionMarginBytes": 15578
+    },
+    {
+      "step": "step04-0",
+      "signedBytes": 806,
+      "memory": 142621,
+      "cpu": 54192686,
+      "transactionMarginBytes": 15578
+    },
+    {
+      "step": "step04-1",
+      "signedBytes": 838,
+      "memory": 170121,
+      "cpu": 65205322,
+      "transactionMarginBytes": 15546
+    },
+    {
+      "step": "step05",
+      "signedBytes": 916,
+      "memory": 270820,
+      "cpu": 98634170,
+      "transactionMarginBytes": 15468
+    },
+    {
+      "step": "leased-removal",
+      "signedBytes": 2060,
+      "memory": 3022261,
+      "cpu": 1030518609,
+      "transactionMarginBytes": 14324
+    }
+  ],
+  "languageViewVectors": {
+    "empty": "01f4b788593d4f70de2a45c2e1e87088bfbdfa29577ae1b62aba60e095e3ab53",
+    "plutusV3": "d7239eb1bd8b7376dedfbf7e6201815b225c023d11c975cd99d25d5236b199a1",
+    "midgardV1": "71201d25ea11e4104eda108782a7d67b37b4ae97df6dc3258b06d9c98e58bbcb",
+    "both": "6d49b4f24c60bec1cb34a2538278252059ec0601b7f675ef73fe2b48e24317d8"
+  }
+}

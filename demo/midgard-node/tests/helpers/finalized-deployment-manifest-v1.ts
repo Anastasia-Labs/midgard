@@ -24,7 +24,6 @@ import {
   normalizeDeploymentManifestV1JsonValue,
   parseDeploymentManifestV1Value,
 } from "@/deployment-manifest-v1.js";
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
 import {
   buildFraudProofCatalogueDeploymentInfo,
   fraudProofsToIndexedValidators,
@@ -32,6 +31,7 @@ import {
 
 import { TEST_AVAILABILITY_CHALLENGE_V1 } from "./availability-challenge-v1.js";
 import { TEST_CARDANO_PROTOCOL_PARAMETERS_V1 } from "./cardano-protocol-parameters-v1.js";
+import { loadRealMidgardContractsForTest } from "./real-midgard-contracts.js";
 
 const DA_VKEY = "44".repeat(32);
 const CARDANO_PARAMETERS = TEST_CARDANO_PROTOCOL_PARAMETERS_V1;
@@ -69,11 +69,10 @@ const IDENTITY: DeploymentManifestV1IdentityContext = {
 
 export const makeFinalizedDeploymentManifestV1Fixture =
   async (): Promise<DeploymentManifestV1Value> => {
-    const contracts = await Effect.runPromise(
-      AlwaysSucceedsContract.pipe(
-        Effect.provide(AlwaysSucceedsContract.Default),
-      ),
-    );
+    const contracts = await loadRealMidgardContractsForTest({
+      txHash: "ab".repeat(32),
+      outputIndex: 0,
+    });
     const nativeScriptCbor = `8200581c${"00".repeat(28)}`;
     const referenceScriptAuthPolicy: ReferenceScriptAuthPolicyDeploymentInfo = {
       policyId: validatorToScriptHash({

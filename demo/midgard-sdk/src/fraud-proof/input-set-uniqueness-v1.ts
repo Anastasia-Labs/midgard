@@ -17,8 +17,11 @@
 
 import { Data } from "@lucid-evolution/lucid";
 
-import { H32Schema } from "@/common.js";
+import { H32Schema, OutputReferenceSchema } from "@/common.js";
+import { ForcedInclusionTxV1Schema, HeaderV1Schema } from "@/ledger-state.js";
 import { FieldCarriageV1Schema } from "@/native-tx-field-access-v1.js";
+import { RejectionReasonV1Schema } from "@/rejection-reason-v1.js";
+import { rootMembershipProofSchema } from "@/transition-trace.js";
 
 import { FieldOpeningV1Schema } from "./field-opening-v1.js";
 import {
@@ -36,8 +39,27 @@ export type InputSetUniquenessStep01Datum = Data.Static<
 export const InputSetUniquenessStep01Datum =
   InputSetUniquenessStep01DatumSchema as unknown as InputSetUniquenessStep01Datum;
 
+export const InputSetUniquenessStep01SourceSchema = Data.Enum([
+  Data.Object({
+    AcceptedSource: Data.Object({ inclusion: NativeTxInclusionCarriageSchema }),
+  }),
+  Data.Object({
+    ForcedSource: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      header: HeaderV1Schema,
+      membership: rootMembershipProofSchema(
+        OutputReferenceSchema,
+        ForcedInclusionTxV1Schema,
+      ),
+    }),
+  }),
+]);
+export const InputSetUniquenessStep01ArgsSchema = Data.Object({
+  source: InputSetUniquenessStep01SourceSchema,
+});
 export const InputSetUniquenessStep01SpendRedeemerSchema =
-  faultProofStepRedeemerSchema(NativeTxInclusionCarriageSchema);
+  faultProofStepRedeemerSchema(InputSetUniquenessStep01ArgsSchema);
 export type InputSetUniquenessStep01SpendRedeemer = Data.Static<
   typeof InputSetUniquenessStep01SpendRedeemerSchema
 >;
@@ -122,3 +144,82 @@ export type InputSetUniquenessStep02SpendRedeemer = Data.Static<
 >;
 export const InputSetUniquenessStep02SpendRedeemer =
   InputSetUniquenessStep02SpendRedeemerSchema as unknown as InputSetUniquenessStep02SpendRedeemer;
+
+export const InputSetUniquenessVerdictSubjectSchema = Data.Object({
+  version: Data.Integer(),
+  direction: Data.Integer(),
+  source_kind: Data.Integer(),
+  transaction_id: H32Schema,
+  source_key: Data.Bytes(),
+  rejection_reason: Data.Nullable(RejectionReasonV1Schema),
+});
+
+export const InputSetUniquenessBoundDuplicateInputSchema = Data.Object({
+  subject: InputSetUniquenessVerdictSubjectSchema,
+  first_field_index: Data.Integer(),
+  first_item_index: Data.Integer(),
+  second_field_index: Data.Integer(),
+  second_item_index: Data.Integer(),
+});
+export type InputSetUniquenessBoundDuplicateInput = Data.Static<
+  typeof InputSetUniquenessBoundDuplicateInputSchema
+>;
+
+export const InputSetUniquenessStep03StateSchema = Data.Object({
+  bound: InputSetUniquenessBoundDuplicateInputSchema,
+});
+export type InputSetUniquenessStep03State = Data.Static<
+  typeof InputSetUniquenessStep03StateSchema
+>;
+export const InputSetUniquenessStep03DatumSchema = faultProofStepDatumSchema(
+  InputSetUniquenessStep03StateSchema,
+);
+export const InputSetUniquenessStep03ArgsSchema = Data.Object({
+  input_index: Data.Integer(),
+  output_index: Data.Integer(),
+  native_tx_compact_cbor: Data.Bytes(),
+  spend_inputs_carriage: FieldCarriageV1Schema,
+  reference_inputs_carriage: FieldCarriageV1Schema,
+});
+export const InputSetUniquenessStep03SpendRedeemerSchema =
+  faultProofStepRedeemerSchema(InputSetUniquenessStep03ArgsSchema);
+export type InputSetUniquenessStep03SpendRedeemer = Data.Static<
+  typeof InputSetUniquenessStep03SpendRedeemerSchema
+>;
+
+export const InputSetUniquenessUniqueScanStateSchema = Data.Object({
+  bound: InputSetUniquenessBoundDuplicateInputSchema,
+  spend_count: Data.Integer(),
+  reference_count: Data.Integer(),
+  cursor: Data.Integer(),
+  previous_item: Data.Bytes(),
+  next_expected_script_hash: Data.Bytes({ minLength: 28, maxLength: 28 }),
+  checkpoint_hash: H32Schema,
+});
+export type InputSetUniquenessUniqueScanState = Data.Static<
+  typeof InputSetUniquenessUniqueScanStateSchema
+>;
+export const InputSetUniquenessStep04DatumSchema = faultProofStepDatumSchema(
+  InputSetUniquenessUniqueScanStateSchema,
+);
+export const InputSetUniquenessStep04ArgsSchema = Data.Enum([
+  Data.Object({
+    Advance: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      field_opening: FieldOpeningV1Schema,
+    }),
+  }),
+  Data.Object({
+    Finalize: Data.Object({
+      input_index: Data.Integer(),
+      output_index: Data.Integer(),
+      fraud_proof_mint_redeemer_index: Data.Integer(),
+    }),
+  }),
+]);
+export const InputSetUniquenessStep04SpendRedeemerSchema =
+  faultProofStepRedeemerSchema(InputSetUniquenessStep04ArgsSchema);
+export type InputSetUniquenessStep04SpendRedeemer = Data.Static<
+  typeof InputSetUniquenessStep04SpendRedeemerSchema
+>;

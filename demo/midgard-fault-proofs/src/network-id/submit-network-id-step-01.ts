@@ -241,6 +241,7 @@ export const submitNetworkIdStep01 = async ({
     expected_network_id: contracts.expectedNetworkId,
     fault: prepared.fault,
     post_utxo: null,
+    forced_source_key: null,
   };
   const datum = Data.to(
     { fraud_prover: signer.paymentKeyHash, data: state } as never,
@@ -298,6 +299,7 @@ export const submitNetworkIdStep01 = async ({
           {
             tx_inclusion: carriage,
             post_utxo_membership: null,
+            forced_source: null,
             fault: prepared.fault,
           },
         ],

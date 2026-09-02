@@ -15,9 +15,11 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   computeMidgardNativeTxIdV1,
+  deriveMidgardNativeTxProofSourceV1,
   EMPTY_CBOR_LIST,
   EMPTY_NULL_ROOT,
   encodeCbor,
+  encodeMidgardNativeTxCanonicalV1,
   encodeMidgardNativeTxCompactV1,
   materializeMidgardNativeTxFromCanonicalV1,
   MIDGARD_NATIVE_TX_V1_VERSION,
@@ -120,6 +122,12 @@ export type InputSetUniquenessFixtureV1 = {
   readonly txInclusion: SubmitStep01TxInclusion;
   readonly spendInputItemCbors: readonly string[];
   readonly referenceInputItemCbors: readonly string[];
+  readonly forcedSource: {
+    readonly compact_cbor: string;
+    readonly witness_set_compact_cbor: string;
+    readonly field_preimage_lengths_cbor: string;
+  };
+  readonly fullTransactionCbor: Buffer;
 };
 
 /**
@@ -188,6 +196,7 @@ export const buildInputSetUniquenessFixtureV1 = async ({
     encodeMidgardNativeTxCompactV1(badTx.compact),
   ).toString("hex");
   const badTxSourceCbor = l2TransactionSourceCborV1(badTx);
+  const forcedSource = deriveMidgardNativeTxProofSourceV1(badTx);
   const decoyTxSourceCbor = l2TransactionSourceCborV1(decoyTx);
   const decoyTxId = computeMidgardNativeTxIdV1(decoyTx).toString("hex");
   if (decoyTxId === badTxId) {
@@ -222,6 +231,14 @@ export const buildInputSetUniquenessFixtureV1 = async ({
     },
     spendInputItemCbors: spendItems.map((item) => item.toString("hex")),
     referenceInputItemCbors: referenceItems.map((item) => item.toString("hex")),
+    forcedSource: {
+      compact_cbor: forcedSource.compactCbor.toString("hex"),
+      witness_set_compact_cbor:
+        forcedSource.witnessSetCompactCbor.toString("hex"),
+      field_preimage_lengths_cbor:
+        forcedSource.fieldPreimageLengthsCbor.toString("hex"),
+    },
+    fullTransactionCbor: encodeMidgardNativeTxCanonicalV1(badTx),
   };
 };
 
@@ -308,7 +325,7 @@ export const setupInputSetUniquenessScenarioV1 = async ({
 };
 
 /**
- * Publishes both step validators as reference scripts (production deployment
+ * Publishes all four step validators as reference scripts (production deployment
  * shape per the standing reference-script ruling).
  */
 export const publishInputSetUniquenessReferenceScriptsV1 = async ({
@@ -319,7 +336,7 @@ export const publishInputSetUniquenessReferenceScriptsV1 = async ({
     typeof publishPlainReferenceScriptUtxo
   >[0]["lucid"];
   readonly contracts: InputSetUniquenessContractsV1;
-}): Promise<readonly [UTxO, UTxO]> => {
+}): Promise<readonly [UTxO, UTxO, UTxO, UTxO]> => {
   const published: UTxO[] = [];
   for (const [index, step] of contracts.steps.entries()) {
     const script: Script = step.spendingScript;
@@ -327,11 +344,10 @@ export const publishInputSetUniquenessReferenceScriptsV1 = async ({
       lucid,
       script,
       label: `input-set-uniqueness step-0${(index + 1).toString()}`,
-      oversized: true,
     });
     published.push(utxo);
   }
-  return published as unknown as readonly [UTxO, UTxO];
+  return published as unknown as readonly [UTxO, UTxO, UTxO, UTxO];
 };
 
 // ---------------------------------------------------------------------------
@@ -427,40 +443,48 @@ export const submitRawInputSetUniquenessBindV1 = async ({
       {
         Continue: [
           {
-            RedeemerCarriedInclusion: [
-              {
-                input_index: requireInputIndex(
-                  ctx,
-                  threadUtxo,
-                  "raw input-set-uniqueness bind",
-                ),
-                output_index: requireUniqueOutputIndex(
-                  ctx.outputs,
-                  outputMatches,
-                  "raw input-set-uniqueness bind output",
-                ),
-                hub_ref_input_index: requireReferenceInputIndex(
-                  ctx,
-                  hubOracleUtxo,
-                  "raw input-set-uniqueness hub oracle",
-                ),
-                state_queue_node_ref_input_index: requireReferenceInputIndex(
-                  ctx,
-                  stateQueueBlockUtxo,
-                  "raw input-set-uniqueness state-queue node",
-                ),
-                native_tx_id: txInclusion.nativeTxId,
-                l2_transaction_source_cbor: txInclusion.l2TransactionSourceCbor,
-                transactions_phas_root: txInclusion.transactionsPhasRoot,
-                tx_membership_proof: txInclusion.txMembershipProof,
-                inclusion_proof_script_withdraw_redeemer_index:
-                  requireWithdrawalRedeemerIndex(
-                    ctx,
-                    phasRewardAddress,
-                    "raw input-set-uniqueness PHAS membership",
-                  ),
+            source: {
+              AcceptedSource: {
+                inclusion: {
+                  RedeemerCarriedInclusion: [
+                    {
+                      input_index: requireInputIndex(
+                        ctx,
+                        threadUtxo,
+                        "raw input-set-uniqueness bind",
+                      ),
+                      output_index: requireUniqueOutputIndex(
+                        ctx.outputs,
+                        outputMatches,
+                        "raw input-set-uniqueness bind output",
+                      ),
+                      hub_ref_input_index: requireReferenceInputIndex(
+                        ctx,
+                        hubOracleUtxo,
+                        "raw input-set-uniqueness hub oracle",
+                      ),
+                      state_queue_node_ref_input_index:
+                        requireReferenceInputIndex(
+                          ctx,
+                          stateQueueBlockUtxo,
+                          "raw input-set-uniqueness state-queue node",
+                        ),
+                      native_tx_id: txInclusion.nativeTxId,
+                      l2_transaction_source_cbor:
+                        txInclusion.l2TransactionSourceCbor,
+                      transactions_phas_root: txInclusion.transactionsPhasRoot,
+                      tx_membership_proof: txInclusion.txMembershipProof,
+                      inclusion_proof_script_withdraw_redeemer_index:
+                        requireWithdrawalRedeemerIndex(
+                          ctx,
+                          phasRewardAddress,
+                          "raw input-set-uniqueness PHAS membership",
+                        ),
+                    },
+                  ],
+                },
               },
-            ],
+            },
           },
         ],
       },

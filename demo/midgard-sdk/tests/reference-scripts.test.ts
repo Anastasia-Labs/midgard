@@ -82,7 +82,7 @@ describe("reference-script SDK boundary", () => {
     ).filter(([role]) => role.startsWith("V1 fraud-proof "));
     const tokenNames = fraudProofEntries.map(([, tokenName]) => tokenName);
 
-    expect(fraudProofEntries).toHaveLength(116);
+    expect(fraudProofEntries).toHaveLength(234);
     expect(new Set(tokenNames).size).toBe(tokenNames.length);
     expect(tokenNames.every((name) => Buffer.byteLength(name) <= 32)).toBe(
       true,

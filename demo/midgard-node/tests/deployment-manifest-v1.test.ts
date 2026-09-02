@@ -11,11 +11,13 @@ import {
   computeDeploymentManifestV1JsonDigest as computeSharedDeploymentManifestV1JsonDigest,
   DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES as SHARED_DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES,
   DEPLOYMENT_MANIFEST_V1_ECONOMICS_BY_PROFILE,
+  DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS as SHARED_DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   DEPLOYMENT_MANIFEST_V1_L1_FINALITY,
   DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE as SHARED_DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   normalizeDeploymentManifestV1JsonValue as normalizeSharedDeploymentManifestV1JsonValue,
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import {
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   type FraudProofCatalogueDeploymentInfo,
   REFERENCE_SCRIPT_AUTH_TOKEN_NAMES,
@@ -38,10 +40,7 @@ import {
   normalizeDeploymentManifestV1JsonValue,
   parseDeploymentManifestV1Value,
 } from "@/deployment-manifest-v1.js";
-import {
-  buildFraudProofCatalogueDeploymentInfo,
-  uint32ToFraudProofID,
-} from "@/transactions/initialization.js";
+import { buildFraudProofCatalogueDeploymentInfo } from "@/transactions/initialization.js";
 
 import { TEST_AVAILABILITY_CHALLENGE_V1 } from "./helpers/availability-challenge-v1.js";
 
@@ -60,9 +59,12 @@ beforeAll(async () => {
   CANONICAL_FRAUD_PROOF_CATALOGUE = await Effect.runPromise(
     buildFraudProofCatalogueDeploymentInfo(
       FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map(
-        (categoryName, index) =>
+        (categoryName) =>
           [
-            uint32ToFraudProofID(index),
+            Buffer.from(
+              FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[categoryName],
+              "hex",
+            ),
             { spendingScriptHash: CONTRACT_SCRIPT_HASH } as never,
             categoryName,
           ] as const,
@@ -264,22 +266,16 @@ describe("V1 deployment manifest", () => {
     expect(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE).toEqual(
       SHARED_DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
     );
-    // Re-derived from the wave-current `midgard-core` roster.
-    // `midgard-core/tests/deployment-manifest-identity-v1.test.ts` pins the
-    // same three numbers (169 contracts, 162 reference-script roles, 163 auth
-    // token names) and is green, and the two assertions above make this
-    // package's copies fail closed against it. The state-correction wave is
-    // what moved them: `correctionLockSpend`, `claimRegistrySpend`,
-    // `availabilityChallengeSpend` and `availabilityChallengeMint` joined the
-    // contract vector, and `availability-challenge spending`/`minting` joined
-    // the role and token vocabularies. The claim-registry removal then took
-    // `claimRegistrySpend` back out of the contract vector and
-    // `claim-registry spending` out of the role and token vocabularies,
-    // dropping each of the three by exactly one.
-    expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toHaveLength(169);
-    expect(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_ROLES).toHaveLength(162);
-    expect(Object.keys(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES)).toHaveLength(163);
-    expect(FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER).toHaveLength(32);
+    expect(FRAUD_PROOF_CATALOGUE_CATEGORY_IDS).toEqual(
+      SHARED_DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
+    );
+    // Re-derived from the wave-current `midgard-core` roster. The shared test
+    // pins the same three numbers and this package fails closed against the
+    // complete ordered copies above.
+    expect(DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES).toHaveLength(287);
+    expect(DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_ROLES).toHaveLength(280);
+    expect(Object.keys(REFERENCE_SCRIPT_AUTH_TOKEN_NAMES)).toHaveLength(281);
+    expect(FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER).toHaveLength(54);
   });
 
   it("accepts a canonical authenticated V1 manifest", () => {
@@ -288,7 +284,7 @@ describe("V1 deployment manifest", () => {
     );
   });
 
-  it("rejects catalogue root, positional ID, and membership-proof tampering", () => {
+  it("rejects catalogue root, explicit ID, and membership-proof tampering", () => {
     const { manifestId: _manifestId, ...identity } = canonicalManifest();
     const catalogue =
       identity.contracts.fraudProofCatalogueMint.fraudProofCatalogue!;

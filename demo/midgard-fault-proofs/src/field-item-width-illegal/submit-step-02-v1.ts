@@ -1,0 +1,233 @@
+import { decodeMidgardFieldPreimageV1 } from "@al-ft/midgard-core";
+import {
+  type FieldOpeningV1,
+  requireInputIndex,
+  requireOwnSpendPurpose,
+  requireUniqueOutputIndex,
+} from "@al-ft/midgard-sdk";
+import {
+  type BuildTxWithRedeemer,
+  Data,
+  type LucidEvolution,
+  type UTxO,
+} from "@lucid-evolution/lucid";
+
+import {
+  certifyFaultProofFieldCarriageV1,
+  faultProofFieldOpeningV1,
+  planFaultProofFieldOpeningV1,
+  publishFaultProofFieldCarriageV1,
+} from "../field-opening-v1.js";
+import {
+  requireLinearFaultReferenceScriptV1,
+  requireLinearFaultStepStateV1,
+  requireLinearFaultThreadUtxoV1,
+} from "../linear-fault-family-v1.js";
+import { submitLinearFaultContinueV1 } from "../linear-fault-submit-v1.js";
+import type { ResolvedProverSigner } from "../runtime.js";
+import { computationThreadOutputPredicate } from "../tx-layout.js";
+import type { FraudProofPreSubmitBoundaryV1 } from "../workflow/transaction-boundary-v1.js";
+import type { FieldItemWidthIllegalContractsV1 } from "./contracts-v1.js";
+import type { FieldItemWidthEvidenceV1 } from "./field-item-width-illegal-v1.js";
+import {
+  FieldItemWidthStep02DatumV1Schema,
+  FieldItemWidthStep02RedeemerV1Schema,
+  FieldItemWidthStep03DatumV1Schema,
+} from "./schemas-v1.js";
+
+export const submitFieldItemWidthIllegalStep02V1 = async ({
+  lucid,
+  contracts,
+  categoryId,
+  signer,
+  threadOutRef,
+  evidence,
+  nativeTxCompactCbor,
+  witnessSetCompactCbor,
+  publishCarriage = false,
+  publishedCarriageUtxos,
+  certificateUtxo: suppliedCertificateUtxo,
+  certificateReferenceScriptUtxo,
+  referenceScriptUtxo,
+  publicationPreSubmitBoundary,
+  certificatePreSubmitBoundary,
+  onCarriageReady,
+  preSubmitBoundary,
+  awaitConfirmation = true,
+}: {
+  readonly lucid: LucidEvolution;
+  readonly contracts: FieldItemWidthIllegalContractsV1;
+  readonly categoryId: string;
+  readonly signer: ResolvedProverSigner;
+  readonly threadOutRef: string;
+  readonly evidence: FieldItemWidthEvidenceV1;
+  readonly nativeTxCompactCbor: string;
+  readonly witnessSetCompactCbor: string;
+  readonly publishCarriage?: boolean;
+  readonly publishedCarriageUtxos?: readonly UTxO[];
+  readonly certificateUtxo?: UTxO;
+  readonly referenceScriptUtxo: UTxO;
+  readonly certificateReferenceScriptUtxo?: UTxO;
+  readonly publicationPreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly certificatePreSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly onCarriageReady?: () => Promise<void>;
+  readonly preSubmitBoundary?: FraudProofPreSubmitBoundaryV1;
+  readonly awaitConfirmation?: boolean;
+}) => {
+  const stepIndex = 1;
+  const { threadUtxo, threadToken } = await requireLinearFaultThreadUtxoV1({
+    lucid,
+    contracts,
+    categoryId,
+    family: "field-item-width-illegal",
+    stepIndex,
+    threadOutRef,
+  });
+  const state = requireLinearFaultStepStateV1<{
+    subject: unknown;
+    field_index: bigint;
+    item_index: bigint;
+  }>({
+    threadUtxo,
+    signer,
+    schema: FieldItemWidthStep02DatumV1Schema as never,
+    family: "field-item-width-illegal",
+    stepIndex,
+  });
+  if (
+    state.field_index !== BigInt(evidence.fieldIndex) ||
+    state.item_index !== BigInt(evidence.itemIndex)
+  )
+    throw new Error(
+      "field-item-width-illegal: opening coordinate differs from thread",
+    );
+  const items = decodeMidgardFieldPreimageV1(
+    Buffer.from(evidence.fieldPreimageHex, "hex"),
+  );
+  const planned = planFaultProofFieldOpeningV1({
+    fieldIndex: evidence.fieldIndex,
+    anchorTxId: evidence.subject.transaction_id,
+    nativeTxCompactCbor,
+    itemCbors: items,
+    owner: signer.paymentKeyHash,
+    publish: publishCarriage,
+    label: "field-item-width-illegal field opening",
+  });
+  signer.selectWallet(lucid);
+  const carriageUtxos =
+    publishedCarriageUtxos ??
+    (await publishFaultProofFieldCarriageV1({
+      lucid,
+      signer,
+      planned,
+      publisherAddress: signer.address,
+      label: "field-item-width-illegal field opening",
+      preSubmitBoundary: publicationPreSubmitBoundary,
+    }));
+  const certificateUtxo =
+    suppliedCertificateUtxo ??
+    (planned.plan.tier === "Certified"
+      ? (
+          await certifyFaultProofFieldCarriageV1({
+            lucid,
+            network: lucid.config().network!,
+            signer,
+            planned,
+            certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+            certificateMintingScript:
+              contracts.fieldPreimageCertificateMintingScript,
+            certificateReferenceScriptUtxo:
+              certificateReferenceScriptUtxo ??
+              (() => {
+                throw new Error(
+                  "field-item-width-illegal: certified opening requires certificate reference script",
+                );
+              })(),
+            chunkUtxos: carriageUtxos,
+            compactCbor: nativeTxCompactCbor,
+            witnessSetCompactCbor,
+            preSubmitBoundary: certificatePreSubmitBoundary,
+          })
+        ).certificateUtxo
+      : undefined);
+  await onCarriageReady?.();
+  const stepReference = requireLinearFaultReferenceScriptV1({
+    utxo: referenceScriptUtxo,
+    expectedScriptHash: contracts.steps[1].spendingScriptHash,
+    family: "field-item-width-illegal",
+    stepIndex,
+  });
+  const opening: FieldOpeningV1 = faultProofFieldOpeningV1({
+    planned,
+    referenceInputs: [
+      ...carriageUtxos,
+      stepReference,
+      ...(certificateUtxo === undefined ? [] : [certificateUtxo]),
+    ],
+    certificatePolicyId: contracts.fieldPreimageCertificatePolicyId,
+    label: "field-item-width-illegal field opening",
+  });
+  const nextDatum = Data.to(
+    {
+      fraud_prover: signer.paymentKeyHash,
+      data: {
+        subject: evidence.subject,
+        field_index: BigInt(evidence.fieldIndex),
+        item_index: BigInt(evidence.itemIndex),
+        item_width: BigInt(evidence.itemWidth),
+      },
+    } as never,
+    FieldItemWidthStep03DatumV1Schema as never,
+  );
+  const outputMatches = computationThreadOutputPredicate({
+    address: contracts.steps[2].spendingScriptAddress,
+    datum: nextDatum,
+    unit: threadToken.unit,
+  });
+  let outputIndex: bigint | undefined;
+  const redeemer = ((ctx) => {
+    requireOwnSpendPurpose(ctx, threadUtxo, "field-item-width-illegal step-02");
+    const inputIndex = requireInputIndex(
+      ctx,
+      threadUtxo,
+      "field-item-width-illegal",
+    );
+    outputIndex = requireUniqueOutputIndex(
+      ctx.outputs,
+      outputMatches,
+      "field-item-width-illegal step-02 output",
+    );
+    return Data.to(
+      {
+        Continue: [
+          { input_index: inputIndex, output_index: outputIndex, opening },
+        ],
+      } as never,
+      FieldItemWidthStep02RedeemerV1Schema as never,
+    );
+  }) satisfies BuildTxWithRedeemer;
+  const txHash = await submitLinearFaultContinueV1({
+    lucid,
+    signerPaymentKeyHash: signer.paymentKeyHash,
+    threadUtxo,
+    threadUnit: threadToken.unit,
+    stepReference,
+    stepScript: contracts.steps[1].spendingScript,
+    stepRole: "field-item-width-illegal step-02",
+    nextAddress: contracts.steps[2].spendingScriptAddress,
+    nextDatum,
+    redeemer,
+    carriageUtxos,
+    extraReferenceInputs:
+      certificateUtxo === undefined ? [] : [certificateUtxo],
+    preSubmitBoundary,
+    awaitConfirmation,
+  });
+  if (outputIndex === undefined)
+    throw new Error("field-item-width-illegal: step-02 layout unresolved");
+  return {
+    txHash,
+    nextThreadOutRef: `${txHash}#${outputIndex.toString()}`,
+    carriageTier: planned.plan.tier,
+  };
+};

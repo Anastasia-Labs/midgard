@@ -1,6 +1,7 @@
 import type { EvidenceProvenanceV1 } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
+import { EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC_V1 } from "../src/execution-native-script-invalid/workflow-spec-v1.js";
 import {
   MISSING_NATIVE_SCRIPT_TX_CURSOR_SPEC_V1,
   PRODUCTION_CURSOR_FAMILY_SPECS_V1,
@@ -91,6 +92,27 @@ describe("production cursor-family authenticated state V1", () => {
         }),
       ).resolves.toEqual({ kind: "confirmed", txHash });
     }
+  });
+
+  it("preserves two-digit stage ordinals for the 13-script execution family", () => {
+    const observed = productionCursorFamilyObservationV1({
+      spec: EXECUTION_NATIVE_SCRIPT_INVALID_CURSOR_SPEC_V1,
+      headerHash,
+      provenance,
+      stage: {
+        kind: "step",
+        step: 13,
+        threadOutRef: outRef("13"),
+        stateQueueBlockOutRef: outRef("10"),
+      },
+    });
+    expect(observed).toMatchObject({
+      kind: "action_required",
+      action: {
+        actionId: `step_13:${outRef("13")}:${outRef("10")}`,
+        input: { stage: "step_13", ordinal: 13 },
+      },
+    });
   });
 
   it("rejects skipped, substituted, and unauthenticated successors", async () => {

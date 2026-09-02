@@ -1156,6 +1156,24 @@ const REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES = [
   "missingNativeScriptUtxo",
   "nativeScriptInvalid",
   "minAda",
+  "fieldPreimageLengthMismatch",
+  "fieldItemWidthIllegal",
+  "witnessScriptDecoding",
+  "scriptIntegrityHashMissing",
+  "transactionOutputNonCanonical",
+  "resolvedOutputNonCanonical",
+  "mintDeclaredAssetLimit",
+  "spendInputSignerMissing",
+  "protectedOutputSignerMissing",
+  "observersForbiddenOnUntaggedNetwork",
+  "observerOrderInvalid",
+  "redeemerCanonicity",
+  "outputReferenceScriptDecoding",
+  "executionSourceScriptDecoding",
+  "receivePurposeLanguage",
+  "unusedScriptWitness",
+  "missingScriptSource",
+  "missingRedeemer",
 ] as const satisfies readonly (keyof SDK.FaultProofContracts)[];
 
 const TRANSITION_TRACE_FINAL_CONTRACT_NAMES = [
@@ -1198,6 +1216,37 @@ const faultProofStepContractName = (
         `native-script-decoding exposes an unexpected step index ${stepIndex.toString()}`,
       );
     }
+    return name;
+  }
+  if (category === "fieldPreimageLengthMismatch") {
+    const names = [
+      "fraudProofFieldPreimageLengthMismatch",
+      "fraudProofFieldPreimageLengthMismatchStep02Accepted",
+      "fraudProofFieldPreimageLengthMismatchStep02Forced",
+      "fraudProofFieldPreimageLengthMismatchStep03",
+    ] as const;
+    const name = names[stepIndex];
+    if (name === undefined)
+      throw new Error(
+        `field-preimage-length-mismatch exposes an unexpected step index ${stepIndex.toString()}`,
+      );
+    return name;
+  }
+  if (category === "scriptIntegrityHashMissing") {
+    const names = [
+      "fraudProofScriptIntegrityHashMissing",
+      "fraudProofScriptIntegrityHashMissingStep02",
+      "fraudProofScriptIntegrityHashMissingStep03",
+      "fraudProofScriptIntegrityHashMissingScriptGrammar",
+      "fraudProofScriptIntegrityHashMissingScriptScan",
+      "fraudProofScriptIntegrityHashMissingRedeemerGrammar",
+      "fraudProofScriptIntegrityHashMissingStep04",
+    ] as const;
+    const name = names[stepIndex];
+    if (name === undefined)
+      throw new Error(
+        `script-integrity-hash-missing exposes an unexpected step index ${stepIndex.toString()}`,
+      );
     return name;
   }
   return `fraudProof${upperFirst(category)}${

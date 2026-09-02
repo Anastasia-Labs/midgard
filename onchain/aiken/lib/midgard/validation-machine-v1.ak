@@ -7726,6 +7726,15 @@ fn exact_script_sources_control(control: ScriptSourcesControlV1) -> ByteArray {
   }
 }
 
+/// Canonical wire encoding for an already-decoded ScriptSources control.
+/// Fraud-proof families use this read-only seam to bind a retained control to
+/// the committed work root without copying the consensus encoder.
+pub fn encode_script_sources_control_v1(
+  control: ScriptSourcesControlV1,
+) -> ByteArray {
+  exact_script_sources_control(control)
+}
+
 fn script_sources_stage_zero_control_from_witness(
   work_witness_cbor: ByteArray,
 ) -> ScriptSourcesControlV1 {

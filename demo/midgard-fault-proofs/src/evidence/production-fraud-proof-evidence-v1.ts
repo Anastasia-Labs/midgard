@@ -1,3 +1,4 @@
+import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import {
   admitAuthenticatedStateQueueHeaderObservationV1,
   admitEvidenceProvenanceV1,
@@ -6,6 +7,22 @@ import {
   CanonicalEvidenceRejectionV1,
 } from "@al-ft/midgard-sdk";
 
+import {
+  fieldPreimageLengthProductionEvidenceFromVerifiedPayloadV1,
+  type RoutedFieldPreimageLengthProductionEvidenceV1,
+} from "../field-preimage-length-mismatch/production-evidence-v1.js";
+import {
+  detectMintDeclaredAssetLimitAcceptedRawReplayV1,
+  mintDeclaredAssetLimitRawBlockEvidenceFromVerifiedPayloadV1,
+  type MintDeclaredAssetLimitRawBlockEvidenceV1,
+  type MintDeclaredAssetLimitReplayDetectionV1,
+} from "../mint-declared-asset-limit/replay-v1.js";
+import {
+  detectObserversForbiddenAcceptedRawReplayV1,
+  observersForbiddenRawBlockEvidenceFromVerifiedPayloadV1,
+  type ObserversForbiddenRawBlockEvidenceV1,
+  type ObserversForbiddenReplayDetectionV1,
+} from "../observers-forbidden-on-untagged-network/replay-v1.js";
 import {
   daHashPreimageBlockEvidenceFromVerifiedPayloadV1,
   prepareDaHashPreimageFromCommittedLeavesV1,
@@ -46,6 +63,23 @@ export type ProductionFraudProofEvidenceV1 =
       schemaVersion: typeof PRODUCTION_FRAUD_PROOF_EVIDENCE_ROUTE_V1;
       kind: "canonical_decodability";
       evidence: CanonicalDecodabilityRawBlockEvidenceV1;
+    }>
+  | Readonly<{
+      schemaVersion: typeof PRODUCTION_FRAUD_PROOF_EVIDENCE_ROUTE_V1;
+      kind: "field_preimage_length_mismatch";
+      evidence: RoutedFieldPreimageLengthProductionEvidenceV1;
+    }>
+  | Readonly<{
+      schemaVersion: typeof PRODUCTION_FRAUD_PROOF_EVIDENCE_ROUTE_V1;
+      kind: "mint_declared_asset_limit";
+      evidence: MintDeclaredAssetLimitRawBlockEvidenceV1;
+      selected: MintDeclaredAssetLimitReplayDetectionV1;
+    }>
+  | Readonly<{
+      schemaVersion: typeof PRODUCTION_FRAUD_PROOF_EVIDENCE_ROUTE_V1;
+      kind: "observers_forbidden_on_untagged_network";
+      evidence: ObserversForbiddenRawBlockEvidenceV1;
+      selected: ObserversForbiddenReplayDetectionV1;
     }>;
 
 const isAuthenticatedSourceLeafDefect = (
@@ -59,6 +93,13 @@ const isAuthenticatedCommittedFieldDefect = (
 ): cause is TransitionTraceChallengerError =>
   cause instanceof TransitionTraceChallengerError &&
   cause.code === "authenticatedCommittedFieldDefect";
+
+const isAuthenticatedFieldPreimageLengthDefect = (
+  cause: unknown,
+): cause is TransitionTraceChallengerError =>
+  cause instanceof TransitionTraceChallengerError &&
+  cause.code === "malformedPayload" &&
+  cause.message.startsWith("Failed to authenticate transactions[");
 
 /**
  * Exact production evidence branches for Q44 source-leaf faults and Q17
@@ -102,25 +143,122 @@ export const fetchProductionFraudProofEvidenceV1 = async ({
   const daProvenance = assertSecurityGradeEvidenceV1(
     admitEvidenceProvenanceV1({ provenance: fetched.provenance }),
   );
-  let defectRoute: "da_hash_preimage" | "canonical_decodability";
-  try {
+  const acceptedMintLimitRoute = async (): Promise<
+    | Extract<
+        ProductionFraudProofEvidenceV1,
+        { readonly kind: "mint_declared_asset_limit" }
+      >
+    | undefined
+  > => {
+    const evidence =
+      await mintDeclaredAssetLimitRawBlockEvidenceFromVerifiedPayloadV1({
+        observation: admittedObservation,
+        payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
+        daProvenance,
+      });
+    const detections =
+      detectMintDeclaredAssetLimitAcceptedRawReplayV1(evidence);
+    if (detections.length === 0) return undefined;
+    const selected = [...detections].sort((left, right) =>
+      left.position < right.position
+        ? -1
+        : left.position > right.position
+          ? 1
+          : left.detectionId < right.detectionId
+            ? -1
+            : left.detectionId > right.detectionId
+              ? 1
+              : 0,
+    )[0]!;
     return Object.freeze({
       schemaVersion: PRODUCTION_FRAUD_PROOF_EVIDENCE_ROUTE_V1,
-      kind: "canonical_block",
-      evidence: await canonicalBlockEvidenceFromVerifiedPayloadV1({
+      kind: "mint_declared_asset_limit",
+      evidence,
+      selected,
+    });
+  };
+  const acceptedObserversRoute = async (): Promise<
+    | Extract<
+        ProductionFraudProofEvidenceV1,
+        { readonly kind: "observers_forbidden_on_untagged_network" }
+      >
+    | undefined
+  > => {
+    const evidence =
+      await observersForbiddenRawBlockEvidenceFromVerifiedPayloadV1({
         observation: admittedObservation,
         payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
         daProvenance,
         ...(minimumConfirmationDepth === undefined
           ? {}
           : { minimumConfirmationDepth }),
-      }),
+      });
+    const selected = [
+      ...detectObserversForbiddenAcceptedRawReplayV1(evidence),
+    ].sort((left, right) =>
+      left.position < right.position
+        ? -1
+        : left.position > right.position
+          ? 1
+          : left.detectionId.localeCompare(right.detectionId),
+    )[0];
+    if (selected === undefined) return undefined;
+    return Object.freeze({
+      schemaVersion: PRODUCTION_FRAUD_PROOF_EVIDENCE_ROUTE_V1,
+      kind: "observers_forbidden_on_untagged_network",
+      evidence,
+      selected,
+    });
+  };
+  let acceptedMintFailure: unknown;
+  try {
+    const acceptedMint = await acceptedMintLimitRoute();
+    if (acceptedMint !== undefined) return acceptedMint;
+  } catch (cause) {
+    acceptedMintFailure = cause;
+  }
+  let acceptedObserversFailure: unknown;
+  try {
+    const acceptedObservers = await acceptedObserversRoute();
+    if (acceptedObservers !== undefined) return acceptedObservers;
+  } catch (cause) {
+    acceptedObserversFailure = cause;
+  }
+  let defectRoute:
+    | "da_hash_preimage"
+    | "canonical_decodability"
+    | "field_preimage_length_mismatch";
+  try {
+    const evidence = await canonicalBlockEvidenceFromVerifiedPayloadV1({
+      observation: admittedObservation,
+      payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
+      daProvenance,
+      ...(minimumConfirmationDepth === undefined
+        ? {}
+        : { minimumConfirmationDepth }),
+    });
+    if (acceptedMintFailure !== undefined) {
+      throw new Error(
+        `Accepted mint replay failed: ${formatUnknownError(acceptedMintFailure)}`,
+      );
+    }
+    if (acceptedObserversFailure !== undefined) {
+      throw new Error(
+        `Accepted observer replay failed: ${formatUnknownError(acceptedObserversFailure)}`,
+      );
+    }
+    return Object.freeze({
+      schemaVersion: PRODUCTION_FRAUD_PROOF_EVIDENCE_ROUTE_V1,
+      kind: "canonical_block",
+      evidence,
     });
   } catch (cause) {
     if (isAuthenticatedSourceLeafDefect(cause)) {
       defectRoute = "da_hash_preimage";
     } else if (isAuthenticatedCommittedFieldDefect(cause)) {
       defectRoute = "canonical_decodability";
+    } else if (isAuthenticatedFieldPreimageLengthDefect(cause)) {
+      defectRoute = "field_preimage_length_mismatch";
     } else {
       throw cause;
     }
@@ -138,6 +276,18 @@ export const fetchProductionFraudProofEvidenceV1 = async ({
           ...(minimumConfirmationDepth === undefined
             ? {}
             : { minimumConfirmationDepth }),
+        }),
+    });
+  }
+
+  if (defectRoute === "field_preimage_length_mismatch") {
+    return Object.freeze({
+      schemaVersion: PRODUCTION_FRAUD_PROOF_EVIDENCE_ROUTE_V1,
+      kind: "field_preimage_length_mismatch",
+      evidence:
+        await fieldPreimageLengthProductionEvidenceFromVerifiedPayloadV1({
+          observation: admittedObservation,
+          payloadEnvelopeCbor: fetched.payloadEnvelopeCbor,
         }),
     });
   }

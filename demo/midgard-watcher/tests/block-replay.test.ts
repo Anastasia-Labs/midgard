@@ -1202,6 +1202,7 @@ const buildPublicReplayFixture = async (input: {
       forced_transaction_preimages: sortEntries(forcedPreimages),
       cek_program_material: [],
       validation_traces: sortEntries(validationTraceEntries),
+      validation_trace_witnesses: [],
       counts,
     },
   };

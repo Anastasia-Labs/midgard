@@ -326,7 +326,6 @@ export const publishCanonicalDecodabilityReferenceScriptsV1 = async ({
       lucid,
       script: step.spendingScript as Script,
       label: `canonical-decodability step-0${(index + 1).toString()}`,
-      oversized: true,
     });
     published.push(utxo);
   }

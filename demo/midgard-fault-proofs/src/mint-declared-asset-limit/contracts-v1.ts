@@ -1,0 +1,185 @@
+import {
+  applyParamsToScript,
+  type Data,
+  type Network,
+  type Script,
+  validatorToAddress,
+  validatorToScriptHash,
+} from "@lucid-evolution/lucid";
+
+import {
+  MINT_DECLARED_ASSET_LIMIT_CATEGORY_ID_V1,
+  MINT_DECLARED_ASSET_LIMIT_CATEGORY_V1,
+} from "./family-v1.js";
+
+export const MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES_V1 = Object.freeze([
+  "fraud_proofs/mint_declared_asset_limit/step_01.main.spend",
+  "fraud_proofs/mint_declared_asset_limit/step_02.main.spend",
+  "fraud_proofs/mint_declared_asset_limit/step_03.main.spend",
+  "fraud_proofs/mint_declared_asset_limit/step_04.main.spend",
+] as const);
+
+export type MintDeclaredAssetLimitStepContractV1 = Readonly<{
+  blueprintTitle: string;
+  spendingScript: Script;
+  spendingScriptHash: string;
+  spendingScriptAddress: string;
+  referenceOutRef: string;
+}>;
+
+export type MintDeclaredAssetLimitContractsV1 = Readonly<{
+  steps: readonly [
+    MintDeclaredAssetLimitStepContractV1,
+    MintDeclaredAssetLimitStepContractV1,
+    MintDeclaredAssetLimitStepContractV1,
+    MintDeclaredAssetLimitStepContractV1,
+  ];
+  computationThread: {
+    readonly policyId: string;
+    readonly mintingScript: Script;
+  };
+  fraudProof: {
+    readonly policyId: string;
+    readonly mintingScript: Script;
+    readonly spendingScriptAddress: string;
+  };
+  hubOraclePolicyId: string;
+  stateQueuePolicyId: string;
+  fieldPreimageCertificatePolicyId: string;
+  fieldPreimageCertificateMintingScript: Script;
+}>;
+
+export type MintDeclaredAssetLimitBlueprintV1 = Readonly<{
+  validators: readonly Readonly<{
+    title: string;
+    compiledCode: string;
+    parameters?: readonly unknown[];
+  }>[];
+}>;
+
+const applyExact = (
+  blueprint: MintDeclaredAssetLimitBlueprintV1,
+  title: string,
+  parameters: readonly Data[],
+): Script => {
+  const validator = blueprint.validators.find((entry) => entry.title === title);
+  if (validator === undefined)
+    throw new Error(`mintDeclaredAssetLimit: blueprint omitted ${title}`);
+  if ((validator.parameters?.length ?? 0) !== parameters.length)
+    throw new Error(`mintDeclaredAssetLimit: ${title} parameter arity changed`);
+  return {
+    type: "PlutusV3",
+    script: applyParamsToScript(validator.compiledCode, [...parameters]),
+  };
+};
+
+/** Applies the four scripts backwards, in their blueprint-declared order. */
+export const applyMintDeclaredAssetLimitScriptsV1 = ({
+  blueprint,
+  network,
+  computationThreadPolicyId,
+  fraudProofPolicyId,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+  hubOracleScriptHash,
+}: {
+  readonly blueprint: MintDeclaredAssetLimitBlueprintV1;
+  readonly network: Network;
+  readonly computationThreadPolicyId: string;
+  readonly fraudProofPolicyId: string;
+  readonly fraudProofTokenAddressData: Data;
+  readonly fieldPreimageCertificatePolicyId: string;
+  readonly hubOracleScriptHash: string;
+}): MintDeclaredAssetLimitContractsV1["steps"] => {
+  const applied = (
+    index: number,
+    parameters: readonly Data[],
+  ): MintDeclaredAssetLimitStepContractV1 => {
+    const blueprintTitle =
+      MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES_V1[index]!;
+    const spendingScript = applyExact(blueprint, blueprintTitle, parameters);
+    return Object.freeze({
+      blueprintTitle,
+      spendingScript,
+      spendingScriptHash: validatorToScriptHash(spendingScript),
+      spendingScriptAddress: validatorToAddress(network, spendingScript),
+      referenceOutRef: "0".repeat(64).concat("#0"),
+    });
+  };
+  const step04 = applied(3, [
+    fraudProofPolicyId,
+    fraudProofTokenAddressData,
+    computationThreadPolicyId,
+  ]);
+  const step03 = applied(2, [
+    step04.spendingScriptHash,
+    computationThreadPolicyId,
+    fieldPreimageCertificatePolicyId,
+  ]);
+  const step02 = applied(1, [
+    step03.spendingScriptHash,
+    computationThreadPolicyId,
+    fieldPreimageCertificatePolicyId,
+  ]);
+  const step01 = applied(0, [
+    step02.spendingScriptHash,
+    computationThreadPolicyId,
+    hubOracleScriptHash,
+  ]);
+  return [step01, step02, step03, step04];
+};
+
+export type MintDeclaredAssetLimitProductionManifestV1 = Readonly<{
+  schemaVersion: "mint-declared-asset-limit-production-manifest-v1";
+  category: typeof MINT_DECLARED_ASSET_LIMIT_CATEGORY_V1;
+  categoryId: typeof MINT_DECLARED_ASSET_LIMIT_CATEGORY_ID_V1;
+  network: Network;
+  contracts: MintDeclaredAssetLimitContractsV1;
+}>;
+
+const hex = (value: string, bytes: number, label: string): void => {
+  if (!new RegExp(`^[0-9a-f]{${(bytes * 2).toString()}}$`, "u").test(value))
+    throw new Error(`mintDeclaredAssetLimit: ${label} is not canonical hex`);
+};
+
+export const loadMintDeclaredAssetLimitProductionManifestV1 = (
+  manifest: MintDeclaredAssetLimitProductionManifestV1,
+): MintDeclaredAssetLimitProductionManifestV1 => {
+  if (
+    manifest.schemaVersion !==
+      "mint-declared-asset-limit-production-manifest-v1" ||
+    manifest.category !== MINT_DECLARED_ASSET_LIMIT_CATEGORY_V1 ||
+    manifest.categoryId !== MINT_DECLARED_ASSET_LIMIT_CATEGORY_ID_V1
+  )
+    throw new Error("mintDeclaredAssetLimit: manifest identity changed");
+  manifest.contracts.steps.forEach((step, index) => {
+    if (
+      step.blueprintTitle !==
+      MINT_DECLARED_ASSET_LIMIT_BLUEPRINT_TITLES_V1[index]
+    )
+      throw new Error(
+        "mintDeclaredAssetLimit: ordered blueprint title changed",
+      );
+    if (validatorToScriptHash(step.spendingScript) !== step.spendingScriptHash)
+      throw new Error("mintDeclaredAssetLimit: applied script hash changed");
+    if (
+      validatorToAddress(manifest.network, step.spendingScript) !==
+      step.spendingScriptAddress
+    )
+      throw new Error("mintDeclaredAssetLimit: applied script address changed");
+    if (!/^[0-9a-f]{64}#[0-9]+$/u.test(step.referenceOutRef))
+      throw new Error(
+        "mintDeclaredAssetLimit: reference out-ref is not canonical",
+      );
+  });
+  hex(manifest.contracts.computationThread.policyId, 28, "thread policy");
+  hex(manifest.contracts.fraudProof.policyId, 28, "proof policy");
+  hex(manifest.contracts.hubOraclePolicyId, 28, "hub oracle policy");
+  hex(manifest.contracts.stateQueuePolicyId, 28, "state queue policy");
+  hex(
+    manifest.contracts.fieldPreimageCertificatePolicyId,
+    28,
+    "field certificate policy",
+  );
+  return Object.freeze(manifest);
+};

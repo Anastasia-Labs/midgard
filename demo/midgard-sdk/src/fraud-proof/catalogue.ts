@@ -20,9 +20,9 @@ export const FRAUD_PROOF_CATALOGUE_ASSET_NAME = fromText(
 
 export const FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT = 4;
 
-// Category IDs are the positional index in this list (see
-// `fraudProofsToIndexedValidators`), so new categories must be appended:
-// inserting one shifts the ID of every category after it.
+// Canonical presentation order. Identity is carried by the explicit map below,
+// never re-derived from array position: program waves intentionally integrate
+// some sparse IDs before the intervening families are ready.
 export const FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER = [
   "doubleSpend",
   "nonExistentInput",
@@ -56,6 +56,28 @@ export const FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER = [
   "missingNativeScriptUtxo",
   "nativeScriptInvalid",
   "minAda",
+  "fieldPreimageLengthMismatch",
+  "fieldItemWidthIllegal",
+  "witnessScriptDecoding",
+  "scriptIntegrityHashMissing",
+  "transactionOutputNonCanonical",
+  "resolvedOutputNonCanonical",
+  "mintDeclaredAssetLimit",
+  "spendInputSignerMissing",
+  "protectedOutputSignerMissing",
+  "observersForbiddenOnUntaggedNetwork",
+  "observerOrderInvalid",
+  "redeemerCanonicity",
+  "outputReferenceScriptDecoding",
+  "executionSourceScriptDecoding",
+  "receivePurposeLanguage",
+  "unusedScriptWitness",
+  "missingScriptSource",
+  "missingRedeemer",
+  "unusedRedeemer",
+  "executionNativeScriptInvalid",
+  "scriptIntegrityHashMismatch",
+  "distinctAssetAccumulationLimit",
 ] as const satisfies readonly (keyof FraudProofs)[];
 
 export type FraudProofCatalogueCategoryName =
@@ -99,7 +121,74 @@ export const FRAUD_PROOF_CATALOGUE_CATEGORY_IDS = {
   missingNativeScriptUtxo: "0000001d",
   nativeScriptInvalid: "0000001e",
   minAda: "0000001f",
+  fieldPreimageLengthMismatch: "00000020",
+  fieldItemWidthIllegal: "00000021",
+  witnessScriptDecoding: "00000022",
+  scriptIntegrityHashMissing: "00000023",
+  transactionOutputNonCanonical: "00000029",
+  resolvedOutputNonCanonical: "00000026",
+  mintDeclaredAssetLimit: "0000002c",
+  spendInputSignerMissing: "00000027",
+  protectedOutputSignerMissing: "0000002b",
+  observersForbiddenOnUntaggedNetwork: "00000024",
+  observerOrderInvalid: "00000025",
+  redeemerCanonicity: "00000028",
+  outputReferenceScriptDecoding: "0000002a",
+  executionSourceScriptDecoding: "00000031",
+  receivePurposeLanguage: "00000034",
+  unusedScriptWitness: "0000002f",
+  missingScriptSource: "0000002d",
+  missingRedeemer: "0000002e",
+  unusedRedeemer: "00000030",
+  executionNativeScriptInvalid: "00000032",
+  scriptIntegrityHashMismatch: "00000033",
+  distinctAssetAccumulationLimit: "00000035",
 } as const satisfies Readonly<Record<FraudProofCatalogueCategoryName, string>>;
+
+export const FIELD_PREIMAGE_LENGTH_MISMATCH_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.fieldPreimageLengthMismatch;
+export const FIELD_ITEM_WIDTH_ILLEGAL_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.fieldItemWidthIllegal;
+export const WITNESS_SCRIPT_DECODING_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.witnessScriptDecoding;
+export const SCRIPT_INTEGRITY_HASH_MISSING_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.scriptIntegrityHashMissing;
+export const TRANSACTION_OUTPUT_NON_CANONICAL_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.transactionOutputNonCanonical;
+export const RESOLVED_OUTPUT_NON_CANONICAL_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.resolvedOutputNonCanonical;
+export const MINT_DECLARED_ASSET_LIMIT_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.mintDeclaredAssetLimit;
+export const SPEND_INPUT_SIGNER_MISSING_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.spendInputSignerMissing;
+export const PROTECTED_OUTPUT_SIGNER_MISSING_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.protectedOutputSignerMissing;
+export const OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.observersForbiddenOnUntaggedNetwork;
+export const OBSERVER_ORDER_INVALID_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.observerOrderInvalid;
+export const REDEEMER_CANONICITY_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.redeemerCanonicity;
+export const OUTPUT_REFERENCE_SCRIPT_DECODING_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.outputReferenceScriptDecoding;
+export const EXECUTION_SOURCE_SCRIPT_DECODING_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.executionSourceScriptDecoding;
+export const RECEIVE_PURPOSE_LANGUAGE_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.receivePurposeLanguage;
+export const UNUSED_SCRIPT_WITNESS_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.unusedScriptWitness;
+export const MISSING_SCRIPT_SOURCE_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.missingScriptSource;
+export const MISSING_REDEEMER_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.missingRedeemer;
+export const UNUSED_REDEEMER_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.unusedRedeemer;
+export const EXECUTION_NATIVE_SCRIPT_INVALID_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.executionNativeScriptInvalid;
+export const SCRIPT_INTEGRITY_HASH_MISMATCH_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.scriptIntegrityHashMismatch;
+export const DISTINCT_ASSET_ACCUMULATION_LIMIT_FRAUD_CATEGORY_ID_V1 =
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.distinctAssetAccumulationLimit;
 
 export const NATIVE_SCRIPT_DECODING_FRAUD_CATEGORY_ID_V1 =
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS.nativeScriptDecoding;

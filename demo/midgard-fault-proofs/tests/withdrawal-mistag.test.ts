@@ -169,7 +169,7 @@ const makeEvidence = async ({
         output_cbor: outputCbor.toString("hex"),
         membership_proof: ledgerProof,
       },
-    } as SDK.WithdrawalMistagLedgerEvidenceV1,
+    },
   };
 };
 
@@ -183,6 +183,10 @@ describe("withdrawal-mistag preparation and lifecycle handoffs", () => {
     );
     expect(prepared.direction).toBe("valid-marked-invalid");
     expect(prepared.actualValid).toBe(true);
+    expect(
+      "PresentLedgerOutput" in prepared.ledgerEvidence &&
+        prepared.ledgerEvidence.PresentLedgerOutput.descriptor_cbor.length > 0,
+    ).toBe(true);
     const states = withdrawalMistagStatesV1(prepared);
     expect(states[4]).toMatchObject({
       claimed_valid: false,

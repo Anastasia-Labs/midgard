@@ -51,7 +51,10 @@ import {
   WATCHER_SIGNED_DEPLOYMENT_IDENTITY_V1_SCHEMA_VERSION,
   type WatcherDeploymentIdentityPolicyV1,
 } from "../../src/deployment-identity.js";
-import { canonicalFraudProofCatalogueFixture } from "../canonical-fraud-proof-catalogue.js";
+import {
+  canonicalFraudProofCatalogueFixture,
+  positionalContractScriptCborV1,
+} from "../canonical-fraud-proof-catalogue.js";
 
 export const h28 = (byte: string): string => byte.repeat(28);
 export const h32 = (byte: string): string => byte.repeat(32);
@@ -131,11 +134,11 @@ const buildWatcherAuthorityContractsV1 = (): WatcherAuthorityContractSetV1 => {
     ),
   );
   const contracts = Object.fromEntries(
-    DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES.map((contractName, index) => {
+    DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES.map((contractName) => {
       const native = contractName === "referenceScriptAuthMint";
       const script = native
         ? NATIVE_SCRIPT_CBOR
-        : (index + 1).toString(16).padStart(2, "0");
+        : positionalContractScriptCborV1(contractName);
       return [
         contractName,
         {

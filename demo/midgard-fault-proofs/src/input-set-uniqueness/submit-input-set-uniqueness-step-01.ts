@@ -306,7 +306,7 @@ export const submitInputSetUniquenessStep01 = async ({
           ],
         };
     return Data.to(
-      { Continue: [carriage] },
+      { Continue: [{ source: { AcceptedSource: { inclusion: carriage } } }] },
       InputSetUniquenessStep01SpendRedeemer,
     );
   }) satisfies BuildTxWithRedeemer;

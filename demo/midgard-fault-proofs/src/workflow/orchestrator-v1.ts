@@ -1574,6 +1574,21 @@ export const runFraudProofWorkflowFromRetainedDaV1 = async ({
       "authenticated Q44 source-leaf defect requires the dedicated daHashPreimage workflow",
     );
   }
+  if (routed.kind === "field_preimage_length_mismatch") {
+    throw new Error(
+      "authenticated field-length source defect requires the dedicated fieldPreimageLengthMismatch workflow",
+    );
+  }
+  if (routed.kind === "mint_declared_asset_limit") {
+    throw new Error(
+      "authenticated mint declared-asset-limit defect requires the dedicated mintDeclaredAssetLimit workflow",
+    );
+  }
+  if (routed.kind === "observers_forbidden_on_untagged_network") {
+    throw new Error(
+      "authenticated observer/network defect requires the dedicated observersForbiddenOnUntaggedNetwork workflow",
+    );
+  }
   const evidence = routed.evidence;
   const replayDecision = await replayer.replay(evidence, replayContext);
   const detections = requireCompleteCanonicalReplayDecisionV1({

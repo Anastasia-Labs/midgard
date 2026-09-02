@@ -163,6 +163,202 @@ export const COMMITTED_FIELD_SHAPE_FAULT_PROOF_TITLES = {
   step02: "fraud_proofs/committed_field_shape/step_02.main.spend",
 } as const;
 
+export const FIELD_PREIMAGE_LENGTH_MISMATCH_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/field_preimage_length_mismatch/step_01.main.spend",
+  step02Accepted:
+    "fraud_proofs/field_preimage_length_mismatch/step_02_accepted.main.spend",
+  step02Forced:
+    "fraud_proofs/field_preimage_length_mismatch/step_02_forced.main.spend",
+  step03: "fraud_proofs/field_preimage_length_mismatch/step_03.main.spend",
+} as const;
+
+export const FIELD_ITEM_WIDTH_ILLEGAL_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/field_item_width_illegal/step_01.main.spend",
+  step02: "fraud_proofs/field_item_width_illegal/step_02.main.spend",
+  step03: "fraud_proofs/field_item_width_illegal/step_03.main.spend",
+} as const;
+
+export const WITNESS_SCRIPT_DECODING_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/witness_script_decoding/step_01.main.spend",
+  step02: "fraud_proofs/witness_script_decoding/step_02.main.spend",
+  step03: "fraud_proofs/witness_script_decoding/step_03.main.spend",
+  step04: "fraud_proofs/witness_script_decoding/step_04.main.spend",
+} as const;
+
+export const OUTPUT_REFERENCE_SCRIPT_DECODING_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/output_reference_script_decoding/step_01.main.spend",
+  step02: "fraud_proofs/output_reference_script_decoding/step_02.main.spend",
+  step03: "fraud_proofs/output_reference_script_decoding/step_03.main.spend",
+  step04: "fraud_proofs/output_reference_script_decoding/step_04.main.spend",
+  step05: "fraud_proofs/output_reference_script_decoding/step_05.main.spend",
+  step06: "fraud_proofs/output_reference_script_decoding/step_06.main.spend",
+} as const;
+
+export const EXECUTION_SOURCE_SCRIPT_DECODING_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/execution_source_script_decoding/step_01.main.spend",
+  step02: "fraud_proofs/execution_source_script_decoding/step_02.main.spend",
+  step03: "fraud_proofs/execution_source_script_decoding/step_03.main.spend",
+  step04: "fraud_proofs/execution_source_script_decoding/step_04.main.spend",
+  step05: "fraud_proofs/execution_source_script_decoding/step_05.main.spend",
+} as const;
+
+export const EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/execution_native_script_invalid/step_01.main.spend",
+  acceptedReconstructionInit:
+    "fraud_proofs/execution_native_script_invalid/accepted_reconstruction_init.main.spend",
+  acceptedSpendPrefix:
+    "fraud_proofs/execution_native_script_invalid/accepted_spend_prefix.main.spend",
+  acceptedMintPrefix:
+    "fraud_proofs/execution_native_script_invalid/accepted_mint_prefix.main.spend",
+  acceptedObserverPrefix:
+    "fraud_proofs/execution_native_script_invalid/accepted_observer_prefix.main.spend",
+  acceptedReceivePrefix:
+    "fraud_proofs/execution_native_script_invalid/accepted_receive_prefix.main.spend",
+  acceptedInlineSource:
+    "fraud_proofs/execution_native_script_invalid/accepted_inline_source.main.spend",
+  acceptedReferenceSource:
+    "fraud_proofs/execution_native_script_invalid/accepted_reference_source.main.spend",
+  step02: "fraud_proofs/execution_native_script_invalid/step_02.main.spend",
+  step03: "fraud_proofs/execution_native_script_invalid/step_03.main.spend",
+  step04: "fraud_proofs/execution_native_script_invalid/step_04.main.spend",
+  step05: "fraud_proofs/execution_native_script_invalid/step_05.main.spend",
+  step06: "fraud_proofs/execution_native_script_invalid/step_06.main.spend",
+} as const;
+
+export const OBSERVER_ORDER_INVALID_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/observer_order_invalid/step_01.main.spend",
+  step02: "fraud_proofs/observer_order_invalid/step_02.main.spend",
+  step03: "fraud_proofs/observer_order_invalid/step_03.main.spend",
+  step04: "fraud_proofs/observer_order_invalid/step_04.main.spend",
+} as const;
+
+export const REDEEMER_CANONICITY_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/redeemer_canonicity/step_01.main.spend",
+  step02: "fraud_proofs/redeemer_canonicity/step_02.main.spend",
+  step03: "fraud_proofs/redeemer_canonicity/step_03.main.spend",
+} as const;
+
+export const RECEIVE_PURPOSE_LANGUAGE_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/receive_purpose_language/step_01.main.spend",
+  step02: "fraud_proofs/receive_purpose_language/step_02.main.spend",
+  step03: "fraud_proofs/receive_purpose_language/step_03.main.spend",
+} as const;
+
+export const UNUSED_SCRIPT_WITNESS_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/unused_script_witness/step_01.main.spend",
+  step02: "fraud_proofs/unused_script_witness/step_02.main.spend",
+  step03: "fraud_proofs/unused_script_witness/step_03.main.spend",
+  step04: "fraud_proofs/unused_script_witness/step_04.main.spend",
+  step05: "fraud_proofs/unused_script_witness/step_05.main.spend",
+  step06: "fraud_proofs/unused_script_witness/step_06.main.spend",
+} as const;
+
+export const MISSING_SCRIPT_SOURCE_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/missing_script_source/step_01.main.spend",
+  step02: "fraud_proofs/missing_script_source/step_02.main.spend",
+  step03: "fraud_proofs/missing_script_source/step_03.main.spend",
+  step04: "fraud_proofs/missing_script_source/step_04.main.spend",
+  step05: "fraud_proofs/missing_script_source/step_05.main.spend",
+  step06: "fraud_proofs/missing_script_source/step_06.main.spend",
+} as const;
+
+export const MISSING_REDEEMER_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/missing_redeemer/step_01.main.spend",
+  step02: "fraud_proofs/missing_redeemer/step_02.main.spend",
+  step02a: "fraud_proofs/missing_redeemer/step_02a.main.spend",
+  step02b: "fraud_proofs/missing_redeemer/step_02b.main.spend",
+  step03: "fraud_proofs/missing_redeemer/step_03.main.spend",
+  step04: "fraud_proofs/missing_redeemer/step_04.main.spend",
+  step05: "fraud_proofs/missing_redeemer/step_05.main.spend",
+} as const;
+
+export const UNUSED_REDEEMER_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/unused_redeemer/step_01.main.spend",
+  step02: "fraud_proofs/unused_redeemer/step_02.main.spend",
+  step02a: "fraud_proofs/unused_redeemer/step_02a.main.spend",
+  step02b: "fraud_proofs/unused_redeemer/step_02b.main.spend",
+  step02c: "fraud_proofs/unused_redeemer/step_02c.main.spend",
+  step03: "fraud_proofs/unused_redeemer/step_03.main.spend",
+  step04: "fraud_proofs/unused_redeemer/step_04.main.spend",
+  step05: "fraud_proofs/unused_redeemer/step_05.main.spend",
+  step06: "fraud_proofs/unused_redeemer/step_06.main.spend",
+} as const;
+
+export const SCRIPT_INTEGRITY_HASH_MISMATCH_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/script_integrity_hash_mismatch/step_01.main.spend",
+  step02: "fraud_proofs/script_integrity_hash_mismatch/step_02.main.spend",
+  step03: "fraud_proofs/script_integrity_hash_mismatch/step_03.main.spend",
+  step04: "fraud_proofs/script_integrity_hash_mismatch/step_04.main.spend",
+  step05: "fraud_proofs/script_integrity_hash_mismatch/step_05.main.spend",
+} as const;
+
+export const DISTINCT_ASSET_ACCUMULATION_LIMIT_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/distinct_asset_accumulation_limit/step_01.main.spend",
+  step02: "fraud_proofs/distinct_asset_accumulation_limit/step_02.main.spend",
+  step03: "fraud_proofs/distinct_asset_accumulation_limit/step_03.main.spend",
+  step04: "fraud_proofs/distinct_asset_accumulation_limit/step_04.main.spend",
+  step05: "fraud_proofs/distinct_asset_accumulation_limit/step_05.main.spend",
+  step06: "fraud_proofs/distinct_asset_accumulation_limit/step_06.main.spend",
+} as const;
+
+export const SCRIPT_INTEGRITY_HASH_MISSING_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/script_integrity_hash_missing/step_01.main.spend",
+  step02: "fraud_proofs/script_integrity_hash_missing/step_02.main.spend",
+  step03: "fraud_proofs/script_integrity_hash_missing/step_03.main.spend",
+  scriptGrammar:
+    "fraud_proofs/script_integrity_hash_missing/script_grammar.main.spend",
+  scriptScan:
+    "fraud_proofs/script_integrity_hash_missing/script_scan.main.spend",
+  redeemerGrammar:
+    "fraud_proofs/script_integrity_hash_missing/redeemer_grammar.main.spend",
+  step04: "fraud_proofs/script_integrity_hash_missing/step_04.main.spend",
+} as const;
+
+export const TRANSACTION_OUTPUT_NON_CANONICAL_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/transaction_output_non_canonical/step_01.main.spend",
+  step02: "fraud_proofs/transaction_output_non_canonical/step_02.main.spend",
+  step03: "fraud_proofs/transaction_output_non_canonical/step_03.main.spend",
+  step04: "fraud_proofs/transaction_output_non_canonical/step_04.main.spend",
+} as const;
+
+export const RESOLVED_OUTPUT_NON_CANONICAL_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/resolved_output_non_canonical/step_01.main.spend",
+  step02: "fraud_proofs/resolved_output_non_canonical/step_02.main.spend",
+  step03: "fraud_proofs/resolved_output_non_canonical/step_03.main.spend",
+  step04: "fraud_proofs/resolved_output_non_canonical/step_04.main.spend",
+  step05: "fraud_proofs/resolved_output_non_canonical/step_05.main.spend",
+} as const;
+
+export const MINT_DECLARED_ASSET_LIMIT_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/mint_declared_asset_limit/step_01.main.spend",
+  step02: "fraud_proofs/mint_declared_asset_limit/step_02.main.spend",
+  step03: "fraud_proofs/mint_declared_asset_limit/step_03.main.spend",
+  step04: "fraud_proofs/mint_declared_asset_limit/step_04.main.spend",
+} as const;
+
+export const SPEND_INPUT_SIGNER_MISSING_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/spend_input_signer_missing/step_01.main.spend",
+  step02: "fraud_proofs/spend_input_signer_missing/step_02.main.spend",
+  step03: "fraud_proofs/spend_input_signer_missing/step_03.main.spend",
+  step04: "fraud_proofs/spend_input_signer_missing/step_04.main.spend",
+  step05: "fraud_proofs/spend_input_signer_missing/step_05.main.spend",
+} as const;
+
+export const PROTECTED_OUTPUT_SIGNER_MISSING_FAULT_PROOF_TITLES = {
+  step01: "fraud_proofs/protected_output_signer_missing/step_01.main.spend",
+  step02: "fraud_proofs/protected_output_signer_missing/step_02.main.spend",
+  step03: "fraud_proofs/protected_output_signer_missing/step_03.main.spend",
+  step04: "fraud_proofs/protected_output_signer_missing/step_04.main.spend",
+  step05: "fraud_proofs/protected_output_signer_missing/step_05.main.spend",
+} as const;
+
+export const OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_FAULT_PROOF_TITLES = {
+  step01:
+    "fraud_proofs/observers_forbidden_on_untagged_network/step_01.main.spend",
+  step02:
+    "fraud_proofs/observers_forbidden_on_untagged_network/step_02.main.spend",
+} as const;
+
 export const MIN_FEE_FAULT_PROOF_TITLES = {
   step01: "fraud_proofs/min_fee/step_01.main.spend",
   step02: "fraud_proofs/min_fee/step_02.main.spend",
@@ -207,6 +403,8 @@ export const VALUE_NOT_PRESERVED_FAULT_PROOF_TITLES = {
 export const INPUT_SET_UNIQUENESS_FAULT_PROOF_TITLES = {
   step01: "fraud_proofs/input_set_uniqueness/step_01.main.spend",
   step02: "fraud_proofs/input_set_uniqueness/step_02.main.spend",
+  step03: "fraud_proofs/input_set_uniqueness/step_03.main.spend",
+  step04: "fraud_proofs/input_set_uniqueness/step_04.main.spend",
 } as const;
 
 export const MINT_AUTHORIZATION_FAULT_PROOF_TITLES = {
@@ -818,7 +1016,12 @@ export type InputSetUniquenessFaultProofContracts = {
   readonly computationThread: MintingValidator;
   readonly fraudProof: AuthenticatedValidator;
   readonly inputSetUniqueness: FraudProofChain & {
-    readonly steps: readonly [SpendingValidator, SpendingValidator];
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
   };
 };
 
@@ -893,6 +1096,344 @@ export type MinAdaFaultProofContracts = {
       SpendingValidator,
       SpendingValidator,
     ];
+  };
+};
+
+export type FieldPreimageLengthMismatchFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
+  readonly fieldPreimageLengthMismatch: FraudProofChain & {
+    readonly acceptedStep02: SpendingValidator;
+    readonly forcedStep02: SpendingValidator;
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type FieldItemWidthIllegalFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
+  readonly fieldItemWidthIllegal: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type WitnessScriptDecodingFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
+  readonly witnessScriptDecoding: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type OutputReferenceScriptDecodingFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
+  readonly outputReferenceScriptDecoding: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type ExecutionSourceScriptDecodingFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
+  readonly executionSourceScriptDecoding: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type ExecutionNativeScriptInvalidFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
+  readonly executionNativeScriptInvalid: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type ObserverOrderInvalidFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
+  readonly observerOrderInvalid: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type RedeemerCanonicityFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
+  readonly redeemerCanonicity: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type ReceivePurposeLanguageFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
+  readonly receivePurposeLanguage: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type UnusedScriptWitnessFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
+  readonly unusedScriptWitness: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type MissingScriptSourceFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
+  readonly missingScriptSource: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type MissingRedeemerFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
+  readonly missingRedeemer: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type UnusedRedeemerFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
+  readonly unusedRedeemer: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type ScriptIntegrityHashMismatchFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
+  readonly scriptIntegrityHashMismatch: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type DistinctAssetAccumulationLimitFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
+  readonly distinctAssetAccumulationLimit: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type ScriptIntegrityHashMissingFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
+  readonly scriptIntegrityHashMissing: FraudProofChain & {
+    readonly scriptGrammar: SpendingValidator;
+    readonly scriptScan: SpendingValidator;
+    readonly redeemerGrammar: SpendingValidator;
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type TransactionOutputNonCanonicalFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
+  readonly transactionOutputNonCanonical: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type ResolvedOutputNonCanonicalFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
+  readonly resolvedOutputNonCanonical: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type MintDeclaredAssetLimitFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
+  readonly mintDeclaredAssetLimit: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type SpendInputSignerMissingFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
+  readonly spendInputSignerMissing: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type ProtectedOutputSignerMissingFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
+  readonly protectedOutputSignerMissing: FraudProofChain & {
+    readonly steps: readonly [
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+      SpendingValidator,
+    ];
+  };
+};
+
+export type ObserversForbiddenOnUntaggedNetworkFaultProofContracts = {
+  readonly computationThread: MintingValidator;
+  readonly fraudProof: AuthenticatedValidator;
+  readonly fieldPreimageCertificate: MintingValidator;
+  readonly observersForbiddenOnUntaggedNetwork: FraudProofChain & {
+    readonly steps: readonly [SpendingValidator, SpendingValidator];
   };
 };
 
@@ -1114,6 +1655,28 @@ export type FaultProofContracts = {
   readonly missingNativeScriptUtxo: MissingNativeScriptUtxoFaultProofContracts["missingNativeScriptUtxo"];
   readonly nativeScriptInvalid: NativeScriptInvalidFaultProofContracts["nativeScriptInvalid"];
   readonly minAda: MinAdaFaultProofContracts["minAda"];
+  readonly fieldPreimageLengthMismatch: FieldPreimageLengthMismatchFaultProofContracts["fieldPreimageLengthMismatch"];
+  readonly fieldItemWidthIllegal: FieldItemWidthIllegalFaultProofContracts["fieldItemWidthIllegal"];
+  readonly witnessScriptDecoding: WitnessScriptDecodingFaultProofContracts["witnessScriptDecoding"];
+  readonly scriptIntegrityHashMissing: ScriptIntegrityHashMissingFaultProofContracts["scriptIntegrityHashMissing"];
+  readonly transactionOutputNonCanonical: TransactionOutputNonCanonicalFaultProofContracts["transactionOutputNonCanonical"];
+  readonly resolvedOutputNonCanonical: ResolvedOutputNonCanonicalFaultProofContracts["resolvedOutputNonCanonical"];
+  readonly mintDeclaredAssetLimit: MintDeclaredAssetLimitFaultProofContracts["mintDeclaredAssetLimit"];
+  readonly spendInputSignerMissing: SpendInputSignerMissingFaultProofContracts["spendInputSignerMissing"];
+  readonly protectedOutputSignerMissing: ProtectedOutputSignerMissingFaultProofContracts["protectedOutputSignerMissing"];
+  readonly observersForbiddenOnUntaggedNetwork: ObserversForbiddenOnUntaggedNetworkFaultProofContracts["observersForbiddenOnUntaggedNetwork"];
+  readonly outputReferenceScriptDecoding: OutputReferenceScriptDecodingFaultProofContracts["outputReferenceScriptDecoding"];
+  readonly executionSourceScriptDecoding: ExecutionSourceScriptDecodingFaultProofContracts["executionSourceScriptDecoding"];
+  readonly executionNativeScriptInvalid: ExecutionNativeScriptInvalidFaultProofContracts["executionNativeScriptInvalid"];
+  readonly observerOrderInvalid: ObserverOrderInvalidFaultProofContracts["observerOrderInvalid"];
+  readonly redeemerCanonicity: RedeemerCanonicityFaultProofContracts["redeemerCanonicity"];
+  readonly receivePurposeLanguage: ReceivePurposeLanguageFaultProofContracts["receivePurposeLanguage"];
+  readonly unusedScriptWitness: UnusedScriptWitnessFaultProofContracts["unusedScriptWitness"];
+  readonly missingScriptSource: MissingScriptSourceFaultProofContracts["missingScriptSource"];
+  readonly missingRedeemer: MissingRedeemerFaultProofContracts["missingRedeemer"];
+  readonly unusedRedeemer: UnusedRedeemerFaultProofContracts["unusedRedeemer"];
+  readonly scriptIntegrityHashMismatch: ScriptIntegrityHashMismatchFaultProofContracts["scriptIntegrityHashMismatch"];
+  readonly distinctAssetAccumulationLimit: DistinctAssetAccumulationLimitFaultProofContracts["distinctAssetAccumulationLimit"];
 };
 
 /**
@@ -1243,6 +1806,51 @@ export type BuildMinAdaFaultProofContractsParams =
   BuildFaultProofContractsParams & {
     readonly referenceScriptAuthPolicyId: string;
   };
+
+export type BuildFieldPreimageLengthMismatchFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+export type BuildFieldItemWidthIllegalFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+export type BuildWitnessScriptDecodingFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+export type BuildOutputReferenceScriptDecodingFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+export type BuildExecutionSourceScriptDecodingFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+export type BuildExecutionNativeScriptInvalidFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+export type BuildObserverOrderInvalidFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+export type BuildRedeemerCanonicityFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+export type BuildReceivePurposeLanguageFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+export type BuildUnusedScriptWitnessFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+export type BuildMissingScriptSourceFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+export type BuildMissingRedeemerFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+export type BuildUnusedRedeemerFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+export type BuildScriptIntegrityHashMismatchFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+export type BuildDistinctAssetAccumulationLimitFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+export type BuildScriptIntegrityHashMissingFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+export type BuildTransactionOutputNonCanonicalFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+export type BuildResolvedOutputNonCanonicalFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+export type BuildMintDeclaredAssetLimitFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+export type BuildSpendInputSignerMissingFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+export type BuildProtectedOutputSignerMissingFaultProofContractsParams =
+  BuildFaultProofContractsParams;
+export type BuildObserversForbiddenOnUntaggedNetworkFaultProofContractsParams =
+  BuildFaultProofContractsParams;
 
 export type BuildTransitionTraceFaultProofContractsParams =
   BuildFaultProofContractsParams;
@@ -2824,6 +3432,1466 @@ const buildCommittedFieldShapeChain = ({
     return { firstStep: step01, steps: [step01, step02] };
   });
 
+const buildFieldPreimageLengthMismatchChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  FieldPreimageLengthMismatchFaultProofContracts["fieldPreimageLengthMismatch"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      FIELD_PREIMAGE_LENGTH_MISMATCH_FAULT_PROOF_TITLES.step03,
+      [
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        computationThread.policyId,
+      ],
+      "Failed to build field-preimage-length-mismatch step 03",
+    );
+    const step02Accepted = yield* buildFaultProofSpendingStep(
+      context,
+      FIELD_PREIMAGE_LENGTH_MISMATCH_FAULT_PROOF_TITLES.step02Accepted,
+      [
+        step03.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build field-preimage-length-mismatch accepted step 02",
+    );
+    const step02Forced = yield* buildFaultProofSpendingStep(
+      context,
+      FIELD_PREIMAGE_LENGTH_MISMATCH_FAULT_PROOF_TITLES.step02Forced,
+      [
+        step03.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build field-preimage-length-mismatch forced step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      FIELD_PREIMAGE_LENGTH_MISMATCH_FAULT_PROOF_TITLES.step01,
+      [
+        step02Accepted.spendingScriptHash,
+        step02Forced.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build field-preimage-length-mismatch step 01",
+    );
+    return {
+      firstStep: step01,
+      acceptedStep02: step02Accepted,
+      forcedStep02: step02Forced,
+      steps: [step01, step02Accepted, step02Forced, step03],
+    };
+  });
+
+const buildFieldItemWidthIllegalChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  FieldItemWidthIllegalFaultProofContracts["fieldItemWidthIllegal"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      FIELD_ITEM_WIDTH_ILLEGAL_FAULT_PROOF_TITLES.step03,
+      [
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        computationThread.policyId,
+      ],
+      "Failed to build field-item-width-illegal step 03",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      FIELD_ITEM_WIDTH_ILLEGAL_FAULT_PROOF_TITLES.step02,
+      [
+        step03.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build field-item-width-illegal step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      FIELD_ITEM_WIDTH_ILLEGAL_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build field-item-width-illegal step 01",
+    );
+    return { firstStep: step01, steps: [step01, step02, step03] };
+  });
+
+const buildWitnessScriptDecodingChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  WitnessScriptDecodingFaultProofContracts["witnessScriptDecoding"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step04 = yield* buildFaultProofSpendingStep(
+      context,
+      WITNESS_SCRIPT_DECODING_FAULT_PROOF_TITLES.step04,
+      [
+        computationThread.policyId,
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+      ],
+      "Failed to build witness-script-decoding step 04",
+    );
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      WITNESS_SCRIPT_DECODING_FAULT_PROOF_TITLES.step03,
+      [step04.spendingScriptHash, computationThread.policyId],
+      "Failed to build witness-script-decoding step 03",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      WITNESS_SCRIPT_DECODING_FAULT_PROOF_TITLES.step02,
+      [
+        step03.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build witness-script-decoding step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      WITNESS_SCRIPT_DECODING_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build witness-script-decoding step 01",
+    );
+    return { firstStep: step01, steps: [step01, step02, step03, step04] };
+  });
+
+const buildOutputReferenceScriptDecodingChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  OutputReferenceScriptDecodingFaultProofContracts["outputReferenceScriptDecoding"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step06 = yield* buildFaultProofSpendingStep(
+      context,
+      OUTPUT_REFERENCE_SCRIPT_DECODING_FAULT_PROOF_TITLES.step06,
+      [
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        computationThread.policyId,
+      ],
+      "Failed to build output-reference-script-decoding step 06",
+    );
+    const step05 = yield* buildFaultProofSpendingStep(
+      context,
+      OUTPUT_REFERENCE_SCRIPT_DECODING_FAULT_PROOF_TITLES.step05,
+      [step06.spendingScriptHash, computationThread.policyId],
+      "Failed to build output-reference-script-decoding step 05",
+    );
+    const step04 = yield* buildFaultProofSpendingStep(
+      context,
+      OUTPUT_REFERENCE_SCRIPT_DECODING_FAULT_PROOF_TITLES.step04,
+      [
+        step05.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build output-reference-script-decoding step 04",
+    );
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      OUTPUT_REFERENCE_SCRIPT_DECODING_FAULT_PROOF_TITLES.step03,
+      [step04.spendingScriptHash, computationThread.policyId],
+      "Failed to build output-reference-script-decoding step 03",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      OUTPUT_REFERENCE_SCRIPT_DECODING_FAULT_PROOF_TITLES.step02,
+      [
+        step03.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build output-reference-script-decoding step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      OUTPUT_REFERENCE_SCRIPT_DECODING_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build output-reference-script-decoding step 01",
+    );
+    return {
+      firstStep: step01,
+      steps: [step01, step02, step03, step04, step05, step06],
+    };
+  });
+
+const buildExecutionSourceScriptDecodingChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  ExecutionSourceScriptDecodingFaultProofContracts["executionSourceScriptDecoding"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step05 = yield* buildFaultProofSpendingStep(
+      context,
+      EXECUTION_SOURCE_SCRIPT_DECODING_FAULT_PROOF_TITLES.step05,
+      [
+        computationThread.policyId,
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+      ],
+      "Failed to build execution-source-script-decoding step 05",
+    );
+    const step04 = yield* buildFaultProofSpendingStep(
+      context,
+      EXECUTION_SOURCE_SCRIPT_DECODING_FAULT_PROOF_TITLES.step04,
+      [step05.spendingScriptHash, computationThread.policyId],
+      "Failed to build execution-source-script-decoding step 04",
+    );
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      EXECUTION_SOURCE_SCRIPT_DECODING_FAULT_PROOF_TITLES.step03,
+      [step04.spendingScriptHash, computationThread.policyId],
+      "Failed to build execution-source-script-decoding step 03",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      EXECUTION_SOURCE_SCRIPT_DECODING_FAULT_PROOF_TITLES.step02,
+      [step03.spendingScriptHash, computationThread.policyId],
+      "Failed to build execution-source-script-decoding step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      EXECUTION_SOURCE_SCRIPT_DECODING_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build execution-source-script-decoding step 01",
+    );
+    return {
+      firstStep: step01,
+      steps: [step01, step02, step03, step04, step05],
+    };
+  });
+
+const buildExecutionNativeScriptInvalidChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  ExecutionNativeScriptInvalidFaultProofContracts["executionNativeScriptInvalid"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step06 = yield* buildFaultProofSpendingStep(
+      context,
+      EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.step06,
+      [
+        computationThread.policyId,
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+      ],
+      "Failed to build execution-native-script-invalid step 06",
+    );
+    const step05 = yield* buildFaultProofSpendingStep(
+      context,
+      EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.step05,
+      [
+        step06.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build execution-native-script-invalid step 05",
+    );
+    const step04 = yield* buildFaultProofSpendingStep(
+      context,
+      EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.step04,
+      [
+        step05.spendingScriptHash,
+        computationThread.policyId,
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build execution-native-script-invalid step 04",
+    );
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.step03,
+      [step04.spendingScriptHash, computationThread.policyId],
+      "Failed to build execution-native-script-invalid step 03",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.step02,
+      [step03.spendingScriptHash, computationThread.policyId],
+      "Failed to build execution-native-script-invalid step 02",
+    );
+    const acceptedReferenceSource = yield* buildFaultProofSpendingStep(
+      context,
+      EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.acceptedReferenceSource,
+      [
+        step03.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build execution-native-script-invalid accepted reference source",
+    );
+    const acceptedInlineSource = yield* buildFaultProofSpendingStep(
+      context,
+      EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.acceptedInlineSource,
+      [
+        step03.spendingScriptHash,
+        acceptedReferenceSource.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build execution-native-script-invalid accepted inline source",
+    );
+    const acceptedReceivePrefix = yield* buildFaultProofSpendingStep(
+      context,
+      EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.acceptedReceivePrefix,
+      [
+        acceptedInlineSource.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build execution-native-script-invalid accepted receive prefix",
+    );
+    const acceptedObserverPrefix = yield* buildFaultProofSpendingStep(
+      context,
+      EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.acceptedObserverPrefix,
+      [
+        acceptedReceivePrefix.spendingScriptHash,
+        acceptedInlineSource.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build execution-native-script-invalid accepted observer prefix",
+    );
+    const acceptedMintPrefix = yield* buildFaultProofSpendingStep(
+      context,
+      EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.acceptedMintPrefix,
+      [
+        acceptedObserverPrefix.spendingScriptHash,
+        acceptedInlineSource.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build execution-native-script-invalid accepted mint prefix",
+    );
+    const acceptedSpendPrefix = yield* buildFaultProofSpendingStep(
+      context,
+      EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.acceptedSpendPrefix,
+      [
+        acceptedMintPrefix.spendingScriptHash,
+        acceptedInlineSource.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build execution-native-script-invalid accepted spend prefix",
+    );
+    const acceptedReconstructionInit = yield* buildFaultProofSpendingStep(
+      context,
+      EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.acceptedReconstructionInit,
+      [acceptedSpendPrefix.spendingScriptHash, computationThread.policyId],
+      "Failed to build execution-native-script-invalid accepted reconstruction init",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      EXECUTION_NATIVE_SCRIPT_INVALID_FAULT_PROOF_TITLES.step01,
+      [
+        acceptedReconstructionInit.spendingScriptHash,
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build execution-native-script-invalid step 01",
+    );
+    return {
+      firstStep: step01,
+      steps: [
+        step01,
+        step02,
+        step03,
+        step04,
+        step05,
+        step06,
+        acceptedReconstructionInit,
+        acceptedSpendPrefix,
+        acceptedMintPrefix,
+        acceptedObserverPrefix,
+        acceptedReceivePrefix,
+        acceptedInlineSource,
+        acceptedReferenceSource,
+      ],
+    };
+  });
+
+const buildObserverOrderInvalidChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  ObserverOrderInvalidFaultProofContracts["observerOrderInvalid"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step04 = yield* buildFaultProofSpendingStep(
+      context,
+      OBSERVER_ORDER_INVALID_FAULT_PROOF_TITLES.step04,
+      [
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        computationThread.policyId,
+      ],
+      "Failed to build observer-order-invalid step 04",
+    );
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      OBSERVER_ORDER_INVALID_FAULT_PROOF_TITLES.step03,
+      [
+        step04.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build observer-order-invalid step 03",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      OBSERVER_ORDER_INVALID_FAULT_PROOF_TITLES.step02,
+      [
+        step03.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build observer-order-invalid step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      OBSERVER_ORDER_INVALID_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build observer-order-invalid step 01",
+    );
+    return { firstStep: step01, steps: [step01, step02, step03, step04] };
+  });
+
+const buildRedeemerCanonicityChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  RedeemerCanonicityFaultProofContracts["redeemerCanonicity"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      REDEEMER_CANONICITY_FAULT_PROOF_TITLES.step03,
+      [
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        computationThread.policyId,
+      ],
+      "Failed to build redeemer-canonicity step 03",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      REDEEMER_CANONICITY_FAULT_PROOF_TITLES.step02,
+      [
+        step03.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build redeemer-canonicity step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      REDEEMER_CANONICITY_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build redeemer-canonicity step 01",
+    );
+    return { firstStep: step01, steps: [step01, step02, step03] };
+  });
+
+const buildReceivePurposeLanguageChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  ReceivePurposeLanguageFaultProofContracts["receivePurposeLanguage"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      RECEIVE_PURPOSE_LANGUAGE_FAULT_PROOF_TITLES.step03,
+      [
+        computationThread.policyId,
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+      ],
+      "Failed to build receive-purpose-language step 03",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      RECEIVE_PURPOSE_LANGUAGE_FAULT_PROOF_TITLES.step02,
+      [step03.spendingScriptHash, computationThread.policyId],
+      "Failed to build receive-purpose-language step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      RECEIVE_PURPOSE_LANGUAGE_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build receive-purpose-language step 01",
+    );
+    return { firstStep: step01, steps: [step01, step02, step03] };
+  });
+
+const buildUnusedScriptWitnessChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  UnusedScriptWitnessFaultProofContracts["unusedScriptWitness"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step06 = yield* buildFaultProofSpendingStep(
+      context,
+      UNUSED_SCRIPT_WITNESS_FAULT_PROOF_TITLES.step06,
+      [
+        computationThread.policyId,
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+      ],
+      "Failed to build unused-script-witness step 06",
+    );
+    const step05 = yield* buildFaultProofSpendingStep(
+      context,
+      UNUSED_SCRIPT_WITNESS_FAULT_PROOF_TITLES.step05,
+      [step06.spendingScriptHash, computationThread.policyId],
+      "Failed to build unused-script-witness step 05",
+    );
+    const step04 = yield* buildFaultProofSpendingStep(
+      context,
+      UNUSED_SCRIPT_WITNESS_FAULT_PROOF_TITLES.step04,
+      [step05.spendingScriptHash, computationThread.policyId],
+      "Failed to build unused-script-witness step 04",
+    );
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      UNUSED_SCRIPT_WITNESS_FAULT_PROOF_TITLES.step03,
+      [step04.spendingScriptHash, computationThread.policyId],
+      "Failed to build unused-script-witness step 03",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      UNUSED_SCRIPT_WITNESS_FAULT_PROOF_TITLES.step02,
+      [step03.spendingScriptHash, computationThread.policyId],
+      "Failed to build unused-script-witness step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      UNUSED_SCRIPT_WITNESS_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build unused-script-witness step 01",
+    );
+    return {
+      firstStep: step01,
+      steps: [step01, step02, step03, step04, step05, step06],
+    };
+  });
+
+const buildMissingScriptSourceChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  MissingScriptSourceFaultProofContracts["missingScriptSource"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step06 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_SCRIPT_SOURCE_FAULT_PROOF_TITLES.step06,
+      [
+        computationThread.policyId,
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+      ],
+      "Failed to build missing-script-source step 06",
+    );
+    const step05 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_SCRIPT_SOURCE_FAULT_PROOF_TITLES.step05,
+      [step06.spendingScriptHash, computationThread.policyId],
+      "Failed to build missing-script-source step 05",
+    );
+    const step04 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_SCRIPT_SOURCE_FAULT_PROOF_TITLES.step04,
+      [step05.spendingScriptHash, computationThread.policyId],
+      "Failed to build missing-script-source step 04",
+    );
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_SCRIPT_SOURCE_FAULT_PROOF_TITLES.step03,
+      [step04.spendingScriptHash, computationThread.policyId],
+      "Failed to build missing-script-source step 03",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_SCRIPT_SOURCE_FAULT_PROOF_TITLES.step02,
+      [step03.spendingScriptHash, computationThread.policyId],
+      "Failed to build missing-script-source step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_SCRIPT_SOURCE_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build missing-script-source step 01",
+    );
+    return {
+      firstStep: step01,
+      steps: [step01, step02, step03, step04, step05, step06],
+    };
+  });
+
+const buildMissingRedeemerChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  MissingRedeemerFaultProofContracts["missingRedeemer"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step05 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_REDEEMER_FAULT_PROOF_TITLES.step05,
+      [
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        computationThread.policyId,
+      ],
+      "Failed to build missing-redeemer step 05",
+    );
+    const step04 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_REDEEMER_FAULT_PROOF_TITLES.step04,
+      [
+        step05.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build missing-redeemer step 04",
+    );
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_REDEEMER_FAULT_PROOF_TITLES.step03,
+      [
+        step04.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build missing-redeemer step 03",
+    );
+    const step02b = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_REDEEMER_FAULT_PROOF_TITLES.step02b,
+      [step03.spendingScriptHash, computationThread.policyId],
+      "Failed to build missing-redeemer step 02b",
+    );
+    const step02a = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_REDEEMER_FAULT_PROOF_TITLES.step02a,
+      [step02b.spendingScriptHash, computationThread.policyId],
+      "Failed to build missing-redeemer step 02a",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_REDEEMER_FAULT_PROOF_TITLES.step02,
+      [step02a.spendingScriptHash, computationThread.policyId],
+      "Failed to build missing-redeemer step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      MISSING_REDEEMER_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build missing-redeemer step 01",
+    );
+    return {
+      firstStep: step01,
+      steps: [step01, step02, step02a, step02b, step03, step04, step05],
+    };
+  });
+
+const buildUnusedRedeemerChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  UnusedRedeemerFaultProofContracts["unusedRedeemer"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step06 = yield* buildFaultProofSpendingStep(
+      context,
+      UNUSED_REDEEMER_FAULT_PROOF_TITLES.step06,
+      [
+        computationThread.policyId,
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+      ],
+      "Failed to build unused-redeemer step 06",
+    );
+    const step05 = yield* buildFaultProofSpendingStep(
+      context,
+      UNUSED_REDEEMER_FAULT_PROOF_TITLES.step05,
+      [step06.spendingScriptHash, computationThread.policyId],
+      "Failed to build unused-redeemer step 05",
+    );
+    const step04 = yield* buildFaultProofSpendingStep(
+      context,
+      UNUSED_REDEEMER_FAULT_PROOF_TITLES.step04,
+      [step05.spendingScriptHash, computationThread.policyId],
+      "Failed to build unused-redeemer step 04",
+    );
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      UNUSED_REDEEMER_FAULT_PROOF_TITLES.step03,
+      [step04.spendingScriptHash, computationThread.policyId],
+      "Failed to build unused-redeemer step 03",
+    );
+    const step02c = yield* buildFaultProofSpendingStep(
+      context,
+      UNUSED_REDEEMER_FAULT_PROOF_TITLES.step02c,
+      [step03.spendingScriptHash, computationThread.policyId],
+      "Failed to build unused-redeemer step 02c",
+    );
+    const step02b = yield* buildFaultProofSpendingStep(
+      context,
+      UNUSED_REDEEMER_FAULT_PROOF_TITLES.step02b,
+      [step02c.spendingScriptHash, computationThread.policyId],
+      "Failed to build unused-redeemer step 02b",
+    );
+    const step02a = yield* buildFaultProofSpendingStep(
+      context,
+      UNUSED_REDEEMER_FAULT_PROOF_TITLES.step02a,
+      [step02b.spendingScriptHash, computationThread.policyId],
+      "Failed to build unused-redeemer step 02a",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      UNUSED_REDEEMER_FAULT_PROOF_TITLES.step02,
+      [step02a.spendingScriptHash, computationThread.policyId],
+      "Failed to build unused-redeemer step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      UNUSED_REDEEMER_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build unused-redeemer step 01",
+    );
+    return {
+      firstStep: step01,
+      steps: [
+        step01,
+        step02,
+        step02a,
+        step02b,
+        step02c,
+        step03,
+        step04,
+        step05,
+        step06,
+      ],
+    };
+  });
+
+const buildScriptIntegrityHashMismatchChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  ScriptIntegrityHashMismatchFaultProofContracts["scriptIntegrityHashMismatch"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step05 = yield* buildFaultProofSpendingStep(
+      context,
+      SCRIPT_INTEGRITY_HASH_MISMATCH_FAULT_PROOF_TITLES.step05,
+      [
+        computationThread.policyId,
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+      ],
+      "Failed to build script-integrity-hash-mismatch step 05",
+    );
+    const step04 = yield* buildFaultProofSpendingStep(
+      context,
+      SCRIPT_INTEGRITY_HASH_MISMATCH_FAULT_PROOF_TITLES.step04,
+      [step05.spendingScriptHash, computationThread.policyId],
+      "Failed to build script-integrity-hash-mismatch step 04",
+    );
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      SCRIPT_INTEGRITY_HASH_MISMATCH_FAULT_PROOF_TITLES.step03,
+      [step04.spendingScriptHash, computationThread.policyId],
+      "Failed to build script-integrity-hash-mismatch step 03",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      SCRIPT_INTEGRITY_HASH_MISMATCH_FAULT_PROOF_TITLES.step02,
+      [step03.spendingScriptHash, computationThread.policyId],
+      "Failed to build script-integrity-hash-mismatch step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      SCRIPT_INTEGRITY_HASH_MISMATCH_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build script-integrity-hash-mismatch step 01",
+    );
+    return {
+      firstStep: step01,
+      steps: [step01, step02, step03, step04, step05],
+    };
+  });
+
+const buildDistinctAssetAccumulationLimitChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  DistinctAssetAccumulationLimitFaultProofContracts["distinctAssetAccumulationLimit"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step06 = yield* buildFaultProofSpendingStep(
+      context,
+      DISTINCT_ASSET_ACCUMULATION_LIMIT_FAULT_PROOF_TITLES.step06,
+      [
+        computationThread.policyId,
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+      ],
+      "Failed to build distinct-asset-accumulation-limit step 06",
+    );
+    const step05 = yield* buildFaultProofSpendingStep(
+      context,
+      DISTINCT_ASSET_ACCUMULATION_LIMIT_FAULT_PROOF_TITLES.step05,
+      [step06.spendingScriptHash, computationThread.policyId],
+      "Failed to build distinct-asset-accumulation-limit step 05",
+    );
+    const step04 = yield* buildFaultProofSpendingStep(
+      context,
+      DISTINCT_ASSET_ACCUMULATION_LIMIT_FAULT_PROOF_TITLES.step04,
+      [step05.spendingScriptHash, computationThread.policyId],
+      "Failed to build distinct-asset-accumulation-limit step 04",
+    );
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      DISTINCT_ASSET_ACCUMULATION_LIMIT_FAULT_PROOF_TITLES.step03,
+      [step04.spendingScriptHash, computationThread.policyId],
+      "Failed to build distinct-asset-accumulation-limit step 03",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      DISTINCT_ASSET_ACCUMULATION_LIMIT_FAULT_PROOF_TITLES.step02,
+      [step03.spendingScriptHash, computationThread.policyId],
+      "Failed to build distinct-asset-accumulation-limit step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      DISTINCT_ASSET_ACCUMULATION_LIMIT_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build distinct-asset-accumulation-limit step 01",
+    );
+    return {
+      firstStep: step01,
+      steps: [step01, step02, step03, step04, step05, step06],
+    };
+  });
+
+const buildScriptIntegrityHashMissingChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  ScriptIntegrityHashMissingFaultProofContracts["scriptIntegrityHashMissing"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step04 = yield* buildFaultProofSpendingStep(
+      context,
+      SCRIPT_INTEGRITY_HASH_MISSING_FAULT_PROOF_TITLES.step04,
+      [
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        computationThread.policyId,
+      ],
+      "Failed to build script-integrity-hash-missing step 04",
+    );
+    const redeemerGrammar = yield* buildFaultProofSpendingStep(
+      context,
+      SCRIPT_INTEGRITY_HASH_MISSING_FAULT_PROOF_TITLES.redeemerGrammar,
+      [
+        step04.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build script-integrity-hash-missing redeemer grammar",
+    );
+    const scriptScan = yield* buildFaultProofSpendingStep(
+      context,
+      SCRIPT_INTEGRITY_HASH_MISSING_FAULT_PROOF_TITLES.scriptScan,
+      [
+        redeemerGrammar.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build script-integrity-hash-missing script scan",
+    );
+    const scriptGrammar = yield* buildFaultProofSpendingStep(
+      context,
+      SCRIPT_INTEGRITY_HASH_MISSING_FAULT_PROOF_TITLES.scriptGrammar,
+      [
+        scriptScan.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build script-integrity-hash-missing script grammar",
+    );
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      SCRIPT_INTEGRITY_HASH_MISSING_FAULT_PROOF_TITLES.step03,
+      [
+        step04.spendingScriptHash,
+        scriptGrammar.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build script-integrity-hash-missing step 03",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      SCRIPT_INTEGRITY_HASH_MISSING_FAULT_PROOF_TITLES.step02,
+      [step03.spendingScriptHash, computationThread.policyId],
+      "Failed to build script-integrity-hash-missing step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      SCRIPT_INTEGRITY_HASH_MISSING_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build script-integrity-hash-missing step 01",
+    );
+    return {
+      firstStep: step01,
+      scriptGrammar,
+      scriptScan,
+      redeemerGrammar,
+      steps: [
+        step01,
+        step02,
+        step03,
+        scriptGrammar,
+        scriptScan,
+        redeemerGrammar,
+        step04,
+      ],
+    };
+  });
+
+const buildTransactionOutputNonCanonicalChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  TransactionOutputNonCanonicalFaultProofContracts["transactionOutputNonCanonical"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step04 = yield* buildFaultProofSpendingStep(
+      context,
+      TRANSACTION_OUTPUT_NON_CANONICAL_FAULT_PROOF_TITLES.step04,
+      [
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        computationThread.policyId,
+      ],
+      "Failed to build transaction-output-non-canonical step 04",
+    );
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      TRANSACTION_OUTPUT_NON_CANONICAL_FAULT_PROOF_TITLES.step03,
+      [step04.spendingScriptHash, computationThread.policyId],
+      "Failed to build transaction-output-non-canonical step 03",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      TRANSACTION_OUTPUT_NON_CANONICAL_FAULT_PROOF_TITLES.step02,
+      [
+        step03.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build transaction-output-non-canonical step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      TRANSACTION_OUTPUT_NON_CANONICAL_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build transaction-output-non-canonical step 01",
+    );
+    return { firstStep: step01, steps: [step01, step02, step03, step04] };
+  });
+
+const buildResolvedOutputNonCanonicalChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  ResolvedOutputNonCanonicalFaultProofContracts["resolvedOutputNonCanonical"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step05 = yield* buildFaultProofSpendingStep(
+      context,
+      RESOLVED_OUTPUT_NON_CANONICAL_FAULT_PROOF_TITLES.step05,
+      [
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        computationThread.policyId,
+      ],
+      "Failed to build resolved-output-non-canonical step 05",
+    );
+    const step04 = yield* buildFaultProofSpendingStep(
+      context,
+      RESOLVED_OUTPUT_NON_CANONICAL_FAULT_PROOF_TITLES.step04,
+      [step05.spendingScriptHash, computationThread.policyId],
+      "Failed to build resolved-output-non-canonical step 04",
+    );
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      RESOLVED_OUTPUT_NON_CANONICAL_FAULT_PROOF_TITLES.step03,
+      [step04.spendingScriptHash, computationThread.policyId],
+      "Failed to build resolved-output-non-canonical step 03",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      RESOLVED_OUTPUT_NON_CANONICAL_FAULT_PROOF_TITLES.step02,
+      [
+        step03.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build resolved-output-non-canonical step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      RESOLVED_OUTPUT_NON_CANONICAL_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build resolved-output-non-canonical step 01",
+    );
+    return {
+      firstStep: step01,
+      steps: [step01, step02, step03, step04, step05],
+    };
+  });
+
+const buildMintDeclaredAssetLimitChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  MintDeclaredAssetLimitFaultProofContracts["mintDeclaredAssetLimit"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step04 = yield* buildFaultProofSpendingStep(
+      context,
+      MINT_DECLARED_ASSET_LIMIT_FAULT_PROOF_TITLES.step04,
+      [
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        computationThread.policyId,
+      ],
+      "Failed to build mint-declared-asset-limit step 04",
+    );
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      MINT_DECLARED_ASSET_LIMIT_FAULT_PROOF_TITLES.step03,
+      [
+        step04.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build mint-declared-asset-limit step 03",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      MINT_DECLARED_ASSET_LIMIT_FAULT_PROOF_TITLES.step02,
+      [
+        step03.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build mint-declared-asset-limit step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      MINT_DECLARED_ASSET_LIMIT_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build mint-declared-asset-limit step 01",
+    );
+    return { firstStep: step01, steps: [step01, step02, step03, step04] };
+  });
+
+const buildSpendInputSignerMissingChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  SpendInputSignerMissingFaultProofContracts["spendInputSignerMissing"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step05 = yield* buildFaultProofSpendingStep(
+      context,
+      SPEND_INPUT_SIGNER_MISSING_FAULT_PROOF_TITLES.step05,
+      [
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        computationThread.policyId,
+      ],
+      "Failed to build spend-input-signer-missing step 05",
+    );
+    const step04 = yield* buildFaultProofSpendingStep(
+      context,
+      SPEND_INPUT_SIGNER_MISSING_FAULT_PROOF_TITLES.step04,
+      [
+        step05.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build spend-input-signer-missing step 04",
+    );
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      SPEND_INPUT_SIGNER_MISSING_FAULT_PROOF_TITLES.step03,
+      [
+        step04.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build spend-input-signer-missing step 03",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      SPEND_INPUT_SIGNER_MISSING_FAULT_PROOF_TITLES.step02,
+      [
+        step03.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build spend-input-signer-missing step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      SPEND_INPUT_SIGNER_MISSING_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build spend-input-signer-missing step 01",
+    );
+    return {
+      firstStep: step01,
+      steps: [step01, step02, step03, step04, step05],
+    };
+  });
+
+const buildProtectedOutputSignerMissingChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  ProtectedOutputSignerMissingFaultProofContracts["protectedOutputSignerMissing"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step05 = yield* buildFaultProofSpendingStep(
+      context,
+      PROTECTED_OUTPUT_SIGNER_MISSING_FAULT_PROOF_TITLES.step05,
+      [
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        computationThread.policyId,
+      ],
+      "Failed to build protected-output-signer-missing step 05",
+    );
+    const step04 = yield* buildFaultProofSpendingStep(
+      context,
+      PROTECTED_OUTPUT_SIGNER_MISSING_FAULT_PROOF_TITLES.step04,
+      [
+        step05.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build protected-output-signer-missing step 04",
+    );
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      PROTECTED_OUTPUT_SIGNER_MISSING_FAULT_PROOF_TITLES.step03,
+      [
+        step04.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build protected-output-signer-missing step 03",
+    );
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      PROTECTED_OUTPUT_SIGNER_MISSING_FAULT_PROOF_TITLES.step02,
+      [
+        step03.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build protected-output-signer-missing step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      PROTECTED_OUTPUT_SIGNER_MISSING_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build protected-output-signer-missing step 01",
+    );
+    return {
+      firstStep: step01,
+      steps: [step01, step02, step03, step04, step05],
+    };
+  });
+
+const buildObserversForbiddenOnUntaggedNetworkChain = ({
+  blueprint,
+  network,
+  hubOraclePolicyId,
+  computationThread,
+  fraudProof,
+  fraudProofTokenAddressData,
+  fieldPreimageCertificatePolicyId,
+}: BuildFaultProofContractsParams & SharedFaultProofContracts): Effect.Effect<
+  ObserversForbiddenOnUntaggedNetworkFaultProofContracts["observersForbiddenOnUntaggedNetwork"],
+  Error
+> =>
+  Effect.gen(function* () {
+    const context = { blueprint, network };
+    const step02 = yield* buildFaultProofSpendingStep(
+      context,
+      OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_FAULT_PROOF_TITLES.step02,
+      [
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build observers-forbidden-on-untagged-network step 02",
+    );
+    const step01 = yield* buildFaultProofSpendingStep(
+      context,
+      OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_FAULT_PROOF_TITLES.step01,
+      [
+        step02.spendingScriptHash,
+        computationThread.policyId,
+        hubOraclePolicyId,
+      ],
+      "Failed to build observers-forbidden-on-untagged-network step 01",
+    );
+    return { firstStep: step01, steps: [step01, step02] };
+  });
+
 const buildMinFeeChain = ({
   blueprint,
   network,
@@ -3146,6 +5214,27 @@ const buildInputSetUniquenessChain = ({
 > =>
   Effect.gen(function* () {
     const context = { blueprint, network };
+    const step04 = yield* buildFaultProofSpendingStep(
+      context,
+      INPUT_SET_UNIQUENESS_FAULT_PROOF_TITLES.step04,
+      [
+        fraudProof.policyId,
+        fraudProofTokenAddressData,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build input-set-uniqueness step 04",
+    );
+    const step03 = yield* buildFaultProofSpendingStep(
+      context,
+      INPUT_SET_UNIQUENESS_FAULT_PROOF_TITLES.step03,
+      [
+        step04.spendingScriptHash,
+        computationThread.policyId,
+        fieldPreimageCertificatePolicyId,
+      ],
+      "Failed to build input-set-uniqueness step 03",
+    );
     const step02 = yield* buildFaultProofSpendingStep(
       context,
       INPUT_SET_UNIQUENESS_FAULT_PROOF_TITLES.step02,
@@ -3162,12 +5251,16 @@ const buildInputSetUniquenessChain = ({
       INPUT_SET_UNIQUENESS_FAULT_PROOF_TITLES.step01,
       [
         step02.spendingScriptHash,
+        step03.spendingScriptHash,
         computationThread.policyId,
         hubOraclePolicyId,
       ],
       "Failed to build input-set-uniqueness step 01",
     );
-    return { firstStep: step01, steps: [step01, step02] };
+    return {
+      firstStep: step01,
+      steps: [step01, step02, step03, step04],
+    };
   });
 
 const buildMintAuthorizationChain = ({
@@ -4459,6 +6552,78 @@ export const buildFaultProofContracts = (
       ...shared,
     });
     const minAda = yield* buildMinAdaChain({ ...params, ...shared });
+    const fieldPreimageLengthMismatch =
+      yield* buildFieldPreimageLengthMismatchChain({ ...params, ...shared });
+    const fieldItemWidthIllegal = yield* buildFieldItemWidthIllegalChain({
+      ...params,
+      ...shared,
+    });
+    const witnessScriptDecoding = yield* buildWitnessScriptDecodingChain({
+      ...params,
+      ...shared,
+    });
+    const scriptIntegrityHashMissing =
+      yield* buildScriptIntegrityHashMissingChain({ ...params, ...shared });
+    const transactionOutputNonCanonical =
+      yield* buildTransactionOutputNonCanonicalChain({ ...params, ...shared });
+    const resolvedOutputNonCanonical =
+      yield* buildResolvedOutputNonCanonicalChain({ ...params, ...shared });
+    const mintDeclaredAssetLimit = yield* buildMintDeclaredAssetLimitChain({
+      ...params,
+      ...shared,
+    });
+    const spendInputSignerMissing = yield* buildSpendInputSignerMissingChain({
+      ...params,
+      ...shared,
+    });
+    const protectedOutputSignerMissing =
+      yield* buildProtectedOutputSignerMissingChain({ ...params, ...shared });
+    const observersForbiddenOnUntaggedNetwork =
+      yield* buildObserversForbiddenOnUntaggedNetworkChain({
+        ...params,
+        ...shared,
+      });
+    const outputReferenceScriptDecoding =
+      yield* buildOutputReferenceScriptDecodingChain({ ...params, ...shared });
+    const executionSourceScriptDecoding =
+      yield* buildExecutionSourceScriptDecodingChain({ ...params, ...shared });
+    const executionNativeScriptInvalid =
+      yield* buildExecutionNativeScriptInvalidChain({ ...params, ...shared });
+    const observerOrderInvalid = yield* buildObserverOrderInvalidChain({
+      ...params,
+      ...shared,
+    });
+    const redeemerCanonicity = yield* buildRedeemerCanonicityChain({
+      ...params,
+      ...shared,
+    });
+    const receivePurposeLanguage = yield* buildReceivePurposeLanguageChain({
+      ...params,
+      ...shared,
+    });
+    const unusedScriptWitness = yield* buildUnusedScriptWitnessChain({
+      ...params,
+      ...shared,
+    });
+    const missingScriptSource = yield* buildMissingScriptSourceChain({
+      ...params,
+      ...shared,
+    });
+    const missingRedeemer = yield* buildMissingRedeemerChain({
+      ...params,
+      ...shared,
+    });
+    const unusedRedeemer = yield* buildUnusedRedeemerChain({
+      ...params,
+      ...shared,
+    });
+    const scriptIntegrityHashMismatch =
+      yield* buildScriptIntegrityHashMismatchChain({ ...params, ...shared });
+    const distinctAssetAccumulationLimit =
+      yield* buildDistinctAssetAccumulationLimitChain({
+        ...params,
+        ...shared,
+      });
 
     return {
       computationThread: shared.computationThread,
@@ -4496,6 +6661,28 @@ export const buildFaultProofContracts = (
       missingNativeScriptUtxo,
       nativeScriptInvalid,
       minAda,
+      fieldPreimageLengthMismatch,
+      fieldItemWidthIllegal,
+      witnessScriptDecoding,
+      scriptIntegrityHashMissing,
+      transactionOutputNonCanonical,
+      resolvedOutputNonCanonical,
+      mintDeclaredAssetLimit,
+      spendInputSignerMissing,
+      protectedOutputSignerMissing,
+      observersForbiddenOnUntaggedNetwork,
+      outputReferenceScriptDecoding,
+      executionSourceScriptDecoding,
+      executionNativeScriptInvalid,
+      observerOrderInvalid,
+      redeemerCanonicity,
+      receivePurposeLanguage,
+      unusedScriptWitness,
+      missingScriptSource,
+      missingRedeemer,
+      unusedRedeemer,
+      scriptIntegrityHashMismatch,
+      distinctAssetAccumulationLimit,
     };
   });
 
@@ -4542,6 +6729,35 @@ export const fraudProofContractsToFirstSteps = (
   missingNativeScriptUtxo: contracts.missingNativeScriptUtxo.firstStep,
   nativeScriptInvalid: contracts.nativeScriptInvalid.firstStep,
   minAda: contracts.minAda.firstStep,
+  fieldPreimageLengthMismatch: contracts.fieldPreimageLengthMismatch.firstStep,
+  fieldItemWidthIllegal: contracts.fieldItemWidthIllegal.firstStep,
+  witnessScriptDecoding: contracts.witnessScriptDecoding.firstStep,
+  scriptIntegrityHashMissing: contracts.scriptIntegrityHashMissing.firstStep,
+  transactionOutputNonCanonical:
+    contracts.transactionOutputNonCanonical.firstStep,
+  resolvedOutputNonCanonical: contracts.resolvedOutputNonCanonical.firstStep,
+  mintDeclaredAssetLimit: contracts.mintDeclaredAssetLimit.firstStep,
+  spendInputSignerMissing: contracts.spendInputSignerMissing.firstStep,
+  protectedOutputSignerMissing:
+    contracts.protectedOutputSignerMissing.firstStep,
+  observersForbiddenOnUntaggedNetwork:
+    contracts.observersForbiddenOnUntaggedNetwork.firstStep,
+  outputReferenceScriptDecoding:
+    contracts.outputReferenceScriptDecoding.firstStep,
+  executionSourceScriptDecoding:
+    contracts.executionSourceScriptDecoding.firstStep,
+  executionNativeScriptInvalid:
+    contracts.executionNativeScriptInvalid.firstStep,
+  observerOrderInvalid: contracts.observerOrderInvalid.firstStep,
+  redeemerCanonicity: contracts.redeemerCanonicity.firstStep,
+  receivePurposeLanguage: contracts.receivePurposeLanguage.firstStep,
+  unusedScriptWitness: contracts.unusedScriptWitness.firstStep,
+  missingScriptSource: contracts.missingScriptSource.firstStep,
+  missingRedeemer: contracts.missingRedeemer.firstStep,
+  unusedRedeemer: contracts.unusedRedeemer.firstStep,
+  scriptIntegrityHashMismatch: contracts.scriptIntegrityHashMismatch.firstStep,
+  distinctAssetAccumulationLimit:
+    contracts.distinctAssetAccumulationLimit.firstStep,
 });
 
 export const buildDoubleSpendFaultProofContracts = (
@@ -4940,6 +7156,254 @@ export const buildMinAdaFaultProofContracts = (
     const shared = yield* buildSharedFaultProofContracts(params);
     const minAda = yield* buildMinAdaChain({ ...params, ...shared });
     return { ...shared, minAda };
+  });
+
+export const buildFieldPreimageLengthMismatchFaultProofContracts = (
+  params: BuildFieldPreimageLengthMismatchFaultProofContractsParams,
+): Effect.Effect<FieldPreimageLengthMismatchFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const fieldPreimageLengthMismatch =
+      yield* buildFieldPreimageLengthMismatchChain({ ...params, ...shared });
+    return { ...shared, fieldPreimageLengthMismatch };
+  });
+
+export const buildFieldItemWidthIllegalFaultProofContracts = (
+  params: BuildFieldItemWidthIllegalFaultProofContractsParams,
+): Effect.Effect<FieldItemWidthIllegalFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const fieldItemWidthIllegal = yield* buildFieldItemWidthIllegalChain({
+      ...params,
+      ...shared,
+    });
+    return { ...shared, fieldItemWidthIllegal };
+  });
+
+export const buildWitnessScriptDecodingFaultProofContracts = (
+  params: BuildWitnessScriptDecodingFaultProofContractsParams,
+): Effect.Effect<WitnessScriptDecodingFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const witnessScriptDecoding = yield* buildWitnessScriptDecodingChain({
+      ...params,
+      ...shared,
+    });
+    return { ...shared, witnessScriptDecoding };
+  });
+
+export const buildOutputReferenceScriptDecodingFaultProofContracts = (
+  params: BuildOutputReferenceScriptDecodingFaultProofContractsParams,
+): Effect.Effect<OutputReferenceScriptDecodingFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const outputReferenceScriptDecoding =
+      yield* buildOutputReferenceScriptDecodingChain({ ...params, ...shared });
+    return { ...shared, outputReferenceScriptDecoding };
+  });
+
+export const buildExecutionSourceScriptDecodingFaultProofContracts = (
+  params: BuildExecutionSourceScriptDecodingFaultProofContractsParams,
+): Effect.Effect<ExecutionSourceScriptDecodingFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const executionSourceScriptDecoding =
+      yield* buildExecutionSourceScriptDecodingChain({ ...params, ...shared });
+    return { ...shared, executionSourceScriptDecoding };
+  });
+
+export const buildExecutionNativeScriptInvalidFaultProofContracts = (
+  params: BuildExecutionNativeScriptInvalidFaultProofContractsParams,
+): Effect.Effect<ExecutionNativeScriptInvalidFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const executionNativeScriptInvalid =
+      yield* buildExecutionNativeScriptInvalidChain({ ...params, ...shared });
+    return { ...shared, executionNativeScriptInvalid };
+  });
+
+export const buildObserverOrderInvalidFaultProofContracts = (
+  params: BuildObserverOrderInvalidFaultProofContractsParams,
+): Effect.Effect<ObserverOrderInvalidFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const observerOrderInvalid = yield* buildObserverOrderInvalidChain({
+      ...params,
+      ...shared,
+    });
+    return { ...shared, observerOrderInvalid };
+  });
+
+export const buildRedeemerCanonicityFaultProofContracts = (
+  params: BuildRedeemerCanonicityFaultProofContractsParams,
+): Effect.Effect<RedeemerCanonicityFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const redeemerCanonicity = yield* buildRedeemerCanonicityChain({
+      ...params,
+      ...shared,
+    });
+    return { ...shared, redeemerCanonicity };
+  });
+
+export const buildReceivePurposeLanguageFaultProofContracts = (
+  params: BuildReceivePurposeLanguageFaultProofContractsParams,
+): Effect.Effect<ReceivePurposeLanguageFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const receivePurposeLanguage = yield* buildReceivePurposeLanguageChain({
+      ...params,
+      ...shared,
+    });
+    return { ...shared, receivePurposeLanguage };
+  });
+
+export const buildUnusedScriptWitnessFaultProofContracts = (
+  params: BuildUnusedScriptWitnessFaultProofContractsParams,
+): Effect.Effect<UnusedScriptWitnessFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const unusedScriptWitness = yield* buildUnusedScriptWitnessChain({
+      ...params,
+      ...shared,
+    });
+    return { ...shared, unusedScriptWitness };
+  });
+
+export const buildMissingScriptSourceFaultProofContracts = (
+  params: BuildMissingScriptSourceFaultProofContractsParams,
+): Effect.Effect<MissingScriptSourceFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const missingScriptSource = yield* buildMissingScriptSourceChain({
+      ...params,
+      ...shared,
+    });
+    return { ...shared, missingScriptSource };
+  });
+
+export const buildMissingRedeemerFaultProofContracts = (
+  params: BuildMissingRedeemerFaultProofContractsParams,
+): Effect.Effect<MissingRedeemerFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const missingRedeemer = yield* buildMissingRedeemerChain({
+      ...params,
+      ...shared,
+    });
+    return { ...shared, missingRedeemer };
+  });
+
+export const buildUnusedRedeemerFaultProofContracts = (
+  params: BuildUnusedRedeemerFaultProofContractsParams,
+): Effect.Effect<UnusedRedeemerFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const unusedRedeemer = yield* buildUnusedRedeemerChain({
+      ...params,
+      ...shared,
+    });
+    return { ...shared, unusedRedeemer };
+  });
+
+export const buildScriptIntegrityHashMismatchFaultProofContracts = (
+  params: BuildScriptIntegrityHashMismatchFaultProofContractsParams,
+): Effect.Effect<ScriptIntegrityHashMismatchFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const scriptIntegrityHashMismatch =
+      yield* buildScriptIntegrityHashMismatchChain({ ...params, ...shared });
+    return { ...shared, scriptIntegrityHashMismatch };
+  });
+
+export const buildDistinctAssetAccumulationLimitFaultProofContracts = (
+  params: BuildDistinctAssetAccumulationLimitFaultProofContractsParams,
+): Effect.Effect<DistinctAssetAccumulationLimitFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const distinctAssetAccumulationLimit =
+      yield* buildDistinctAssetAccumulationLimitChain({ ...params, ...shared });
+    return { ...shared, distinctAssetAccumulationLimit };
+  });
+
+export const buildScriptIntegrityHashMissingFaultProofContracts = (
+  params: BuildScriptIntegrityHashMissingFaultProofContractsParams,
+): Effect.Effect<ScriptIntegrityHashMissingFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const scriptIntegrityHashMissing =
+      yield* buildScriptIntegrityHashMissingChain({ ...params, ...shared });
+    return { ...shared, scriptIntegrityHashMissing };
+  });
+
+export const buildTransactionOutputNonCanonicalFaultProofContracts = (
+  params: BuildTransactionOutputNonCanonicalFaultProofContractsParams,
+): Effect.Effect<TransactionOutputNonCanonicalFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const transactionOutputNonCanonical =
+      yield* buildTransactionOutputNonCanonicalChain({ ...params, ...shared });
+    return { ...shared, transactionOutputNonCanonical };
+  });
+
+export const buildResolvedOutputNonCanonicalFaultProofContracts = (
+  params: BuildResolvedOutputNonCanonicalFaultProofContractsParams,
+): Effect.Effect<ResolvedOutputNonCanonicalFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const resolvedOutputNonCanonical =
+      yield* buildResolvedOutputNonCanonicalChain({ ...params, ...shared });
+    return { ...shared, resolvedOutputNonCanonical };
+  });
+
+export const buildMintDeclaredAssetLimitFaultProofContracts = (
+  params: BuildMintDeclaredAssetLimitFaultProofContractsParams,
+): Effect.Effect<MintDeclaredAssetLimitFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const mintDeclaredAssetLimit = yield* buildMintDeclaredAssetLimitChain({
+      ...params,
+      ...shared,
+    });
+    return { ...shared, mintDeclaredAssetLimit };
+  });
+
+export const buildSpendInputSignerMissingFaultProofContracts = (
+  params: BuildSpendInputSignerMissingFaultProofContractsParams,
+): Effect.Effect<SpendInputSignerMissingFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const spendInputSignerMissing = yield* buildSpendInputSignerMissingChain({
+      ...params,
+      ...shared,
+    });
+    return { ...shared, spendInputSignerMissing };
+  });
+
+export const buildProtectedOutputSignerMissingFaultProofContracts = (
+  params: BuildProtectedOutputSignerMissingFaultProofContractsParams,
+): Effect.Effect<ProtectedOutputSignerMissingFaultProofContracts, Error> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const protectedOutputSignerMissing =
+      yield* buildProtectedOutputSignerMissingChain({ ...params, ...shared });
+    return { ...shared, protectedOutputSignerMissing };
+  });
+
+export const buildObserversForbiddenOnUntaggedNetworkFaultProofContracts = (
+  params: BuildObserversForbiddenOnUntaggedNetworkFaultProofContractsParams,
+): Effect.Effect<
+  ObserversForbiddenOnUntaggedNetworkFaultProofContracts,
+  Error
+> =>
+  Effect.gen(function* () {
+    const shared = yield* buildSharedFaultProofContracts(params);
+    const observersForbiddenOnUntaggedNetwork =
+      yield* buildObserversForbiddenOnUntaggedNetworkChain({
+        ...params,
+        ...shared,
+      });
+    return { ...shared, observersForbiddenOnUntaggedNetwork };
   });
 
 export const buildTransitionTraceFaultProofContracts = (

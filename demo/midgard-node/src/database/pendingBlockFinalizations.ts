@@ -32,6 +32,8 @@ const transitionTraceTableName = "pending_block_finalization_transition_trace";
 const eventToStepTableName = "pending_block_finalization_event_to_step";
 const validationTracesTableName =
   "pending_block_finalization_validation_traces";
+const validationTraceWitnessesTableName =
+  "pending_block_finalization_validation_trace_witnesses";
 
 export enum Columns {
   HEADER_HASH = "header_hash",
@@ -296,6 +298,7 @@ export type Record = Row & {
   readonly transitionTraceMembers: readonly MemberRecord[];
   readonly eventToStepMembers: readonly MemberRecord[];
   readonly validationTraceMembers: readonly MemberRecord[];
+  readonly validationTraceWitnessMembers: readonly MemberRecord[];
   readonly ledgerDelta: LedgerDeltaInput;
   readonly utxoPayloadAggregate?: UtxoPayloadSizeAggregate;
   readonly nativeMpfReplay?: NativeMpfReplayInput;
@@ -405,6 +408,7 @@ export type PrepareInput = {
   readonly transitionTraceMembers: readonly RetainedRootMemberInput[];
   readonly eventToStepMembers: readonly RetainedRootMemberInput[];
   readonly validationTraceMembers: readonly RetainedRootMemberInput[];
+  readonly validationTraceWitnessMembers: readonly RetainedRootMemberInput[];
   readonly ledgerDelta: LedgerDeltaInput;
   readonly utxoPayloadAggregate?: UtxoPayloadSizeAggregate;
   readonly nativeMpfReplay?: NativeMpfReplayInput;
@@ -1342,6 +1346,7 @@ const retrieveRecord = (
       transitionTraceMembers,
       eventToStepMembers,
       validationTraceMembers,
+      validationTraceWitnessMembers,
     ] = yield* Effect.all(
       [
         retrieveMembers(
@@ -1373,6 +1378,11 @@ const retrieveRecord = (
         retrieveMembers(
           sql,
           validationTracesTableName,
+          normalizedRow[Columns.HEADER_HASH],
+        ),
+        retrieveMembers(
+          sql,
+          validationTraceWitnessesTableName,
           normalizedRow[Columns.HEADER_HASH],
         ),
       ],
@@ -1414,6 +1424,7 @@ const retrieveRecord = (
       transitionTraceMembers,
       eventToStepMembers,
       validationTraceMembers,
+      validationTraceWitnessMembers,
     };
   });
 
@@ -1754,6 +1765,16 @@ export const preparePendingSubmission = (
           blockEndTime: input.blockEndTime,
         }),
     );
+    const validationTraceWitnessMembers =
+      input.validationTraceWitnessMembers.map((entry, ordinal) =>
+        retainedRootMemberEntry({
+          headerHash: input.headerHash,
+          entry,
+          ordinal,
+          sourceTable: validationTraceWitnessesTableName,
+          blockEndTime: input.blockEndTime,
+        }),
+      );
     yield* sql.withTransaction(
       Effect.gen(function* () {
         const activeRows = yield* sql<Row>`SELECT * FROM ${sql(tableName)}
@@ -1897,6 +1918,11 @@ export const preparePendingSubmission = (
           yield* sql`INSERT INTO ${sql(
             validationTracesTableName,
           )} ${sql.insert(validationTraceMembers)}`;
+        }
+        if (validationTraceWitnessMembers.length > 0) {
+          yield* sql`INSERT INTO ${sql(
+            validationTraceWitnessesTableName,
+          )} ${sql.insert(validationTraceWitnessMembers)}`;
         }
       }),
     );
@@ -2332,6 +2358,7 @@ export const assertActiveJournalPayloadsComplete: Effect.Effect<
       record.transitionTraceMembers,
       record.eventToStepMembers,
       record.validationTraceMembers,
+      record.validationTraceWitnessMembers,
     ].some(hasIncompletePayload) ||
     BigInt(record.validationTraceMembers.length) !==
       record[Columns.EXPECTED_VALIDATION_TRACE_COUNT]
@@ -2356,6 +2383,7 @@ export const clear = Effect.all(
     clearTable(transitionTraceTableName),
     clearTable(eventToStepTableName),
     clearTable(validationTracesTableName),
+    clearTable(validationTraceWitnessesTableName),
     clearTable(tableName),
   ],
   { discard: true },

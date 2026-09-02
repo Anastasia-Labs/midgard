@@ -3,15 +3,18 @@ import {
   computeMidgardNativeTxIdV1,
   deriveMidgardNativeTxCompactV1,
   deriveMidgardNativeTxWitnessSetCompactV1,
+  encodeMidgardFieldPreimageV1,
   encodeMidgardNativeTxCompactV1,
   encodeMidgardNativeTxProofFieldLengthsV1,
   encodeMidgardNativeTxWitnessSetCompactV1,
+  encodeMidgardRedeemerWitnessItemV1,
   MIDGARD_NATIVE_TX_V1_VERSION,
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxCanonicalV1,
   type MidgardNativeTxFullV1,
   midgardNativeTxProofFieldPreimageLengthsV1,
 } from "@al-ft/midgard-core";
+import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   type CommittedFieldClaimV1,
@@ -78,6 +81,7 @@ import {
   witnessMintingPolicyCarriageV1,
   witnessWithdrawalValidatorCarriageV1,
 } from "../../src/witness-reference-scripts-v1.js";
+import { l2TransactionSourceCborV1 } from "./emulator/native-tx.js";
 import { setupFraudulentBlockV1 } from "./submit-init-emulator-fixtures.js";
 import {
   makeFaultProofEmulatorHarnessV1,
@@ -147,7 +151,6 @@ export const publishCommittedFieldShapeReferenceScriptsV1 = async ({
       lucid,
       script: step.spendingScript,
       label: `committed-field-shape step-0${(index + 1).toString()}`,
-      oversized: true,
     });
     publications.push(utxo);
   }
@@ -157,6 +160,8 @@ export const publishCommittedFieldShapeReferenceScriptsV1 = async ({
 export type CommittedFieldShapeScenarioKindV1 =
   | "wrong-stride"
   | "honest"
+  | "field-item-width-illegal"
+  | "redeemer-canonicity"
   | "non-envelope";
 
 export type CommittedFieldShapeScenarioV1 = {
@@ -197,7 +202,7 @@ const invalidNonEnvelopeCanonicalV1 = (): MidgardNativeTxCanonicalV1 => ({
   },
 });
 
-const scenarioMaterialV1 = (
+export const committedFieldShapeScenarioMaterialV1 = (
   kind: CommittedFieldShapeScenarioKindV1,
 ): {
   readonly canonicalTx: MidgardNativeTxCanonicalV1 | null;
@@ -238,6 +243,68 @@ const scenarioMaterialV1 = (
       committedPreimage: Buffer.from(invalid.body.outputsPreimageCbor),
     };
   }
+  if (kind === "field-item-width-illegal") {
+    const oversizedOutput = encodeMidgardTxOutput({
+      address: Buffer.from(`60${"00".repeat(28)}`, "hex"),
+      value: { lovelace: 2_000_000n, assets: new Map() },
+      datum: {
+        kind: "inline",
+        cbor: Buffer.concat([
+          Buffer.from("5f", "hex"),
+          ...Array.from({ length: 256 }, () =>
+            Buffer.concat([Buffer.from("5840", "hex"), Buffer.alloc(64)]),
+          ),
+          Buffer.from("ff", "hex"),
+        ]),
+      },
+    });
+    const fullTx = makeNativeTx({
+      spendInputCbors: [],
+      fee: 7n,
+      outputCbors: [oversizedOutput],
+    });
+    return {
+      canonicalTx: fullTx,
+      fullTx,
+      compact: fullTx.compact,
+      l2TransactionSourceCbor: l2TransactionSourceCborV1(fullTx),
+      fieldIndex: 2,
+      committedPreimage: Buffer.from(fullTx.body.outputsPreimageCbor),
+    };
+  }
+  if (kind === "redeemer-canonicity") {
+    // Exercise certified carriage at the real retained-DA frontier. The first
+    // item has a valid redeemer envelope but a non-minimal Plutus integer;
+    // retaining the full 224-item field proves that exact-coordinate access
+    // remains bounded independently of unrelated trailing witnesses.
+    const redeemerItems = Array.from({ length: 224 }, (_, index) =>
+      encodeMidgardRedeemerWitnessItemV1({
+        purpose: "Spend",
+        index: BigInt(index),
+        redeemerCbor:
+          index === 0
+            ? Buffer.from("1800", "hex")
+            : Buffer.concat([Buffer.from("5840", "hex"), Buffer.alloc(64)]),
+        executionUnits: { memory: 1_000_000n, steps: 1_000_000n },
+      }),
+    );
+    const redeemerPreimage = encodeMidgardFieldPreimageV1(redeemerItems);
+    const fullTx = makeNativeTx({
+      spendInputCbors: [],
+      fee: 7n,
+      redeemerTxWitsPreimageCbor: redeemerPreimage,
+    });
+    return {
+      canonicalTx: fullTx,
+      fullTx,
+      compact: fullTx.compact,
+      l2TransactionSourceCbor: l2TransactionSourceCborV1(fullTx),
+      fieldIndex: 8,
+      committedPreimage: Buffer.from(
+        fullTx.witnessSet.redeemerTxWitsPreimageCbor,
+      ),
+    };
+  }
   const spendItem =
     kind === "wrong-stride"
       ? Buffer.from("deadbeef", "hex")
@@ -275,7 +342,7 @@ export const setupCommittedFieldShapeScenarioV1 = async ({
   readonly harness: CommittedFieldShapeEmulatorHarnessV1;
   readonly kind: CommittedFieldShapeScenarioKindV1;
 }): Promise<CommittedFieldShapeScenarioV1> => {
-  const material = scenarioMaterialV1(kind);
+  const material = committedFieldShapeScenarioMaterialV1(kind);
   const nativeTxId = computeMidgardNativeTxIdV1(material.compact).toString(
     "hex",
   );
@@ -303,7 +370,11 @@ export const setupCommittedFieldShapeScenarioV1 = async ({
     emulator: harness.emulator,
     contracts: harness.contracts,
     catalogue: harness.catalogue,
-    fixture: { transactionsRoot, l2TransactionCount: 1n },
+    fixture: {
+      transactionsRoot,
+      l2TransactionCount: 1n,
+      ...(kind === "redeemer-canonicity" ? { headerDurationMs: 60_000 } : {}),
+    },
   });
   return {
     kind,

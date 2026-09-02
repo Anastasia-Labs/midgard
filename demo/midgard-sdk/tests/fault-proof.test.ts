@@ -25,6 +25,7 @@ import { describe, expect, it } from "vitest";
 import * as SDK from "@/index.js";
 
 import {
+  acceptedVerdictSubjectV1,
   AddressData,
   addressDataFromBech32,
   buildDoubleSpendFaultProofContracts,
@@ -322,16 +323,35 @@ describe("fault-proof ABI", () => {
     ).toEqual({ fraud_prover: h28, data: null });
     expect(
       roundTrip(
-        { Continue: [{ RedeemerCarriedInclusion: [txInclusionArgs] }] },
+        {
+          Continue: [
+            {
+              source: {
+                AcceptedSource: {
+                  inclusion: { RedeemerCarriedInclusion: [txInclusionArgs] },
+                },
+              },
+            },
+          ],
+        },
         InvalidRangeStep01SpendRedeemer,
       ),
     ).toMatchObject({
-      Continue: [{ RedeemerCarriedInclusion: [{ native_tx_id: h32 }] }],
+      Continue: [
+        {
+          source: {
+            AcceptedSource: {
+              inclusion: { RedeemerCarriedInclusion: [{ native_tx_id: h32 }] },
+            },
+          },
+        },
+      ],
     });
 
     const step02Datum = {
       fraud_prover: h28,
       data: {
+        subject: acceptedVerdictSubjectV1(h32),
         block_slot: 10n,
         bad_tx_normalized_validity_range: {
           ClosedRange: { lower: 11n, upper: 19n },

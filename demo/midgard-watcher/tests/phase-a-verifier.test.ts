@@ -661,6 +661,7 @@ const buildBlock = async (input: {
       forced_transaction_preimages: [],
       cek_program_material: sortEntries(input.programMaterial ?? []),
       validation_traces: sortEntries(validationTraceEntries),
+      validation_trace_witnesses: [],
       counts,
     },
   };

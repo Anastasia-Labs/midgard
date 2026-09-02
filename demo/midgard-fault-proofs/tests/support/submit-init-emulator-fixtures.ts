@@ -21,8 +21,10 @@ import {
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   deriveMidgardNativeTxProofSourceV1,
   deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
+  encodeMidgardFieldPreimageV1,
   encodeMidgardNativeTxCanonicalV1,
   encodeMidgardNativeTxCompactV1,
+  encodeMidgardRedeemerWitnessItemV1,
   encodeMidgardSpendInputItemV1,
   encodeMidgardTxOutput,
   hashMidgardValidationMachineStateV1,
@@ -1072,9 +1074,18 @@ export const sortedDaEntries = (
 export const buildInvalidForcedTransitionTraceFixture = async ({
   operatorVkey,
   now,
+  fieldPreimageLengthMismatchIndex,
+  fieldItemWidthIllegalCoordinate,
+  redeemerMalformedIndex,
 }: {
   readonly operatorVkey: string;
   readonly now: number;
+  readonly fieldPreimageLengthMismatchIndex?: number;
+  readonly fieldItemWidthIllegalCoordinate?: {
+    readonly fieldIndex: number;
+    readonly itemIndex: number;
+  };
+  readonly redeemerMalformedIndex?: number;
 }) => {
   const txOrderId = transitionTraceOutRef("f1");
   const eventKey = { ForcedTransactionEventKey: { tx_order_id: txOrderId } };
@@ -1100,6 +1111,18 @@ export const buildInvalidForcedTransitionTraceFixture = async ({
     referenceByte: "b1",
     outputByte: "b2",
     witnessByte: "b8",
+    ...(redeemerMalformedIndex === undefined
+      ? {}
+      : {
+          redeemerTxWitsPreimageCbor: encodeMidgardFieldPreimageV1([
+            encodeMidgardRedeemerWitnessItemV1({
+              purpose: "Spend",
+              index: BigInt(redeemerMalformedIndex),
+              redeemerCbor: Buffer.from("00", "hex"),
+              executionUnits: { memory: 1n, steps: 2n },
+            }),
+          ]),
+        }),
   });
   const forcedCanonicalCbor = encodeMidgardNativeTxCanonicalV1(forcedNativeTx);
   // The leaf is rejected, so its committed source is the operator-adjudicated
@@ -1119,7 +1142,31 @@ export const buildInvalidForcedTransitionTraceFixture = async ({
     },
     verdict: {
       ForcedTxInvalid: {
-        reason: { PlutusExecutionFailed: { execution_index: 0n } },
+        reason:
+          redeemerMalformedIndex !== undefined
+            ? {
+                RedeemerMalformed: {
+                  redeemer_index: BigInt(redeemerMalformedIndex),
+                },
+              }
+            : fieldItemWidthIllegalCoordinate !== undefined
+              ? {
+                  FieldItemWidthIllegal: {
+                    field_index: BigInt(
+                      fieldItemWidthIllegalCoordinate.fieldIndex,
+                    ),
+                    item_index: BigInt(
+                      fieldItemWidthIllegalCoordinate.itemIndex,
+                    ),
+                  },
+                }
+              : fieldPreimageLengthMismatchIndex === undefined
+                ? { PlutusExecutionFailed: { execution_index: 0n } }
+                : {
+                    FieldPreimageLengthMismatch: {
+                      field_index: BigInt(fieldPreimageLengthMismatchIndex),
+                    },
+                  },
       },
     },
   };
@@ -1246,6 +1293,7 @@ export const buildInvalidForcedTransitionTraceFixture = async ({
         forced_transaction_preimages: sortedDaEntries(forcedPreimageEntries),
         cek_program_material: [],
         validation_traces: sortedDaEntries(validationTraceEntries),
+        validation_trace_witnesses: [],
         counts,
       },
     }),
@@ -1265,6 +1313,10 @@ export const buildInvalidForcedTransitionTraceFixture = async ({
   return {
     header,
     headerHash,
+    reconstruction,
+    eventKey,
+    forcedNativeTx,
+    forcedTransaction,
     proof: buildTransitionFaultProof({ reconstruction, fault }),
   };
 };

@@ -253,6 +253,28 @@ const REGISTERED_LINEAR_FAULT_PROOF_CATEGORIES = [
   "missingNativeScriptUtxo",
   "nativeScriptInvalid",
   "minAda",
+  "fieldPreimageLengthMismatch",
+  "fieldItemWidthIllegal",
+  "witnessScriptDecoding",
+  "scriptIntegrityHashMissing",
+  "transactionOutputNonCanonical",
+  "resolvedOutputNonCanonical",
+  "mintDeclaredAssetLimit",
+  "spendInputSignerMissing",
+  "protectedOutputSignerMissing",
+  "observersForbiddenOnUntaggedNetwork",
+  "observerOrderInvalid",
+  "redeemerCanonicity",
+  "outputReferenceScriptDecoding",
+  "executionSourceScriptDecoding",
+  "receivePurposeLanguage",
+  "unusedScriptWitness",
+  "unusedRedeemer",
+  "executionNativeScriptInvalid",
+  "scriptIntegrityHashMismatch",
+  "distinctAssetAccumulationLimit",
+  "missingScriptSource",
+  "missingRedeemer",
 ] as const satisfies readonly (keyof SDK.FaultProofContracts)[];
 
 const upperFirst = (value: string): string =>
@@ -277,6 +299,96 @@ const faultProofStepContractName = (
         `native-script-decoding exposes an unexpected step index ${stepIndex.toString()}`,
       );
     }
+    return name;
+  }
+  if (category === "fieldPreimageLengthMismatch") {
+    const names = [
+      "fraudProofFieldPreimageLengthMismatch",
+      "fraudProofFieldPreimageLengthMismatchStep02Accepted",
+      "fraudProofFieldPreimageLengthMismatchStep02Forced",
+      "fraudProofFieldPreimageLengthMismatchStep03",
+    ] as const;
+    const name = names[stepIndex];
+    if (name === undefined)
+      throw new Error(
+        `field-preimage-length-mismatch exposes an unexpected step index ${stepIndex.toString()}`,
+      );
+    return name;
+  }
+  if (category === "scriptIntegrityHashMissing") {
+    const names = [
+      "fraudProofScriptIntegrityHashMissing",
+      "fraudProofScriptIntegrityHashMissingStep02",
+      "fraudProofScriptIntegrityHashMissingStep03",
+      "fraudProofScriptIntegrityHashMissingScriptGrammar",
+      "fraudProofScriptIntegrityHashMissingScriptScan",
+      "fraudProofScriptIntegrityHashMissingRedeemerGrammar",
+      "fraudProofScriptIntegrityHashMissingStep04",
+    ] as const;
+    const name = names[stepIndex];
+    if (name === undefined)
+      throw new Error(
+        `script-integrity-hash-missing exposes an unexpected step index ${stepIndex.toString()}`,
+      );
+    return name;
+  }
+  if (category === "missingRedeemer") {
+    const names = [
+      "fraudProofMissingRedeemer",
+      "fraudProofMissingRedeemerStep02",
+      "fraudProofMissingRedeemerStep02a",
+      "fraudProofMissingRedeemerStep02b",
+      "fraudProofMissingRedeemerStep03",
+      "fraudProofMissingRedeemerStep04",
+      "fraudProofMissingRedeemerStep05",
+    ] as const;
+    const name = names[stepIndex];
+    if (name === undefined)
+      throw new Error(
+        `missing-redeemer exposes an unexpected step index ${stepIndex.toString()}`,
+      );
+    return name;
+  }
+  if (category === "unusedRedeemer") {
+    const names = [
+      "fraudProofUnusedRedeemer",
+      "fraudProofUnusedRedeemerStep02",
+      "fraudProofUnusedRedeemerStep02a",
+      "fraudProofUnusedRedeemerStep02b",
+      "fraudProofUnusedRedeemerStep02c",
+      "fraudProofUnusedRedeemerStep03",
+      "fraudProofUnusedRedeemerStep04",
+      "fraudProofUnusedRedeemerStep05",
+      "fraudProofUnusedRedeemerStep06",
+    ] as const;
+    const name = names[stepIndex];
+    if (name === undefined)
+      throw new Error(
+        `unused-redeemer exposes an unexpected step index ${stepIndex.toString()}`,
+      );
+    return name;
+  }
+  if (category === "executionNativeScriptInvalid") {
+    const names = [
+      "fraudProofExecutionNativeScriptInvalid",
+      "fraudProofExecutionNativeScriptInvalidStep02",
+      "fraudProofExecutionNativeScriptInvalidStep03",
+      "fraudProofExecutionNativeScriptInvalidStep04",
+      "fraudProofExecutionNativeScriptInvalidStep05",
+      "fraudProofExecutionNativeScriptInvalidStep06",
+      "fraudProofExecutionNativeScriptInvalidAcceptedReconstructionInit",
+      "fraudProofExecutionNativeScriptInvalidAcceptedSpendPrefix",
+      "fraudProofExecutionNativeScriptInvalidAcceptedMintPrefix",
+      "fraudProofExecutionNativeScriptInvalidAcceptedObserverPrefix",
+      "fraudProofExecutionNativeScriptInvalidAcceptedReceivePrefix",
+      "fraudProofExecutionNativeScriptInvalidAcceptedInlineSource",
+      "fraudProofExecutionNativeScriptInvalidAcceptedReferenceSource",
+    ] as const;
+    const name = names[stepIndex];
+    if (name === undefined)
+      throw new Error(
+        `execution-native-script-invalid exposes an unexpected step index ${stepIndex.toString()}`,
+      );
     return name;
   }
   return `fraudProof${upperFirst(category)}${

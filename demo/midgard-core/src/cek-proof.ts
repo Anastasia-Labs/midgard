@@ -69,9 +69,9 @@ export const MIDGARD_CEK_PROGRAM_UPLC_VERSION_V1 = [1n, 1n, 0n] as const;
  * The canonical V1 DA envelope is the only aggregate program-size budget. The
  * constants below mirror its exact canonical Plutus-Data encoding:
  *
- * - an otherwise-empty, structurally valid V1 payload is 445 bytes;
+ * - an otherwise-empty, structurally valid V1 payload is 446 bytes;
  * - replacing its one-byte empty material list with the two-byte non-empty
- *   list framing leaves 446 fixed bytes outside material tuples;
+ *   list framing leaves 447 fixed bytes outside material tuples;
  * - the smallest tuple is 42 bytes: tuple framing (2), a bytes32 key (34),
  *   and a five-byte `[v1, kind, one-byte-preimage]` value wrapped as Plutus
  *   bytes (6).
@@ -82,7 +82,7 @@ export const MIDGARD_CEK_PROGRAM_UPLC_VERSION_V1 = [1n, 1n, 0n] as const;
  * smaller, and the canonical 64 MiB DA-size check remains authoritative.
  */
 export const MIDGARD_MAX_DA_PAYLOAD_BYTES_V1 = 64 * 1024 * 1024;
-export const MIDGARD_CEK_PROGRAM_MATERIAL_DA_FIXED_BYTES_V1 = 446;
+export const MIDGARD_CEK_PROGRAM_MATERIAL_DA_FIXED_BYTES_V1 = 447;
 export const MIDGARD_CEK_MIN_PROGRAM_MATERIAL_DA_TUPLE_BYTES_V1 = 42;
 export const MIDGARD_CEK_MAX_PROGRAM_NODE_COUNT_V1 = BigInt(
   Math.floor(

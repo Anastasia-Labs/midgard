@@ -294,6 +294,7 @@ export const buildStrictRetainedDaPairFixtureV1 = async ({
       transition_trace: sorted(transitionTrace),
       event_to_step: sorted(eventToStep),
       validation_traces: sorted(validationTraces),
+      validation_trace_witnesses: [],
       counts,
     },
   };

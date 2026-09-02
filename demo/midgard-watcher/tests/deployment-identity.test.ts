@@ -616,7 +616,7 @@ describe("watcher deployment identity", () => {
     ).toThrow("invalid_field");
   });
 
-  it("binds the complete registered catalogue through category 1f to deployed contracts", () => {
+  it("binds the complete registered sparse-ID catalogue to deployed contracts", () => {
     const fixture = makeFixture();
     const categories = fixture.policy.fraudProofCatalogue.categories;
 
@@ -669,7 +669,44 @@ describe("watcher deployment identity", () => {
       categoryId: "0000001f",
       scriptHash: fixture.policy.appliedScriptHashes.fraudProofMinAda,
     });
-    expect(Object.keys(categories)).toHaveLength(32);
+    expect(categories.fieldPreimageLengthMismatch).toEqual({
+      categoryId: "00000020",
+      scriptHash:
+        fixture.policy.appliedScriptHashes
+          .fraudProofFieldPreimageLengthMismatch,
+    });
+    expect(categories.fieldItemWidthIllegal).toEqual({
+      categoryId: "00000021",
+      scriptHash:
+        fixture.policy.appliedScriptHashes.fraudProofFieldItemWidthIllegal,
+    });
+    expect(categories.witnessScriptDecoding).toEqual({
+      categoryId: "00000022",
+      scriptHash:
+        fixture.policy.appliedScriptHashes.fraudProofWitnessScriptDecoding,
+    });
+    expect(categories.scriptIntegrityHashMissing).toEqual({
+      categoryId: "00000023",
+      scriptHash:
+        fixture.policy.appliedScriptHashes.fraudProofScriptIntegrityHashMissing,
+    });
+    expect(categories.transactionOutputNonCanonical).toEqual({
+      categoryId: "00000029",
+      scriptHash:
+        fixture.policy.appliedScriptHashes
+          .fraudProofTransactionOutputNonCanonical,
+    });
+    expect(categories.resolvedOutputNonCanonical).toEqual({
+      categoryId: "00000026",
+      scriptHash:
+        fixture.policy.appliedScriptHashes.fraudProofResolvedOutputNonCanonical,
+    });
+    expect(categories.mintDeclaredAssetLimit).toEqual({
+      categoryId: "0000002c",
+      scriptHash:
+        fixture.policy.appliedScriptHashes.fraudProofMintDeclaredAssetLimit,
+    });
+    expect(Object.keys(categories)).toHaveLength(42);
 
     fixture.policy = {
       ...fixture.policy,

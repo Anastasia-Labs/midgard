@@ -15,6 +15,8 @@
 //// the compact body's native network field or opens body field 2 (`outputs`)
 //// through the flat field commitment before applying these predicates.
 
+use aiken/collection/list
+
 /// Canonical native-V1 spelling of an absent optional Cardano network-id body
 /// field. This is not an address network id.
 pub const native_network_id_none: Int = 255
@@ -47,4 +49,21 @@ pub fn is_output_network_violation_v1(
   expected_network_id: Int,
 ) -> Bool {
   output_network_id != expected_network_id
+}
+
+/// Complete predicate needed to contradict the transaction-global forced
+/// `NetworkIdMismatch` reason.  The proof must establish that the optional
+/// transaction network and every output address agree with the deployment.
+pub fn is_any_network_violation_v1(
+  committed_network_id: Int,
+  output_network_ids: List<Int>,
+  expected_network_id: Int,
+) -> Bool {
+  or {
+    is_transaction_network_violation_v1(
+      committed_network_id,
+      expected_network_id,
+    ),
+    output_network_ids |> list.any(fn(id) { id != expected_network_id }),
+  }
 }

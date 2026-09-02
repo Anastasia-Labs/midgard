@@ -523,7 +523,6 @@ export const publishMintAuthorizationReferenceScriptsV1 = async ({
       lucid,
       script,
       label: `mint-authorization step-0${(index + 1).toString()}`,
-      oversized: true,
     });
     published.push(utxo);
   }

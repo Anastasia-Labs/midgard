@@ -24,7 +24,8 @@ describe("withdrawal-mistag cancel and resume", () => {
       harness,
       direction: "valid-marked-invalid",
     });
-    const refs = await publishWithdrawalMistagScriptsV1({ harness });
+    const published = await publishWithdrawalMistagScriptsV1({ harness });
+    const refs = published.refs;
     const blockUtxo = await withdrawalMistagBlockUtxoV1({ harness, scenario });
     const advanceTo = async (targetStep: 0 | 2 | 3) => {
       const init = await initWithdrawalMistagThreadV1({ harness, scenario });

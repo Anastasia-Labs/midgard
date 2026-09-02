@@ -29,6 +29,7 @@ import { submitRemoveFraudulentBlock } from "../src/index.js";
 import {
   requireInputSetUniquenessClaimV1,
   scanInputSetUniquenessV1,
+  submitInputSetUniquenessCancelV1,
   submitInputSetUniquenessInit,
   submitInputSetUniquenessStep01,
   submitInputSetUniquenessStep02,
@@ -151,9 +152,58 @@ describe("input-set-uniqueness emulator lifecycle", () => {
         witnessReferenceScripts: setup.witnessReferenceScripts,
       }),
     );
-    proofFit["step-01"] = step01Capture.measurement;
-    const step01 = step01Capture.result;
-    expect(step01.stepState).toStrictEqual({ bad_tx_id: fixture.nativeTxId });
+    proofFit["step-01-before-cancel"] = step01Capture.measurement;
+    expect(step01Capture.result.stepState).toStrictEqual({
+      bad_tx_id: fixture.nativeTxId,
+    });
+    const cancelCapture = await captureEmulatorSubmission(emulator, async () =>
+      submitInputSetUniquenessCancelV1({
+        lucid: proverLucid,
+        contracts: family,
+        categoryId: category.categoryId,
+        signer: proverSigner,
+        threadOutRef: step01Capture.result.nextThreadOutRef,
+        referenceScriptUtxo: step02Ref,
+        witnessReferenceScripts: setup.witnessReferenceScripts,
+      }),
+    );
+    proofFit["step-02-cancel"] = cancelCapture.measurement;
+    const resumedInit = await captureEmulatorSubmission(emulator, async () =>
+      submitInputSetUniquenessInit({
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        network,
+        contracts: family,
+        category,
+        catalogue: {
+          policyId: harness.contracts.fraudProofCatalogue.policyId,
+          spendingScriptAddress:
+            harness.contracts.fraudProofCatalogue.spendingScriptAddress,
+          root: catalogue.root,
+        },
+        signer: proverSigner,
+        fraudulentBlockOutRef: setup.fraudulentBlockOutRef,
+        witnessReferenceScripts: setup.witnessReferenceScripts,
+      }),
+    );
+    proofFit["restart-init"] = resumedInit.measurement;
+    const resumedStep01 = await captureEmulatorSubmission(emulator, async () =>
+      submitInputSetUniquenessStep01({
+        lucid: proverLucid,
+        blueprint: realBlueprint,
+        contracts: family,
+        categoryId: category.categoryId,
+        network,
+        signer: proverSigner,
+        threadOutRef: resumedInit.result.nextThreadOutRef,
+        stateQueueBlockOutRef: setup.fraudulentBlockOutRef,
+        txInclusion: fixture.txInclusion,
+        referenceScriptUtxo: step01Ref,
+        witnessReferenceScripts: setup.witnessReferenceScripts,
+      }),
+    );
+    proofFit["step-01-after-restart"] = resumedStep01.measurement;
+    const step01 = resumedStep01.result;
 
     const step02Capture = await captureEmulatorSubmission(emulator, async () =>
       submitInputSetUniquenessStep02({
@@ -179,6 +229,34 @@ describe("input-set-uniqueness emulator lifecycle", () => {
     for (const [stage, measurement] of Object.entries(proofFit)) {
       expectProofFitV1({ stage, measurement, maxTxExMem, maxTxExSteps });
     }
+    console.info(
+      `[input-set-uniqueness-accepted] ${JSON.stringify({
+        transactions: Object.keys(proofFit).length,
+        maxBytes: Math.max(
+          ...Object.values(proofFit).map((measurement) =>
+            Number(measurement.completeSignedBytes),
+          ),
+        ),
+        maxMemory: Object.values(proofFit)
+          .reduce(
+            (maximum, measurement) =>
+              measurement.executionMemory > maximum
+                ? measurement.executionMemory
+                : maximum,
+            0n,
+          )
+          .toString(),
+        maxCpu: Object.values(proofFit)
+          .reduce(
+            (maximum, measurement) =>
+              measurement.executionSteps > maximum
+                ? measurement.executionSteps
+                : maximum,
+            0n,
+          )
+          .toString(),
+      })}`,
+    );
 
     // The permanent token is minted and the thread NFT is burned: no step
     // address still holds it.

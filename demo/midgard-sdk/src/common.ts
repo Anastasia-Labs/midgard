@@ -302,6 +302,50 @@ export type FraudProofs = {
   nativeScriptInvalid: SpendingValidator;
   /** Q27: an accepted output or newly introduced UTxO is below min-Ada. */
   minAda: SpendingValidator;
+  /** A committed field preimage disagrees with its authenticated byte length. */
+  fieldPreimageLengthMismatch: SpendingValidator;
+  /** A committed field item violates the field-specific width rule. */
+  fieldItemWidthIllegal: SpendingValidator;
+  /** A field-6 native-script witness fails canonical structural decoding. */
+  witnessScriptDecoding: SpendingValidator;
+  /** The script-integrity hash is absent despite an effectful script purpose. */
+  scriptIntegrityHashMissing: SpendingValidator;
+  /** A committed transaction output is not a canonical ledger-output encoding. */
+  transactionOutputNonCanonical: SpendingValidator;
+  /** A spent input resolves to a non-canonical prior ledger output. */
+  resolvedOutputNonCanonical: SpendingValidator;
+  /** A mint policy declares more assets than the protocol limit. */
+  mintDeclaredAssetLimit: SpendingValidator;
+  /** A spent input is not authorized by any valid matching key witness. */
+  spendInputSignerMissing: SpendingValidator;
+  /** A protected output credential has no valid matching key witness. */
+  protectedOutputSignerMissing: SpendingValidator;
+  /** An untagged-network transaction carries a non-empty observer set. */
+  observersForbiddenOnUntaggedNetwork: SpendingValidator;
+  /** The observer field is not in canonical order. */
+  observerOrderInvalid: SpendingValidator;
+  /** A redeemer item is not canonically encoded Plutus Data. */
+  redeemerCanonicity: SpendingValidator;
+  /** A canonical output carries a malformed or over-limit reference script. */
+  outputReferenceScriptDecoding: SpendingValidator;
+  /** A selected native execution source is malformed or over structural limits. */
+  executionSourceScriptDecoding: SpendingValidator;
+  /** A selected, well-formed native execution source evaluates false. */
+  executionNativeScriptInvalid: SpendingValidator;
+  /** A receive purpose selects forbidden Plutus V3 execution. */
+  receivePurposeLanguage: SpendingValidator;
+  /** A committed witness script is not selected by any canonical purpose. */
+  unusedScriptWitness: SpendingValidator;
+  /** A canonical execution purpose has no matching script source. */
+  missingScriptSource: SpendingValidator;
+  /** A canonical Plutus purpose has no matching redeemer pointer. */
+  missingRedeemer: SpendingValidator;
+  /** A committed redeemer pointer is not selected by any execution purpose. */
+  unusedRedeemer: SpendingValidator;
+  /** The committed script-integrity hash differs from the canonical language views. */
+  scriptIntegrityHashMismatch: SpendingValidator;
+  /** ValueAndMint crosses the consensus distinct-asset accumulator limit. */
+  distinctAssetAccumulationLimit: SpendingValidator;
 };
 
 export type MidgardValidators = {

@@ -173,7 +173,24 @@ export const buildRemovalDeploymentInfo = (
       ([category, entryNames]) => {
         const categoryName =
           category as keyof MidgardValidators["fraudProofContracts"];
-        const steps = contracts.fraudProofContracts[categoryName].steps;
+        const configuredSteps =
+          contracts.fraudProofContracts[categoryName].steps;
+        // The generic always-succeeds emulator blueprint still exposes the
+        // pre-Wave-8 two-step input-set-uniqueness scaffold. Removal only
+        // needs the immutable deployed hashes, so repeat its terminal stand-in
+        // for the newly registered scan steps. Focused family tests replace
+        // all four positions with their real validators.
+        const steps =
+          categoryName === "inputSetUniqueness" &&
+          configuredSteps.length === 2 &&
+          entryNames.length === 4
+            ? [
+                configuredSteps[0]!,
+                configuredSteps[1]!,
+                configuredSteps[1]!,
+                configuredSteps[1]!,
+              ]
+            : configuredSteps;
         const requiresFullChain =
           categoryName === "transitionTrace" ||
           FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.indexOf(categoryName) >= 11;
@@ -182,7 +199,7 @@ export const buildRemovalDeploymentInfo = (
           (requiresFullChain && steps.length !== entryNames.length)
         ) {
           throw new Error(
-            `${category} removal deployment fixture has the wrong chain length`,
+            `${category} removal deployment fixture has the wrong chain length: expected ${entryNames.length.toString()}, received ${steps.length.toString()}`,
           );
         }
         return entryNames.map((entryName, index) => {

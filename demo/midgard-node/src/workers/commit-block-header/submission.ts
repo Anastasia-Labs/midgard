@@ -227,6 +227,9 @@ export const assertPreSubmitDaPayloadSize = ({
       event_to_step: eventToStepMembers.map((entry) =>
         daEntry(entry.keyCbor, entry.valueCbor),
       ),
+      validation_trace_witnesses: validationTraceMembers.flatMap(
+        (entry) => entry.witnesses,
+      ),
     };
     const encodedBytes = SDK.daPayloadV1EncodedSizeFromUtxoAggregate(
       {
@@ -972,6 +975,13 @@ export const submitDepositOnlyCommit = ({
                     transitionTraceMembers,
                     eventToStepMembers,
                     validationTraceMembers,
+                    validationTraceWitnessMembers:
+                      validationTraceMembers.flatMap((entry) =>
+                        entry.witnesses.map(([key, value]) => ({
+                          keyCbor: Buffer.from(key, "hex"),
+                          valueCbor: Buffer.from(value, "hex"),
+                        })),
+                      ),
                     ledgerDelta: {
                       spent: journalLedgerState.ledgerDelta.spent,
                       produced: journalUtxoEntries(
@@ -1497,6 +1507,13 @@ export const submitTxBackedCommit = ({
                     transitionTraceMembers,
                     eventToStepMembers,
                     validationTraceMembers,
+                    validationTraceWitnessMembers:
+                      validationTraceMembers.flatMap((entry) =>
+                        entry.witnesses.map(([key, value]) => ({
+                          keyCbor: Buffer.from(key, "hex"),
+                          valueCbor: Buffer.from(value, "hex"),
+                        })),
+                      ),
                     ledgerDelta: {
                       spent: journalLedgerState.ledgerDelta.spent,
                       produced: journalUtxoEntries(

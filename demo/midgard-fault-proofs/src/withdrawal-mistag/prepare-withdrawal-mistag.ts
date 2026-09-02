@@ -169,7 +169,18 @@ export type PrepareWithdrawalMistagV1Args = {
   readonly committedWithdrawal: SDK.WithdrawalSourceMembershipProof;
   readonly eventToStep: SDK.EventToStepMembershipProof;
   readonly transitionStep: SDK.IndexedTraceProof;
-  readonly ledgerEvidence: SDK.WithdrawalMistagLedgerEvidenceV1;
+  readonly ledgerEvidence:
+    | {
+        readonly PresentLedgerOutput: {
+          readonly output_cbor: string;
+          readonly membership_proof: SDK.Proof;
+        };
+      }
+    | {
+        readonly AbsentLedgerOutput: {
+          readonly non_membership_proof: SDK.Proof;
+        };
+      };
 };
 
 /**
@@ -235,6 +246,7 @@ export const prepareWithdrawalMistagV1 = async ({
   let outputPresent = false;
   let coreValid = false;
   let cardanoValueSize = 0n;
+  let authenticatedLedgerEvidence: SDK.WithdrawalMistagLedgerEvidenceV1;
   const outrefKey = encodeMidgardSpendInputItemV1({
     txId: Buffer.from(info.body.l2_outref.transactionId, "hex"),
     outputIndex: Number(info.body.l2_outref.outputIndex),
@@ -272,6 +284,13 @@ export const prepareWithdrawalMistagV1 = async ({
       valuesEqual(output.value, info.body.l2_value) &&
       assetCount <= SDK.WITHDRAWAL_MISTAG_MAXIMUM_ASSET_COUNT_V1 &&
       signatureIsValid(info);
+    authenticatedLedgerEvidence = {
+      PresentLedgerOutput: {
+        output_cbor: ledgerEvidence.PresentLedgerOutput.output_cbor,
+        descriptor_cbor: material.descriptorCbor.toString("hex"),
+        membership_proof: ledgerEvidence.PresentLedgerOutput.membership_proof,
+      },
+    };
   } else {
     verifyMpf({
       root: transitionStep.value.pre_utxos_root,
@@ -280,6 +299,7 @@ export const prepareWithdrawalMistagV1 = async ({
       membership: false,
       label: "withdrawal ledger non-membership",
     });
+    authenticatedLedgerEvidence = ledgerEvidence;
   }
 
   const payable = SDK.withdrawalMistagPayableV1({
@@ -298,7 +318,7 @@ export const prepareWithdrawalMistagV1 = async ({
     committedWithdrawal,
     eventToStep,
     transitionStep,
-    ledgerEvidence,
+    ledgerEvidence: authenticatedLedgerEvidence,
     withdrawalInfoHash: infoHash(info),
     withdrawalBodyHash: bodyHash(info.body),
     cardanoValueSize,

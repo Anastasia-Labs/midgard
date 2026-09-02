@@ -42,6 +42,7 @@ import {
   nativeTxBodyHasZeroInputViolation,
   normalizeNativeTxValidityRange,
   REFERENCE_INPUT_NO_IDX_VIOLATION_ID_V1,
+  type VerdictSubjectV1,
   verifyAddressWitness,
   WITHDRAWN_INPUT_VIOLATION_ID_V1,
   WITHDRAWN_REFERENCE_INPUT_VIOLATION_ID_V1,
@@ -54,19 +55,50 @@ import {
 } from "@al-ft/midgard-validation";
 
 import { classifyCommittedFieldShapeFieldsV1 } from "../committed-field-shape/prepare-committed-field-shape-v1.js";
+import { detectDistinctAssetAccumulationCanonicalViolationsV1 } from "../distinct-asset-accumulation-limit/production-replay-v1.js";
 import {
   canonicalBlockEvidenceFromVerifiedPayloadV1,
   type CanonicalBlockEvidenceV1,
 } from "../evidence/canonical-block-evidence-v1.js";
+import { detectExecutionNativeScriptInvalidCanonicalViolationsV1 } from "../execution-native-script-invalid/production-replay-v1.js";
+import { detectExecutionSourceScriptDecodingCanonicalViolationsV1 } from "../execution-source-script-decoding/production-replay-v1.js";
+import { detectFieldItemWidthIllegalCompleteReplayV1 } from "../field-item-width-illegal/production-workflow-v1.js";
+import { detectFieldPreimageLengthCompleteReplayV1 } from "../field-preimage-length-mismatch/production-evidence-v1.js";
+import { detectInputSetUniquenessForcedReplayV1 } from "../input-set-uniqueness/replay-v1.js";
 import {
   INPUT_SET_UNIQUENESS_VIOLATION_ID_V1,
   scanInputSetUniquenessV1,
 } from "../input-set-uniqueness/scan-v1.js";
+import { detectInvalidRangeForcedReplayV1 } from "../invalid-range/replay-v1.js";
+import { detectMintDeclaredAssetLimitForcedReplayV1 } from "../mint-declared-asset-limit/replay-v1.js";
+import { detectMissingRedeemerCanonicalViolationsV1 } from "../missing-redeemer/production-replay-v1.js";
+import { detectMissingScriptSourceCanonicalViolationsV1 } from "../missing-script-source/production-replay-v1.js";
 import { ledgerKeyBytesHex } from "../ne-submit-step-03.js";
 import { findNetworkIdFaultsV1 } from "../network-id/evidence-v1.js";
+import { detectObserverOrderInvalidCompleteReplayV1 } from "../observer-order-invalid/replay-v1.js";
+import { detectObserversForbiddenForcedReplayV1 } from "../observers-forbidden-on-untagged-network/replay-v1.js";
+import { detectOutputReferenceScriptDecodingCanonicalViolationsV1 } from "../output-reference-script-decoding/output-reference-script-decoding-v1.js";
 import { decodeTransactionMaterial } from "../prepare-double-spend.js";
 import { detectInputNoIdxViolationsFromTransactionsV1 } from "../prepare-input-no-idx.js";
 import { detectReferenceInputNoIdxViolationsFromTransactionsV1 } from "../prepare-reference-input-no-idx.js";
+import { detectProtectedOutputSignerMissingCompleteReplayV1 } from "../protected-output-signer-missing/protected-output-signer-missing-v1.js";
+import { protectedOutputSignerEvidenceIdentityV1 } from "../protected-output-signer-missing/workflow-v1.js";
+import { detectReceivePurposeLanguageCanonicalViolationsV1 } from "../receive-purpose-language/production-replay-v1.js";
+import { detectRedeemerCanonicityCompleteReplayV1 } from "../redeemer-canonicity/production-workflow-v1.js";
+import {
+  deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpusV1,
+  detectResolvedOutputNonCanonicalCompleteReplayV1,
+  resolvedOutputEvidenceIdentityV1,
+} from "../resolved-output-non-canonical/resolved-output-non-canonical-v1.js";
+import { detectScriptIntegrityHashMismatchCanonicalViolationsV1 } from "../script-integrity-hash-mismatch/production-replay-v1.js";
+import { detectScriptIntegrityHashMissingFromCanonicalEvidenceV1 } from "../script-integrity-hash-missing/replay-v1.js";
+import { detectSpendInputSignerMissingCompleteReplayV1 } from "../spend-input-signer-missing/spend-input-signer-missing-v1.js";
+import { spendInputSignerWorkflowEvidenceIdentityV1 } from "../spend-input-signer-missing/workflow-v1.js";
+import { detectTransactionOutputNonCanonicalCompleteReplayV1 } from "../transaction-output-non-canonical/production-workflow-v1.js";
+import { detectUnusedRedeemerCanonicalViolationsV1 } from "../unused-redeemer/production-replay-v1.js";
+import { detectUnusedScriptWitnessCanonicalViolationsV1 } from "../unused-script-witness/production-replay-v1.js";
+import { detectWitnessScriptDecodingCompleteReplayV1 } from "../witness-script-decoding/production-workflow-v1.js";
+import { detectZeroInputForcedReplayV1 } from "../zero-input/replay-v1.js";
 import {
   type CanonicalViolationDetectionV1,
   DOUBLE_SPEND_VIOLATION_ID_V1,
@@ -80,6 +112,7 @@ import {
   type ProductionFabricatedWithdrawalEvidenceAuthorityV1,
   requireProductionFabricatedWithdrawalEvidenceAuthorityV1,
 } from "./production-fabricated-withdrawal-evidence-v1.js";
+import { requireProductionHistoricalNativeScriptCorpusV1 } from "./production-historical-native-script-corpus-v1.js";
 import {
   detectMinAdaUtxoFromHistoricalCorpusV1,
   detectMissingNativeScriptUtxoFromHistoricalCorpusV1,
@@ -90,6 +123,8 @@ export const COMPLETE_CANONICAL_REPLAY_V1 =
   "midgard-complete-canonical-replay-v1" as const;
 export const COMPLETE_CANONICAL_REPLAY_PREDECESSOR_V1 =
   "midgard-complete-canonical-replay-predecessor-v1" as const;
+export const COMPLETE_CANONICAL_REPLAY_HISTORICAL_CORPUS_V1 =
+  "midgard-complete-canonical-replay-historical-corpus-v1" as const;
 
 export type CompleteCanonicalReplayPredecessorV1 = Readonly<{
   schemaVersion: typeof COMPLETE_CANONICAL_REPLAY_PREDECESSOR_V1;
@@ -105,12 +140,27 @@ export type CompleteCanonicalReplayContextV1 = Readonly<{
    * detectors unless the current header commits the empty genesis ledger.
    */
   predecessor?: CompleteCanonicalReplayPredecessorV1;
+  /** Opaque authority for the complete retained-DA history of this header. */
+  historicalCorpus?: CompleteCanonicalReplayHistoricalCorpusV1;
 }>;
 
 export type CompleteCanonicalReplayContextIdentityV1 = Readonly<{
-  predecessorHeaderHash: string;
-  predecessorPayloadEnvelopeSha256: string;
-  predecessorPayloadSha256: string;
+  predecessorHeaderHash?: string;
+  predecessorPayloadEnvelopeSha256?: string;
+  predecessorPayloadSha256?: string;
+  historicalThroughHeaderHash?: string;
+  historicalProviderRosterDigest?: string;
+  historicalCheckpointDigest?: string;
+  historicalCorpusDigest?: string;
+}>;
+
+export type CompleteCanonicalReplayHistoricalCorpusV1 = Readonly<{
+  schemaVersion: typeof COMPLETE_CANONICAL_REPLAY_HISTORICAL_CORPUS_V1;
+  challengedHeaderHash: string;
+  throughHeaderHash: string;
+  providerRosterDigest: string;
+  checkpointDigest: string;
+  corpusDigest: string;
 }>;
 
 export type CompleteCanonicalReplayDecisionV1 = {
@@ -138,6 +188,102 @@ const predecessorEvidenceByAuthority = new WeakMap<
   object,
   CanonicalBlockEvidenceV1
 >();
+const historicalCorpusByAuthority = new WeakMap<
+  object,
+  ProductionHistoricalNativeScriptCorpusV1
+>();
+
+export const admitCompleteCanonicalReplayHistoricalCorpusV1 = ({
+  evidence,
+  corpus,
+}: {
+  readonly evidence: CanonicalBlockEvidenceV1;
+  readonly corpus: ProductionHistoricalNativeScriptCorpusV1;
+}): CompleteCanonicalReplayHistoricalCorpusV1 => {
+  const admitted = requireProductionHistoricalNativeScriptCorpusV1(corpus);
+  if (
+    admitted.currentEvidence !== evidence ||
+    corpus.throughHeaderHash !== evidence.headerHash
+  ) {
+    throw new Error(
+      "historical replay corpus belongs to another challenged header",
+    );
+  }
+  const authority: CompleteCanonicalReplayHistoricalCorpusV1 = Object.freeze({
+    schemaVersion: COMPLETE_CANONICAL_REPLAY_HISTORICAL_CORPUS_V1,
+    challengedHeaderHash: evidence.headerHash,
+    throughHeaderHash: corpus.throughHeaderHash,
+    providerRosterDigest: corpus.providerRosterDigest,
+    checkpointDigest: corpus.checkpointDigest,
+    corpusDigest: corpus.corpusDigest,
+  });
+  historicalCorpusByAuthority.set(authority, corpus);
+  return authority;
+};
+
+const requireReplayHistoricalCorpusV1 = ({
+  evidence,
+  context,
+}: {
+  readonly evidence: CanonicalBlockEvidenceV1;
+  readonly context: CompleteCanonicalReplayContextV1 | undefined;
+}): ProductionHistoricalNativeScriptCorpusV1 => {
+  const authority = context?.historicalCorpus;
+  const corpus =
+    authority === undefined
+      ? undefined
+      : historicalCorpusByAuthority.get(authority);
+  if (
+    authority === undefined ||
+    corpus === undefined ||
+    authority.schemaVersion !==
+      COMPLETE_CANONICAL_REPLAY_HISTORICAL_CORPUS_V1 ||
+    authority.challengedHeaderHash !== evidence.headerHash ||
+    authority.throughHeaderHash !== corpus.throughHeaderHash ||
+    authority.providerRosterDigest !== corpus.providerRosterDigest ||
+    authority.checkpointDigest !== corpus.checkpointDigest ||
+    authority.corpusDigest !== corpus.corpusDigest ||
+    requireProductionHistoricalNativeScriptCorpusV1(corpus).currentEvidence !==
+      evidence
+  ) {
+    throw new Error(
+      "complete replay historical corpus was not admitted for this challenged header",
+    );
+  }
+  return corpus;
+};
+
+const replayContextIdentityV1 = ({
+  evidence,
+  context,
+}: {
+  readonly evidence: CanonicalBlockEvidenceV1;
+  readonly context: CompleteCanonicalReplayContextV1 | undefined;
+}): CompleteCanonicalReplayContextIdentityV1 | null => {
+  const predecessor = requireReplayPredecessorEvidenceV1({ evidence, context });
+  const historical = context?.historicalCorpus;
+  if (predecessor === undefined && historical === undefined) return null;
+  if (historical !== undefined) {
+    requireReplayHistoricalCorpusV1({ evidence, context });
+  }
+  return Object.freeze({
+    ...(predecessor === undefined
+      ? {}
+      : {
+          predecessorHeaderHash: predecessor.headerHash,
+          predecessorPayloadEnvelopeSha256: predecessor.payloadEnvelopeSha256,
+          predecessorPayloadSha256: predecessor.payloadSha256,
+        }),
+    ...(historical === undefined
+      ? {}
+      : {
+          historicalThroughHeaderHash: historical.throughHeaderHash,
+          historicalProviderRosterDigest: historical.providerRosterDigest,
+          historicalCheckpointDigest: historical.checkpointDigest,
+          historicalCorpusDigest: historical.corpusDigest,
+        }),
+  });
+};
 
 const predecessorRecord = (
   value: unknown,
@@ -453,7 +599,7 @@ const detectInvalidRanges = async (
   const transactions = await Promise.all(
     evidence.transactions.map(decodeTransactionMaterial),
   );
-  return transactions.flatMap((transaction, transactionIndex) => {
+  const accepted = transactions.flatMap((transaction, transactionIndex) => {
     const normalizedRange = normalizeNativeTxValidityRange(
       transaction.nativeTxCompact.body,
     );
@@ -473,6 +619,16 @@ const detectInvalidRanges = async (
           },
         ];
   });
+  const forced = detectInvalidRangeForcedReplayV1(evidence).map(
+    (detection) => ({
+      detectionId: detection.detectionId,
+      headerHash: detection.headerHash,
+      violationId: detection.violationId,
+      position: detection.position,
+      diagnostic: `forced transaction at index ${detection.forcedIndex.toString()} was rejected for a typed invalid-range reason despite its authenticated validity range contradicting that rejection`,
+    }),
+  );
+  return [...accepted, ...forced];
 };
 
 const detectZeroInputs = async (
@@ -481,7 +637,7 @@ const detectZeroInputs = async (
   const transactions = await Promise.all(
     evidence.transactions.map(decodeTransactionMaterial),
   );
-  return transactions.flatMap((transaction, transactionIndex) =>
+  const accepted = transactions.flatMap((transaction, transactionIndex) =>
     nativeTxBodyHasZeroInputViolation({
       txBody: transaction.nativeTxCompact.body,
     })
@@ -496,6 +652,14 @@ const detectZeroInputs = async (
         ]
       : [],
   );
+  const forced = detectZeroInputForcedReplayV1(evidence).map((detection) => ({
+    detectionId: detection.detectionId,
+    headerHash: detection.headerHash,
+    violationId: detection.violationId,
+    position: detection.position,
+    diagnostic: `forced transaction ${detection.transactionId} was rejected for EmptyInputs despite carrying authenticated spending inputs`,
+  }));
+  return [...accepted, ...forced];
 };
 
 const detectL2TxMistags = async (
@@ -915,7 +1079,7 @@ const detectInputSetUniqueness = async (
   const transactions = await Promise.all(
     evidence.transactions.map(decodeTransactionMaterial),
   );
-  return transactions.flatMap((transaction, transactionIndex) => {
+  const accepted = transactions.flatMap((transaction, transactionIndex) => {
     if (transaction.nativeTxCompact.validity_code !== 0n) return [];
     const spendInputItemCbors = decodeMidgardNativeByteListPreimage(
       transaction.nativeTx.body.spendInputsPreimageCbor,
@@ -944,6 +1108,16 @@ const detectInputSetUniqueness = async (
       },
     ];
   });
+  const forced = detectInputSetUniquenessForcedReplayV1(evidence).map(
+    (detection) => ({
+      detectionId: detection.detectionId,
+      headerHash: detection.headerHash,
+      violationId: detection.violationId,
+      position: detection.position,
+      diagnostic: `forced transaction ${detection.transactionId} was rejected for DuplicateInput despite a complete authenticated strictly increasing input union`,
+    }),
+  );
+  return [...accepted, ...forced];
 };
 
 /**
@@ -1107,19 +1281,7 @@ const completeReplayer = (
       evidence: CanonicalBlockEvidenceV1,
       context?: CompleteCanonicalReplayContextV1,
     ) => {
-      const predecessor = requireReplayPredecessorEvidenceV1({
-        evidence,
-        context,
-      });
-      const contextIdentity =
-        predecessor === undefined
-          ? null
-          : Object.freeze({
-              predecessorHeaderHash: predecessor.headerHash,
-              predecessorPayloadEnvelopeSha256:
-                predecessor.payloadEnvelopeSha256,
-              predecessorPayloadSha256: predecessor.payloadSha256,
-            });
+      const contextIdentity = replayContextIdentityV1({ evidence, context });
       const detections = Object.freeze(
         (await replay(evidence, context)).map((detection) =>
           Object.freeze({ ...detection }),
@@ -1351,6 +1513,206 @@ export const MIN_FEE_COMPLETE_CANONICAL_REPLAY_V1 = completeReplayer(
 export const INPUT_SET_UNIQUENESS_COMPLETE_CANONICAL_REPLAY_V1 =
   completeReplayer(["inputSetUniqueness"], detectInputSetUniqueness);
 
+/** Complete scan of forced field-length wrongful-rejection contradictions. */
+export const FIELD_PREIMAGE_LENGTH_MISMATCH_COMPLETE_CANONICAL_REPLAY_V1 =
+  completeReplayer(["fieldPreimageLengthMismatch"], async (evidence) =>
+    detectFieldPreimageLengthCompleteReplayV1(evidence),
+  );
+
+/** Complete scan of every output and mint item for illegal committed width. */
+export const FIELD_ITEM_WIDTH_ILLEGAL_COMPLETE_CANONICAL_REPLAY_V1 =
+  completeReplayer(["fieldItemWidthIllegal"], async (evidence) =>
+    detectFieldItemWidthIllegalCompleteReplayV1(evidence),
+  );
+
+/** Complete accepted and forced scan for malformed field-6 native scripts. */
+export const WITNESS_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY_V1 =
+  completeReplayer(["witnessScriptDecoding"], async (evidence) =>
+    detectWitnessScriptDecodingCompleteReplayV1(evidence),
+  );
+
+/** Complete accepted and forced scan for missing required integrity hashes. */
+export const SCRIPT_INTEGRITY_HASH_MISSING_COMPLETE_CANONICAL_REPLAY_V1 =
+  completeReplayer(["scriptIntegrityHashMissing"], async (evidence) =>
+    detectScriptIntegrityHashMissingFromCanonicalEvidenceV1(evidence),
+  );
+
+/** Complete accepted and forced scan for non-canonical transaction outputs. */
+export const TRANSACTION_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY_V1 =
+  completeReplayer(["transactionOutputNonCanonical"], async (evidence) =>
+    detectTransactionOutputNonCanonicalCompleteReplayV1(evidence),
+  );
+
+/** Complete resolved-input scan backed by opaque authenticated retained history. */
+export const RESOLVED_OUTPUT_NON_CANONICAL_COMPLETE_CANONICAL_REPLAY_V1 =
+  completeReplayer(
+    ["resolvedOutputNonCanonical"],
+    async (evidence, context) => {
+      const corpus = requireReplayHistoricalCorpusV1({ evidence, context });
+      const priorLedger =
+        await deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpusV1({
+          block: evidence,
+          corpus,
+        });
+      return detectResolvedOutputNonCanonicalCompleteReplayV1({
+        block: evidence,
+        priorLedger,
+      }).map((finding) => ({
+        detectionId: `resolved-output-non-canonical:${resolvedOutputEvidenceIdentityV1(finding)}`,
+        headerHash: evidence.headerHash,
+        violationId: "resolved-output-non-canonical",
+        position: verdictSubjectReplayPositionV1(evidence, finding.subject),
+        diagnostic: "authenticated prior ledger output is non-canonical",
+      }));
+    },
+  );
+
+/** Complete exact forced-rejection scan; accepted crossings use the raw route. */
+export const MINT_DECLARED_ASSET_LIMIT_COMPLETE_CANONICAL_REPLAY_V1 =
+  completeReplayer(["mintDeclaredAssetLimit"], async (evidence) =>
+    detectMintDeclaredAssetLimitForcedReplayV1(evidence),
+  );
+
+const verdictSubjectReplayPositionV1 = (
+  evidence: CanonicalBlockEvidenceV1,
+  subject: VerdictSubjectV1,
+): bigint => {
+  const index =
+    subject.source_kind === 0n
+      ? evidence.transactions.findIndex(
+          (transaction) => transaction.nodeTxId === subject.transaction_id,
+        )
+      : evidence.reconstruction.forcedTransactions.findIndex(
+          (transaction) => transaction.value.tx_id === subject.transaction_id,
+        );
+  if (index < 0) {
+    throw new Error(
+      "signer replay finding does not belong to its authenticated transaction frontier",
+    );
+  }
+  return BigInt(index);
+};
+
+/** Complete spend-signature scan backed by opaque authenticated retained history. */
+export const SPEND_INPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY_V1 =
+  completeReplayer(["spendInputSignerMissing"], async (evidence, context) => {
+    const corpus = requireReplayHistoricalCorpusV1({ evidence, context });
+    const priorLedger =
+      await deriveResolvedOutputPriorLedgerReplayFromHistoricalCorpusV1({
+        block: evidence,
+        corpus,
+      });
+    return detectSpendInputSignerMissingCompleteReplayV1({
+      block: evidence,
+      priorLedger,
+    }).map((finding) => ({
+      detectionId: `spend-input-signer-missing:${spendInputSignerWorkflowEvidenceIdentityV1(finding)}`,
+      headerHash: evidence.headerHash,
+      violationId: "spend-input-signer-missing",
+      position: verdictSubjectReplayPositionV1(evidence, finding.subject),
+      diagnostic: "authenticated spend input has no valid matching key witness",
+    }));
+  });
+
+/** Complete protected-output signature scan over accepted and exact forced subjects. */
+export const PROTECTED_OUTPUT_SIGNER_MISSING_COMPLETE_CANONICAL_REPLAY_V1 =
+  completeReplayer(["protectedOutputSignerMissing"], async (evidence) =>
+    detectProtectedOutputSignerMissingCompleteReplayV1(evidence).map(
+      (finding) => ({
+        detectionId: `protected-output-signer-missing:${protectedOutputSignerEvidenceIdentityV1(finding)}`,
+        headerHash: evidence.headerHash,
+        violationId: "protected-output-signer-missing",
+        position: verdictSubjectReplayPositionV1(evidence, finding.subject),
+        diagnostic:
+          "authenticated protected output has no valid matching key witness",
+      }),
+    ),
+  );
+
+/** Forced half of the observer rule; accepted crossings use the raw route. */
+export const OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_COMPLETE_CANONICAL_REPLAY_V1 =
+  completeReplayer(["observersForbiddenOnUntaggedNetwork"], async (evidence) =>
+    detectObserversForbiddenForcedReplayV1(evidence),
+  );
+
+/** Complete accepted and forced scan for malformed output reference scripts. */
+export const OUTPUT_REFERENCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY_V1 =
+  completeReplayer(["outputReferenceScriptDecoding"], async (evidence) =>
+    detectOutputReferenceScriptDecodingCanonicalViolationsV1(evidence),
+  );
+
+/** Complete accepted and forced scan for malformed execution-source scripts. */
+export const EXECUTION_SOURCE_SCRIPT_DECODING_COMPLETE_CANONICAL_REPLAY_V1 =
+  completeReplayer(["executionSourceScriptDecoding"], async (evidence) =>
+    detectExecutionSourceScriptDecodingCanonicalViolationsV1(evidence),
+  );
+
+/** Complete accepted-false and forced-true native execution replay. */
+export const EXECUTION_NATIVE_SCRIPT_INVALID_COMPLETE_CANONICAL_REPLAY_V1 =
+  completeReplayer(
+    ["executionNativeScriptInvalid"],
+    async (evidence, context) =>
+      detectExecutionNativeScriptInvalidCanonicalViolationsV1({
+        block: evidence,
+        corpus: requireReplayHistoricalCorpusV1({ evidence, context }),
+      }),
+  );
+
+export const OBSERVER_ORDER_INVALID_COMPLETE_CANONICAL_REPLAY_V1 =
+  completeReplayer(["observerOrderInvalid"], async (evidence) =>
+    detectObserverOrderInvalidCompleteReplayV1(evidence),
+  );
+
+export const REDEEMER_CANONICITY_COMPLETE_CANONICAL_REPLAY_V1 =
+  completeReplayer(["redeemerCanonicity"], async (evidence) =>
+    detectRedeemerCanonicityCompleteReplayV1(evidence).map((detection) => ({
+      detectionId: detection.detectionId,
+      headerHash: detection.headerHash,
+      violationId: "redeemer-malformed",
+      position: detection.position,
+      diagnostic: "authenticated redeemer item is not canonical Plutus Data",
+    })),
+  );
+
+export const RECEIVE_PURPOSE_LANGUAGE_COMPLETE_CANONICAL_REPLAY_V1 =
+  completeReplayer(["receivePurposeLanguage"], async (evidence) =>
+    detectReceivePurposeLanguageCanonicalViolationsV1(evidence),
+  );
+
+export const UNUSED_SCRIPT_WITNESS_COMPLETE_CANONICAL_REPLAY_V1 =
+  completeReplayer(["unusedScriptWitness"], async (evidence) =>
+    detectUnusedScriptWitnessCanonicalViolationsV1(evidence),
+  );
+
+export const MISSING_SCRIPT_SOURCE_COMPLETE_CANONICAL_REPLAY_V1 =
+  completeReplayer(["missingScriptSource"], async (evidence) =>
+    detectMissingScriptSourceCanonicalViolationsV1(evidence),
+  );
+
+/** Complete retained-stage-10 scan for accepted absence and forced presence. */
+export const MISSING_REDEEMER_COMPLETE_CANONICAL_REPLAY_V1 = completeReplayer(
+  ["missingRedeemer"],
+  async (evidence) => detectMissingRedeemerCanonicalViolationsV1(evidence),
+);
+
+/** Complete retained-stage-10 reverse match for every redeemer purpose kind. */
+export const UNUSED_REDEEMER_COMPLETE_CANONICAL_REPLAY_V1 = completeReplayer(
+  ["unusedRedeemer"],
+  async (evidence) => detectUnusedRedeemerCanonicalViolationsV1(evidence),
+);
+
+/** Complete accepted-mismatch and forced-equality ScriptIntegrity replay. */
+export const SCRIPT_INTEGRITY_HASH_MISMATCH_COMPLETE_CANONICAL_REPLAY_V1 =
+  completeReplayer(["scriptIntegrityHashMismatch"], async (evidence) =>
+    detectScriptIntegrityHashMismatchCanonicalViolationsV1(evidence),
+  );
+
+/** Complete typed input/output/mint distinct-asset accumulation replay. */
+export const DISTINCT_ASSET_ACCUMULATION_LIMIT_COMPLETE_CANONICAL_REPLAY_V1 =
+  completeReplayer(["distinctAssetAccumulationLimit"], async (evidence) =>
+    detectDistinctAssetAccumulationCanonicalViolationsV1(evidence),
+  );
+
 /** Complete accepted-spend/withdrawal intersection scan for one block. */
 export const WITHDRAWN_INPUT_COMPLETE_CANONICAL_REPLAY_V1 = completeReplayer(
   ["withdrawnInput"],
@@ -1441,18 +1803,7 @@ export const requireCompleteCanonicalReplayDecisionV1 = ({
       "canonical replay decision was not produced by the closed replay bundle",
     );
   }
-  const predecessor = requireReplayPredecessorEvidenceV1({
-    evidence,
-    context,
-  });
-  const expectedContext =
-    predecessor === undefined
-      ? null
-      : {
-          predecessorHeaderHash: predecessor.headerHash,
-          predecessorPayloadEnvelopeSha256: predecessor.payloadEnvelopeSha256,
-          predecessorPayloadSha256: predecessor.payloadSha256,
-        };
+  const expectedContext = replayContextIdentityV1({ evidence, context });
   if (
     decision.replayVersion !== COMPLETE_CANONICAL_REPLAY_V1 ||
     decision.launchScope !== replayer.launchScope ||

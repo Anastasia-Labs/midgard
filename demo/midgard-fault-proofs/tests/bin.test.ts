@@ -64,6 +64,7 @@ const makeEmptyTransitionTraceEnvelope = async () => {
       transition_trace: [],
       event_to_step: [],
       validation_traces: [],
+      validation_trace_witnesses: [],
       counts,
     },
   };

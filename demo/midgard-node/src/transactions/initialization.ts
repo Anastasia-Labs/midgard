@@ -76,17 +76,24 @@ type IndexedFraudProof<
   categoryName: CategoryName,
 ];
 
-/**
- * Assigns deterministic integer keys to the fraud-proof validator set.
- */
+/** Uses the frozen wire ID map; category presentation order is not identity. */
 export const fraudProofsToIndexedValidators = (
   fraudProofs: SDK.FraudProofs,
 ): IndexedFraudProof<SDK.FraudProofCatalogueCategoryName>[] => {
-  return SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((fraudProofTitle, i) => [
-    uint32ToFraudProofID(i),
-    fraudProofs[fraudProofTitle],
-    fraudProofTitle,
-  ]);
+  return SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((fraudProofTitle) => {
+    const categoryIdHex =
+      SDK.FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[fraudProofTitle];
+    const categoryId = Buffer.from(categoryIdHex, "hex");
+    if (
+      categoryId.length !== SDK.FRAUD_PROOF_CATALOGUE_ID_BYTE_COUNT ||
+      categoryId.toString("hex") !== categoryIdHex
+    ) {
+      throw new Error(
+        `Invalid fraud-proof category ID for ${fraudProofTitle}: ${categoryIdHex}`,
+      );
+    }
+    return [categoryId, fraudProofs[fraudProofTitle], fraudProofTitle];
+  });
 };
 
 const encodeFraudProofCatalogueKey = (categoryId: Buffer): Buffer =>

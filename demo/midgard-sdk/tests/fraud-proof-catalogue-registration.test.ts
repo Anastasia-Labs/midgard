@@ -4,9 +4,14 @@ import {
   CANONICAL_DECODABILITY_FRAUD_CATEGORY_ID_V1,
   COMMITTED_FIELD_SHAPE_FRAUD_CATEGORY_ID_V1,
   CROSS_BLOCK_DUPLICATE_EVENT_FRAUD_CATEGORY_ID_V1,
+  DISTINCT_ASSET_ACCUMULATION_LIMIT_FRAUD_CATEGORY_ID_V1,
   DOUBLE_WITHDRAW_FRAUD_CATEGORY_ID_V1,
+  EXECUTION_NATIVE_SCRIPT_INVALID_FRAUD_CATEGORY_ID_V1,
+  EXECUTION_SOURCE_SCRIPT_DECODING_FRAUD_CATEGORY_ID_V1,
   FABRICATED_DEPOSIT_FRAUD_CATEGORY_ID_V1,
   FABRICATED_WITHDRAWAL_FRAUD_CATEGORY_ID_V1,
+  FIELD_ITEM_WIDTH_ILLEGAL_FRAUD_CATEGORY_ID_V1,
+  FIELD_PREIMAGE_LENGTH_MISMATCH_FRAUD_CATEGORY_ID_V1,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
   FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   INPUT_SET_UNIQUENESS_FRAUD_CATEGORY_ID_V1,
@@ -14,20 +19,37 @@ import {
   MIN_ADA_FRAUD_CATEGORY_ID_V1,
   MIN_FEE_FRAUD_CATEGORY_ID_V1,
   MINT_AUTHORIZATION_FRAUD_CATEGORY_ID_V1,
+  MINT_DECLARED_ASSET_LIMIT_FRAUD_CATEGORY_ID_V1,
   MISSING_NATIVE_SCRIPT_TX_FRAUD_CATEGORY_ID_V1,
   MISSING_NATIVE_SCRIPT_UTXO_FRAUD_CATEGORY_ID_V1,
+  MISSING_REDEEMER_FRAUD_CATEGORY_ID_V1,
+  MISSING_SCRIPT_SOURCE_FRAUD_CATEGORY_ID_V1,
   MISSING_SIGNATURE_FRAUD_CATEGORY_ID_V1,
   NATIVE_SCRIPT_DECODING_FRAUD_CATEGORY_ID_V1,
   NATIVE_SCRIPT_INVALID_FRAUD_CATEGORY_ID_V1,
   NETWORK_ID_FRAUD_CATEGORY_ID_V1,
+  OBSERVER_ORDER_INVALID_FRAUD_CATEGORY_ID_V1,
+  OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_FRAUD_CATEGORY_ID_V1,
+  OUTPUT_REFERENCE_SCRIPT_DECODING_FRAUD_CATEGORY_ID_V1,
+  PROTECTED_OUTPUT_SIGNER_MISSING_FRAUD_CATEGORY_ID_V1,
+  RECEIVE_PURPOSE_LANGUAGE_FRAUD_CATEGORY_ID_V1,
+  REDEEMER_CANONICITY_FRAUD_CATEGORY_ID_V1,
+  RESOLVED_OUTPUT_NON_CANONICAL_FRAUD_CATEGORY_ID_V1,
+  SCRIPT_INTEGRITY_HASH_MISMATCH_FRAUD_CATEGORY_ID_V1,
+  SCRIPT_INTEGRITY_HASH_MISSING_FRAUD_CATEGORY_ID_V1,
+  SPEND_INPUT_SIGNER_MISSING_FRAUD_CATEGORY_ID_V1,
+  TRANSACTION_OUTPUT_NON_CANONICAL_FRAUD_CATEGORY_ID_V1,
+  UNUSED_REDEEMER_FRAUD_CATEGORY_ID_V1,
+  UNUSED_SCRIPT_WITNESS_FRAUD_CATEGORY_ID_V1,
   VALUE_NOT_PRESERVED_FRAUD_CATEGORY_ID_V1,
   WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID_V1,
   WITHDRAWN_INPUT_FRAUD_CATEGORY_ID_V1,
   WITHDRAWN_REFERENCE_INPUT_FRAUD_CATEGORY_ID_V1,
+  WITNESS_SCRIPT_DECODING_FRAUD_CATEGORY_ID_V1,
 } from "../src/index.js";
 
 describe("production fraud-proof catalogue registration", () => {
-  it("pins the append-only category order and four-byte ids through 0x1f", () => {
+  it("pins the append-only category order and sparse four-byte ids", () => {
     expect(FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER).toEqual([
       "doubleSpend",
       "nonExistentInput",
@@ -61,16 +83,38 @@ describe("production fraud-proof catalogue registration", () => {
       "missingNativeScriptUtxo",
       "nativeScriptInvalid",
       "minAda",
+      "fieldPreimageLengthMismatch",
+      "fieldItemWidthIllegal",
+      "witnessScriptDecoding",
+      "scriptIntegrityHashMissing",
+      "transactionOutputNonCanonical",
+      "resolvedOutputNonCanonical",
+      "mintDeclaredAssetLimit",
+      "spendInputSignerMissing",
+      "protectedOutputSignerMissing",
+      "observersForbiddenOnUntaggedNetwork",
+      "observerOrderInvalid",
+      "redeemerCanonicity",
+      "outputReferenceScriptDecoding",
+      "executionSourceScriptDecoding",
+      "receivePurposeLanguage",
+      "unusedScriptWitness",
+      "missingScriptSource",
+      "missingRedeemer",
+      "unusedRedeemer",
+      "executionNativeScriptInvalid",
+      "scriptIntegrityHashMismatch",
+      "distinctAssetAccumulationLimit",
     ]);
 
-    expect(
-      Object.fromEntries(
-        FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map((name, index) => [
-          name,
-          index.toString(16).padStart(8, "0"),
-        ]),
-      ),
-    ).toEqual(FRAUD_PROOF_CATALOGUE_CATEGORY_IDS);
+    expect(Object.keys(FRAUD_PROOF_CATALOGUE_CATEGORY_IDS)).toEqual(
+      FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+    );
+    const ids = FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map(
+      (name) => FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[name],
+    );
+    expect(ids.every((id) => /^[0-9a-f]{8}$/u.test(id))).toBe(true);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 
   it("exports canonical ids for every newly registered family", () => {
@@ -97,6 +141,39 @@ describe("production fraud-proof catalogue registration", () => {
       missingNativeScriptUtxo: MISSING_NATIVE_SCRIPT_UTXO_FRAUD_CATEGORY_ID_V1,
       nativeScriptInvalid: NATIVE_SCRIPT_INVALID_FRAUD_CATEGORY_ID_V1,
       minAda: MIN_ADA_FRAUD_CATEGORY_ID_V1,
+      fieldPreimageLengthMismatch:
+        FIELD_PREIMAGE_LENGTH_MISMATCH_FRAUD_CATEGORY_ID_V1,
+      fieldItemWidthIllegal: FIELD_ITEM_WIDTH_ILLEGAL_FRAUD_CATEGORY_ID_V1,
+      witnessScriptDecoding: WITNESS_SCRIPT_DECODING_FRAUD_CATEGORY_ID_V1,
+      scriptIntegrityHashMissing:
+        SCRIPT_INTEGRITY_HASH_MISSING_FRAUD_CATEGORY_ID_V1,
+      transactionOutputNonCanonical:
+        TRANSACTION_OUTPUT_NON_CANONICAL_FRAUD_CATEGORY_ID_V1,
+      resolvedOutputNonCanonical:
+        RESOLVED_OUTPUT_NON_CANONICAL_FRAUD_CATEGORY_ID_V1,
+      mintDeclaredAssetLimit: MINT_DECLARED_ASSET_LIMIT_FRAUD_CATEGORY_ID_V1,
+      spendInputSignerMissing: SPEND_INPUT_SIGNER_MISSING_FRAUD_CATEGORY_ID_V1,
+      protectedOutputSignerMissing:
+        PROTECTED_OUTPUT_SIGNER_MISSING_FRAUD_CATEGORY_ID_V1,
+      observersForbiddenOnUntaggedNetwork:
+        OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_FRAUD_CATEGORY_ID_V1,
+      observerOrderInvalid: OBSERVER_ORDER_INVALID_FRAUD_CATEGORY_ID_V1,
+      redeemerCanonicity: REDEEMER_CANONICITY_FRAUD_CATEGORY_ID_V1,
+      outputReferenceScriptDecoding:
+        OUTPUT_REFERENCE_SCRIPT_DECODING_FRAUD_CATEGORY_ID_V1,
+      executionSourceScriptDecoding:
+        EXECUTION_SOURCE_SCRIPT_DECODING_FRAUD_CATEGORY_ID_V1,
+      receivePurposeLanguage: RECEIVE_PURPOSE_LANGUAGE_FRAUD_CATEGORY_ID_V1,
+      unusedScriptWitness: UNUSED_SCRIPT_WITNESS_FRAUD_CATEGORY_ID_V1,
+      missingScriptSource: MISSING_SCRIPT_SOURCE_FRAUD_CATEGORY_ID_V1,
+      missingRedeemer: MISSING_REDEEMER_FRAUD_CATEGORY_ID_V1,
+      unusedRedeemer: UNUSED_REDEEMER_FRAUD_CATEGORY_ID_V1,
+      executionNativeScriptInvalid:
+        EXECUTION_NATIVE_SCRIPT_INVALID_FRAUD_CATEGORY_ID_V1,
+      scriptIntegrityHashMismatch:
+        SCRIPT_INTEGRITY_HASH_MISMATCH_FRAUD_CATEGORY_ID_V1,
+      distinctAssetAccumulationLimit:
+        DISTINCT_ASSET_ACCUMULATION_LIMIT_FRAUD_CATEGORY_ID_V1,
     }).toEqual({
       fabricatedDeposit: "0000000b",
       fabricatedWithdrawal: "0000000c",
@@ -119,6 +196,28 @@ describe("production fraud-proof catalogue registration", () => {
       missingNativeScriptUtxo: "0000001d",
       nativeScriptInvalid: "0000001e",
       minAda: "0000001f",
+      fieldPreimageLengthMismatch: "00000020",
+      fieldItemWidthIllegal: "00000021",
+      witnessScriptDecoding: "00000022",
+      scriptIntegrityHashMissing: "00000023",
+      transactionOutputNonCanonical: "00000029",
+      resolvedOutputNonCanonical: "00000026",
+      mintDeclaredAssetLimit: "0000002c",
+      spendInputSignerMissing: "00000027",
+      protectedOutputSignerMissing: "0000002b",
+      observersForbiddenOnUntaggedNetwork: "00000024",
+      observerOrderInvalid: "00000025",
+      redeemerCanonicity: "00000028",
+      outputReferenceScriptDecoding: "0000002a",
+      executionSourceScriptDecoding: "00000031",
+      receivePurposeLanguage: "00000034",
+      unusedScriptWitness: "0000002f",
+      missingScriptSource: "0000002d",
+      missingRedeemer: "0000002e",
+      unusedRedeemer: "00000030",
+      executionNativeScriptInvalid: "00000032",
+      scriptIntegrityHashMismatch: "00000033",
+      distinctAssetAccumulationLimit: "00000035",
     });
   });
 });

@@ -1,3 +1,7 @@
+import {
+  FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
+  FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+} from "@al-ft/midgard-sdk";
 import { it } from "@effect/vitest";
 import { Effect } from "effect";
 import { describe, expect } from "vitest";
@@ -7,7 +11,6 @@ import {
   buildFraudProofCatalogueDeploymentInfo,
   createFraudProofCatalogueMpf,
   fraudProofsToIndexedValidators,
-  uint32ToFraudProofID,
 } from "@/transactions/initialization.js";
 
 describe("Fraud Proof Catalogue Root", () => {
@@ -20,9 +23,8 @@ describe("Fraud Proof Catalogue Root", () => {
         const fraudProofs = contracts.fraudProofs;
 
         const indexedFraudProofs = fraudProofsToIndexedValidators(fraudProofs);
-        // Category IDs are the positional index in
-        // FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER, so every declared fraud-proof
-        // family must appear exactly once and every ID must equal its index.
+        // Every declared family appears exactly once, while its wire identity
+        // comes from the explicit map rather than presentation position.
         // Comparing against the declared validator record (rather than a
         // hardcoded count) catches a family that is added to `FraudProofs` but
         // never registered in the catalogue order.
@@ -32,8 +34,8 @@ describe("Fraud Proof Catalogue Root", () => {
         expect(
           indexedFraudProofs.map(([categoryId]) => categoryId.toString("hex")),
         ).toEqual(
-          indexedFraudProofs.map((_entry, index) =>
-            uint32ToFraudProofID(index).toString("hex"),
+          FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER.map(
+            (name) => FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[name],
           ),
         );
         // The tail IDs are a wire contract with the on-chain catalogue.
@@ -65,7 +67,7 @@ describe("Fraud Proof Catalogue Root", () => {
           const category = deploymentInfo.categories[categoryName];
           expect(category.categoryId).toBe(categoryId.toString("hex"));
           expect(category.categoryId).toBe(
-            uint32ToFraudProofID(i).toString("hex"),
+            FRAUD_PROOF_CATALOGUE_CATEGORY_IDS[categoryName],
           );
           expect(category.scriptHash).toBe(fraudProof.spendingScriptHash);
           expect(category.membershipProofCbor.length).toBeGreaterThan(0);
