@@ -20,6 +20,12 @@ import {
   MIDGARD_V1_ENVELOPE_MEASUREMENTS,
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
+  encodeValidationSemanticResolutionRedeemerV1,
+  parseExactAikenDataCbor,
+  selectValidationCompleteItemCarriageV1,
+  validationOneStepEvidenceHashV1,
+} from "@al-ft/midgard-fault-proofs";
+import {
   deriveFieldPreimageCertificationV1,
   deriveValidationProofItemPublicationV1,
   fieldPreimagePublicationDatumCborV1,
@@ -29,12 +35,6 @@ import { CML, Constr, Data, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { parseExactAikenDataCbor } from "../../midgard-fault-proofs/src/aiken-blueprint-data.js";
-import {
-  encodeValidationSemanticResolutionRedeemerV1,
-  selectValidationCompleteItemCarriageV1,
-  validationOneStepEvidenceHashV1,
-} from "../../midgard-fault-proofs/src/validation-dispute/submit.js";
 import {
   buildDeterministicValidationMachineTrace,
   buildValidationMachineLedgerInsertOpV1,

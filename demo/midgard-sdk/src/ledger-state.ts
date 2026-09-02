@@ -19,16 +19,16 @@ import {
   POSIXTimeSchema,
   PubKeyHashSchema,
   ValueSchema,
-} from "@/common.js";
-import { DaAvailabilityStateQueueStatusV1Schema } from "@/da-availability-state-v1.js";
+} from "./common.js";
+import { DaAvailabilityStateQueueStatusV1Schema } from "./da-availability-state-v1.js";
 import {
   EMPTY_MERKLE_TREE_ROOT,
   GENESIS_HEADER_HASH,
   GENESIS_PROTOCOL_VERSION,
-} from "@/ledger-constants.js";
-import { OperatorVerdictV1Schema } from "@/rejection-reason-v1.js";
+} from "./ledger-constants.js";
+import { OperatorVerdictV1Schema } from "./rejection-reason-v1.js";
 
-export { NO_DA_ATTESTATION } from "@/da-availability-state-v1.js";
+export { NO_DA_ATTESTATION } from "./da-availability-state-v1.js";
 
 export const HeaderHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
 export type HeaderHash = Data.Static<typeof HeaderHashSchema>;

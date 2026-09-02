@@ -21,9 +21,8 @@
  */
 import { Data } from "@lucid-evolution/lucid";
 
-import { H32Schema } from "@/common.js";
-import { WithdrawalSourceMembershipProofSchema } from "@/transition-trace.js";
-
+import { H32Schema } from "../common.js";
+import { WithdrawalSourceMembershipProofSchema } from "../transition-trace.js";
 import { FieldOpeningV1Schema } from "./field-opening-v1.js";
 import {
   FaultProofStepCancel,

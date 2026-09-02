@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { type Server } from "node:net";
 import { join } from "node:path";
 
+import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import {
   ACTIVE_OPERATORS_ROOT_ASSET_NAME,
   ActiveOperatorDatum,
@@ -31,7 +32,6 @@ import {
 import { CML, Data } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { computeHash32 } from "../../midgard-core/src/codec/hash.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../src/config.js";
 import {
   encodeWatcherDurableStoreV1,

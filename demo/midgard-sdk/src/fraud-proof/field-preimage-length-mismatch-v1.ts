@@ -1,12 +1,11 @@
 import { decodeMidgardNativeTxProofFieldLengthsV1 } from "@al-ft/midgard-core";
 import { Data } from "@lucid-evolution/lucid";
 
-import { H32Schema, OutputReferenceSchema } from "@/common.js";
-import { ForcedInclusionTxV1Schema, HeaderV1Schema } from "@/ledger-state.js";
-import type { RejectionReasonV1 as RejectionReasonV1Type } from "@/rejection-reason-v1.js";
-import { RejectionReasonV1Schema } from "@/rejection-reason-v1.js";
-import { rootMembershipProofSchema } from "@/transition-trace.js";
-
+import { H32Schema, OutputReferenceSchema } from "../common.js";
+import { ForcedInclusionTxV1Schema, HeaderV1Schema } from "../ledger-state.js";
+import type { RejectionReasonV1 as RejectionReasonV1Type } from "../rejection-reason-v1.js";
+import { RejectionReasonV1Schema } from "../rejection-reason-v1.js";
+import { rootMembershipProofSchema } from "../transition-trace.js";
 import { CommittedFieldClaimV1Schema } from "./canonical-decodability-v1.js";
 import {
   faultProofStepDatumSchema,

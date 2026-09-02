@@ -5,11 +5,16 @@ import {
   OutputReferenceSchema,
   type Proof,
   ProofSchema,
-} from "@/common.js";
+} from "../common.js";
+import {
+  type FaultProofStepCancel,
+  faultProofStepDatumSchema,
+  faultProofStepRedeemerSchema,
+} from "../fraud-proof/native.js";
 import {
   type ValidationClaimWitnessV1,
   ValidationClaimWitnessV1Schema,
-} from "@/fraud-proof/validation-dispute.js";
+} from "../fraud-proof/validation-dispute.js";
 import {
   type HeaderHash,
   HeaderHashSchema,
@@ -17,11 +22,11 @@ import {
   HeaderV1Schema,
   type WithdrawalValidity,
   WithdrawalValiditySchema,
-} from "@/ledger-state.js";
+} from "../ledger-state.js";
 import {
   type OperatorVerdictV1,
   OperatorVerdictV1Schema,
-} from "@/rejection-reason-v1.js";
+} from "../rejection-reason-v1.js";
 import {
   type AdjacentTraceProof,
   AdjacentTraceProofSchema,
@@ -47,13 +52,7 @@ import {
   TransitionTraceMembershipProofSchema,
   type WithdrawalSourceMembershipProof,
   WithdrawalSourceMembershipProofSchema,
-} from "@/transition-trace.js";
-
-import {
-  type FaultProofStepCancel,
-  faultProofStepDatumSchema,
-  faultProofStepRedeemerSchema,
-} from "../fraud-proof/native.js";
+} from "../transition-trace.js";
 
 export const TraceBoundarySideSchema = Data.Enum([
   Data.Literal("TraceStart"),

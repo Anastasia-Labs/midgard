@@ -16,9 +16,9 @@ import {
   makeReturn,
   MidgardValidators,
   POSIXTimeSchema,
-} from "@/common.js";
-import { HubOracleError } from "@/hub-oracle.js";
-import { authenticateUTxOs, AuthenticUTxO } from "@/internals.js";
+} from "../common.js";
+import { HubOracleError } from "../hub-oracle.js";
+import { authenticateUTxOs, AuthenticUTxO } from "../internals.js";
 import {
   CardanoDatum,
   CardanoDatumSchema,
@@ -26,9 +26,8 @@ import {
   WithdrawalEventSchema,
   WithdrawalSignature,
   WithdrawalValiditySchema,
-} from "@/ledger-state.js";
-import { RawRootMembershipProofSchema } from "@/transition-trace.js";
-
+} from "../ledger-state.js";
+import { RawRootMembershipProofSchema } from "../transition-trace.js";
 import {
   buildCompletedUserEventMintTxProgram,
   encodeUserEventWitnessMintOrBurnRedeemer,

@@ -1,10 +1,10 @@
 import { computeHash28 } from "@al-ft/midgard-core/codec/hash";
+import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
 import { buildCountedRoot } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { wrapDaPayloadV1 } from "../../midgard-core/src/da-payload-envelope.js";
 import { watcherBlockReplayPriorStateV1 } from "../src/block-replay.js";
 import { watcherSha256CanonicalJsonV1 } from "../src/durable-store.js";
 import {

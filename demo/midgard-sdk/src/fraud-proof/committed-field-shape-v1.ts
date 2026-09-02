@@ -41,8 +41,7 @@ import {
 } from "@al-ft/midgard-core";
 import { Data } from "@lucid-evolution/lucid";
 
-import { H32Schema } from "@/common.js";
-
+import { H32Schema } from "../common.js";
 import {
   CommittedFieldClaimV1Schema,
   MIDGARD_COMMITTED_FIELD_COUNT_V1,

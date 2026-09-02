@@ -9,13 +9,13 @@ import {
 } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
 
-import { type GenericErrorFields, LucidError } from "@/common.js";
+import { type GenericErrorFields, LucidError } from "./common.js";
 import {
   authenticateUTxOs,
   type AuthenticUTxO,
   fetchSingleAuthenticUTxOProgram,
-} from "@/internals.js";
-import { HeaderHashSchema } from "@/ledger-state.js";
+} from "./internals.js";
+import { HeaderHashSchema } from "./ledger-state.js";
 
 export const CORRECTION_LOCK_ASSET_NAME = fromText("MIDGARD_CORRECTION_LOCK");
 

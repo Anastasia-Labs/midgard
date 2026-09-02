@@ -11,9 +11,8 @@ import {
   LucidError,
   OutputReferenceSchema,
   POSIXTimeSchema,
-} from "@/common.js";
-import { authenticateUTxOs, AuthenticUTxO } from "@/internals.js";
-
+} from "./common.js";
+import { authenticateUTxOs, AuthenticUTxO } from "./internals.js";
 import {
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
   incompleteInitLinkedListTxProgram,

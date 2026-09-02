@@ -39,10 +39,20 @@
  * counterpart.
  */
 import {
+  encodeMidgardCekProgramMaterialDaValueV1,
+  encodeMidgardCekProgramMaterialSidecarV1,
+  encodeMidgardCekTermNodeV1,
+  hashMidgardCekTermNodeV1,
+} from "@al-ft/midgard-core/cek-proof";
+import {
   computeMidgardNativeTxIdV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
+import type { MidgardNativeScript } from "@al-ft/midgard-core/codec/native-script";
+import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec/output";
+import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
 import { buildCountedRoot, encodeData } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import { validatePhaseASingle } from "@al-ft/midgard-validation/phase-a";
@@ -57,16 +67,6 @@ import { CML, Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { blake2b } from "../../midgard-core/node_modules/@noble/hashes/blake2.js";
-import {
-  encodeMidgardCekProgramMaterialDaValueV1,
-  encodeMidgardCekProgramMaterialSidecarV1,
-  encodeMidgardCekTermNodeV1,
-  hashMidgardCekTermNodeV1,
-} from "../../midgard-core/src/cek-proof.js";
-import type { MidgardNativeScript } from "../../midgard-core/src/codec/native-script.js";
-import { encodeMidgardTxOutput } from "../../midgard-core/src/codec/output.js";
-import { MIDGARD_CONSENSUS_PROFILE_V1 } from "../../midgard-core/src/consensus-profile-v1.js";
-import { wrapDaPayloadV1 } from "../../midgard-core/src/da-payload-envelope.js";
 import {
   makeNativeTx,
   makeOutput,

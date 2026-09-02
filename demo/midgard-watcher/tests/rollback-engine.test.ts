@@ -4,11 +4,11 @@ import { type Server } from "node:net";
 import { join } from "node:path";
 import { createServer as createTlsServer } from "node:tls";
 
+import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
+import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { CML } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { computeHash32 } from "../../midgard-core/src/codec/hash.js";
-import { makeDeploymentMarkerV1 } from "../../midgard-core/src/deployment-manifest-identity-v1.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../src/config.js";
 import {
   encodeWatcherDurableStoreV1,

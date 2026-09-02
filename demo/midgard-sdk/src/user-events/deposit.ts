@@ -15,13 +15,12 @@ import {
   LucidError,
   makeReturn,
   MidgardValidators,
-} from "@/common.js";
-import { POSIXTimeSchema } from "@/common.js";
-import { HubOracleError } from "@/hub-oracle.js";
-import { authenticateUTxOs, AuthenticUTxO } from "@/internals.js";
-import { DepositEventSchema } from "@/ledger-state.js";
-import { RawRootMembershipProofSchema } from "@/transition-trace.js";
-
+} from "../common.js";
+import { POSIXTimeSchema } from "../common.js";
+import { HubOracleError } from "../hub-oracle.js";
+import { authenticateUTxOs, AuthenticUTxO } from "../internals.js";
+import { DepositEventSchema } from "../ledger-state.js";
+import { RawRootMembershipProofSchema } from "../transition-trace.js";
 import {
   buildCompletedUserEventMintTxProgram,
   encodeUserEventWitnessMintOrBurnRedeemer,

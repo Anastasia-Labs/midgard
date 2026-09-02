@@ -18,7 +18,7 @@ import {
   type DaAvailabilityMintRedeemerV1,
   DaAvailabilityMintRedeemerV1Schema,
   encodeDaAvailabilityBondDatumV1,
-} from "@/availability-challenge-v1.js";
+} from "./availability-challenge-v1.js";
 import {
   type AddressData,
   addressDataFromBech32,
@@ -27,31 +27,31 @@ import {
   type GenericErrorFields,
   type MidgardValidators,
   outputReferenceFromUTxO,
-} from "@/common.js";
+} from "./common.js";
 import {
   castStateQueueNodeV1ToData,
   type HeaderHash,
   HeaderHashSchema,
   type StateQueueNodeV1,
-} from "@/ledger-state.js";
+} from "./ledger-state.js";
 import {
   encodeLinkedListNodeView,
   type LinkedListNodeView,
-} from "@/linked-list.js";
-import { MAX_VALIDITY_RANGE_LENGTH_MS } from "@/protocol-parameters.js";
+} from "./linked-list.js";
+import { MAX_VALIDITY_RANGE_LENGTH_MS } from "./protocol-parameters.js";
 import {
   DA_ATTESTATION_TIMEOUT_MS,
   StateQueueSpendRedeemer,
   type StateQueueUTxO,
-} from "@/state-queue.js";
+} from "./state-queue.js";
 import {
   requireInputIndex,
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
-} from "@/tx-context-redeemer.js";
-import { outputDatumCborMatches } from "@/tx-output-utils.js";
+} from "./tx-context-redeemer.js";
+import { outputDatumCborMatches } from "./tx-output-utils.js";
 
 export const DA_PARAMS_ASSET_NAME = fromText("MIDGARD_DA_PARAMS");
 export const DA_ATTESTATION_ASSET_NAME_PREFIX = fromText("DAAT");

@@ -8,12 +8,12 @@ import {
 } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
 
-import { GenericErrorFields, LucidError, POSIXTimeSchema } from "@/common.js";
+import { GenericErrorFields, LucidError, POSIXTimeSchema } from "./common.js";
 import {
   authenticateUTxOs,
   AuthenticUTxO,
   fetchSingleAuthenticUTxOProgram,
-} from "@/internals.js";
+} from "./internals.js";
 
 export const SCHEDULER_ASSET_NAME = fromText("MIDGARD_SCHEDULER");
 

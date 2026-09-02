@@ -7,11 +7,11 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { ReservePayoutTxError } from "@/reserve-payout/errors.js";
+import { ReservePayoutTxError } from "./errors.js";
 import {
   disposableFeeInputCandidates,
   fetchProviderVisibleWalletInputsProgram,
-} from "@/reserve-payout/inputs.js";
+} from "./inputs.js";
 
 export type BuiltReservePayoutTx<L> = {
   readonly tx: TxSignBuilder;

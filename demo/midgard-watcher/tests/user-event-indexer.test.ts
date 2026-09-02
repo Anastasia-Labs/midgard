@@ -2,6 +2,22 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { type Server } from "node:net";
 import { join } from "node:path";
 
+import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
+import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
+import {
+  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxProofCommitmentV1,
+  deriveMidgardNativeTxProofSourceV1,
+  materializeMidgardNativeTxFromCanonicalV1,
+  type MidgardNativeTxCanonicalV1,
+} from "@al-ft/midgard-core/codec/native";
+import {
+  EMPTY_CBOR_LIST,
+  EMPTY_NULL_ROOT,
+  MIDGARD_NATIVE_NETWORK_ID_NONE,
+  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_POSIX_TIME_NONE,
+} from "@al-ft/midgard-core/codec/native-constants";
 import {
   DepositDatum,
   DepositSpendRedeemer,
@@ -28,22 +44,6 @@ import { CML, Data } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { blake2b } from "../../midgard-core/node_modules/@noble/hashes/blake2.js";
-import { encodeCbor } from "../../midgard-core/src/codec/cbor.js";
-import { computeHash32 } from "../../midgard-core/src/codec/hash.js";
-import {
-  computeMidgardNativeTxIdV1,
-  computeMidgardNativeTxProofCommitmentV1,
-  deriveMidgardNativeTxProofSourceV1,
-  materializeMidgardNativeTxFromCanonicalV1,
-  type MidgardNativeTxCanonicalV1,
-} from "../../midgard-core/src/codec/native.js";
-import {
-  EMPTY_CBOR_LIST,
-  EMPTY_NULL_ROOT,
-  MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_V1_VERSION,
-  MIDGARD_POSIX_TIME_NONE,
-} from "../../midgard-core/src/codec/native-constants.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../src/config.js";
 import {
   encodeWatcherDurableStoreV1,

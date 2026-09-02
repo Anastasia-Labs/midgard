@@ -21,7 +21,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
 
-import { scriptRewardAddress } from "@/cardano-addresses.js";
+import { scriptRewardAddress } from "../cardano-addresses.js";
 import {
   Bech32DeserializationError,
   GenericErrorFields,
@@ -31,21 +31,21 @@ import {
   MidgardValidators,
   OutputReference,
   POSIXTime,
-} from "@/common.js";
+} from "../common.js";
 import {
   fetchHubOracleUTxOProgram,
   HubOracleDatum,
   HubOracleError,
   makeHubOracleDatum,
-} from "@/hub-oracle.js";
-import { getProtocolParameters } from "@/protocol-parameters.js";
+} from "../hub-oracle.js";
+import { getProtocolParameters } from "../protocol-parameters.js";
 import {
   requireInputIndex,
   requireOwnMintPurpose,
   requireReferenceInputIndex,
   requireSinglePublishRedeemerIndex,
   requireUniqueOutputIndex,
-} from "@/tx-context-redeemer.js";
+} from "../tx-context-redeemer.js";
 
 export class UserEventBuildError extends EffectData.TaggedError(
   "UserEventBuildError",

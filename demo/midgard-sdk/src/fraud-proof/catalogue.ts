@@ -12,7 +12,7 @@ import type {
   AuthenticatedValidator,
   FraudProofs,
   MerkleRoot,
-} from "@/common.js";
+} from "../common.js";
 
 export const FRAUD_PROOF_CATALOGUE_ASSET_NAME = fromText(
   "MIDGARD_FRAUD_PROOF_CATALOGUE",

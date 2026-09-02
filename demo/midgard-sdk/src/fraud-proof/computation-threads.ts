@@ -1,6 +1,6 @@
 import { Data } from "@lucid-evolution/lucid";
 
-import { ProofSchema, ScriptHashSchema } from "@/common.js";
+import { ProofSchema, ScriptHashSchema } from "../common.js";
 
 export const FraudProofComputationThreadStepDatumSchema = Data.Object({
   fraud_prover: Data.Bytes({ minLength: 28, maxLength: 28 }),

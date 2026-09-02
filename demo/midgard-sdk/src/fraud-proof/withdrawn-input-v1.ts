@@ -9,13 +9,12 @@
  */
 import { Data } from "@lucid-evolution/lucid";
 
-import { H32Schema } from "@/common.js";
-import { type WithdrawalInfo, WithdrawalInfoSchema } from "@/ledger-state.js";
+import { H32Schema } from "../common.js";
+import { type WithdrawalInfo, WithdrawalInfoSchema } from "../ledger-state.js";
 import {
   type RootMembershipProof,
   WithdrawalSourceMembershipProofSchema,
-} from "@/transition-trace.js";
-
+} from "../transition-trace.js";
 import { FieldOpeningV1Schema } from "./field-opening-v1.js";
 import {
   FaultProofStepCancel,

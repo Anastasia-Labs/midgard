@@ -4,15 +4,16 @@ import {
   MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
   MIDGARD_CONSENSUS_PROFILE_V1_ID,
   MIDGARD_PROTOCOL_V1_VERSION,
-} from "../../midgard-core/src/consensus-profile-v1.js";
+} from "@al-ft/midgard-core/consensus-profile-v1";
 import {
   computeDeploymentManifestV1JsonDigest,
   type DeploymentManifestV1JsonValue,
-} from "../../midgard-core/src/deployment-manifest-identity-v1.js";
+} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import {
   MidgardValidationPhase,
   type MidgardValidationPhaseName,
-} from "../../midgard-core/src/validation-trace.js";
+} from "@al-ft/midgard-core/validation-trace";
+
 import {
   verifyWatcherDeploymentIdentityV1,
   type WatcherDeploymentIdentityPolicyV1,

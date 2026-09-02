@@ -27,16 +27,16 @@ import {
   MintingValidator,
   ScriptHashSchema,
   UnspecifiedNetworkError,
-} from "@/common.js";
+} from "./common.js";
 import {
   CORRECTION_LOCK_ASSET_NAME,
   CorrectionLockDatum,
-} from "@/correction-lock.js";
+} from "./correction-lock.js";
 import {
   authenticateUTxOs,
   AuthenticUTxO,
   fetchSingleAuthenticUTxOProgram,
-} from "@/internals.js";
+} from "./internals.js";
 
 export type HubOracleConfig = {
   hubOracleAddress: Address;

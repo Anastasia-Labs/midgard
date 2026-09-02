@@ -1,12 +1,12 @@
 import { appendFile, readFile } from "node:fs/promises";
 
-import type { Libp2pDaTransportConfig } from "../../../da-committee-node/src/config.js";
+import type { Libp2pDaTransportConfig } from "da-committee-node/config";
 import {
   createDaLibp2pPayloadRequestHandlers,
   DaLibp2pNode,
   processWideDaPayloadSubmitAdmission,
-} from "../../../da-committee-node/src/da/libp2p/index.js";
-import { JsonFileWatcherStore } from "../../../da-committee-node/src/store.js";
+} from "da-committee-node/da/libp2p";
+import { JsonFileWatcherStore } from "da-committee-node/store";
 
 type PeerProcessConfig = {
   readonly peerIndex: number;

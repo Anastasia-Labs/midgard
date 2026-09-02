@@ -2,6 +2,17 @@ import { createHash } from "node:crypto";
 import { isProxy } from "node:util/types";
 
 import {
+  computeMidgardNativeTxProofCommitmentV1,
+  decodeMidgardNativeTxProofFieldLengthsV1,
+  verifyMidgardNativeTxProofSourceV1,
+} from "@al-ft/midgard-core/codec/native";
+import { MIDGARD_EMPTY_FIELD_COMMITMENT_V1 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
+import { midgardV1TxFieldCommitmentsFromSourceV1 } from "@al-ft/midgard-core/consensus-validation-v1";
+import {
+  type DeploymentMarkerV1,
+  MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
+} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import {
   DepositDatumSchema,
   DepositEventSchema,
   DepositSpendRedeemerSchema,
@@ -33,17 +44,6 @@ import {
 import { CML, Data } from "@lucid-evolution/lucid";
 
 import { blake2b } from "../../midgard-core/node_modules/@noble/hashes/blake2.js";
-import {
-  computeMidgardNativeTxProofCommitmentV1,
-  decodeMidgardNativeTxProofFieldLengthsV1,
-  verifyMidgardNativeTxProofSourceV1,
-} from "../../midgard-core/src/codec/native.js";
-import { MIDGARD_EMPTY_FIELD_COMMITMENT_V1 } from "../../midgard-core/src/codec/native-tx-field-access-v1.js";
-import { midgardV1TxFieldCommitmentsFromSourceV1 } from "../../midgard-core/src/consensus-validation-v1.js";
-import {
-  type DeploymentMarkerV1,
-  MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
-} from "../../midgard-core/src/deployment-manifest-identity-v1.js";
 import {
   type VerifiedWatcherDeploymentIdentityV1,
   verifyWatcherDeploymentIdentityV1,

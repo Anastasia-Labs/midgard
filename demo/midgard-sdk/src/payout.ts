@@ -1,7 +1,7 @@
 import { Data } from "@lucid-evolution/lucid";
 
-import { AddressSchema, OutputReferenceSchema, ValueSchema } from "@/common.js";
-import { CardanoDatumSchema } from "@/ledger-state.js";
+import { AddressSchema, OutputReferenceSchema, ValueSchema } from "./common.js";
+import { CardanoDatumSchema } from "./ledger-state.js";
 
 export const PayoutDatumSchema = Data.Object({
   l2_value: ValueSchema,

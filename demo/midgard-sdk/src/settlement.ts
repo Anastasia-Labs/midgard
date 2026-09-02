@@ -19,7 +19,7 @@ import {
   FetchActiveOperatorParams,
   fetchActiveOperatorUTxOs,
   requireActiveOperatorUTxO,
-} from "@/active-operators.js";
+} from "./active-operators.js";
 import {
   AssetError,
   AuthenticatedValidator,
@@ -32,22 +32,22 @@ import {
   MerkleRootSchema,
   POSIXTimeSchema,
   VerificationKeyHashSchema,
-} from "@/common.js";
-import { fetchHubOracleUTxOProgram, HubOracleError } from "@/hub-oracle.js";
-import { AuthenticUTxO } from "@/internals.js";
-import { WithdrawalValiditySchema } from "@/ledger-state.js";
-import { OperatorVerdictV1Schema } from "@/rejection-reason-v1.js";
+} from "./common.js";
+import { fetchHubOracleUTxOProgram, HubOracleError } from "./hub-oracle.js";
+import { AuthenticUTxO } from "./internals.js";
+import { WithdrawalValiditySchema } from "./ledger-state.js";
+import { OperatorVerdictV1Schema } from "./rejection-reason-v1.js";
 import {
   FetchRetiredOperatorParams,
   fetchRetiredOperatorUTxOs,
   RetiredOperatorUTxO,
-} from "@/retired-operators.js";
-import { fetchSchedulerUTxOProgram, SchedulerError } from "@/scheduler.js";
+} from "./retired-operators.js";
+import { fetchSchedulerUTxOProgram, SchedulerError } from "./scheduler.js";
 import {
   EventSettlementMembershipProof,
   EventSettlementMembershipProofSchema,
-} from "@/transition-trace.js";
-import { completeTxWithLocalUPLCEvalProgram } from "@/tx-completion.js";
+} from "./transition-trace.js";
+import { completeTxWithLocalUPLCEvalProgram } from "./tx-completion.js";
 import {
   requireInputIndex,
   requireOwnMintPurpose,
@@ -55,9 +55,8 @@ import {
   requireReferenceInputIndex,
   requireSpendRedeemerIndex,
   requireUniqueOutputIndex,
-} from "@/tx-context-redeemer.js";
-import { outputDatumCborMatches } from "@/tx-output-utils.js";
-
+} from "./tx-context-redeemer.js";
+import { outputDatumCborMatches } from "./tx-output-utils.js";
 import { DepositUTxO, utxosToDepositUTxOs } from "./user-events/deposit.js";
 import {
   TxOrderUTxOV1,

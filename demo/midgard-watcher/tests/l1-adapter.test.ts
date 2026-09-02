@@ -7,10 +7,10 @@ import { join } from "node:path";
 import { createServer as createTlsServer } from "node:tls";
 import { promisify } from "node:util";
 
+import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import { CML } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { computeHash32 } from "../../midgard-core/src/codec/hash.js";
 import {
   closeWatcherL1TransportAttestationContextV1,
   encodeWatcherNormalizedL1BlockV1,

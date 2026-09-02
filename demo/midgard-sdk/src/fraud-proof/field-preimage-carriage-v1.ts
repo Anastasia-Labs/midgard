@@ -27,7 +27,7 @@ import {
   FIELD_PREIMAGE_CERTIFICATE_ASSET_NAME_HEX_V1,
   FieldPreimageCertificateMintRedeemerV1,
   FieldPreimageCertificateV1,
-} from "@/native-tx-field-access-v1.js";
+} from "../native-tx-field-access-v1.js";
 
 /**
  * The off-chain publish, certify and heal tooling for the `docs/spec/midgard-tx.md`

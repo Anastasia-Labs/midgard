@@ -17,7 +17,7 @@
  */
 import { Effect } from "effect";
 
-import { hashBlockHeaderV1, type HeaderV1 } from "@/ledger-state.js";
+import { hashBlockHeaderV1, type HeaderV1 } from "../ledger-state.js";
 
 export const CANONICAL_EVIDENCE_SOURCE_V1_SCHEMA_VERSION =
   "midgard-canonical-evidence-source-v1" as const;

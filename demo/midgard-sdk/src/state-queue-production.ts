@@ -20,19 +20,19 @@ import {
   ActiveOperatorDatum,
   ActiveOperatorSpendRedeemer,
   castActiveOperatorDatumToData,
-} from "@/active-operators.js";
-import { scriptRewardAddress } from "@/cardano-addresses.js";
+} from "./active-operators.js";
+import { scriptRewardAddress } from "./cardano-addresses.js";
 import type {
   DataCoercionError,
   HashingError,
   MidgardValidators,
   OutputReference,
-} from "@/common.js";
-import { outputReferenceFromUTxO } from "@/common.js";
+} from "./common.js";
+import { outputReferenceFromUTxO } from "./common.js";
 import {
   CorrectionLockDatum,
   type CorrectionLockUTxO,
-} from "@/correction-lock.js";
+} from "./correction-lock.js";
 import {
   castConfirmedStateToData,
   castStateQueueNodeV1ToData,
@@ -42,7 +42,7 @@ import {
   hashBlockHeaderV1,
   type HeaderV1,
   NO_DA_ATTESTATION,
-} from "@/ledger-state.js";
+} from "./ledger-state.js";
 import {
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
   encodeLinkedListNodeView,
@@ -50,12 +50,12 @@ import {
   linkedListDatumToNodeView,
   type LinkedListNodeView,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
-} from "@/linked-list.js";
+} from "./linked-list.js";
 import {
   SettlementDatum,
   SettlementMintRedeemer,
   type SettlementMintRedeemer as SettlementMintRedeemerType,
-} from "@/settlement.js";
+} from "./settlement.js";
 import {
   encodeStateQueueYieldRedeemerV1,
   getConfirmedStateFromStateQueueDatum,
@@ -65,17 +65,17 @@ import {
   type StateQueueRedeemer as StateQueueRedeemerType,
   StateQueueSpendRedeemer,
   type StateQueueUTxO,
-} from "@/state-queue.js";
-import { completeOptionsWithLocalEval } from "@/tx-completion.js";
+} from "./state-queue.js";
+import { completeOptionsWithLocalEval } from "./tx-completion.js";
 import {
   requireInputIndex as requireContextInputIndex,
   requireMintRedeemerIndex as requireContextMintRedeemerIndex,
   requireOwnMintPurpose,
   requireReferenceInputIndex as requireContextReferenceInputIndex,
   requireSpendRedeemerIndex as requireContextSpendRedeemerIndex,
-} from "@/tx-context-redeemer.js";
-import { dedupeAndSortUtxos } from "@/tx-out-ref-order.js";
-import { outputDatumCborMatches } from "@/tx-output-utils.js";
+} from "./tx-context-redeemer.js";
+import { dedupeAndSortUtxos } from "./tx-out-ref-order.js";
+import { outputDatumCborMatches } from "./tx-output-utils.js";
 
 const STATE_QUEUE_HEADER_NODE_LOVELACE = 5_000_000n;
 const ACTIVE_OPERATOR_MATURITY_DURATION_MS = BigInt(

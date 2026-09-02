@@ -1,8 +1,8 @@
 import { Data } from "@lucid-evolution/lucid";
 
-import { type OutputReference, OutputReferenceSchema } from "@/common.js";
-import type { RejectionReasonV1 } from "@/rejection-reason-v1.js";
-import { RejectionReasonV1 as RejectionReasonV1Schema } from "@/rejection-reason-v1.js";
+import { type OutputReference, OutputReferenceSchema } from "../common.js";
+import type { RejectionReasonV1 } from "../rejection-reason-v1.js";
+import { RejectionReasonV1 as RejectionReasonV1Schema } from "../rejection-reason-v1.js";
 
 export const PROOF_THREAD_SUBJECT_V1_VERSION = 1n;
 export const PROOF_THREAD_DIRECTION_WRONGFUL_ACCEPTANCE_V1 = 0n;

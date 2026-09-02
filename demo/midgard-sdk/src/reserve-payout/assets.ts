@@ -9,7 +9,7 @@ import {
 } from "@al-ft/midgard-core/assets";
 import type { Assets, UTxO } from "@lucid-evolution/lucid";
 
-import * as SDK from "@/reserve-payout/primitives.js";
+import * as SDK from "./primitives.js";
 
 export {
   addAssets,

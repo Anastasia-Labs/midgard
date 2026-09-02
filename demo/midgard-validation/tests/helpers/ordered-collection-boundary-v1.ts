@@ -24,6 +24,7 @@ import {
   MIDGARD_CONSENSUS_LIMITS_V1,
   MIDGARD_V1_ENVELOPE_MEASUREMENTS,
 } from "@al-ft/midgard-core/consensus-profile-v1";
+import { selectValidationCompleteItemCarriageV1 } from "@al-ft/midgard-fault-proofs";
 import { deriveValidationProofItemPublicationV1 } from "@al-ft/midgard-sdk";
 import {
   CML,
@@ -32,7 +33,6 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { selectValidationCompleteItemCarriageV1 } from "../../../midgard-fault-proofs/src/validation-dispute/submit.js";
 import { countedMachineTransactionChunkStepsV1 } from "../../src/validation-machine.js";
 import { encodeValidationAuxiliaryWitnessCborV1 } from "../../src/validation-machine-data.js";
 

@@ -1,6 +1,6 @@
+import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { describe, expect, it } from "vitest";
 
-import { makeDeploymentMarkerV1 } from "../../midgard-core/src/deployment-manifest-identity-v1.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../src/config.js";
 import type { WatcherDurableAtomicBackend } from "../src/durable-store.js";
 import { makeEmptyWatcherDurableStoreV1 } from "../src/durable-store.js";

@@ -3,6 +3,24 @@ import simpleImportSort from "eslint-plugin-simple-import-sort";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 
+// Workspace packages are consumed by name so that their exports maps, the
+// `midgard-source` exports condition (source-first resolution for tsc,
+// typescript-eslint, and vitest), and the declared dependency graph stay
+// authoritative. Reaching into a sibling's src/ or dist/ bypasses all three;
+// the src/dist split is how stale-dist phantom suite failures were produced.
+const workspacePackageBoundary = {
+  group: [
+    "**/lucid-midgard/src/**",
+    "**/lucid-midgard/dist/**",
+    "**/midgard-*/src/**",
+    "**/midgard-*/dist/**",
+    "**/da-committee-node/src/**",
+    "**/da-committee-node/dist/**",
+  ],
+  message:
+    "Import workspace packages by name (for example @al-ft/midgard-core/hex), never through ../<package>/src or ../<package>/dist. Add a workspace dependency and an exports entry if one is missing.",
+};
+
 export default tseslint.config(
   {
     ignores: [
@@ -29,6 +47,10 @@ export default tseslint.config(
           destructuredArrayIgnorePattern: "^_",
           ignoreRestSiblings: true,
         },
+      ],
+      "no-restricted-imports": [
+        "error",
+        { patterns: [workspacePackageBoundary] },
       ],
     },
   },
@@ -131,6 +153,24 @@ export default tseslint.config(
       // Commander and the legacy settlement decoder necessarily expose
       // explicit `any` in their callback/decoder adapter signatures.
       "@typescript-eslint/no-explicit-any": "off",
+    },
+  },
+  {
+    files: ["midgard-sdk/src/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            workspacePackageBoundary,
+            {
+              group: ["@/*"],
+              message:
+                "midgard-sdk src is resolved from source by every consumer through the midgard-source exports condition. The @/ alias exists only in this package's tsconfig/vitest config, so src must use relative specifiers.",
+            },
+          ],
+        },
+      ],
     },
   },
 );

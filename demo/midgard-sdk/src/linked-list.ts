@@ -18,9 +18,9 @@ import {
   GenericErrorFields,
   LucidError,
   MissingDatumError,
-} from "@/common.js";
-import { completeTxWithLocalUPLCEvalProgram } from "@/tx-completion.js";
-import { requireUniqueOutputIndex } from "@/tx-context-redeemer.js";
+} from "./common.js";
+import { completeTxWithLocalUPLCEvalProgram } from "./tx-completion.js";
+import { requireUniqueOutputIndex } from "./tx-context-redeemer.js";
 
 export const NODE_ASSET_NAME = fromText("Node");
 export const STATE_QUEUE_NODE_ASSET_NAME_PREFIX = fromText("MBLC");

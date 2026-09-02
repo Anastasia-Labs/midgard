@@ -53,6 +53,13 @@
 import { createHash } from "node:crypto";
 
 import {
+  encodeCborArrayRaw,
+  encodeCborBytes,
+  encodeCborUnsigned,
+} from "@al-ft/midgard-core/codec/cbor";
+import { unwrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
+import {
   canonicalBlockEvidenceFromVerifiedPayloadV1,
   TransitionTraceChallengerError,
 } from "@al-ft/midgard-fault-proofs";
@@ -68,13 +75,6 @@ import {
 } from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
-import {
-  encodeCborArrayRaw,
-  encodeCborBytes,
-  encodeCborUnsigned,
-} from "../../midgard-core/src/codec/cbor.js";
-import { unwrapDaPayloadV1 } from "../../midgard-core/src/da-payload-envelope.js";
-import { DA_TRANSPORT_LIMITS_V1 } from "../../midgard-core/src/da-transport.js";
 import {
   makeWatcherDurablePayloadV1,
   type WatcherReconstructedStateV1,

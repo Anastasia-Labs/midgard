@@ -23,6 +23,10 @@ import {
 } from "@al-ft/midgard-core/codec";
 import { MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import {
+  encodeValidationSemanticResolutionRedeemerV1,
+  parseExactAikenDataCbor,
+} from "@al-ft/midgard-fault-proofs";
+import {
   Application,
   Lambda,
   UPLCEncoder,
@@ -33,8 +37,6 @@ import { Constr, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { parseExactAikenDataCbor } from "../../midgard-fault-proofs/src/aiken-blueprint-data.js";
-import { encodeValidationSemanticResolutionRedeemerV1 } from "../../midgard-fault-proofs/src/validation-dispute/submit.js";
 import {
   advanceMidgardResolvedInputsAccumulatorV1,
   buildDeterministicValidationMachineTrace,

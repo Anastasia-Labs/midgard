@@ -1,17 +1,9 @@
 import {
-  DA_PAYLOAD_V1_VERSION,
-  type DaPayloadV1,
-  EMPTY_MERKLE_TREE_ROOT,
-  encodeDaPayloadV1,
-} from "@al-ft/midgard-sdk";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-import {
   DA_PAYLOAD_INNER_V1_SCHEMA_VERSION,
   DaPayloadContentEncoding,
   encodeDaPayloadEnvelopeV1,
   wrapDaPayloadV1,
-} from "../../midgard-core/src/da-payload-envelope.js";
+} from "@al-ft/midgard-core/da-payload-envelope";
 import {
   computeDaSha256Hash,
   DA_TRANSPORT_V1_PROTOCOL_VERSION,
@@ -30,8 +22,16 @@ import {
   encodeDaPayloadChunkResponseV1Cbor,
   encodeDaProofBundleByHeaderResponseV1Cbor,
   encodeDaTraceStepByIndexResponseV1Cbor,
-} from "../../midgard-core/src/da-transport.js";
-import { makeDeploymentMarkerV1 } from "../../midgard-core/src/deployment-manifest-identity-v1.js";
+} from "@al-ft/midgard-core/da-transport";
+import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import {
+  DA_PAYLOAD_V1_VERSION,
+  type DaPayloadV1,
+  EMPTY_MERKLE_TREE_ROOT,
+  encodeDaPayloadV1,
+} from "@al-ft/midgard-sdk";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
 import type { WatcherConfig } from "../src/config.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../src/config.js";
 import type { VerifiedWatcherDeploymentIdentityV1 } from "../src/deployment-identity.js";

@@ -7,8 +7,35 @@
     "da-committee-node": "./dist/index.js",
     "midgard-public-retained-da": "./dist/public-retained-da.js"
   },
+  "exports": {
+    "./config": {
+      "midgard-source": "./src/config.ts",
+      "types": "./dist/config.d.ts",
+      "import": "./dist/config.js"
+    },
+    "./store": {
+      "midgard-source": "./src/store.ts",
+      "types": "./dist/store.d.ts",
+      "import": "./dist/store.js"
+    },
+    "./da/libp2p": {
+      "midgard-source": "./src/da/libp2p/index.ts",
+      "types": "./dist/da/libp2p/index.d.ts",
+      "import": "./dist/da/libp2p/index.js"
+    },
+    "./da/libp2p/DaStreamCodec": {
+      "midgard-source": "./src/da/libp2p/DaStreamCodec.ts",
+      "types": "./dist/da/libp2p/DaStreamCodec.d.ts",
+      "import": "./dist/da/libp2p/DaStreamCodec.js"
+    },
+    "./l1/state-queue-scanner": {
+      "midgard-source": "./src/l1/state-queue-scanner.ts",
+      "types": "./dist/l1/state-queue-scanner.d.ts",
+      "import": "./dist/l1/state-queue-scanner.js"
+    }
+  },
   "scripts": {
-    "build": "tsup src/index.ts src/public-retained-da.ts --format esm --dts --clean",
+    "build": "tsup src/index.ts src/public-retained-da.ts src/config.ts src/store.ts src/da/libp2p/index.ts src/da/libp2p/DaStreamCodec.ts src/l1/state-queue-scanner.ts --format esm --dts --clean",
     "guard:no-http-da-transport": "node scripts/check-no-http-da-transport.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -40,6 +67,7 @@
   "devDependencies": {
     "@types/node": "^22.17.0",
     "@types/pg": "^8.20.0",
+    "midgard-watcher": "workspace:*",
     "rimraf": "^6.0.1",
     "tsup": "^8.4.0",
     "typescript": "^5.7.3",

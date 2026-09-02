@@ -1,9 +1,8 @@
-import { type ChildProcess, execFile, spawn } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 
 import { MIDGARD_CONSENSUS_PROFILE_V1_ID } from "@al-ft/midgard-core/consensus-profile-v1";
 import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
@@ -11,6 +10,13 @@ import {
   computeDaSha256Hash,
   DA_TRANSPORT_LIMITS_V1,
 } from "@al-ft/midgard-core/da-transport";
+import type {
+  Libp2pDaPeerConfig,
+  Libp2pDaTransportConfig,
+} from "da-committee-node/config";
+import { loadDaLibp2pIdentity } from "da-committee-node/da/libp2p";
+import { JsonFileWatcherStore } from "da-committee-node/store";
+import { build as bundleWithTsup } from "tsup";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -24,15 +30,8 @@ import {
 import { DaPayloadsDB } from "@/database/index.js";
 import { sha256Hex } from "@/sha256.js";
 
-import type {
-  Libp2pDaPeerConfig,
-  Libp2pDaTransportConfig,
-} from "../../da-committee-node/src/config.js";
-import { loadDaLibp2pIdentity } from "../../da-committee-node/src/da/libp2p/index.js";
-import { JsonFileWatcherStore } from "../../da-committee-node/src/store.js";
 import { makePayloadFixture } from "../../da-committee-node/tests/helpers.js";
 
-const execFileAsync = promisify(execFile);
 const packageRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const DEPLOYMENT = "b6".repeat(32);
 const TRANSACTION_COUNT = 10_000;
@@ -107,25 +106,35 @@ describe("real separate-process canonical V1 DA publication", () => {
         "tests/helpers/da-committee-peer-process.ts",
       );
       const bundleDir = join(temp, "bundle");
-      await execFileAsync(
-        "pnpm",
-        [
-          "exec",
-          "tsup",
-          helperSource,
-          "--format",
-          "esm",
-          "--platform",
-          "node",
-          "--target",
-          "node22",
-          "--out-dir",
-          bundleDir,
-          "--no-config",
-          "--no-splitting",
-        ],
-        { cwd: packageRoot },
-      );
+      // The child is a plain Node process, so it would resolve every
+      // workspace package through the `import` condition, i.e. a gitignored
+      // dist. Bundle all workspace packages into the helper from source
+      // through the `midgard-source` exports condition (as tsc and vitest
+      // do) so the child never runs against a stale or missing dist; only
+      // third-party dependencies stay external.
+      await bundleWithTsup({
+        entry: [helperSource],
+        format: ["esm"],
+        platform: "node",
+        target: "node22",
+        outDir: bundleDir,
+        config: false,
+        splitting: false,
+        silent: true,
+        noExternal: [/^@al-ft\//, /^da-committee-node(\/|$)/],
+        // Bundled workspace source reaches some CJS-only dependencies through
+        // `require`; give the ESM bundle a real one instead of esbuild's throwing
+        // "Dynamic require" shim.
+        banner: {
+          js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);',
+        },
+        esbuildOptions(options) {
+          options.conditions = [
+            "midgard-source",
+            ...(options.conditions ?? []),
+          ];
+        },
+      });
       const helper = join(bundleDir, "da-committee-peer-process.js");
       const producerSeed = `seed:${"00".repeat(31)}19`;
       const committeeSeeds = [

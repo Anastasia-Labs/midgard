@@ -6,14 +6,14 @@ import { join } from "node:path";
 import { createServer as createTlsServer } from "node:tls";
 import { promisify } from "node:util";
 
-import { CML } from "@lucid-evolution/lucid";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-
-import { computeHash32 } from "../../midgard-core/src/codec/hash.js";
+import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import {
   makeDeploymentMarkerV1,
   MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
-} from "../../midgard-core/src/deployment-manifest-identity-v1.js";
+} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { CML } from "@lucid-evolution/lucid";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../src/config.js";
 import {
   evaluateWatcherFinalityV1,

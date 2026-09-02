@@ -10,7 +10,7 @@ import {
   H32Schema,
   OutputReferenceSchema,
   PubKeyHashSchema,
-} from "@/common.js";
+} from "../common.js";
 import {
   EventKeySchema,
   EventToStepValueSchema,
@@ -19,9 +19,8 @@ import {
   L2TransactionSourceV1Schema,
   TransitionStepSchema,
   ValidationTraceDescriptorV1Schema,
-} from "@/ledger-state.js";
-import { rootMembershipProofSchema } from "@/transition-trace.js";
-
+} from "../ledger-state.js";
+import { rootMembershipProofSchema } from "../transition-trace.js";
 import { ValidationAuxiliaryWitnessV1Schema } from "./validation-auxiliary-witness-v1.js";
 
 export const ValidationMachinePhaseV1Schema = Data.Enum([

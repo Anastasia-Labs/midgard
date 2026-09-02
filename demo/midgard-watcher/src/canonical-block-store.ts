@@ -31,10 +31,6 @@
 
 import { createHash } from "node:crypto";
 
-import type { EvidenceProvenanceV1 } from "@al-ft/midgard-sdk";
-import { assertSecurityGradeEvidenceV1 } from "@al-ft/midgard-sdk";
-
-import { unwrapDaPayloadV1 } from "../../midgard-core/src/da-payload-envelope.js";
 import {
   assertRetentionDaysCoverWindowV1,
   DA_TRANSPORT_LIMITS_V1,
@@ -43,7 +39,11 @@ import {
   MIDGARD_RETENTION_WINDOW_V1,
   parseDeploymentMarkerV1,
   retentionDeadlineForBlockV1,
-} from "../../midgard-core/src/index.js";
+} from "@al-ft/midgard-core";
+import { unwrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import type { EvidenceProvenanceV1 } from "@al-ft/midgard-sdk";
+import { assertSecurityGradeEvidenceV1 } from "@al-ft/midgard-sdk";
+
 import {
   type VerifiedWatcherDeploymentIdentityV1,
   verifyWatcherDeploymentIdentityV1,

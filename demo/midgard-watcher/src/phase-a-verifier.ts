@@ -64,6 +64,21 @@
  * bytes produce the same `resultDigest`.
  */
 
+import {
+  decodeMidgardCekProgramMaterialDaEntryV1,
+  encodeMidgardCekProgramMaterialSidecarV1,
+  type MidgardCekProgramMaterialEntryV1,
+  verifyMidgardCekProgramMaterialBundleV1,
+} from "@al-ft/midgard-core/cek-proof";
+import { decodeMidgardNativeTxFullV1FromCanonicalCbor } from "@al-ft/midgard-core/codec/native";
+import {
+  MIDGARD_CONSENSUS_PROFILE_V1,
+  MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
+  MIDGARD_CONSENSUS_PROFILE_V1_ID,
+  MIDGARD_PROTOCOL_V1_VERSION,
+} from "@al-ft/midgard-core/consensus-profile-v1";
+import { collectMidgardV1AttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
+import type { MidgardValidationPhaseName } from "@al-ft/midgard-core/validation-trace";
 import { canonicalBlockEvidenceFromVerifiedPayloadV1 } from "@al-ft/midgard-fault-proofs";
 import type {
   AuthenticatedStateQueueHeaderObservationV1,
@@ -79,21 +94,6 @@ import type {
 } from "@al-ft/midgard-validation/types";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
 
-import {
-  decodeMidgardCekProgramMaterialDaEntryV1,
-  encodeMidgardCekProgramMaterialSidecarV1,
-  type MidgardCekProgramMaterialEntryV1,
-  verifyMidgardCekProgramMaterialBundleV1,
-} from "../../midgard-core/src/cek-proof.js";
-import { decodeMidgardNativeTxFullV1FromCanonicalCbor } from "../../midgard-core/src/codec/native.js";
-import {
-  MIDGARD_CONSENSUS_PROFILE_V1,
-  MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
-  MIDGARD_CONSENSUS_PROFILE_V1_ID,
-  MIDGARD_PROTOCOL_V1_VERSION,
-} from "../../midgard-core/src/consensus-profile-v1.js";
-import { collectMidgardV1AttachedProgramEnvelopes } from "../../midgard-core/src/script-proof.js";
-import type { MidgardValidationPhaseName } from "../../midgard-core/src/validation-trace.js";
 import { watcherSha256CanonicalJsonV1 } from "./durable-store.js";
 import type { WatcherHeaderRootReconstructionResultV1 } from "./header-root-reconstruction.js";
 import { WATCHER_HEADER_ROOT_RECONSTRUCTION_V1_SCHEMA_VERSION } from "./header-root-reconstruction.js";

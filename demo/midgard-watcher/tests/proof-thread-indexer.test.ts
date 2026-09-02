@@ -3,6 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { type Server } from "node:net";
 import { join } from "node:path";
 
+import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
+import { DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import {
   availabilityResponseGeometryV1,
   buildDaAvailabilityCommitmentV1,
@@ -17,8 +19,6 @@ import {
 import { CML, Data } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { computeHash32 } from "../../midgard-core/src/codec/hash.js";
-import { DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "../../midgard-core/src/deployment-manifest-identity-v1.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../src/config.js";
 import {
   encodeWatcherDurableStoreV1,

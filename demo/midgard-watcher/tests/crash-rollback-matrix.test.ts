@@ -2,14 +2,14 @@ import { createHash, X509Certificate } from "node:crypto";
 import { type Server } from "node:net";
 import { createServer as createTlsServer } from "node:tls";
 
-import { CML } from "@lucid-evolution/lucid";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-
-import { computeHash32 } from "../../midgard-core/src/codec/hash.js";
+import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import {
   DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
   makeDeploymentMarkerV1,
-} from "../../midgard-core/src/deployment-manifest-identity-v1.js";
+} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { CML } from "@lucid-evolution/lucid";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../src/config.js";
 import {
   compareAndSwapWatcherDurableAtomicSnapshotV1,

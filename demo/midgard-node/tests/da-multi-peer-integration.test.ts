@@ -9,6 +9,22 @@ import {
   encodeDaPayloadSubmitResponseV1Cbor,
 } from "@al-ft/midgard-core/da-transport";
 import * as SDK from "@al-ft/midgard-sdk";
+import type {
+  Libp2pDaPeerConfig,
+  Libp2pDaTransportConfig,
+} from "da-committee-node/config";
+import {
+  createDaLibp2pPayloadRequestHandlers,
+  DaLibp2pNode,
+  DaPayloadSubmitAdmission,
+  loadDaLibp2pIdentity,
+} from "da-committee-node/da/libp2p";
+import {
+  readSingleDaStreamFrame,
+  writeDaStreamFrame,
+} from "da-committee-node/da/libp2p/DaStreamCodec";
+import { hashBlockHeaderV1 } from "da-committee-node/l1/state-queue-scanner";
+import { JsonFileWatcherStore } from "da-committee-node/store";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -20,22 +36,6 @@ import {
 } from "@/da/libp2p-producer.js";
 import { DaPayloadsDB } from "@/database/index.js";
 
-import type {
-  Libp2pDaPeerConfig,
-  Libp2pDaTransportConfig,
-} from "../../da-committee-node/src/config.js";
-import {
-  readSingleDaStreamFrame,
-  writeDaStreamFrame,
-} from "../../da-committee-node/src/da/libp2p/DaStreamCodec.js";
-import {
-  createDaLibp2pPayloadRequestHandlers,
-  DaLibp2pNode,
-  DaPayloadSubmitAdmission,
-  loadDaLibp2pIdentity,
-} from "../../da-committee-node/src/da/libp2p/index.js";
-import { hashBlockHeaderV1 } from "../../da-committee-node/src/l1/state-queue-scanner.js";
-import { JsonFileWatcherStore } from "../../da-committee-node/src/store.js";
 import {
   makePayloadFixture,
   tempDir,

@@ -10,8 +10,8 @@ import {
   OutputReferenceSchema,
   type Proof,
   ProofSchema,
-} from "@/common.js";
-import { EMPTY_MERKLE_TREE_ROOT } from "@/ledger-constants.js";
+} from "./common.js";
+import { EMPTY_MERKLE_TREE_ROOT } from "./ledger-constants.js";
 import {
   type DepositInfo,
   DepositInfoSchema,
@@ -27,7 +27,7 @@ import {
   TransitionStepV1,
   type WithdrawalInfo,
   WithdrawalInfoSchema,
-} from "@/ledger-state.js";
+} from "./ledger-state.js";
 
 type DataSchema = Parameters<typeof Data.Nullable>[0];
 

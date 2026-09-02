@@ -6,7 +6,7 @@ import {
 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import { Data } from "@lucid-evolution/lucid";
 
-import { H32Schema, VerificationKeyHashSchema } from "@/common.js";
+import { H32Schema, VerificationKeyHashSchema } from "./common.js";
 
 /**
  * The on-chain wire twins of `docs/spec/midgard-tx.md` §8.8 — the field-preimage

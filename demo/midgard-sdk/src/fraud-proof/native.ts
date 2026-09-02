@@ -1,6 +1,6 @@
 import { Data } from "@lucid-evolution/lucid";
 
-import { H32Schema, ProofSchema } from "@/common.js";
+import { H32Schema, ProofSchema } from "../common.js";
 
 export const NativeTxBodyCompactSchema = Data.Object({
   spend_inputs_hash: H32Schema,

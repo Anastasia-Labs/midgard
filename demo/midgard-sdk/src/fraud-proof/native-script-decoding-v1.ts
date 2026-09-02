@@ -29,7 +29,7 @@ import {
   MerkleRootSchema,
   OutputReferenceSchema,
   ProofSchema,
-} from "@/common.js";
+} from "../common.js";
 import {
   BoundedItemChunkProofV1Schema,
   EventKeySchema,
@@ -37,9 +37,8 @@ import {
   ForcedInclusionTxV1Schema,
   HeaderV1Schema,
   TransitionStepSchema,
-} from "@/ledger-state.js";
-import { rootMembershipProofSchema } from "@/transition-trace.js";
-
+} from "../ledger-state.js";
+import { rootMembershipProofSchema } from "../transition-trace.js";
 import { type ChallengedHeaderHash } from "./fabricated-deposit-v1.js";
 import { FieldOpeningV1Schema } from "./field-opening-v1.js";
 import {

@@ -17,55 +17,55 @@ import { Effect } from "effect";
 import {
   ACTIVE_OPERATORS_ROOT_ASSET_NAME,
   ActiveOperatorMintRedeemer,
-} from "@/active-operators.js";
-import { scriptRewardAddress } from "@/cardano-addresses.js";
+} from "./active-operators.js";
+import { scriptRewardAddress } from "./cardano-addresses.js";
 import {
   Bech32DeserializationError,
   MidgardValidators,
   UnspecifiedNetworkError,
-} from "@/common.js";
+} from "./common.js";
 import {
   CORRECTION_LOCK_ASSET_NAME,
   CorrectionLockDatum,
-} from "@/correction-lock.js";
+} from "./correction-lock.js";
 import {
   DaParamsDatum,
   type DaParamsDatum as DaParamsDatumType,
   daParamsUnit,
-} from "@/da-attestation.js";
+} from "./da-attestation.js";
 import {
   FRAUD_PROOF_CATALOGUE_ASSET_NAME,
   FraudProofCatalogueDatum,
   FraudProofCatalogueMintRedeemer,
-} from "@/fraud-proof/catalogue.js";
+} from "./fraud-proof/catalogue.js";
 import {
   HUB_ORACLE_ASSET_NAME,
   HubOracleDatum,
   makeHubOracleDatum,
-} from "@/hub-oracle.js";
+} from "./hub-oracle.js";
 import {
   castConfirmedStateToData,
   makeGenesisConfirmedStateV1,
-} from "@/ledger-state.js";
-import { encodeLinkedListNodeView, LinkedListNodeView } from "@/linked-list.js";
+} from "./ledger-state.js";
+import { encodeLinkedListNodeView, LinkedListNodeView } from "./linked-list.js";
 import {
   REGISTERED_OPERATORS_ROOT_ASSET_NAME,
   RegisteredOperatorMintRedeemer,
-} from "@/registered-operators.js";
+} from "./registered-operators.js";
 import {
   RETIRED_OPERATORS_ROOT_ASSET_NAME,
   RetiredOperatorMintRedeemer,
-} from "@/retired-operators.js";
+} from "./retired-operators.js";
 import {
   INITIAL_SCHEDULER_DATUM,
   SCHEDULER_ASSET_NAME,
   SchedulerDatum,
   SchedulerMintRedeemer,
-} from "@/scheduler.js";
+} from "./scheduler.js";
 import {
   STATE_QUEUE_ROOT_ASSET_NAME,
   StateQueueRedeemer,
-} from "@/state-queue.js";
+} from "./state-queue.js";
 
 export type AtomicProtocolInitReferenceScripts = {
   readonly hubOracleMinting: UTxO;

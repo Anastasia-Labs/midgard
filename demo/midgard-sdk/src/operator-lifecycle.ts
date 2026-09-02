@@ -8,23 +8,23 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { outputReferenceFromUTxO } from "@/common.js";
+import { outputReferenceFromUTxO } from "./common.js";
 import {
   type ActivateRedeemerLayout,
   type NodeWithDatum,
   type ReferenceScriptPublication,
   type RegisterRedeemerLayout,
-} from "@/operator-lifecycle/layout.js";
-import * as SDK from "@/operator-lifecycle/primitives.js";
+} from "./operator-lifecycle/layout.js";
+import * as SDK from "./operator-lifecycle/primitives.js";
 import {
   requireMintRedeemerIndex,
   requireOwnMintPurpose,
   requireReferenceInputIndex,
   requireUniqueOutputIndex,
-} from "@/tx-context-redeemer.js";
-import { outputDatumCborMatches } from "@/tx-output-utils.js";
+} from "./tx-context-redeemer.js";
+import { outputDatumCborMatches } from "./tx-output-utils.js";
 
-export * from "@/operator-lifecycle/layout.js";
+export * from "./operator-lifecycle/layout.js";
 
 const ACTIVE_OPERATOR_LIST_STATE_TRANSITION_REDEEMER = LucidData.to(
   "ListStateTransition",

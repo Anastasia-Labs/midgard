@@ -22,7 +22,7 @@ import {
   MintingValidator,
   SpendingValidator,
   WithdrawalValidator,
-} from "@/common.js";
+} from "../common.js";
 
 /**
  * One entry of a blueprint validator's `parameters[]`: the compiler's own

@@ -6,26 +6,9 @@ import {
 } from "node:crypto";
 
 import {
-  computeFraudProofReleaseEconomicsPolicyDigestV1,
-  computeFraudProofReleaseFinalityPolicyDigestV1,
-  FRAUD_PROOF_RELEASE_ECONOMICS_AUTHORITY_V1,
-  FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_V1_SCHEMA_VERSION,
-  FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY_V1,
-  FRAUD_PROOF_RELEASE_FINALITY_POLICY_V1_SCHEMA_VERSION,
-  type FraudProofReleaseEconomicsAuthorityV1,
-  type FraudProofReleaseFinalityAuthorityV1,
-  type ReleaseFraudProofEconomicsPolicyV1,
-  type ReleaseL1FinalityPolicyV1,
-  validateVerifiedFraudProofReleaseEconomicsPolicyV1,
-  validateVerifiedFraudProofReleaseFinalityPolicyV1,
-  type VerifiedFraudProofReleaseEconomicsPolicyV1,
-  type VerifiedFraudProofReleaseFinalityPolicyV1,
-} from "@al-ft/midgard-fault-proofs";
-
-import {
   MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
   MIDGARD_V1_RELEASE_EVIDENCE_DIGEST,
-} from "../../midgard-core/src/consensus-profile-v1.js";
+} from "@al-ft/midgard-core/consensus-profile-v1";
 import {
   assertDeploymentMarkerV1Matches,
   computeDeploymentManifestV1Id,
@@ -41,7 +24,23 @@ import {
   parseDeploymentManifestV1Economics,
   verifyDeploymentManifestV1Identity,
   verifyFinalizedDeploymentManifestV1,
-} from "../../midgard-core/src/deployment-manifest-identity-v1.js";
+} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import {
+  computeFraudProofReleaseEconomicsPolicyDigestV1,
+  computeFraudProofReleaseFinalityPolicyDigestV1,
+  FRAUD_PROOF_RELEASE_ECONOMICS_AUTHORITY_V1,
+  FRAUD_PROOF_RELEASE_ECONOMICS_POLICY_V1_SCHEMA_VERSION,
+  FRAUD_PROOF_RELEASE_FINALITY_AUTHORITY_V1,
+  FRAUD_PROOF_RELEASE_FINALITY_POLICY_V1_SCHEMA_VERSION,
+  type FraudProofReleaseEconomicsAuthorityV1,
+  type FraudProofReleaseFinalityAuthorityV1,
+  type ReleaseFraudProofEconomicsPolicyV1,
+  type ReleaseL1FinalityPolicyV1,
+  validateVerifiedFraudProofReleaseEconomicsPolicyV1,
+  validateVerifiedFraudProofReleaseFinalityPolicyV1,
+  type VerifiedFraudProofReleaseEconomicsPolicyV1,
+  type VerifiedFraudProofReleaseFinalityPolicyV1,
+} from "@al-ft/midgard-fault-proofs";
 
 export const WATCHER_SIGNED_DEPLOYMENT_IDENTITY_V1_SCHEMA_VERSION =
   "midgard-watcher-signed-deployment-identity-v1" as const;

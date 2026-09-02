@@ -18,7 +18,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { scriptRewardAddress } from "@/cardano-addresses.js";
+import { scriptRewardAddress } from "./cardano-addresses.js";
 import {
   addAssets,
   assertAssetsNonNegative,
@@ -30,32 +30,32 @@ import {
   removeAssetUnit,
   subtractAssets,
   valueToAssets,
-} from "@/reserve-payout/assets.js";
+} from "./reserve-payout/assets.js";
 import {
   type BuiltReservePayoutTx,
   completeWithFinalLayoutProgram,
-} from "@/reserve-payout/completion.js";
-import { formatLayout } from "@/reserve-payout/diagnostics.js";
-import { fail, ReservePayoutTxError } from "@/reserve-payout/errors.js";
+} from "./reserve-payout/completion.js";
+import { formatLayout } from "./reserve-payout/diagnostics.js";
+import { fail, ReservePayoutTxError } from "./reserve-payout/errors.js";
 import {
   disposableFeeInputCandidates,
   selectFeeInputProgram,
-} from "@/reserve-payout/inputs.js";
+} from "./reserve-payout/inputs.js";
 import {
   type AbsorbDepositLayout,
   type AddReserveFundsLayout,
   type ConcludePayoutLayout,
   type InitializePayoutLayout,
   type RefundWithdrawalLayout,
-} from "@/reserve-payout/layout.js";
-import * as SDK from "@/reserve-payout/primitives.js";
+} from "./reserve-payout/layout.js";
+import * as SDK from "./reserve-payout/primitives.js";
 import {
   attachIfMissing,
   mergeReferenceScripts,
   referenceInputs,
   type ReservePayoutReferenceScripts,
   resolveReferenceScriptsProgram,
-} from "@/reserve-payout/references.js";
+} from "./reserve-payout/references.js";
 import {
   requireInputIndex,
   requireMintRedeemerIndex,
@@ -67,8 +67,8 @@ import {
   requireSpendRedeemerIndex,
   requireUniqueOutputIndex,
   requireWithdrawalRedeemerIndex,
-} from "@/tx-context-redeemer.js";
-import { outputDatumCborMatches } from "@/tx-output-utils.js";
+} from "./tx-context-redeemer.js";
+import { outputDatumCborMatches } from "./tx-output-utils.js";
 
 export {
   addAssets,
@@ -77,11 +77,11 @@ export {
   removeAssetUnit,
   subtractAssets,
   valueToAssets,
-} from "@/reserve-payout/assets.js";
-export type { BuiltReservePayoutTx } from "@/reserve-payout/completion.js";
-export { ReservePayoutTxError } from "@/reserve-payout/errors.js";
-export type { ReservePayoutReferenceScripts } from "@/reserve-payout/references.js";
-export { mergeReferenceScripts } from "@/reserve-payout/references.js";
+} from "./reserve-payout/assets.js";
+export type { BuiltReservePayoutTx } from "./reserve-payout/completion.js";
+export { ReservePayoutTxError } from "./reserve-payout/errors.js";
+export type { ReservePayoutReferenceScripts } from "./reserve-payout/references.js";
+export { mergeReferenceScripts } from "./reserve-payout/references.js";
 
 export type MembershipProofWithdrawalWitness = {
   readonly script: Script;

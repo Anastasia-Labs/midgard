@@ -27,14 +27,13 @@ import {
   OutputReference,
   OutputReferenceSchema,
   POSIXTimeSchema,
-} from "@/common.js";
-import { DepositInfo } from "@/ledger-state.js";
+} from "../common.js";
+import { DepositInfo } from "../ledger-state.js";
 import {
   DepositSourceMembershipProofSchema,
   type RootMembershipProof,
-} from "@/transition-trace.js";
-import { DepositDatum, DepositDatumSchema } from "@/user-events/deposit.js";
-
+} from "../transition-trace.js";
+import { DepositDatum, DepositDatumSchema } from "../user-events/deposit.js";
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "./catalogue.js";
 import {
   faultProofStepDatumSchema,

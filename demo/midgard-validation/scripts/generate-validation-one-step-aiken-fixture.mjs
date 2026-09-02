@@ -21,14 +21,14 @@ import {
   MIDGARD_POSIX_TIME_NONE,
   MIDGARD_CONSENSUS_PROFILE_V1,
   MIDGARD_VALIDATION_DISPUTE_V1_VERSION,
-} from "../../midgard-core/dist/index.js";
-import { planMidgardFieldCarriageV1 } from "../../midgard-core/dist/codec/native-tx-carriage-v1.js";
-import { selectMidgardFieldCarriageTierV1 } from "../../midgard-core/dist/codec/native-tx-field-access-v1.js";
+} from "@al-ft/midgard-core";
+import { planMidgardFieldCarriageV1 } from "@al-ft/midgard-core/codec/native-tx-carriage-v1";
+import { selectMidgardFieldCarriageTierV1 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import {
   deriveFieldPreimageCertificationV1,
   fieldPreimagePublicationDatumCborV1,
   resolveMidgardFieldCarriageAgainstReferenceInputsV1,
-} from "../../midgard-sdk/dist/index.js";
+} from "@al-ft/midgard-sdk";
 import { CML, Constr, Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 

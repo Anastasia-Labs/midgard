@@ -8,6 +8,17 @@ import {
   computeDaSha256Hash,
   DA_TRANSPORT_LIMITS_V1,
 } from "@al-ft/midgard-core/da-transport";
+import type {
+  Libp2pDaPeerConfig,
+  Libp2pDaTransportConfig,
+} from "da-committee-node/config";
+import {
+  createDaLibp2pPayloadRequestHandlers,
+  DaLibp2pNode,
+  DaPayloadSubmitAdmission,
+  loadDaLibp2pIdentity,
+} from "da-committee-node/da/libp2p";
+import { JsonFileWatcherStore } from "da-committee-node/store";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
@@ -23,17 +34,6 @@ import {
 import { DaPayloadPublicationsDB, DaPayloadsDB } from "@/database/index.js";
 import { reconcileDaPublicationsOnce } from "@/fibers/da-publication-reconciler.js";
 
-import type {
-  Libp2pDaPeerConfig,
-  Libp2pDaTransportConfig,
-} from "../../da-committee-node/src/config.js";
-import {
-  createDaLibp2pPayloadRequestHandlers,
-  DaLibp2pNode,
-  DaPayloadSubmitAdmission,
-  loadDaLibp2pIdentity,
-} from "../../da-committee-node/src/da/libp2p/index.js";
-import { JsonFileWatcherStore } from "../../da-committee-node/src/store.js";
 import { makePayloadFixture } from "../../da-committee-node/tests/helpers.js";
 import { provideDatabaseLayers } from "./utils.js";
 

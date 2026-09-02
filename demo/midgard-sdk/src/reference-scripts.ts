@@ -16,10 +16,10 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { MintingValidator } from "@/common.js";
-import { LucidError } from "@/common.js";
-import { StateQueueError } from "@/state-queue.js";
-import { isPlainPositiveAdaOnlyUtxo } from "@/tx-output-utils.js";
+import type { MintingValidator } from "./common.js";
+import { LucidError } from "./common.js";
+import { StateQueueError } from "./state-queue.js";
+import { isPlainPositiveAdaOnlyUtxo } from "./tx-output-utils.js";
 
 export const REFERENCE_SCRIPT_AUTH_TIMELOCK_MS = 4 * 60 * 60 * 1000;
 export const REFERENCE_SCRIPT_AUTH_MIN_REMAINING_MS = 90 * 60 * 1000;

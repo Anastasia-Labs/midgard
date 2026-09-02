@@ -9,8 +9,7 @@
 import { MIDGARD_EMPTY_FIELD_COMMITMENT_V1 } from "@al-ft/midgard-core";
 import { Data } from "@lucid-evolution/lucid";
 
-import { H32Schema } from "@/common.js";
-
+import { H32Schema } from "../common.js";
 import { FieldOpeningV1Schema } from "./field-opening-v1.js";
 import {
   FaultProofStepCancel,

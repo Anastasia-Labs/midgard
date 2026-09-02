@@ -8,6 +8,7 @@
     "esModuleInterop": true,
     "module": "NodeNext",
     "moduleResolution": "nodenext",
+    "customConditions": ["midgard-source"],
     "noEmitOnError": true,
     "noFallthroughCasesInSwitch": true,
     "noImplicitReturns": true,

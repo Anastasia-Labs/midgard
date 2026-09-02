@@ -11,7 +11,7 @@ import {
   type OutputReference,
   OutputReferenceSchema,
   ScriptHashSchema,
-} from "@/common.js";
+} from "../common.js";
 import {
   type DepositSourceMembershipProof,
   DepositSourceMembershipProofSchema,
@@ -19,8 +19,7 @@ import {
   ForcedTransactionSourceMembershipProofSchema,
   type WithdrawalSourceMembershipProof,
   WithdrawalSourceMembershipProofSchema,
-} from "@/transition-trace.js";
-
+} from "../transition-trace.js";
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "./catalogue.js";
 import {
   faultProofStepDatumSchema,

@@ -22,17 +22,15 @@
  */
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
 
-import { validatorToScriptHash } from "@lucid-evolution/lucid";
-
 import {
   MIDGARD_CONSENSUS_PROFILE_V1,
   MIDGARD_CONSENSUS_PROFILE_V1_DIGEST,
-} from "../../../midgard-core/src/consensus-profile-v1.js";
+} from "@al-ft/midgard-core/consensus-profile-v1";
 import {
   DA_RUNTIME_MANIFEST_V1_SCHEMA_VERSION,
   DA_TRANSPORT_LIMITS_V1,
   DA_TRANSPORT_V1_PROTOCOL_VERSION,
-} from "../../../midgard-core/src/da-transport.js";
+} from "@al-ft/midgard-core/da-transport";
 import {
   computeDeploymentManifestV1Id,
   computeDeploymentManifestV1JsonDigest,
@@ -43,7 +41,9 @@ import {
   DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES,
   DEPLOYMENT_MANIFEST_V1_STEP_NAMES,
   makeDeploymentMarkerV1,
-} from "../../../midgard-core/src/deployment-manifest-identity-v1.js";
+} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { validatorToScriptHash } from "@lucid-evolution/lucid";
+
 import {
   makeWatcherDeploymentIdentitySignaturePayloadV1,
   verifyWatcherDeploymentIdentityV1,

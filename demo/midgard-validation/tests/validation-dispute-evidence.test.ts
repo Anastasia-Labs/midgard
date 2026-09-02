@@ -10,10 +10,10 @@ import {
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
   type MidgardValidationVerdictName,
 } from "@al-ft/midgard-core";
+import { parseExactAikenDataCbor } from "@al-ft/midgard-fault-proofs";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { parseExactAikenDataCbor } from "../../midgard-fault-proofs/src/aiken-blueprint-data.js";
 import {
   buildDeterministicValidationMachineTrace,
   buildValidationDisputeEvidenceBundleV1,

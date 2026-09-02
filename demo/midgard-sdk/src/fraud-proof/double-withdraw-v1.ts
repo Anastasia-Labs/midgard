@@ -30,13 +30,12 @@
  */
 import { Data } from "@lucid-evolution/lucid";
 
-import { OutputReference, OutputReferenceSchema } from "@/common.js";
-import type { WithdrawalInfo } from "@/ledger-state.js";
+import { OutputReference, OutputReferenceSchema } from "../common.js";
+import type { WithdrawalInfo } from "../ledger-state.js";
 import {
   type RootMembershipProof,
   WithdrawalSourceMembershipProofSchema,
-} from "@/transition-trace.js";
-
+} from "../transition-trace.js";
 import {
   faultProofStepDatumSchema,
   faultProofStepRedeemerSchema,

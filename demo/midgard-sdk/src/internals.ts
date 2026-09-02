@@ -14,7 +14,7 @@ import {
   DataCoercionError,
   LucidError,
   UnauthenticUtxoError,
-} from "@/errors.js";
+} from "./errors.js";
 
 type LucidDataSchema = Parameters<typeof Data.to>[1];
 

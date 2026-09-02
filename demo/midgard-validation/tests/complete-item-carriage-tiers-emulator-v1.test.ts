@@ -20,6 +20,10 @@ import {
 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import {
+  deriveCanonicalDecodeItemStageDataV1,
+  validationOneStepEvidenceHashV1,
+} from "@al-ft/midgard-fault-proofs";
+import {
   assertMidgardFieldCarriageResolvesAtDoorV1,
   AuthenticatedCanonicalDecodeItemDatumV1,
   buildUnsignedFieldPreimageCertificationV1Program,
@@ -64,10 +68,6 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import {
-  deriveCanonicalDecodeItemStageDataV1,
-  validationOneStepEvidenceHashV1,
-} from "../../midgard-fault-proofs/src/validation-dispute/submit.js";
 import {
   buildDeterministicValidationMachineTrace,
   buildValidationMachineLedgerInsertOpV1,

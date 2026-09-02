@@ -6,6 +6,25 @@ import { join } from "node:path";
 import { createServer as createTlsServer } from "node:tls";
 import { promisify } from "node:util";
 
+import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
+import {
+  computeMidgardNativeTxIdV1,
+  computeMidgardNativeTxProofCommitmentV1,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  deriveMidgardNativeTxProofSourceV1,
+  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
+  materializeMidgardNativeTxFromCanonicalV1,
+  type MidgardNativeTxCanonicalV1,
+} from "@al-ft/midgard-core/codec/native";
+import {
+  EMPTY_CBOR_LIST,
+  EMPTY_NULL_ROOT,
+  MIDGARD_NATIVE_NETWORK_ID_NONE,
+  MIDGARD_NATIVE_TX_V1_VERSION,
+  MIDGARD_POSIX_TIME_NONE,
+} from "@al-ft/midgard-core/codec/native-constants";
+import { MIDGARD_EMPTY_FIELD_COMMITMENT_V1 } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
+import { deriveMidgardV1TxFieldPreimages } from "@al-ft/midgard-core/consensus-validation-v1";
 import {
   type AddressData,
   DepositDatum,
@@ -34,25 +53,6 @@ import { CML, Data } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
 import { blake2b } from "../../../midgard-core/node_modules/@noble/hashes/blake2.js";
-import { computeHash32 } from "../../../midgard-core/src/codec/hash.js";
-import {
-  computeMidgardNativeTxIdV1,
-  computeMidgardNativeTxProofCommitmentV1,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxProofSourceV1,
-  deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
-  materializeMidgardNativeTxFromCanonicalV1,
-  type MidgardNativeTxCanonicalV1,
-} from "../../../midgard-core/src/codec/native.js";
-import {
-  EMPTY_CBOR_LIST,
-  EMPTY_NULL_ROOT,
-  MIDGARD_NATIVE_NETWORK_ID_NONE,
-  MIDGARD_NATIVE_TX_V1_VERSION,
-  MIDGARD_POSIX_TIME_NONE,
-} from "../../../midgard-core/src/codec/native-constants.js";
-import { MIDGARD_EMPTY_FIELD_COMMITMENT_V1 } from "../../../midgard-core/src/codec/native-tx-field-access-v1.js";
-import { deriveMidgardV1TxFieldPreimages } from "../../../midgard-core/src/consensus-validation-v1.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/config.js";
 import {
   encodeWatcherDurableStoreV1,

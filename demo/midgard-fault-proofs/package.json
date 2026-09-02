@@ -4,6 +4,13 @@
   "description": "Manual Midgard fault-proof tooling",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "midgard-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "type": "module",
   "bin": {
     "midgard-fault-proofs": "./dist/bin.js"

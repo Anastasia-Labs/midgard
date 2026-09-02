@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { createServer as createTlsServer } from "node:tls";
 import { isDeepStrictEqual, promisify } from "node:util";
 
+import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import {
   DepositSpendRedeemer,
   MerkleRootSchema,
@@ -23,7 +24,6 @@ import {
 import { CML, Data } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import { computeHash32 } from "../../../midgard-core/src/codec/hash.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/config.js";
 import {
   encodeWatcherDurableStoreV1,

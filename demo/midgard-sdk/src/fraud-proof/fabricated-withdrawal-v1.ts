@@ -47,17 +47,16 @@ import {
   OutputReference,
   OutputReferenceSchema,
   POSIXTimeSchema,
-} from "@/common.js";
-import { WithdrawalInfo } from "@/ledger-state.js";
+} from "../common.js";
+import { WithdrawalInfo } from "../ledger-state.js";
 import {
   type RootMembershipProof,
   WithdrawalSourceMembershipProofSchema,
-} from "@/transition-trace.js";
+} from "../transition-trace.js";
 import {
   WithdrawalOrderDatum,
   WithdrawalOrderDatumSchema,
-} from "@/user-events/withdrawal.js";
-
+} from "../user-events/withdrawal.js";
 import { FRAUD_PROOF_CATALOGUE_CATEGORY_IDS } from "./catalogue.js";
 import {
   faultProofStepDatumSchema,

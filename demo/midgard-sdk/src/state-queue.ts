@@ -15,8 +15,8 @@ import {
 } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
 
-import { ActiveOperatorSpendRedeemer } from "@/active-operators.js";
-import { scriptRewardAddress } from "@/cardano-addresses.js";
+import { ActiveOperatorSpendRedeemer } from "./active-operators.js";
+import { scriptRewardAddress } from "./cardano-addresses.js";
 import {
   DataCoercionError,
   GenericErrorFields,
@@ -29,15 +29,15 @@ import {
   POSIXTime,
   UnauthenticUtxoError,
   utxosAtByNFTPolicyId,
-} from "@/common.js";
-import { LucidError, makeReturn } from "@/common.js";
+} from "./common.js";
+import { LucidError, makeReturn } from "./common.js";
 import {
   type CorrectionIdentity,
   CorrectionLockDatum,
   CorrectionLockRedeemer,
   type CorrectionLockUTxO,
-} from "@/correction-lock.js";
-import { getStateToken } from "@/internals.js";
+} from "./correction-lock.js";
+import { getStateToken } from "./internals.js";
 import {
   castStateQueueNodeV1ToData,
   ConfirmedState,
@@ -50,7 +50,7 @@ import {
   HeaderV1,
   NO_DA_ATTESTATION,
   validateHeaderTransitionCommitmentsV1Program,
-} from "@/ledger-state.js";
+} from "./ledger-state.js";
 import {
   encodeLinkedListNodeView,
   getLinkedListNodeViewFromUTxO,
@@ -58,7 +58,7 @@ import {
   LinkedListNodeView,
   NodeKey,
   STATE_QUEUE_NODE_ASSET_NAME_PREFIX,
-} from "@/linked-list.js";
+} from "./linked-list.js";
 import {
   requireInputIndex,
   requireMintRedeemerIndex,
@@ -66,9 +66,9 @@ import {
   requireReferenceInputIndex,
   requireSpendRedeemerIndex,
   requireUniqueOutputIndex,
-} from "@/tx-context-redeemer.js";
-import { dedupeAndSortUtxos } from "@/tx-out-ref-order.js";
-import { outputDatumCborMatches } from "@/tx-output-utils.js";
+} from "./tx-context-redeemer.js";
+import { dedupeAndSortUtxos } from "./tx-out-ref-order.js";
+import { outputDatumCborMatches } from "./tx-output-utils.js";
 
 export const STATE_QUEUE_ROOT_ASSET_NAME = fromText("MIDGARD_CONFIRMED_STATE");
 

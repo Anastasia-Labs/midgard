@@ -6,9 +6,9 @@ import {
   type TLSSocket,
 } from "node:tls";
 
+import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import { CML } from "@lucid-evolution/lucid";
 
-import { computeHash32 } from "../../midgard-core/src/codec/hash.js";
 import {
   watcherNativeChainSyncAuthorityDetailsV1,
   type WatcherNativeChainSyncAuthorityV1,

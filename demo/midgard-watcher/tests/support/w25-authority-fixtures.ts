@@ -1,3 +1,9 @@
+import {
+  adjudicateMidgardNativeTxFullV1Validity,
+  decodeMidgardNativeTxFullV1FromCanonicalCbor,
+  deriveMidgardNativeTxProofSourceV1,
+} from "@al-ft/midgard-core/codec/native";
+import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
 import { buildCountedRoot, encodeData } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -9,12 +15,6 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 
 import { blake2b } from "../../../midgard-core/node_modules/@noble/hashes/blake2.js";
-import {
-  adjudicateMidgardNativeTxFullV1Validity,
-  decodeMidgardNativeTxFullV1FromCanonicalCbor,
-  deriveMidgardNativeTxProofSourceV1,
-} from "../../../midgard-core/src/codec/native.js";
-import { wrapDaPayloadV1 } from "../../../midgard-core/src/da-payload-envelope.js";
 import { makeQueued } from "../../../midgard-validation/tests/validation-fixtures.js";
 import {
   type EvaluateWatcherBlockReplayInputV1,

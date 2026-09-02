@@ -101,6 +101,13 @@ import {
   encodeMidgardSpendInputItemV1,
 } from "@al-ft/midgard-core/codec";
 import {
+  encodeCborArrayRaw,
+  encodeCborBytes,
+} from "@al-ft/midgard-core/codec/cbor";
+import { MIDGARD_CONSENSUS_PROFILE_V1_ID } from "@al-ft/midgard-core/consensus-profile-v1";
+import type { MidgardValidationPhaseName } from "@al-ft/midgard-core/validation-trace";
+import { MidgardValidationPhase } from "@al-ft/midgard-core/validation-trace";
+import {
   canonicalBlockEvidenceFromVerifiedPayloadV1,
   keyValuePhasRootWithCount,
 } from "@al-ft/midgard-fault-proofs";
@@ -146,13 +153,6 @@ import type {
 import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { CML, Data as LucidData } from "@lucid-evolution/lucid";
 
-import {
-  encodeCborArrayRaw,
-  encodeCborBytes,
-} from "../../midgard-core/src/codec/cbor.js";
-import { MIDGARD_CONSENSUS_PROFILE_V1_ID } from "../../midgard-core/src/consensus-profile-v1.js";
-import type { MidgardValidationPhaseName } from "../../midgard-core/src/validation-trace.js";
-import { MidgardValidationPhase } from "../../midgard-core/src/validation-trace.js";
 import {
   makeWatcherDurablePayloadV1,
   type WatcherReconstructedStateV1,

@@ -1,8 +1,8 @@
 import { Data } from "@lucid-evolution/lucid";
 
-import { ProofSchema, ProofStepSchema } from "@/common.js";
-import { BoundedItemChunkProofV1Schema } from "@/ledger-state.js";
-import { FieldCarriageV1Schema } from "@/native-tx-field-access-v1.js";
+import { ProofSchema, ProofStepSchema } from "../common.js";
+import { BoundedItemChunkProofV1Schema } from "../ledger-state.js";
+import { FieldCarriageV1Schema } from "../native-tx-field-access-v1.js";
 
 type PlutusDataSchema = Parameters<typeof Data.Nullable>[0];
 

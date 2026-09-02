@@ -2,9 +2,9 @@ import { createHash, createHmac } from "node:crypto";
 import { mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { makeDeploymentMarkerV1 } from "../../midgard-core/src/deployment-manifest-identity-v1.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../src/config.js";
 import { watcherCanonicalJsonV1 } from "../src/durable-store.js";
 import {

@@ -58,6 +58,15 @@ targets another environment.
   migrate only versions that actually shipped.
 - Named plan docs, review docs, commands, and verification surfaces are the
   source of truth before improvising.
+- Import workspace packages by name (`@al-ft/midgard-core/hex`,
+  `da-committee-node/config`), never through `../<package>/src` or `dist`;
+  ESLint `no-restricted-imports` enforces it, so a missing subpath means adding
+  a workspace dependency and an `exports` entry, not a relative path. Every
+  package's `exports` carries a `midgard-source` condition that tsc
+  (`customConditions`), typescript-eslint, and vitest (`resolve.conditions`)
+  resolve first, so typecheck, lint, and test suites read sibling source and
+  never need a prior `pnpm build`. Plain `node` scripts still resolve `dist`,
+  so anything that shells out to `node` keeps building first.
 - Preserve user work: check dirty state, do not clean or revert unrelated
   changes, and keep patches scoped to the request.
 - Before finalizing changes, run the narrow checks that prove the touched

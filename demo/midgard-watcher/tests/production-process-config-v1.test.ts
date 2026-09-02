@@ -1,8 +1,8 @@
 import { mkdtemp, rm } from "node:fs/promises";
 
+import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { makeDeploymentMarkerV1 } from "../../midgard-core/src/deployment-manifest-identity-v1.js";
 import {
   parseWatcherConfig,
   WATCHER_CONFIG_SCHEMA_VERSION,

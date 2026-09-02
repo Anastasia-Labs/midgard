@@ -14,6 +14,7 @@ import {
   deriveMidgardNativeTxProofSourceV1,
   deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
+import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
 import { buildCountedRoot, encodeData } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
@@ -26,13 +27,12 @@ import {
   LedgerColumns,
   type ValidationMachineLedgerOp,
 } from "@al-ft/midgard-validation";
+import { MidgardRedeemerTag } from "@al-ft/midgard-validation/midgard-redeemers";
 import { RejectCodes } from "@al-ft/midgard-validation/types";
 import { CML, Data } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { blake2b } from "../../midgard-core/node_modules/@noble/hashes/blake2.js";
-import { wrapDaPayloadV1 } from "../../midgard-core/src/da-payload-envelope.js";
-import { MidgardRedeemerTag } from "../../midgard-validation/src/midgard-redeemers.js";
 import {
   FUNDED_OUTPUT_LOVELACE_V1,
   hashScriptWitness,

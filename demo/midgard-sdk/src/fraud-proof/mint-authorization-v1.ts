@@ -21,15 +21,14 @@
  */
 import { Data } from "@lucid-evolution/lucid";
 
-import { MerkleRootSchema, ProofSchema } from "@/common.js";
+import { MerkleRootSchema, ProofSchema } from "../common.js";
 import {
   EventKeySchema,
   EventToStepValueSchema,
   HeaderV1Schema,
   TransitionStepSchema,
-} from "@/ledger-state.js";
-import { rootMembershipProofSchema } from "@/transition-trace.js";
-
+} from "../ledger-state.js";
+import { rootMembershipProofSchema } from "../transition-trace.js";
 import { type ChallengedHeaderHash } from "./fabricated-deposit-v1.js";
 import { FieldOpeningV1Schema } from "./field-opening-v1.js";
 import {

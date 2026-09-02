@@ -53,13 +53,13 @@ import {
   OutputReference,
   outputReferenceFromUTxO,
   POSIXTimeSchema,
-} from "@/common.js";
+} from "../common.js";
 import {
   resolveCertificateReferenceIndexV1,
   resolveChunkReferenceIndicesV1,
-} from "@/fraud-proof/field-preimage-carriage-v1.js";
-import { HubOracleError } from "@/hub-oracle.js";
-import { authenticateUTxOs, AuthenticUTxO } from "@/internals.js";
+} from "../fraud-proof/field-preimage-carriage-v1.js";
+import { HubOracleError } from "../hub-oracle.js";
+import { authenticateUTxOs, AuthenticUTxO } from "../internals.js";
 import {
   CardanoDatum,
   CardanoDatumSchema,
@@ -67,14 +67,13 @@ import {
   CekProgramMaterialDatumV1Schema,
   NativeTxProofSourceV1,
   TxOrderEventV1Schema,
-} from "@/ledger-state.js";
+} from "../ledger-state.js";
 import {
   type FieldCarriageV1,
   FieldCarriageV1Schema,
-} from "@/native-tx-field-access-v1.js";
-import { OperatorVerdictV1Schema } from "@/rejection-reason-v1.js";
-import { RawRootMembershipProofSchema } from "@/transition-trace.js";
-
+} from "../native-tx-field-access-v1.js";
+import { OperatorVerdictV1Schema } from "../rejection-reason-v1.js";
+import { RawRootMembershipProofSchema } from "../transition-trace.js";
 import {
   buildCompletedUserEventMintTxProgram,
   encodeUserEventWitnessMintOrBurnRedeemer,

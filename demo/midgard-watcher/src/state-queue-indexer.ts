@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 
 import {
+  type DeploymentMarkerV1,
+  MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
+} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import {
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
   ACTIVE_OPERATORS_ROOT_ASSET_NAME,
   ActiveOperatorDatum,
@@ -29,10 +33,6 @@ import {
 import { CML, Data, valueToAssets } from "@lucid-evolution/lucid";
 
 import { blake2b } from "../../midgard-core/node_modules/@noble/hashes/blake2.js";
-import {
-  type DeploymentMarkerV1,
-  MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
-} from "../../midgard-core/src/deployment-manifest-identity-v1.js";
 import {
   type VerifiedWatcherDeploymentIdentityV1,
   verifyWatcherDeploymentIdentityV1,

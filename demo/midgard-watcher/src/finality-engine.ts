@@ -3,7 +3,8 @@ import { isAbsolute, normalize as normalizePath } from "node:path";
 import {
   type DeploymentMarkerV1,
   MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
-} from "../../midgard-core/src/deployment-manifest-identity-v1.js";
+} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+
 import {
   parseWatcherConfig,
   WATCHER_CARDANO_SECURITY_PARAMETER_K,

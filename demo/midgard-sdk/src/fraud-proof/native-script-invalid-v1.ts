@@ -2,8 +2,7 @@
 import { Data } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 
-import { H32Schema } from "@/common.js";
-
+import { H32Schema } from "../common.js";
 import { FieldOpeningV1Schema } from "./field-opening-v1.js";
 import {
   faultProofStepDatumSchema,

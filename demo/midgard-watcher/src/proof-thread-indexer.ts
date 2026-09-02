@@ -1,6 +1,12 @@
 import { createHash } from "node:crypto";
 
 import {
+  DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
+  type DeploymentManifestV1FraudProofCatalogueCategory,
+  type DeploymentMarkerV1,
+  MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
+} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import {
   DA_ATTESTATION_ASSET_NAME_PREFIX,
   DaAttestationDatum,
   FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
@@ -11,12 +17,6 @@ import {
 } from "@al-ft/midgard-sdk";
 import { CML, Data, valueToAssets } from "@lucid-evolution/lucid";
 
-import {
-  DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER,
-  type DeploymentManifestV1FraudProofCatalogueCategory,
-  type DeploymentMarkerV1,
-  MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
-} from "../../midgard-core/src/deployment-manifest-identity-v1.js";
 import {
   type VerifiedWatcherDeploymentIdentityV1,
   verifyWatcherDeploymentIdentityV1,

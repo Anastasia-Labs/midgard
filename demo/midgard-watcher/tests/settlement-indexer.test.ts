@@ -4,6 +4,7 @@ import { type Server } from "node:net";
 import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
+import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
 import {
   ActiveOperatorMintRedeemer,
   ActiveOperatorSpendRedeemer,
@@ -26,7 +27,6 @@ import {
 import { CML, Constr, Data } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { computeHash32 } from "../../midgard-core/src/codec/hash.js";
 import { WATCHER_CONFIG_SCHEMA_VERSION } from "../src/config.js";
 import {
   encodeWatcherDurableStoreV1,

@@ -1,14 +1,13 @@
 import { Data } from "@lucid-evolution/lucid";
 
-import { H32Schema, OutputReferenceSchema } from "@/common.js";
+import { H32Schema, OutputReferenceSchema } from "../common.js";
 import {
   BoundedItemChunkProofV1Schema,
   ForcedInclusionTxV1Schema,
   HeaderV1Schema,
-} from "@/ledger-state.js";
-import { RejectionReasonV1Schema } from "@/rejection-reason-v1.js";
-import { rootMembershipProofSchema } from "@/transition-trace.js";
-
+} from "../ledger-state.js";
+import { RejectionReasonV1Schema } from "../rejection-reason-v1.js";
+import { rootMembershipProofSchema } from "../transition-trace.js";
 import { FieldOpeningV1Schema } from "./field-opening-v1.js";
 import {
   faultProofStepDatumSchema,

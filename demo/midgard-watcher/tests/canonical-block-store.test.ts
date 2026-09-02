@@ -1,18 +1,10 @@
 import { createHash } from "node:crypto";
 
 import {
-  DA_PAYLOAD_V1_VERSION,
-  type DaPayloadV1,
-  EMPTY_MERKLE_TREE_ROOT,
-  encodeDaPayloadV1,
-} from "@al-ft/midgard-sdk";
-import { beforeEach, describe, expect, it } from "vitest";
-
-import {
   DA_PAYLOAD_INNER_V1_SCHEMA_VERSION,
   DaPayloadContentEncoding,
   wrapDaPayloadV1,
-} from "../../midgard-core/src/da-payload-envelope.js";
+} from "@al-ft/midgard-core/da-payload-envelope";
 import {
   computeDaSha256Hash,
   DA_TRANSPORT_LIMITS_V1,
@@ -25,12 +17,20 @@ import {
   encodeDaPayloadByHeaderResponseV1Cbor,
   encodeDaProofBundleByHeaderResponseV1Cbor,
   encodeDaTraceStepByIndexResponseV1Cbor,
-} from "../../midgard-core/src/da-transport.js";
-import { makeDeploymentMarkerV1 } from "../../midgard-core/src/deployment-manifest-identity-v1.js";
+} from "@al-ft/midgard-core/da-transport";
+import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import {
   MIDGARD_RETENTION_WINDOW_V1,
   RETENTION_MS_PER_DAY_V1,
-} from "../../midgard-core/src/retention-window-v1.js";
+} from "@al-ft/midgard-core/retention-window-v1";
+import {
+  DA_PAYLOAD_V1_VERSION,
+  type DaPayloadV1,
+  EMPTY_MERKLE_TREE_ROOT,
+  encodeDaPayloadV1,
+} from "@al-ft/midgard-sdk";
+import { beforeEach, describe, expect, it } from "vitest";
+
 import {
   decodeWatcherCanonicalBlockStoreSnapshotV1,
   encodeWatcherCanonicalBlockStoreSnapshotV1,

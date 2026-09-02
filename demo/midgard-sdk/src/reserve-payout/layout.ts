@@ -1,7 +1,7 @@
 import { outRefLabel } from "@al-ft/midgard-core/out-ref";
 import { Data, type UTxO } from "@lucid-evolution/lucid";
 
-import * as SDK from "@/reserve-payout/primitives.js";
+import * as SDK from "./primitives.js";
 
 export type AbsorbDepositLayout = {
   readonly depositInputIndex: bigint;

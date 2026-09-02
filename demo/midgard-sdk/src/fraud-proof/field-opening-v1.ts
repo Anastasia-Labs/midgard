@@ -47,12 +47,11 @@
 
 import { Data } from "@lucid-evolution/lucid";
 
-import { H32Schema } from "@/common.js";
+import { H32Schema } from "../common.js";
 import {
   type FieldCarriageV1,
   FieldCarriageV1Schema,
-} from "@/native-tx-field-access-v1.js";
-
+} from "../native-tx-field-access-v1.js";
 import {
   type NativeTxWitnessSetCompact,
   NativeTxWitnessSetCompactSchema,

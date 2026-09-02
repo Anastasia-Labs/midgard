@@ -1,11 +1,4 @@
-import {
-  assertSecurityGradeEvidenceV1,
-  DA_PAYLOAD_V1_VERSION,
-  decodeDaPayloadV1,
-  type EvidenceProvenanceV1,
-} from "@al-ft/midgard-sdk";
-
-import { unwrapDaPayloadV1 } from "../../midgard-core/src/da-payload-envelope.js";
+import { unwrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
 import {
   computeDaSha256Hash,
   DA_TRANSPORT_LIMITS_V1,
@@ -26,11 +19,18 @@ import {
   encodeDaPayloadChunkRequestV1Cbor,
   encodeDaProofBundleByHeaderRequestV1Cbor,
   encodeDaTraceStepByIndexRequestV1Cbor,
-} from "../../midgard-core/src/da-transport.js";
+} from "@al-ft/midgard-core/da-transport";
 import {
   assertDeploymentMarkerV1Matches,
   makeDeploymentMarkerV1,
-} from "../../midgard-core/src/deployment-manifest-identity-v1.js";
+} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import {
+  assertSecurityGradeEvidenceV1,
+  DA_PAYLOAD_V1_VERSION,
+  decodeDaPayloadV1,
+  type EvidenceProvenanceV1,
+} from "@al-ft/midgard-sdk";
+
 import {
   parseWatcherConfig,
   type WatcherConfig,

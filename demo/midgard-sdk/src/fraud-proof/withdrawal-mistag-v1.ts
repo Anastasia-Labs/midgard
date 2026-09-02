@@ -16,7 +16,7 @@ import {
   MerkleRootSchema,
   OutputReferenceSchema,
   ProofSchema,
-} from "@/common.js";
+} from "../common.js";
 import {
   type CardanoDatum,
   EventKeySchema,
@@ -27,14 +27,13 @@ import {
   WithdrawalBodySchema,
   WithdrawalInfo,
   WithdrawalInfoSchema,
-} from "@/ledger-state.js";
+} from "../ledger-state.js";
 import {
   EventToStepMembershipProofSchema,
   type RootMembershipProof,
   TransitionTraceMembershipProofSchema,
   WithdrawalSourceMembershipProofSchema,
-} from "@/transition-trace.js";
-
+} from "../transition-trace.js";
 import { WITHDRAWAL_MISTAG_FRAUD_CATEGORY_ID_V1 } from "./catalogue.js";
 import {
   faultProofStepDatumSchema,

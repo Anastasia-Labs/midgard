@@ -7,9 +7,9 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { scriptRewardAddress } from "@/cardano-addresses.js";
-import { LucidError, UnspecifiedNetworkError } from "@/errors.js";
-import { completeTxWithLocalUPLCEvalProgram } from "@/tx-completion.js";
+import { scriptRewardAddress } from "./cardano-addresses.js";
+import { LucidError, UnspecifiedNetworkError } from "./errors.js";
+import { completeTxWithLocalUPLCEvalProgram } from "./tx-completion.js";
 
 export const PHAS_MEMBERSHIP_WITHDRAWAL_VALIDATOR_TITLE =
   "phas.membership.withdraw";

@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 
 import {
+  type DeploymentMarkerV1,
+  MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
+} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import {
   ActiveOperatorMintRedeemer,
   ActiveOperatorSpendRedeemer,
   DepositSpendRedeemer,
@@ -22,10 +26,6 @@ import {
 } from "@al-ft/midgard-sdk";
 import { CML, Data } from "@lucid-evolution/lucid";
 
-import {
-  type DeploymentMarkerV1,
-  MIDGARD_DEPLOYMENT_MARKER_V1_SCHEMA_VERSION,
-} from "../../midgard-core/src/deployment-manifest-identity-v1.js";
 import {
   type VerifiedWatcherDeploymentIdentityV1,
   verifyWatcherDeploymentIdentityV1,

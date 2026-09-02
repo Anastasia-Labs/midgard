@@ -9,9 +9,9 @@ import {
   encodeDaCapabilitiesRequestV1Cbor,
 } from "@al-ft/midgard-core/da-transport";
 import { multiaddr } from "@multiformats/multiaddr";
+import { WatcherPublicDaLibp2pTransport } from "midgard-watcher";
 import { describe, expect, it, vi } from "vitest";
 
-import { WatcherPublicDaLibp2pTransport } from "../../midgard-watcher/src/public-da-libp2p-transport.js";
 import type {
   Libp2pDaTransportConfig,
   PublicRetainedDaConfig,

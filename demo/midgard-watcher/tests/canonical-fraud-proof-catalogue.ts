@@ -1,6 +1,4 @@
 import { Trie } from "@aiken-lang/merkle-patricia-forestry";
-import { validatorToScriptHash } from "@lucid-evolution/lucid";
-
 import {
   DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES,
   DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_IDS,
@@ -8,7 +6,8 @@ import {
   DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CONTRACT_BY_CATEGORY,
   type DeploymentManifestV1FraudProofCatalogueIdentity,
   verifyDeploymentManifestV1FraudProofCatalogueIdentity,
-} from "../../midgard-core/src/deployment-manifest-identity-v1.js";
+} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { validatorToScriptHash } from "@lucid-evolution/lucid";
 
 type ContractIdentity = Readonly<{ scriptHash: string }>;
 

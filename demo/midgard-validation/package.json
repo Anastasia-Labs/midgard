@@ -11,111 +11,133 @@
   ],
   "exports": {
     ".": {
+      "midgard-source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
     "./ledger": {
+      "midgard-source": "./src/ledger.ts",
       "types": "./dist/ledger.d.ts",
       "import": "./dist/ledger.js",
       "require": "./dist/ledger.cjs"
     },
     "./ledger-tx": {
+      "midgard-source": "./src/ledger-tx.ts",
       "types": "./dist/ledger-tx.d.ts",
       "import": "./dist/ledger-tx.js",
       "require": "./dist/ledger-tx.cjs"
     },
     "./ledger-tx/codec": {
+      "midgard-source": "./src/ledger-tx/codec.ts",
       "types": "./dist/ledger-tx/codec.d.ts",
       "import": "./dist/ledger-tx/codec.js",
       "require": "./dist/ledger-tx/codec.cjs"
     },
     "./ledger-tx/types": {
+      "midgard-source": "./src/ledger-tx/types.ts",
       "types": "./dist/ledger-tx/types.d.ts",
       "import": "./dist/ledger-tx/types.js",
       "require": "./dist/ledger-tx/types.cjs"
     },
     "./local-script-eval": {
+      "midgard-source": "./src/local-script-eval.ts",
       "types": "./dist/local-script-eval.d.ts",
       "import": "./dist/local-script-eval.js",
       "require": "./dist/local-script-eval.cjs"
     },
     "./cek-program": {
+      "midgard-source": "./src/cek-program.ts",
       "types": "./dist/cek-program.d.ts",
       "import": "./dist/cek-program.js",
       "require": "./dist/cek-program.cjs"
     },
     "./cek-machine": {
+      "midgard-source": "./src/cek-machine.ts",
       "types": "./dist/cek-machine.d.ts",
       "import": "./dist/cek-machine.js",
       "require": "./dist/cek-machine.cjs"
     },
     "./cek-executor": {
+      "midgard-source": "./src/cek-executor.ts",
       "types": "./dist/cek-executor.d.ts",
       "import": "./dist/cek-executor.js",
       "require": "./dist/cek-executor.cjs"
     },
     "./cek-builtin": {
+      "midgard-source": "./src/cek-builtin.ts",
       "types": "./dist/cek-builtin.d.ts",
       "import": "./dist/cek-builtin.js",
       "require": "./dist/cek-builtin.cjs"
     },
     "./cek-data": {
+      "midgard-source": "./src/cek-data.ts",
       "types": "./dist/cek-data.d.ts",
       "import": "./dist/cek-data.js",
       "require": "./dist/cek-data.cjs"
     },
     "./cek-data-tree": {
+      "midgard-source": "./src/cek-data-tree.ts",
       "types": "./dist/cek-data-tree.d.ts",
       "import": "./dist/cek-data-tree.js",
       "require": "./dist/cek-data-tree.cjs"
     },
     "./cek-constant": {
+      "midgard-source": "./src/cek-constant.ts",
       "types": "./dist/cek-constant.d.ts",
       "import": "./dist/cek-constant.js",
       "require": "./dist/cek-constant.cjs"
     },
     "./midgard-redeemers": {
+      "midgard-source": "./src/midgard-redeemers.ts",
       "types": "./dist/midgard-redeemers.d.ts",
       "import": "./dist/midgard-redeemers.js",
       "require": "./dist/midgard-redeemers.cjs"
     },
     "./phase-a": {
+      "midgard-source": "./src/phase-a.ts",
       "types": "./dist/phase-a.d.ts",
       "import": "./dist/phase-a.js",
       "require": "./dist/phase-a.cjs"
     },
     "./phase-b": {
+      "midgard-source": "./src/phase-b.ts",
       "types": "./dist/phase-b.d.ts",
       "import": "./dist/phase-b.js",
       "require": "./dist/phase-b.cjs"
     },
     "./plutus-data": {
+      "midgard-source": "./src/plutus-data.ts",
       "types": "./dist/plutus-data.d.ts",
       "import": "./dist/plutus-data.js",
       "require": "./dist/plutus-data.cjs"
     },
     "./script-context": {
+      "midgard-source": "./src/script-context.ts",
       "types": "./dist/script-context.d.ts",
       "import": "./dist/script-context.js",
       "require": "./dist/script-context.cjs"
     },
     "./script-context-proof": {
+      "midgard-source": "./src/script-context-proof.ts",
       "types": "./dist/script-context-proof.d.ts",
       "import": "./dist/script-context-proof.js",
       "require": "./dist/script-context-proof.cjs"
     },
     "./script-source": {
+      "midgard-source": "./src/script-source.ts",
       "types": "./dist/script-source.d.ts",
       "import": "./dist/script-source.js",
       "require": "./dist/script-source.cjs"
     },
     "./tx-out-ref": {
+      "midgard-source": "./src/tx-out-ref.ts",
       "types": "./dist/tx-out-ref.d.ts",
       "import": "./dist/tx-out-ref.js",
       "require": "./dist/tx-out-ref.cjs"
     },
     "./types": {
+      "midgard-source": "./src/types.ts",
       "types": "./dist/types.d.ts",
       "import": "./dist/types.js",
       "require": "./dist/types.cjs"
@@ -156,6 +178,7 @@
     "effect": "^3.14.22"
   },
   "devDependencies": {
+    "@al-ft/midgard-fault-proofs": "workspace:*",
     "@al-ft/midgard-sdk": "workspace:*",
     "@types/node": "^22.17.0",
     "rimraf": "^6.0.1",

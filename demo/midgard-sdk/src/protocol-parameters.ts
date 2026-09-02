@@ -1,7 +1,7 @@
 import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { Network } from "@lucid-evolution/lucid";
 
-import { PosixTimeDuration } from "@/common.js";
+import { PosixTimeDuration } from "./common.js";
 
 export const SHIFT_DURATION_MS = 60n * 60n * 1000n;
 export const REGISTRATION_DURATION_MS = 30n;

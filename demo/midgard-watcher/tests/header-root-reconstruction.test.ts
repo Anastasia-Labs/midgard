@@ -31,6 +31,9 @@ import {
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
   deriveMidgardNativeTxProofSourceV1FromCanonicalCbor,
 } from "@al-ft/midgard-core/codec";
+import { encodeCbor } from "@al-ft/midgard-core/codec/cbor";
+import { wrapDaPayloadV1 } from "@al-ft/midgard-core/da-payload-envelope";
+import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
 import {
   buildCountedRoot,
   encodeData,
@@ -41,9 +44,6 @@ import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { blake2b } from "../../midgard-core/node_modules/@noble/hashes/blake2.js";
-import { encodeCbor } from "../../midgard-core/src/codec/cbor.js";
-import { wrapDaPayloadV1 } from "../../midgard-core/src/da-payload-envelope.js";
-import { DA_TRANSPORT_LIMITS_V1 } from "../../midgard-core/src/da-transport.js";
 import {
   evaluateWatcherHeaderRootReconstructionV1,
   makeWatcherAuthenticatedHeaderObservationV1,

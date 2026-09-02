@@ -6,15 +6,14 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
+import { SlashingArgumentsSchema } from "./active-operators.js";
 import {
   AuthenticatedValidator,
   LucidError,
   OutputReferenceSchema,
   POSIXTimeSchema,
-} from "@/common.js";
-import { authenticateUTxOs, AuthenticUTxO } from "@/internals.js";
-
-import { SlashingArgumentsSchema } from "./active-operators.js";
+} from "./common.js";
+import { authenticateUTxOs, AuthenticUTxO } from "./internals.js";
 import {
   incompleteInitLinkedListTxProgram,
   LinkedListDatum,
