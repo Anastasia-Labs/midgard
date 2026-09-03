@@ -7,7 +7,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { ValidationTraceDisputeFaultProofContracts } from "./contracts.js";
+import type { ValidationTraceDisputeFaultProofContracts } from "./contracts/index.js";
 import {
   ValidationProofItemDatumV1,
   type ValidationProofItemDatumV1 as ValidationProofItemDatumV1Type,

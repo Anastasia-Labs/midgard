@@ -299,7 +299,7 @@ describe("zz609 the arity check is the only door", () => {
    */
   const productionSources = [
     {
-      path: "demo/midgard-sdk/src/fraud-proof/contracts.ts",
+      path: "demo/midgard-sdk/src/fraud-proof/contracts/blueprint.ts",
       allowed: 1,
       helper: "applyBlueprintParams",
     },
@@ -359,7 +359,7 @@ describe("zz609 the arity check is the only door", () => {
     const allowedReaders = [
       // The two arity-checking helpers' homes, already pinned above.
       "demo/midgard-node/src/services/midgard-contracts.ts",
-      "demo/midgard-sdk/src/fraud-proof/contracts.ts",
+      "demo/midgard-sdk/src/fraud-proof/contracts/blueprint.ts",
       // Deploys bare behind a zero-declared-parameters assertion (#610).
       "demo/midgard-sdk/src/phas-membership.ts",
       // Devnet-only convenience loader: an intentional, explicit exception.

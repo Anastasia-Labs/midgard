@@ -2,7 +2,7 @@ export * from "./canonical-decodability-v1.js";
 export * from "./catalogue.js";
 export * from "./committed-field-shape-v1.js";
 export * from "./computation-threads.js";
-export * from "./contracts.js";
+export * from "./contracts/index.js";
 export * from "./cross-block-duplicate-event-v1.js";
 export * from "./da-hash-preimage.js";
 export * from "./double-spend.js";

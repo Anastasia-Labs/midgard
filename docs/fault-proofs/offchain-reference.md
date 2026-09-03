@@ -13,7 +13,7 @@ authority. It declares 32 categories through:
 - `minAda` — `0000001f`
 
 `demo/midgard-sdk/src/common.ts` and
-`demo/midgard-sdk/src/fraud-proof/contracts.ts` carry the matching contract
+`demo/midgard-sdk/src/fraud-proof/contracts/` carry the matching contract
 types. Node/core deployment manifests and reference-script maps use the same
 keys.
 

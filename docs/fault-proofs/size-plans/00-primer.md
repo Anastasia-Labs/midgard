@@ -194,7 +194,7 @@ state-queue redesign directly.
   (`demo/midgard-sdk/src/reference-scripts.ts`), matching Aiken constants
   (compare `min_ada/yield.tx_role`), deployment-manifest entries, and the
   contract-deployment-info / inspection fixtures.
-- **SDK contract wiring.** `demo/midgard-sdk/src/fraud-proof/contracts.ts`
+- **SDK contract wiring.** `demo/midgard-sdk/src/fraud-proof/contracts/`
   applies parameters by blueprint title; new validators need entries and the
   arity test (`zz605-semantic-resolver-arity.test.ts`) must see them.
 - **Submit routing.** `demo/midgard-fault-proofs/src/validation-dispute/submit.ts`

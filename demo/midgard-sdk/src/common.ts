@@ -21,7 +21,7 @@ import {
   LucidError,
   UnauthenticUtxoError,
 } from "./errors.js";
-import type { FaultProofContractChains } from "./fraud-proof/contracts.js";
+import type { FaultProofContractChains } from "./fraud-proof/contracts/index.js";
 import { getStateToken } from "./internals.js";
 import { RetiredOperatorUTxO } from "./retired-operators.js";
 

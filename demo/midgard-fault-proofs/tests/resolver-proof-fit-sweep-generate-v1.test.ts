@@ -1103,7 +1103,7 @@ describe.skipIf(!REGENERATE)(
       // 14 prepare resolvers — copied from the matching topLevel row where
       // the underlying compiled script is literally the same object
       // (`resolvers[i] === prepareResolvers[i]` for every resolverIndex;
-      // confirmed in demo/midgard-sdk/src/fraud-proof/contracts.ts).
+      // confirmed in demo/midgard-sdk/src/fraud-proof/contracts/blueprint.ts).
       for (let prepareIndex = 0; prepareIndex < 14; prepareIndex += 1) {
         const resolverIndex = prepareResolverIndexOf[prepareIndex]!;
         const source = topLevelRows[resolverIndex]!;
