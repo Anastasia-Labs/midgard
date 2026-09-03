@@ -10,14 +10,14 @@ import { Effect, Option } from "effect";
 import {
   ConfirmedLedgerDB,
   PendingBlockFinalizationsDB,
-} from "@/database/index.js";
+} from "../../database/index.js";
 import {
   DatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import * as Ledger from "@/database/utils/ledger.js";
-import { Database } from "@/services/index.js";
-import { computeLedgerMpfRootFromLedgerEntries } from "@/workers/utils/mpf.js";
+} from "../../database/utils/common.js";
+import * as Ledger from "../../database/utils/ledger.js";
+import { Database } from "../../services/index.js";
+import { computeLedgerMpfRootFromLedgerEntries } from "../../workers/utils/mpf.js";
 
 export type ConfirmedLedgerSnapshot = {
   readonly entries: readonly Ledger.Entry[];

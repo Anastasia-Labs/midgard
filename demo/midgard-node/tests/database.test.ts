@@ -56,6 +56,10 @@ import {
   Schedule,
   TestClock,
 } from "effect";
+// Test-only reach into the tooling package (a dev-only workspace cycle, like
+// validation -> fault-proofs): the crash-boundary case below drives a child
+// process through the same supervisor the e2e harness uses.
+import { superviseHostProcess } from "midgard-node-tools/e2e/service-supervisor";
 import { beforeAll, describe, expect, it as vitestIt } from "vitest";
 
 import {
@@ -105,7 +109,6 @@ import {
 } from "../src/database/index.js";
 import * as MigrationRunner from "../src/database/migrations/runner.js";
 import { DatabaseError } from "../src/database/utils/common.js";
-import { superviseHostProcess } from "../src/e2e/service-supervisor.js";
 import {
   admissionBacklogGaugeFiber,
   commitAdmissionBacklogSlot,

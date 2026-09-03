@@ -8,21 +8,21 @@ import { inspect } from "node:util";
 import { SqlClient } from "@effect/sql";
 import { Effect, Metric } from "effect";
 
-import { fullScanCounter as confirmedLedgerFullScanCounter } from "@/database/confirmedLedger.js";
-import * as MpfEngineStateDB from "@/database/mpfEngineState.js";
-import { fetchLocalOgmiosShelleyGenesisSlotConfig } from "@/local-ledger-slot.js";
-import { NodeConfig } from "@/services/config.js";
-import { ProductionNativeMpfOwnerService } from "@/services/mpf-native-owner/index.js";
+import { fullScanCounter as confirmedLedgerFullScanCounter } from "../database/confirmedLedger.js";
+import * as MpfEngineStateDB from "../database/mpfEngineState.js";
+import { fetchLocalOgmiosShelleyGenesisSlotConfig } from "../local-ledger-slot.js";
+import { NodeConfig } from "../services/config.js";
+import { ProductionNativeMpfOwnerService } from "../services/mpf-native-owner/index.js";
 import {
   provideCommitBlockWorkerServices,
   runCommitBlockHeaderCandidateBuildProgram,
-} from "@/workers/commit-block-header.js";
+} from "./commit-block-header.js";
 import {
   assertArchitectureGCandidateSlotRuntimeIdentityV1,
   decodeArchitectureGCommitCandidateInputV1,
   decodeArchitectureGFixtureCreationV1,
   validateArchitectureGCommitCandidateProbeResultV1,
-} from "@/workers/utils/mpf-commit-candidate-artifacts.js";
+} from "./utils/mpf-commit-candidate-artifacts.js";
 
 const inputPath =
   process.env.MPF_COMMIT_CANDIDATE_INPUT?.trim() ??

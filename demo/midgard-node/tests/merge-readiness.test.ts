@@ -21,7 +21,7 @@ import {
   mergeSubmitValidityEvidence,
   planMergeLocalLedgerReadiness,
   planMergePreflight,
-} from "@/transactions/state-queue/merge-readiness.js";
+} from "../src/transactions/state-queue/merge-readiness.js";
 
 const baseInput = {
   force: false,

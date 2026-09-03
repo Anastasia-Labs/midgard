@@ -10,8 +10,8 @@ import blake2b from "blake2b";
 import { Effect } from "effect";
 import { Level } from "level";
 
-import { ProductionNativeMpfOwnerService } from "@/services/mpf-native-owner/index.js";
-import { buildAuthenticatedRootFromEncodedEntries } from "@/workers/commit-block-header/transition-roots.js";
+import { ProductionNativeMpfOwnerService } from "../services/mpf-native-owner/index.js";
+import { buildAuthenticatedRootFromEncodedEntries } from "../workers/commit-block-header/transition-roots.js";
 import {
   buildNativeProductionRootProbe,
   buildTransactionsSourceRoot,
@@ -29,7 +29,7 @@ import {
   type TransitionTraceSourceEvent,
   verifyKeyValuePhasMembershipProof,
   verifyKeyValuePhasNonMembershipProof,
-} from "@/workers/utils/mpf.js";
+} from "../workers/utils/mpf.js";
 
 type ReplayRoots = MpfReplayCorpusBlock["expected"];
 

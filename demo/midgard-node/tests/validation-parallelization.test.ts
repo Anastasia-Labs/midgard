@@ -28,10 +28,9 @@ import { describe, expect, it } from "vitest";
 import {
   hasUnseenTxQueueWake,
   sampleValidationQueueWaits,
-} from "@/fibers/tx-queue-processor.js";
-import { resolveValidationWorkerPoolSize } from "@/services/config.js";
-import { packPhaseAJob } from "@/workers/utils/validation-pool.js";
-
+} from "../src/fibers/tx-queue-processor.js";
+import { resolveValidationWorkerPoolSize } from "../src/services/config.js";
+import { packPhaseAJob } from "../src/workers/utils/validation-pool.js";
 import {
   makeMidgardTxOutput,
   makeOutRefCbor,

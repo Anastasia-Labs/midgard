@@ -28,18 +28,17 @@ import { JsonFileWatcherStore } from "da-committee-node/store";
 import { describe, expect, it } from "vitest";
 
 import {
+  makePayloadFixture,
+  tempDir,
+} from "../../da-committee-node/tests/helpers.js";
+import {
   createDaLibp2pProducerTransport,
   type DaProducerCommitteePeer,
   type DaProducerPublicationManifest,
   probeDaEnvelopeCapabilities,
   publishDaPayloadInsert,
-} from "@/da/libp2p-producer.js";
-import { DaPayloadsDB } from "@/database/index.js";
-
-import {
-  makePayloadFixture,
-  tempDir,
-} from "../../da-committee-node/tests/helpers.js";
+} from "../src/da/libp2p-producer.js";
+import { DaPayloadsDB } from "../src/database/index.js";
 
 const DEPLOYMENT = "a5".repeat(32);
 

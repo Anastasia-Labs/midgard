@@ -21,12 +21,12 @@ import {
   buildContractDeploymentInfoFromContracts,
   buildDeploymentManifestV1,
   type DeploymentManifestV1IdentityContext,
-} from "@/commands/contract-deployment-info.js";
-import { parseDaProducerPublicationManifest } from "@/da/libp2p-producer.js";
+} from "../src/commands/contract-deployment-info.js";
+import { parseDaProducerPublicationManifest } from "../src/da/libp2p-producer.js";
 import {
   generateDaLibp2pRuntimeManifest,
   writeDaLibp2pRuntimeManifest,
-} from "@/da/libp2p-runtime-manifest.js";
+} from "../src/da/libp2p-runtime-manifest.js";
 import {
   computeDeploymentManifestId,
   computeDeploymentManifestV1DaCommitteeSignersHash,
@@ -34,13 +34,12 @@ import {
   DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   type DeploymentManifestV1Value,
   normalizeDeploymentManifestV1JsonValue,
-} from "@/deployment-manifest-v1.js";
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
+} from "../src/deployment-manifest-v1.js";
+import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
 import {
   buildFraudProofCatalogueDeploymentInfo,
   fraudProofsToIndexedValidators,
-} from "@/transactions/initialization.js";
-
+} from "../src/transactions/initialization.js";
 import { TEST_AVAILABILITY_CHALLENGE_V1 } from "./helpers/availability-challenge-v1.js";
 import { TEST_CARDANO_PROTOCOL_PARAMETERS_V1 } from "./helpers/cardano-protocol-parameters-v1.js";
 

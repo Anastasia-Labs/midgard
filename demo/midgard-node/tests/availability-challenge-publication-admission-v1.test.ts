@@ -9,8 +9,7 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { nodeRuntimeReferenceScriptTargets } from "@/transactions/reference-scripts.js";
-
+import { nodeRuntimeReferenceScriptTargets } from "../src/transactions/reference-scripts.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 const ONE_SHOT_OUT_REF = {

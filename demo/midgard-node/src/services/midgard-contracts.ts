@@ -38,12 +38,11 @@ import { Effect, Layer } from "effect";
 import {
   type DeploymentManifestV1Value,
   parseDeploymentManifestV1Value,
-} from "@/deployment-manifest-v1.js";
+} from "../deployment-manifest-v1.js";
 import {
   defaultDeploymentRunStatePath,
   loadDeploymentRunState,
-} from "@/e2e/run-state.js";
-
+} from "../e2e/run-state.js";
 import { AlwaysSucceedsContract } from "./always-succeeds.js";
 import { NodeConfig, type NodeConfigDep } from "./config.js";
 

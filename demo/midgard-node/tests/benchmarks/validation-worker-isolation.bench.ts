@@ -20,21 +20,20 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  MempoolDB,
-  MempoolLedgerDB,
-  MigrationRunner,
-  TxAdmissionsDB,
-} from "@/database/index.js";
-import { FixedValidationWorkerPool } from "@/services/validation-pool.js";
-import { packPhaseAJob } from "@/workers/utils/validation-pool.js";
-
-import {
   ledgerEntry,
   makeNativeTx,
   makeOutput,
   makeQueued,
   outRefFromByte,
 } from "../../../midgard-validation/tests/validation-fixtures.js";
+import {
+  MempoolDB,
+  MempoolLedgerDB,
+  MigrationRunner,
+  TxAdmissionsDB,
+} from "../../src/database/index.js";
+import { FixedValidationWorkerPool } from "../../src/services/validation-pool.js";
+import { packPhaseAJob } from "../../src/workers/utils/validation-pool.js";
 import { provideDatabaseLayers } from "../utils.js";
 import {
   readPhase2ContainerIdentity,

@@ -3,13 +3,13 @@ import "./utils.js";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { shouldRunMpfPayloadAudit } from "@/fibers/mpf-payload-audit.js";
-import { NodeConfig } from "@/services/config.js";
+import { shouldRunMpfPayloadAudit } from "../src/fibers/mpf-payload-audit.js";
+import { NodeConfig } from "../src/services/config.js";
 import {
   configureCommitMpfRuntime,
   getMpfScratchBuild,
   setMpfScratchBuild,
-} from "@/workers/utils/mpf.js";
+} from "../src/workers/utils/mpf.js";
 
 describe("commit MPF runtime configuration", () => {
   afterEach(() => {

@@ -16,10 +16,10 @@ import type { Assets, UTxO } from "@lucid-evolution/lucid";
 import { Data as LucidData, valueToAssets } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
-import { DatabaseError } from "@/database/utils/common.js";
-import * as Ledger from "@/database/utils/ledger.js";
-import * as WithdrawalsDB from "@/database/withdrawals.js";
-import { verifyWithdrawalSignature } from "@/withdrawal-signature.js";
+import { DatabaseError } from "../../../database/utils/common.js";
+import * as Ledger from "../../../database/utils/ledger.js";
+import * as WithdrawalsDB from "../../../database/withdrawals.js";
+import { verifyWithdrawalSignature } from "../../../withdrawal-signature.js";
 
 export type ClassifiedWithdrawal = {
   readonly entry: WithdrawalsDB.Entry;

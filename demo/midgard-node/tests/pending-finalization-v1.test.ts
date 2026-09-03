@@ -3,7 +3,7 @@ import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { PendingBlockFinalizationsDB } from "@/database/index.js";
+import { PendingBlockFinalizationsDB } from "../src/database/index.js";
 
 const ROOT = SDK.EMPTY_MERKLE_TREE_ROOT;
 const CANDIDATE_ROOT = "11".repeat(32);

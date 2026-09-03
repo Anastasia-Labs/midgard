@@ -48,8 +48,7 @@ import { encode } from "cborg";
 import { Effect } from "effect";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { breakDownTx, findSpentAndProducedUTxOs } from "@/utils.js";
-
+import { breakDownTx, findSpentAndProducedUTxOs } from "../src/utils.js";
 import {
   hashMidgardV1Script,
   hashPlutusV3Script,

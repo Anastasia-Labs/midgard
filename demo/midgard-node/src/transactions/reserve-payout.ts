@@ -7,7 +7,7 @@ import {
   TxConfirmError,
   TxSignError,
   TxSubmitError,
-} from "@/transactions/utils.js";
+} from "./utils.js";
 
 export type {
   AbsorbConfirmedDepositConfig,

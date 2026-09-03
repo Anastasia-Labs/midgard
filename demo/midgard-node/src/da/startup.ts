@@ -6,18 +6,18 @@ import {
 import { Effect } from "effect";
 
 import {
-  assertDaEnvelopeCapabilityQuorum,
-  loadDaProducerPublicationManifestFromEnv,
-} from "@/da/libp2p-producer.js";
-import {
   ContractDeploymentIdentity,
   type ContractDeploymentIdentityValue,
   DatabaseInitializationError,
   Lucid,
   MidgardContracts,
   NodeConfig,
-} from "@/services/index.js";
-import { fetchDaParamsUtxo } from "@/transactions/da-attestation.js";
+} from "../services/index.js";
+import { fetchDaParamsUtxo } from "../transactions/da-attestation.js";
+import {
+  assertDaEnvelopeCapabilityQuorum,
+  loadDaProducerPublicationManifestFromEnv,
+} from "./libp2p-producer.js";
 
 export const assertDaThresholdCompatible = (
   transportThreshold: number,

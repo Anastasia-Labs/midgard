@@ -14,8 +14,8 @@ import {
 import { SqlClient } from "@effect/sql/SqlClient";
 import { Duration, Effect, Exit, Metric, Ref, Schedule } from "effect";
 
-import { TxAdmissionsDB } from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
+import { TxAdmissionsDB } from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
 import {
   BatchSql,
   Globals,
@@ -26,7 +26,7 @@ import {
   ValidationPool,
   type ValidationPoolService,
   WriteBehind,
-} from "@/services/index.js";
+} from "../services/index.js";
 
 /**
  * Background validation loop for queued L2 transactions.

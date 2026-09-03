@@ -38,8 +38,13 @@ export const testMaxForks = (): number =>
  * files can never clear each other's tables mid-assertion. `VITEST_POOL_ID` is
  * the worker slot (1-based); `_w0` is the fallback for anything run outside a
  * pooled worker.
+ *
+ * `MIDGARD_TEST_DATABASE_PREFIX` lets another package that reuses this shard
+ * scheme (midgard-node-tools) keep its own shard family, so two suites on the
+ * same server never share a database even when they run concurrently.
  */
-export const TEST_DATABASE_PREFIX = "midgard_test";
+export const TEST_DATABASE_PREFIX =
+  process.env.MIDGARD_TEST_DATABASE_PREFIX ?? "midgard_test";
 
 export const testDatabaseNameForShard = (shard: string | number): string =>
   `${TEST_DATABASE_PREFIX}_w${shard}`;

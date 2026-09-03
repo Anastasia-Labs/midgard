@@ -5,25 +5,25 @@ import { encodeMidgardSpendInputItemV1 } from "@al-ft/midgard-core/codec";
 import { hexToBytes } from "@al-ft/midgard-core/hex";
 import { Effect } from "effect";
 
-import { decodeNodeUtxo } from "@/commands/command-utils.js";
+import { decodeNodeUtxo } from "../commands/command-utils.js";
 import {
   CommitBuildCalibrationDB,
   MempoolDB,
   MempoolLedgerDB,
   MempoolTxDeltasDB,
   MigrationRunner,
-} from "@/database/index.js";
-import * as Tx from "@/database/utils/tx.js";
-import { Database, NodeConfig } from "@/services/index.js";
-import { sha256Hex } from "@/sha256.js";
-import { batchProgram, breakDownTx } from "@/utils.js";
-import { decodeCanonicalProbeRow } from "@/workers/mpf-engine-probe-corpus.js";
+} from "../database/index.js";
+import * as Tx from "../database/utils/tx.js";
+import { Database, NodeConfig } from "../services/index.js";
+import { sha256Hex } from "../sha256.js";
+import { batchProgram, breakDownTx } from "../utils.js";
+import { decodeCanonicalProbeRow } from "./mpf-engine-probe-corpus.js";
 import {
   decodeArchitectureGCommitCandidateSeedInputV1,
   decodeArchitectureGCorpusFundingV1,
   toJsonSafeCount,
   validateArchitectureGCommitCandidateSeedResultV1,
-} from "@/workers/utils/mpf-commit-candidate-artifacts.js";
+} from "./utils/mpf-commit-candidate-artifacts.js";
 
 const inputPath =
   process.env.MPF_COMMIT_CANDIDATE_SEED_INPUT?.trim() ??

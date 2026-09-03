@@ -6,7 +6,7 @@ import {
   isStrictlyAscending,
   splitPackedHex,
   VERIFICATION_KEY_HEX_LENGTH,
-} from "@/da/local-signers.js";
+} from "../src/da/local-signers.js";
 
 const OPERATOR_SEED =
   "panther fly crawl express smile lend company blue slogan dawn wall tip angle tomorrow battle myth category vanish misery ocean include salon wood rail";

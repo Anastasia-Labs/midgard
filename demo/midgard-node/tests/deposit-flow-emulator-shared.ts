@@ -45,26 +45,29 @@ import {
 import { Effect, Metric, Option, Queue, Ref } from "effect";
 import { afterAll, afterEach, beforeAll, expect, vi } from "vitest";
 
-import { decodeNodeUtxo, type NodeUtxo } from "@/commands/command-utils.js";
-import { resolveEventSettlementProofProgram } from "@/commands/event-settlement-proof.js";
-import { fetchWithdrawalsOnceProgram } from "@/commands/fetch-withdrawals-once.js";
-import { seedLatestLocalBlockBoundaryOnStartup } from "@/commands/listen-startup.js";
+import {
+  decodeNodeUtxo,
+  type NodeUtxo,
+} from "../src/commands/command-utils.js";
+import { resolveEventSettlementProofProgram } from "../src/commands/event-settlement-proof.js";
+import { fetchWithdrawalsOnceProgram } from "../src/commands/fetch-withdrawals-once.js";
+import { seedLatestLocalBlockBoundaryOnStartup } from "../src/commands/listen-startup.js";
 import {
   payoutStatusProgram,
   reserveUtxosProgram,
-} from "@/commands/reserve-inspection.js";
+} from "../src/commands/reserve-inspection.js";
 import {
   absorbConfirmedDepositToReserveProgram,
   addReserveFundsToPayoutProgram,
   concludePayoutProgram,
   initializePayoutProgram,
-} from "@/commands/reserve-payout.js";
-import { buildTransferTx } from "@/commands/submit-l2-transfer.js";
-import { withdrawalEventIdFromBuildMetadata } from "@/commands/submit-withdrawal.js";
-import { utxosProgram } from "@/commands/utxos.js";
-import { withdrawalStatusProgram } from "@/commands/withdrawal-status.js";
-import { loadDaLibp2pIdentity } from "@/da/libp2p-identity.js";
-import { fullScanCounter as confirmedLedgerFullScanCounter } from "@/database/confirmedLedger.js";
+} from "../src/commands/reserve-payout.js";
+import { buildTransferTx } from "../src/commands/submit-l2-transfer.js";
+import { withdrawalEventIdFromBuildMetadata } from "../src/commands/submit-withdrawal.js";
+import { utxosProgram } from "../src/commands/utxos.js";
+import { withdrawalStatusProgram } from "../src/commands/withdrawal-status.js";
+import { loadDaLibp2pIdentity } from "../src/da/libp2p-identity.js";
+import { fullScanCounter as confirmedLedgerFullScanCounter } from "../src/database/confirmedLedger.js";
 import {
   AddressHistoryDB,
   BlocksDB,
@@ -90,25 +93,25 @@ import {
   TxUtils,
   UserEventsUtils,
   WithdrawalsDB,
-} from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import * as Ledger from "@/database/utils/ledger.js";
-import { buildBlockConfirmationAction } from "@/fibers/block-confirmation.js";
-import { reconcileVisibleDepositUTxOs } from "@/fibers/fetch-and-insert-deposit-utxos.js";
-import { mergeAction, type MergeActionResult } from "@/fibers/merge.js";
-import { projectDepositsToMempoolLedger } from "@/fibers/project-deposits-to-mempool-ledger.js";
+} from "../src/database/index.js";
+import { DatabaseError } from "../src/database/utils/common.js";
+import * as Ledger from "../src/database/utils/ledger.js";
+import { buildBlockConfirmationAction } from "../src/fibers/block-confirmation.js";
+import { reconcileVisibleDepositUTxOs } from "../src/fibers/fetch-and-insert-deposit-utxos.js";
+import { mergeAction, type MergeActionResult } from "../src/fibers/merge.js";
+import { projectDepositsToMempoolLedger } from "../src/fibers/project-deposits-to-mempool-ledger.js";
 import {
   listSlotAwareDueWork,
   type SlotAwareDueWork,
-} from "@/fibers/slot-aware-due-work.js";
-import { decideSpeculativeInstructionForLiveTip } from "@/fibers/speculative-commit-builder.js";
+} from "../src/fibers/slot-aware-due-work.js";
+import { decideSpeculativeInstructionForLiveTip } from "../src/fibers/speculative-commit-builder.js";
 import type {
   SpeculativeCandidateSummary,
   UserEventBarrierWatermarks,
-} from "@/fibers/speculative-commit-state.js";
-import { runUserEventBarrierRefresherPass } from "@/fibers/user-event-barrier-refresher.js";
-import { canonicalSlotConfigForLucid } from "@/lucid-time.js";
-import type { NodeConfigDep } from "@/services/config.js";
+} from "../src/fibers/speculative-commit-state.js";
+import { runUserEventBarrierRefresherPass } from "../src/fibers/user-event-barrier-refresher.js";
+import { canonicalSlotConfigForLucid } from "../src/lucid-time.js";
+import type { NodeConfigDep } from "../src/services/config.js";
 import {
   ContractDeploymentIdentity,
   Database,
@@ -116,68 +119,67 @@ import {
   Lucid as LucidService,
   MidgardContracts,
   NodeConfig,
-} from "@/services/index.js";
-import { fetchStateQueueSnapshotProgram } from "@/services/state-queue-topology.js";
-import { WriteBehindLive } from "@/services/write-behind.js";
-import { attestStateQueueOnceProgram } from "@/transactions/da-attestation.js";
+} from "../src/services/index.js";
+import { fetchStateQueueSnapshotProgram } from "../src/services/state-queue-topology.js";
+import { WriteBehindLive } from "../src/services/write-behind.js";
+import { attestStateQueueOnceProgram } from "../src/transactions/da-attestation.js";
 import {
   type AtomicProtocolInitReferenceScripts,
   buildAtomicProtocolInitTxProgram,
   createFraudProofCatalogueMpf,
   fraudProofsToIndexedValidators,
-} from "@/transactions/initialization.js";
-import { ensurePhasMembershipRewardAccountRegisteredProgram } from "@/transactions/phas-membership-registration.js";
+} from "../src/transactions/initialization.js";
+import { ensurePhasMembershipRewardAccountRegisteredProgram } from "../src/transactions/phas-membership-registration.js";
 import {
   activateOperatorProgram,
   deployReferenceScriptCommandProgram,
   registerOperatorProgram,
-} from "@/transactions/register-active-operator.js";
-import { assetsToValue } from "@/transactions/reserve-payout.js";
-import { materializeConfirmedLedgerSnapshot } from "@/transactions/state-queue/confirmed-ledger-snapshot.js";
-import { mergeMaturityWindow } from "@/transactions/state-queue/merge-readiness.js";
+} from "../src/transactions/register-active-operator.js";
+import { assetsToValue } from "../src/transactions/reserve-payout.js";
+import { materializeConfirmedLedgerSnapshot } from "../src/transactions/state-queue/confirmed-ledger-snapshot.js";
+import { mergeMaturityWindow } from "../src/transactions/state-queue/merge-readiness.js";
 import {
   buildUnsignedDepositTxFromFundingContextProgram,
   buildUnsignedDepositTxProgram,
   type SubmitDepositReferenceScripts,
-} from "@/transactions/submit-deposit.js";
+} from "../src/transactions/submit-deposit.js";
 import {
   buildUnsignedWithdrawalTxWithMetadataProgram,
   type SubmitWithdrawalReferenceScripts,
-} from "@/transactions/submit-withdrawal.js";
-import { outRefLabel } from "@/tx-context.js";
-import { signWithdrawalBody } from "@/withdrawal-signature.js";
+} from "../src/transactions/submit-withdrawal.js";
+import { outRefLabel } from "../src/tx-context.js";
+import { signWithdrawalBody } from "../src/withdrawal-signature.js";
 import {
   commitExplicitBlockHeaderProgram,
   runCommitBlockHeaderWorkerProgram,
-} from "@/workers/commit-block-header.js";
-import { buildAuthenticatedRootFromEncodedEntries } from "@/workers/commit-block-header/transition-roots.js";
-import { runConfirmBlockCommitmentsWorkerProgram } from "@/workers/confirm-block-commitments.js";
+} from "../src/workers/commit-block-header.js";
+import { buildAuthenticatedRootFromEncodedEntries } from "../src/workers/commit-block-header/transition-roots.js";
+import { runConfirmBlockCommitmentsWorkerProgram } from "../src/workers/confirm-block-commitments.js";
 import {
   serializeStateQueueUTxO,
   type SpeculativeCommitWorkerInstruction,
   type WorkerInput as CommitWorkerInput,
   type WorkerOutput as CommitWorkerOutput,
-} from "@/workers/utils/commit-block-header.js";
+} from "../src/workers/utils/commit-block-header.js";
 import {
   COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
   commitTimingBudget,
-} from "@/workers/utils/commit-end-time.js";
-import { WorkerError } from "@/workers/utils/common.js";
+} from "../src/workers/utils/commit-end-time.js";
+import { WorkerError } from "../src/workers/utils/common.js";
 import {
   type WorkerInput as ConfirmationWorkerInput,
   type WorkerOutput as ConfirmationWorkerOutput,
-} from "@/workers/utils/confirm-block-commitments.js";
+} from "../src/workers/utils/confirm-block-commitments.js";
 import {
   commitTxDeltaCacheHitCounter,
   commitTxDeltaFallbackDecodedCounter,
   deleteMpfStore,
   MidgardMpf,
-} from "@/workers/utils/mpf.js";
+} from "../src/workers/utils/mpf.js";
 import {
   fetchRealStateQueueWitnessContext,
   resolveCurrentOperatorSchedulerWindow,
-} from "@/workers/utils/scheduler-refresh.js";
-
+} from "../src/workers/utils/scheduler-refresh.js";
 import { TEST_AVAILABILITY_CHALLENGE_V1 } from "./helpers/availability-challenge-v1.js";
 import { deriveEmulatorSubmitSlotSnapshot } from "./helpers/emulator-submit-slot-snapshot.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";

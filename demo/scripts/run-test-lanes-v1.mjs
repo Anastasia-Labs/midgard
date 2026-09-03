@@ -61,7 +61,10 @@ const LANES = [
       "@al-ft/lucid-midgard",
     ],
   },
-  { name: "B:node", filters: ["midgard-node"] },
+  // The tooling suite reuses node's Postgres shard scheme under its own
+  // database prefix; keeping it in node's lane also keeps the two suites off
+  // the same server at the same time.
+  { name: "B:node", filters: ["midgard-node", "midgard-node-tools"] },
 ];
 
 const SERIAL_PRELUDE_FILTERS = ["midgard-watcher"];

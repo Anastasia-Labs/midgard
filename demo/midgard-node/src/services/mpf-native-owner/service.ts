@@ -7,8 +7,7 @@ import { MessageChannel, type MessagePort } from "node:worker_threads";
 
 import { Level } from "level";
 
-import { positiveSafeInteger } from "@/artifact-schema.js";
-
+import { positiveSafeInteger } from "../../artifact-schema.js";
 import {
   createEventFlatDigest,
   prepareEventFlatDigest,

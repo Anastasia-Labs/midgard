@@ -6,8 +6,8 @@ import { type Address, Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Layer } from "effect";
 import { expect } from "vitest";
 
-import * as TxAdmissionsDB from "@/database/txAdmissions.js";
-import * as LedgerUtils from "@/database/utils/ledger.js";
+import * as TxAdmissionsDB from "../src/database/txAdmissions.js";
+import * as LedgerUtils from "../src/database/utils/ledger.js";
 import {
   ADMISSION_WRITE_BATCH_MAX_ROWS,
   ADMISSION_WRITE_BATCH_TARGET_ROWS,
@@ -16,11 +16,10 @@ import {
   AdmissionWriter,
   AdmissionWriterLive,
   makeAdmissionWriterWithOptions,
-} from "@/services/admission-writer.js";
-import { NodeConfig } from "@/services/config.js";
-import { AdmissionSql, Database } from "@/services/database.js";
-import { WriteBehindLive } from "@/services/write-behind.js";
-
+} from "../src/services/admission-writer.js";
+import { NodeConfig } from "../src/services/config.js";
+import { AdmissionSql, Database } from "../src/services/database.js";
+import { WriteBehindLive } from "../src/services/write-behind.js";
 import { applyMidgardNodeTestEnv } from "./test-env.js";
 
 // Importing this module is what pins a test file to its worker's database

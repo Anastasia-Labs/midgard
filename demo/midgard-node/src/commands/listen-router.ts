@@ -35,29 +35,6 @@ import { toHex } from "@lucid-evolution/lucid";
 import { Cause, Duration, Effect, Exit, Metric, Option, Ref } from "effect";
 
 import {
-  parseAddressArgument,
-  parseTxOutRefCborHex,
-} from "@/commands/command-utils.js";
-import * as DepositStatusCommand from "@/commands/deposit-status.js";
-import {
-  type L1ProviderPreflightReport,
-  runL1ProviderPreflight,
-} from "@/commands/l1-provider-preflight.js";
-import {
-  failWith500,
-  handleStateQueueGetFailure,
-} from "@/commands/listen-response.js";
-import {
-  authorizeAdminRoute,
-  isAdminRoutePath,
-  normalizeSubmitTxCanonicalCborToNative,
-  validateSubmitTxCanonicalCbor,
-} from "@/commands/listen-utils.js";
-import * as ProtocolInfoCommand from "@/commands/protocol-info.js";
-import { evaluateReadiness } from "@/commands/readiness.js";
-import { resolveTxStatus, resolveTxStatusBatch } from "@/commands/tx-status.js";
-import * as UtxosCommand from "@/commands/utxos.js";
-import {
   AddressHistoryDB,
   BlocksDB,
   DaPayloadPublicationsDB,
@@ -71,8 +48,8 @@ import {
   StateQueueMutationLeasesDB,
   TxAdmissionsDB,
   TxRejectionsDB,
-} from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
+} from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
 import {
   admissionFailureDefinitelyDidNotInsert,
   blockCommitmentAction,
@@ -81,13 +58,13 @@ import {
   releaseAdmissionBacklogSlot,
   requestTxQueueProcessorWakeup,
   reserveAdmissionBacklogSlot,
-} from "@/fibers/index.js";
-import * as Genesis from "@/genesis.js";
+} from "../fibers/index.js";
+import * as Genesis from "../genesis.js";
 import {
   localOgmiosSubmitSlotEvidence,
   readLocalOgmiosSubmitSlot,
   type SubmitSlotSnapshot,
-} from "@/local-ogmios-slot.js";
+} from "../local-ogmios-slot.js";
 import {
   AdmissionWriter,
   type AdmissionWriterShutdownError,
@@ -98,7 +75,7 @@ import {
   MempoolLedgerCache,
   ValidationPool,
   WriteBehind,
-} from "@/services/index.js";
+} from "../services/index.js";
 import {
   ContractDeploymentIdentity,
   Globals,
@@ -107,25 +84,42 @@ import {
   nextL1ProviderHealthEvidence,
   NodeConfig,
   withL1ControlPlaneIfAvailable,
-} from "@/services/index.js";
+} from "../services/index.js";
 import {
   fetchStateQueueTopologyProgram,
   formatStateQueueTopology,
-} from "@/services/state-queue-topology.js";
-import * as Initialization from "@/transactions/initialization.js";
+} from "../services/state-queue-topology.js";
+import * as Initialization from "../transactions/initialization.js";
 import {
   fetchReferenceScriptUtxosProgram,
   referenceScriptByName,
   referenceScriptTargetsByCommand,
-} from "@/transactions/reference-scripts.js";
+} from "../transactions/reference-scripts.js";
 import {
   classifyOldestQueuedBlockReadiness,
   DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING,
   mergeMaturityWindow,
   planMergePreflight,
-} from "@/transactions/state-queue/merge-readiness.js";
-import * as SubmitDeposit from "@/transactions/submit-deposit.js";
-import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
+} from "../transactions/state-queue/merge-readiness.js";
+import * as SubmitDeposit from "../transactions/submit-deposit.js";
+import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.js";
+import { parseAddressArgument, parseTxOutRefCborHex } from "./command-utils.js";
+import * as DepositStatusCommand from "./deposit-status.js";
+import {
+  type L1ProviderPreflightReport,
+  runL1ProviderPreflight,
+} from "./l1-provider-preflight.js";
+import { failWith500, handleStateQueueGetFailure } from "./listen-response.js";
+import {
+  authorizeAdminRoute,
+  isAdminRoutePath,
+  normalizeSubmitTxCanonicalCborToNative,
+  validateSubmitTxCanonicalCbor,
+} from "./listen-utils.js";
+import * as ProtocolInfoCommand from "./protocol-info.js";
+import { evaluateReadiness } from "./readiness.js";
+import { resolveTxStatus, resolveTxStatusBatch } from "./tx-status.js";
+import * as UtxosCommand from "./utxos.js";
 
 const TX_ENDPOINT: string = "tx";
 const ADDRESS_HISTORY_ENDPOINT: string = "txs";

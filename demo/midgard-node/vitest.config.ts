@@ -1,6 +1,5 @@
 import fs from "node:fs";
 
-import path from "path";
 import { configDefaults, defineConfig } from "vitest/config";
 
 import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
@@ -100,11 +99,6 @@ export default defineConfig({
     testTimeout: 420_000,
     ...(bail === undefined ? {} : { bail }),
     environment: "node",
-  },
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
   },
   ssr: {
     resolve: {

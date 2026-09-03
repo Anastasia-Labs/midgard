@@ -22,6 +22,7 @@ import { JsonFileWatcherStore } from "da-committee-node/store";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
+import { makePayloadFixture } from "../../da-committee-node/tests/helpers.js";
 import {
   closeDaLibp2pPublicationTransport,
   createDaLibp2pProducerTransport,
@@ -30,11 +31,12 @@ import {
   getDaPublicationTransportForTest,
   parseDaProducerPublicationManifest,
   probeDaEnvelopeCapabilities,
-} from "@/da/libp2p-producer.js";
-import { DaPayloadPublicationsDB, DaPayloadsDB } from "@/database/index.js";
-import { reconcileDaPublicationsOnce } from "@/fibers/da-publication-reconciler.js";
-
-import { makePayloadFixture } from "../../da-committee-node/tests/helpers.js";
+} from "../src/da/libp2p-producer.js";
+import {
+  DaPayloadPublicationsDB,
+  DaPayloadsDB,
+} from "../src/database/index.js";
+import { reconcileDaPublicationsOnce } from "../src/fibers/da-publication-reconciler.js";
 import { provideDatabaseLayers } from "./utils.js";
 
 const enabled = process.env.MIDGARD_RUN_DA_PHASE5_JOINED_E2E === "1";

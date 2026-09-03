@@ -16,7 +16,7 @@ import {
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import type { Network } from "@lucid-evolution/lucid";
 
-import { positiveSafeInteger } from "@/artifact-schema.js";
+import { positiveSafeInteger } from "../artifact-schema.js";
 
 export const PROTOCOL_INFO_API_VERSION = MIDGARD_PROTOCOL_INFO_V1_API_VERSION;
 

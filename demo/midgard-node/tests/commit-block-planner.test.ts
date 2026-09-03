@@ -4,8 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
   Columns as TxColumns,
   EntryWithTimeStamp,
-} from "@/database/utils/tx.js";
-import { shouldShortCircuitIdleCommitAttempt } from "@/workers/commit-block-header.js";
+} from "../src/database/utils/tx.js";
+import { shouldShortCircuitIdleCommitAttempt } from "../src/workers/commit-block-header.js";
 import {
   buildSuccessfulCommitBatches,
   calibratedCommitBuildMsPerTx,
@@ -18,8 +18,8 @@ import {
   selectCommitRoots,
   selectCommitTxCandidates,
   updateCommitBuildEwma,
-} from "@/workers/utils/commit-block-planner.js";
-import { establishEffectiveEndTimeFromDecodedMempool } from "@/workers/utils/mpf.js";
+} from "../src/workers/utils/commit-block-planner.js";
+import { establishEffectiveEndTimeFromDecodedMempool } from "../src/workers/utils/mpf.js";
 
 const mkTxEntry = (
   seed: number,

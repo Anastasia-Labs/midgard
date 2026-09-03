@@ -2,21 +2,20 @@ import { runPhaseBValidationWithPatch } from "@al-ft/midgard-validation";
 import { Deferred, Effect, Fiber, Metric, Ref } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { MempoolLedgerDB } from "@/database/index.js";
-import { publishCommitMempoolLedgerMutation } from "@/fibers/block-commitment.js";
-import { Globals, publishMempoolLedgerDelta } from "@/services/globals.js";
-import {
-  makeMempoolLedgerCacheService,
-  type MempoolLedgerState,
-  validationPhaseBLockWaitTimer,
-} from "@/services/mempool-ledger-cache.js";
-
 import {
   FUNDED_OUTPUT_LOVELACE_V1,
   makeOutput,
   makePhaseBCandidate,
   outRefFromByte,
 } from "../../midgard-validation/tests/validation-fixtures.js";
+import { MempoolLedgerDB } from "../src/database/index.js";
+import { publishCommitMempoolLedgerMutation } from "../src/fibers/block-commitment.js";
+import { Globals, publishMempoolLedgerDelta } from "../src/services/globals.js";
+import {
+  makeMempoolLedgerCacheService,
+  type MempoolLedgerState,
+  validationPhaseBLockWaitTimer,
+} from "../src/services/mempool-ledger-cache.js";
 
 const row = (
   outref: Buffer,

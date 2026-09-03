@@ -1,12 +1,12 @@
 import { Option } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { PendingBlockFinalizationsDB } from "@/database/index.js";
+import { PendingBlockFinalizationsDB } from "../src/database/index.js";
 import {
   type CanonicalCommittedHeader,
   findEarliestCanonicalPayloadJournal,
   localJournalHasPayloadMembers,
-} from "@/services/canonical-journal-recovery.js";
+} from "../src/services/canonical-journal-recovery.js";
 
 const headerHash = (byte: number): Buffer => Buffer.alloc(28, byte);
 

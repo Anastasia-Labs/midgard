@@ -7,21 +7,20 @@ import { SqlClient } from "@effect/sql";
 import { Cause, Deferred, Effect, Exit, Fiber, Ref, Scope } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { MigrationRunner, TxAdmissionsDB } from "@/database/index.js";
+import { MigrationRunner, TxAdmissionsDB } from "../src/database/index.js";
 import {
   admissionFailureDefinitelyDidNotInsert,
   commitAdmissionBacklogSlot,
   releaseAdmissionBacklogSlot,
   reserveAdmissionBacklogSlot,
-} from "@/fibers/admission-backlog-gauge.js";
+} from "../src/fibers/admission-backlog-gauge.js";
 import {
   AdmissionWriter,
   admissionWriterShardForTxId,
   AdmissionWriterShutdownError,
   makeAdmissionWriterWithOptions,
-} from "@/services/admission-writer.js";
-import { Globals } from "@/services/globals.js";
-
+} from "../src/services/admission-writer.js";
+import { Globals } from "../src/services/globals.js";
 import { provideDatabaseLayers } from "./utils.js";
 
 const request = (

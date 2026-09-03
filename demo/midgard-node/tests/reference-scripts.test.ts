@@ -10,7 +10,7 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
+import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
 import {
   buildReferenceScriptDeploymentPlan,
   buildReferenceScriptSweepPlan,
@@ -23,7 +23,7 @@ import {
   referenceScriptWalletStatusProgram,
   resolveSpendableWalletUtxos,
   verifyNodeRuntimeReferenceScriptsProgram,
-} from "@/transactions/reference-scripts.js";
+} from "../src/transactions/reference-scripts.js";
 
 const REFERENCE_SCRIPT_ADDRESS = "addr_test1reference";
 const RETURN_ADDRESS = "addr_test1return";

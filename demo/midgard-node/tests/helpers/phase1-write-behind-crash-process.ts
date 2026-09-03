@@ -1,14 +1,14 @@
 import { Effect } from "effect";
 
-import * as TxAdmissionsDB from "@/database/txAdmissions.js";
-import type * as Ledger from "@/database/utils/ledger.js";
-import { NodeConfig } from "@/services/config.js";
-import { Database } from "@/services/database.js";
+import * as TxAdmissionsDB from "../../src/database/txAdmissions.js";
+import type * as Ledger from "../../src/database/utils/ledger.js";
+import { NodeConfig } from "../../src/services/config.js";
+import { Database } from "../../src/services/database.js";
 import {
   WriteBehind,
   type WriteBehindService,
-} from "@/services/write-behind.js";
-import type { ProcessedTx } from "@/utils.js";
+} from "../../src/services/write-behind.js";
+import type { ProcessedTx } from "../../src/utils.js";
 
 type CrashInput = {
   readonly txIdHex: string;

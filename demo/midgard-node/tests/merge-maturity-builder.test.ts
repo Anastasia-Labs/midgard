@@ -4,7 +4,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Ref } from "effect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { Globals, NodeConfig } from "@/services/index.js";
+import { Globals, NodeConfig } from "../src/services/index.js";
 
 const fetchConfirmedStateAndItsLinkProgramMock = vi.hoisted(() => vi.fn());
 const getStateQueueNodeFromStateQueueDatumMock = vi.hoisted(() => vi.fn());
@@ -28,26 +28,26 @@ vi.mock("@al-ft/midgard-sdk", async (importOriginal) => {
   };
 });
 
-vi.mock("@/transactions/utils.js", async (importOriginal) => {
+vi.mock("../src/transactions/utils.js", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("@/transactions/utils.js")>();
+    await importOriginal<typeof import("../src/transactions/utils.js")>();
   return {
     ...actual,
     fetchFirstBlockTxs: fetchFirstBlockTxsMock,
   };
 });
 
-vi.mock("@/utils.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/utils.js")>();
+vi.mock("../src/utils.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/utils.js")>();
   return {
     ...actual,
     breakDownTx: breakDownTxMock,
   };
 });
 
-vi.mock("@/local-ledger-slot.js", async (importOriginal) => {
+vi.mock("../src/local-ledger-slot.js", async (importOriginal) => {
   const actual =
-    await importOriginal<typeof import("@/local-ledger-slot.js")>();
+    await importOriginal<typeof import("../src/local-ledger-slot.js")>();
   return {
     ...actual,
     makeLocalOgmiosSubmitSlotSnapshotProvider:
@@ -59,8 +59,8 @@ import {
   buildAndSubmitMergeTx,
   mergeNoInlineSubmitDueWorkFromDefer,
   type MergeTxResult,
-} from "@/transactions/state-queue/merge-to-confirmed-state.js";
-import { NoInlineSubmitDefer } from "@/transactions/utils.js";
+} from "../src/transactions/state-queue/merge-to-confirmed-state.js";
+import { NoInlineSubmitDefer } from "../src/transactions/utils.js";
 
 const fetchConfig: SDK.StateQueueFetchConfig = {
   stateQueueAddress: "addr_test1statequeue",

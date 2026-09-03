@@ -11,21 +11,21 @@ import {
 } from "@lucid-evolution/lucid";
 import { Data, Duration, Effect, Schedule } from "effect";
 
-import * as BlocksDB from "@/database/blocks.js";
-import { ImmutableDB } from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
+import * as BlocksDB from "../database/blocks.js";
+import { ImmutableDB } from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
 import {
   SUBMIT_SLOT_LENGTH_MS,
   SUBMIT_SLOT_VALIDITY_BUFFER,
   type SubmitSlotSnapshot,
-} from "@/local-ledger-slot.js";
-import { Database } from "@/services/index.js";
+} from "../local-ledger-slot.js";
+import { Database } from "../services/index.js";
 import {
   type InlineWaitPolicy,
   planSubmitTiming,
   planSubmitTimingAfterInlineWait,
   type SubmitTimingPlan,
-} from "@/transactions/submit-timing.js";
+} from "./submit-timing.js";
 
 /**
  * Shared transaction signing, submission, confirmation, and recovery helpers.

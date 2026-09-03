@@ -7,11 +7,11 @@ import {
 import { type Assets, type UTxO, valueToAssets } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
 
-import { parseTxOutRefLabel } from "@/commands/command-utils.js";
-import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import { Database } from "@/services/database.js";
-import { compareOutRefs } from "@/tx-context.js";
+import * as MempoolLedgerDB from "../database/mempoolLedger.js";
+import { DatabaseError } from "../database/utils/common.js";
+import { Database } from "../services/database.js";
+import { compareOutRefs } from "../tx-context.js";
+import { parseTxOutRefLabel } from "./command-utils.js";
 
 /**
  * Tagged error for the `utxos` command path.

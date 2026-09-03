@@ -36,15 +36,15 @@ import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { SqlClient } from "@effect/sql";
 import { Duration, Effect, Metric } from "effect";
 
-import { readDaHardeningConfig } from "@/da/hardening-config.js";
-import { loadDaLibp2pIdentity } from "@/da/libp2p-identity.js";
 import {
   DaPayloadAnnouncementsDB,
   DaPayloadPublicationsDB,
   DaPayloadsDB,
-} from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import type { Database } from "@/services/database.js";
+} from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
+import type { Database } from "../services/database.js";
+import { readDaHardeningConfig } from "./hardening-config.js";
+import { loadDaLibp2pIdentity } from "./libp2p-identity.js";
 
 const MANIFEST_PATH_ENV = "MIDGARD_DEPLOYMENT_MANIFEST_PATH";
 const LIBP2P_PRIVATE_KEY_SOURCE_ENV = "DA_LIBP2P_PRIVATE_KEY_SOURCE";

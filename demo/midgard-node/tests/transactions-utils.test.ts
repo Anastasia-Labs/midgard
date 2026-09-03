@@ -13,7 +13,7 @@ import {
   resolveEarlyValidityRetryDelayMs,
   signSubmitTransaction,
   submitSignedTxWithRecovery,
-} from "@/transactions/utils.js";
+} from "../src/transactions/utils.js";
 
 describe("parseOutsideValidityIntervalDetails", () => {
   it("parses typed Kupmios/Ogmios early-validity submit errors", () => {

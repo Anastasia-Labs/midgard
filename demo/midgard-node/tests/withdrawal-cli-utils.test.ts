@@ -11,21 +11,21 @@ import { describe, expect, it } from "vitest";
 import {
   parseEventId,
   resolveWalletSeedPhrase,
-} from "@/commands/command-utils.js";
+} from "../src/commands/command-utils.js";
 import {
   __submitWithdrawalTest,
   withdrawalEventIdFromBuildMetadata,
-} from "@/commands/submit-withdrawal.js";
+} from "../src/commands/submit-withdrawal.js";
 import {
   parseCardanoDatum,
   parseWithdrawalTxOutRefLabel,
-} from "@/commands/withdrawal-utils.js";
-import { assetsToValue } from "@/transactions/reserve-payout.js";
+} from "../src/commands/withdrawal-utils.js";
+import { assetsToValue } from "../src/transactions/reserve-payout.js";
 import {
   publicKeyHashFromWithdrawalSignature,
   signWithdrawalBody,
   verifyWithdrawalSignature,
-} from "@/withdrawal-signature.js";
+} from "../src/withdrawal-signature.js";
 
 const seedPhrase =
   "test test test test test test test test test test test junk";

@@ -11,14 +11,14 @@ import {
   Ref,
 } from "effect";
 
-import * as AddressHistoryDB from "@/database/addressHistory.js";
-import * as MempoolTxDeltasDB from "@/database/mempoolTxDeltas.js";
+import * as AddressHistoryDB from "../database/addressHistory.js";
+import * as MempoolTxDeltasDB from "../database/mempoolTxDeltas.js";
 import {
   DatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { NodeConfig } from "@/services/config.js";
-import { BatchSql } from "@/services/database.js";
+} from "../database/utils/common.js";
+import { NodeConfig } from "./config.js";
+import { BatchSql } from "./database.js";
 
 export type WriteBehindItem =
   | {

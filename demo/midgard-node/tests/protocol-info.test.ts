@@ -2,7 +2,7 @@ import { MIDGARD_CONSENSUS_PROFILE_V1 } from "@al-ft/midgard-core/consensus-prof
 import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { describe, expect, it } from "vitest";
 
-import { encodeProtocolInfo } from "@/commands/protocol-info.js";
+import { encodeProtocolInfo } from "../src/commands/protocol-info.js";
 
 const nodeConfig = {
   NETWORK: "Preview",

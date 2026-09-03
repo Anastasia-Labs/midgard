@@ -24,7 +24,7 @@ import {
   publishedProgramMaterialEntries,
   publishedProgramMaterialSnapshotError,
   reconstructTxOrderMaterialV1,
-} from "@/fibers/fetch-and-insert-tx-order-utxos.js";
+} from "../src/fibers/fetch-and-insert-tx-order-utxos.js";
 
 const transactionCbor = ({
   addrTxWitsPreimageCbor = EMPTY_CBOR_LIST,

@@ -1,14 +1,14 @@
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Ref } from "effect";
 
-import { DatabaseError } from "@/database/utils/common.js";
-import { reconcileVisibleWithdrawalUTxOs } from "@/fibers/fetch-and-insert-withdrawal-utxos.js";
+import { DatabaseError } from "../database/utils/common.js";
+import { reconcileVisibleWithdrawalUTxOs } from "../fibers/fetch-and-insert-withdrawal-utxos.js";
 import {
   Database,
   Globals,
   Lucid,
   MidgardContracts,
-} from "@/services/index.js";
+} from "../services/index.js";
 
 export type FetchWithdrawalsOnceResult = {
   readonly reconciledCount: number;

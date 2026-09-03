@@ -1,13 +1,13 @@
 import { SqlClient, SqlError } from "@effect/sql";
 import { Effect } from "effect";
 
+import { Database } from "../services/database.js";
 import {
   clearTable,
   DatabaseError,
   logDatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { Database } from "@/services/database.js";
+} from "./utils/common.js";
 
 export const tableName = "blocks";
 

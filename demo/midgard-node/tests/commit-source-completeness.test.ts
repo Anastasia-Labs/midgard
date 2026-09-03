@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   commitUserEventSourceIdSetsAreExact,
   refreshCommitUserEventSourcesThroughBlockEnd,
-} from "@/workers/commit-block-header/submission.js";
+} from "../src/workers/commit-block-header/submission.js";
 
 const exactSources = {
   pendingDepositIds: ["deposit-a"],

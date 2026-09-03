@@ -17,24 +17,24 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { SlotAwareDueWork } from "@/fibers/slot-aware-due-work.js";
-import type { SubmitSlotSnapshot } from "@/local-ledger-slot.js";
-import { slotToUnixTimeForLucid } from "@/lucid-time.js";
+import type { SlotAwareDueWork } from "../../fibers/slot-aware-due-work.js";
+import type { SubmitSlotSnapshot } from "../../local-ledger-slot.js";
+import { slotToUnixTimeForLucid } from "../../lucid-time.js";
 import {
   applySubmittedTxToOperatorWalletView,
   availableOperatorWalletUtxos,
   fetchOperatorWalletView,
   type OperatorWalletView,
-} from "@/operator-wallet-view.js";
+} from "../../operator-wallet-view.js";
 import {
   fetchReferenceScriptUtxosProgram,
   referenceScriptByName,
-} from "@/transactions/reference-scripts.js";
-import { planSubmitTiming } from "@/transactions/submit-timing.js";
+} from "../../transactions/reference-scripts.js";
+import { planSubmitTiming } from "../../transactions/submit-timing.js";
 import {
   slotAwareDueWorkFromSubmitTiming,
   type SubmitTimingNotDuePlanWithDueWorkEvidence,
-} from "@/transactions/submit-timing-due-work.js";
+} from "../../transactions/submit-timing-due-work.js";
 import {
   awaitExactTransactionConfirmation,
   handleSignSubmitNoConfirmation,
@@ -42,8 +42,8 @@ import {
   type NoInlineSubmitRecoveryOptions,
   type TxSignError,
   type TxSubmitError,
-} from "@/transactions/utils.js";
-import { compareOutRefs, outRefLabel } from "@/tx-context.js";
+} from "../../transactions/utils.js";
+import { compareOutRefs, outRefLabel } from "../../tx-context.js";
 import {
   type CommitSchedulerDiscoveryStage,
   type CommitSchedulerState,
@@ -51,8 +51,8 @@ import {
   type CurrentOperatorSchedulerWindow,
   type EarliestCommitSchedulerPlan,
   planEarliestCommitSchedulerDueWork,
-} from "@/workers/utils/commit-block-planner.js";
-import { alignUnixTimeToSlotBoundary } from "@/workers/utils/commit-end-time.js";
+} from "./commit-block-planner.js";
+import { alignUnixTimeToSlotBoundary } from "./commit-end-time.js";
 
 export type NodeUtxoWithDatum = {
   readonly utxo: UTxO;

@@ -6,13 +6,10 @@ import {
   SUBMIT_SLOT_LENGTH_MS,
   SUBMIT_SLOT_VALIDITY_BUFFER,
   type SubmitSlotSnapshot,
-} from "@/local-ledger-slot.js";
-import {
-  type InlineWaitPolicy,
-  planSubmitTiming,
-} from "@/transactions/submit-timing.js";
-import type { SubmitTimingNotDuePlanWithDueWorkEvidence } from "@/transactions/submit-timing-due-work.js";
-import { alignedUnixTimeStrictlyAfter } from "@/workers/utils/commit-end-time.js";
+} from "../../local-ledger-slot.js";
+import { alignedUnixTimeStrictlyAfter } from "../../workers/utils/commit-end-time.js";
+import { type InlineWaitPolicy, planSubmitTiming } from "../submit-timing.js";
+import type { SubmitTimingNotDuePlanWithDueWorkEvidence } from "../submit-timing-due-work.js";
 
 export const DEFAULT_MIN_QUEUE_LENGTH_FOR_MERGING = 8;
 

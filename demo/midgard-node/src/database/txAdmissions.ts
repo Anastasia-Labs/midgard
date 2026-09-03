@@ -9,23 +9,23 @@ import { SqlClient } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";
 import { Data, Duration, Effect, Metric } from "effect";
 
-import * as CekProgramMaterialDB from "@/database/cekProgramMaterial.js";
-import * as DepositsDB from "@/database/deposits.js";
-import * as MempoolDB from "@/database/mempool.js";
-import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
-import * as TxRejectionsDB from "@/database/txRejections.js";
+import { emitPhase1AcceptCommitCheckpoint } from "../e2e/phase1-accept-crash-checkpoint.js";
+import { NodeConfig } from "../services/config.js";
+import { Database } from "../services/database.js";
+import { WriteBehind } from "../services/write-behind.js";
+import { sha256 } from "../sha256.js";
+import { ProcessedTx } from "../utils.js";
+import * as CekProgramMaterialDB from "./cekProgramMaterial.js";
+import * as DepositsDB from "./deposits.js";
+import * as MempoolDB from "./mempool.js";
+import * as MempoolLedgerDB from "./mempoolLedger.js";
+import * as TxRejectionsDB from "./txRejections.js";
 import {
   DatabaseError,
   logDatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import type { Entry as LedgerEntry } from "@/database/utils/ledger.js";
-import { emitPhase1AcceptCommitCheckpoint } from "@/e2e/phase1-accept-crash-checkpoint.js";
-import { NodeConfig } from "@/services/config.js";
-import { Database } from "@/services/database.js";
-import { WriteBehind } from "@/services/write-behind.js";
-import { sha256 } from "@/sha256.js";
-import { ProcessedTx } from "@/utils.js";
+} from "./utils/common.js";
+import type { Entry as LedgerEntry } from "./utils/ledger.js";
 
 export const tableName = "tx_admissions";
 export const payloadTableName = "tx_admission_payloads";

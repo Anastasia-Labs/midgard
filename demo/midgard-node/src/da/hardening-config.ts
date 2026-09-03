@@ -1,6 +1,6 @@
 import type { DaPayloadEmissionMode } from "@al-ft/midgard-core/da-payload-sizing";
 
-import { positiveSafeInteger } from "@/artifact-schema.js";
+import { positiveSafeInteger } from "../artifact-schema.js";
 
 export type DaPayloadEnvelopeMode = DaPayloadEmissionMode;
 

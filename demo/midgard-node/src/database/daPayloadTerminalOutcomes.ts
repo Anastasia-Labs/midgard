@@ -5,13 +5,13 @@ import {
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
+import { parseDeploymentManifestV1Value } from "../deployment-manifest-v1.js";
+import { Database } from "../services/database.js";
 import {
   clearTable,
   DatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { parseDeploymentManifestV1Value } from "@/deployment-manifest-v1.js";
-import { Database } from "@/services/database.js";
+} from "./utils/common.js";
 
 export const tableName = "da_payload_terminal_outcomes";
 

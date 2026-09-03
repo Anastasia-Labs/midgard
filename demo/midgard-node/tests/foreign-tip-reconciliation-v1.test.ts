@@ -3,8 +3,8 @@ import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-
 import * as SDK from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { ForeignTipReconciliationsDB } from "@/database/index.js";
-import { sha256 } from "@/sha256.js";
+import { ForeignTipReconciliationsDB } from "../src/database/index.js";
+import { sha256 } from "../src/sha256.js";
 
 const EMPTY_ROOT = SDK.EMPTY_MERKLE_TREE_ROOT;
 const NONEMPTY_ROOT = "11".repeat(32);

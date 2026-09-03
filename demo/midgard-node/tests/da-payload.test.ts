@@ -14,16 +14,18 @@ import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { DaPayloadsDB, PendingBlockFinalizationsDB } from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import { buildDaPayloadInsert } from "@/workers/commit-block-header/da-payload.js";
-import { backfillMissingDaPayloadsFromFinalizedJournals } from "@/workers/commit-block-header/da-payload-backfill.js";
-import { buildAuthenticatedRootFromEncodedEntries } from "@/workers/commit-block-header/transition-roots.js";
+import {
+  DaPayloadsDB,
+  PendingBlockFinalizationsDB,
+} from "../src/database/index.js";
+import { DatabaseError } from "../src/database/utils/common.js";
+import { buildDaPayloadInsert } from "../src/workers/commit-block-header/da-payload.js";
+import { backfillMissingDaPayloadsFromFinalizedJournals } from "../src/workers/commit-block-header/da-payload-backfill.js";
+import { buildAuthenticatedRootFromEncodedEntries } from "../src/workers/commit-block-header/transition-roots.js";
 import {
   keyValuePhasRoot,
   ledgerOutputToInsertBatchOpV1,
-} from "@/workers/utils/mpf.js";
-
+} from "../src/workers/utils/mpf.js";
 import { makeOutRefCbor } from "./midgard-output-helpers.js";
 import { deterministicFixtureBytes } from "./utils.js";
 

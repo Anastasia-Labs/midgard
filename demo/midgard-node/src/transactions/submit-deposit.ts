@@ -23,23 +23,23 @@ import { Data as EffectData, Effect } from "effect";
 import {
   parseAdditionalAssetSpecs,
   parseLovelaceAmount,
-} from "@/asset-specs.js";
-import { DepositsDB, DepositSubmissionAttemptsDB } from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import { reconcileVisibleDepositUTxOs } from "@/fibers/fetch-and-insert-deposit-utxos.js";
+} from "../asset-specs.js";
+import { DepositsDB, DepositSubmissionAttemptsDB } from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
+import { reconcileVisibleDepositUTxOs } from "../fibers/fetch-and-insert-deposit-utxos.js";
 import {
   Database,
   Lucid as LucidService,
   MidgardContracts,
   NodeConfig,
-} from "@/services/index.js";
+} from "../services/index.js";
 import {
   awaitSubmittedTransactionConfirmation,
   signSubmitTransaction,
   TxConfirmError,
   TxSignError,
   TxSubmitError,
-} from "@/transactions/utils.js";
+} from "./utils.js";
 
 export type SubmitDepositReferenceScripts = SDK.SubmitDepositReferenceScripts;
 export type SubmitDepositConfig = SDK.SubmitDepositConfig;

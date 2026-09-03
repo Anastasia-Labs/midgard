@@ -11,11 +11,11 @@ import {
   readAdmissionBacklogGauge,
   releaseAdmissionBacklogSlot,
   reserveAdmissionBacklogSlot,
-} from "@/fibers/admission-backlog-gauge.js";
+} from "../src/fibers/admission-backlog-gauge.js";
 import {
   type AdmissionBacklogGaugeState,
   Globals,
-} from "@/services/globals.js";
+} from "../src/services/globals.js";
 
 describe("admission backlog gauge", () => {
   it("preserves the reported value during refresh and retains interleaved admits", () => {

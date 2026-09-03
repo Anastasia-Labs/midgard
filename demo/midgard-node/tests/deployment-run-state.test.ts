@@ -10,14 +10,14 @@ import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import * as ContractDeploymentInfo from "@/commands/contract-deployment-info.js";
+import * as ContractDeploymentInfo from "../src/commands/contract-deployment-info.js";
 import {
   type DeploymentRunCliOptions,
   loadPendingHubOracleNonceAttempt,
   recordHubOracleNonceSubmitted,
   recordHubOracleNonceTxHashConfirmed,
   resolveReferenceScriptAuthPolicyProgram,
-} from "@/commands/deployment-run-state.js";
+} from "../src/commands/deployment-run-state.js";
 import {
   bindDeploymentRunStateToMarkerV1,
   createDeploymentRunState,
@@ -34,8 +34,7 @@ import {
   transitionDeploymentStep,
   withDeploymentRunStateLock,
   writeDeploymentRunStateAtomic,
-} from "@/e2e/run-state.js";
-
+} from "../src/e2e/run-state.js";
 import { createTrackedTempDirFactory } from "./helpers/temp-files.js";
 
 const lucid = {

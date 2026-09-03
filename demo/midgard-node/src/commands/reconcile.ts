@@ -11,9 +11,7 @@ import {
   nonEmptyString,
   oneOf,
   openRecord,
-} from "@/artifact-schema.js";
-import { parseEventId } from "@/commands/command-utils.js";
-import { resolveTxStatus } from "@/commands/tx-status.js";
+} from "../artifact-schema.js";
 import {
   BlocksDB,
   DaPayloadsDB,
@@ -26,12 +24,12 @@ import {
   StateQueueMutationLeasesDB,
   TxAdmissionsDB,
   TxRejectionsDB,
-} from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import { reconcileVisibleDepositUTxOs } from "@/fibers/fetch-and-insert-deposit-utxos.js";
-import { mergeAction } from "@/fibers/merge.js";
-import { projectDepositsToMempoolLedger } from "@/fibers/project-deposits-to-mempool-ledger.js";
-import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
+} from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
+import { reconcileVisibleDepositUTxOs } from "../fibers/fetch-and-insert-deposit-utxos.js";
+import { mergeAction } from "../fibers/merge.js";
+import { projectDepositsToMempoolLedger } from "../fibers/project-deposits-to-mempool-ledger.js";
+import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
 import {
   ContractDeploymentIdentity,
   Database,
@@ -39,25 +37,27 @@ import {
   Lucid,
   MidgardContracts,
   NodeConfig,
-} from "@/services/index.js";
+} from "../services/index.js";
 import {
   ensurePhasMembershipRewardAccountRegisteredProgram,
   queryPhasMembershipRewardAccountRegisteredProgram,
-} from "@/transactions/phas-membership-registration.js";
+} from "../transactions/phas-membership-registration.js";
 import {
   ensureNodeRuntimeReferenceScriptsProgram,
   verifyNodeRuntimeReferenceScriptsProgram,
-} from "@/transactions/reference-scripts.js";
+} from "../transactions/reference-scripts.js";
 import {
   type DepositSubmissionReconciliationResult,
   reconcileDepositSubmissionAttemptProgram,
-} from "@/transactions/submit-deposit.js";
-import { runCommitBlockHeaderWorkerProgram } from "@/workers/commit-block-header.js";
-import { backfillMissingDaPayloadsFromFinalizedJournals } from "@/workers/commit-block-header/da-payload-backfill.js";
+} from "../transactions/submit-deposit.js";
+import { runCommitBlockHeaderWorkerProgram } from "../workers/commit-block-header.js";
+import { backfillMissingDaPayloadsFromFinalizedJournals } from "../workers/commit-block-header/da-payload-backfill.js";
 import {
   serializeStateQueueUTxO,
   type WorkerInput as CommitBlockWorkerInput,
-} from "@/workers/utils/commit-block-header.js";
+} from "../workers/utils/commit-block-header.js";
+import { parseEventId } from "./command-utils.js";
+import { resolveTxStatus } from "./tx-status.js";
 
 export const RECONCILIATION_SCHEMA_VERSION =
   "midgard-e2e-reconciliation-v1" as const;

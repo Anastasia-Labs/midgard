@@ -28,7 +28,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Duration, Effect, Metric, Option, Ref } from "effect";
 
-import { jsonReplacer } from "@/commands/command-utils.js";
+import { jsonReplacer } from "../../commands/command-utils.js";
 import {
   BlocksDB,
   DepositsDB,
@@ -36,38 +36,40 @@ import {
   MutationJobsDB,
   PendingBlockFinalizationsDB,
   WithdrawalsDB,
-} from "@/database/index.js";
+} from "../../database/index.js";
 import {
   DatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { Entry as LedgerEntry } from "@/database/utils/ledger.js";
-import { emitQueueStateMetrics } from "@/fibers/queue-metrics.js";
+} from "../../database/utils/common.js";
+import { Entry as LedgerEntry } from "../../database/utils/ledger.js";
+import { emitQueueStateMetrics } from "../../fibers/queue-metrics.js";
 import {
   registerSlotAwareDueWork,
   type SlotAwareDueWork,
-} from "@/fibers/slot-aware-due-work.js";
+} from "../../fibers/slot-aware-due-work.js";
 import {
   localOgmiosSubmitSlotEvidence,
   makeLocalOgmiosSubmitSlotSnapshotProvider,
   SUBMIT_SLOT_LENGTH_MS,
   type SubmitSlotSnapshot,
-} from "@/local-ledger-slot.js";
+} from "../../local-ledger-slot.js";
 import {
   availableOperatorWalletUtxos,
   fetchOperatorWalletView,
-} from "@/operator-wallet-view.js";
-import type { NodeConfigDep } from "@/services/config.js";
-import { Database, Globals, NodeConfig } from "@/services/index.js";
+} from "../../operator-wallet-view.js";
+import type { NodeConfigDep } from "../../services/config.js";
+import { Database, Globals, NodeConfig } from "../../services/index.js";
 import {
   assertNativeMpfHashHex,
   type NativeMpfOwnerService,
-} from "@/services/mpf-native-owner/index.js";
+} from "../../services/mpf-native-owner/index.js";
+import { breakDownTx } from "../../utils.js";
+import { synchronizeCommitMpfStoresFromConfirmedLedger } from "../../workers/utils/mpf.js";
 import {
   fetchReferenceScriptUtxosProgram,
   referenceScriptByName,
-} from "@/transactions/reference-scripts.js";
-import { slotAwareDueWorkFromSubmitTiming } from "@/transactions/submit-timing-due-work.js";
+} from "../reference-scripts.js";
+import { slotAwareDueWorkFromSubmitTiming } from "../submit-timing-due-work.js";
 import {
   BlockTxPayload,
   fetchFirstBlockTxs,
@@ -77,10 +79,7 @@ import {
   TxConfirmError,
   TxSignError,
   TxSubmitError,
-} from "@/transactions/utils.js";
-import { breakDownTx } from "@/utils.js";
-import { synchronizeCommitMpfStoresFromConfirmedLedger } from "@/workers/utils/mpf.js";
-
+} from "../utils.js";
 import {
   applyConfirmedLedgerDeltaChainTransaction,
   type ConfirmedLedgerSnapshot,

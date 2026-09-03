@@ -15,25 +15,28 @@ const paths = {
   recovery: join(skillDir, "references/recovery.md"),
   benchmark: join(skillDir, "references/benchmark.md"),
   cli: join(repoRoot, "demo/midgard-node/src/index.ts"),
+  // The e2e step runner, service supervisor, finalizer, and stress commands
+  // are registered in the tooling binary, not the operator binary.
+  toolsCli: join(repoRoot, "demo/midgard-node-tools/src/index.ts"),
   finalizer: join(
     repoRoot,
-    "demo/midgard-node/src/commands/e2e-finalize-summary.ts",
+    "demo/midgard-node-tools/src/commands/e2e-finalize-summary.ts",
   ),
   stateCorrection: join(
     repoRoot,
-    "demo/midgard-node/src/commands/e2e-state-correction-acceptance.ts",
+    "demo/midgard-node-tools/src/commands/e2e-state-correction-acceptance.ts",
   ),
   stateCorrectionTest: join(
     repoRoot,
-    "demo/midgard-node/tests/e2e-state-correction-acceptance.test.ts",
+    "demo/midgard-node-tools/tests/e2e-state-correction-acceptance.test.ts",
   ),
   stateCorrectionAuthority: join(
     repoRoot,
-    "demo/midgard-node/src/commands/e2e-state-correction-local-authority.ts",
+    "demo/midgard-node-tools/src/commands/e2e-state-correction-local-authority.ts",
   ),
   stateCorrectionAuthorityTest: join(
     repoRoot,
-    "demo/midgard-node/tests/e2e-state-correction-local-authority.test.ts",
+    "demo/midgard-node-tools/tests/e2e-state-correction-local-authority.test.ts",
   ),
 };
 
@@ -55,6 +58,7 @@ const documents = Object.fromEntries(
   ]),
 );
 const cliSource = read(paths.cli);
+const toolsCliSource = read(paths.toolsCli);
 const finalizerSource = read(paths.finalizer);
 const stateCorrectionSource = read(paths.stateCorrection);
 const stateCorrectionTestSource = read(paths.stateCorrectionTest);
@@ -103,22 +107,44 @@ for (const forbidden of [
     fail(`forbidden stale instruction: ${forbidden}`);
 }
 
-const declaredCommands = new Set(
-  [...cliSource.matchAll(/\.command\("([a-zA-Z0-9:_-]+)"\)/g)].map(
-    (match) => match[1],
-  ),
-);
-const referencedCommands = new Set(
+const commandsDeclaredIn = (source) =>
+  new Set(
+    [...source.matchAll(/\.command\("([a-zA-Z0-9:_-]+)"\)/g)].map(
+      (match) => match[1],
+    ),
+  );
+const declaredOperatorCommands = commandsDeclaredIn(cliSource);
+const declaredToolsCommands = commandsDeclaredIn(toolsCliSource);
+// Operator commands are invoked as `node dist/index.js <command>` from the
+// node directory; tooling commands as `node "$TOOLS_CLI" <command>`.
+const referencedOperatorCommands = new Set(
   [...allDocs.matchAll(/node dist\/index\.js\s+([a-zA-Z0-9:_-]+)/g)].map(
     (match) => match[1],
   ),
 );
-for (const command of referencedCommands) {
+const referencedToolsCommands = new Set(
+  [...allDocs.matchAll(/node "\$TOOLS_CLI"\s+([a-zA-Z0-9:_-]+)/g)].map(
+    (match) => match[1],
+  ),
+);
+for (const command of referencedOperatorCommands) {
   const dynamicReferenceScriptCommand =
     command.startsWith("deploy-reference-script-") &&
     cliSource.includes("deploy-reference-script-${commandName}");
-  if (!declaredCommands.has(command) && !dynamicReferenceScriptCommand) {
-    fail(`documented Midgard CLI command is not declared: ${command}`);
+  if (
+    !declaredOperatorCommands.has(command) &&
+    !dynamicReferenceScriptCommand
+  ) {
+    fail(
+      declaredToolsCommands.has(command)
+        ? `documented as an operator command but declared by midgard-node-tools; invoke it through "$TOOLS_CLI": ${command}`
+        : `documented Midgard CLI command is not declared: ${command}`,
+    );
+  }
+}
+for (const command of referencedToolsCommands) {
+  if (!declaredToolsCommands.has(command)) {
+    fail(`documented midgard-node-tools command is not declared: ${command}`);
   }
 }
 
@@ -156,7 +182,7 @@ const stateCorrectionRecoveryDrills = parseConstStringArray(
 
 for (const [text, needle, label] of [
   [
-    cliSource,
+    toolsCliSource,
     "--state-correction-evidence <path>",
     "state-correction CLI option",
   ],
@@ -170,7 +196,11 @@ for (const [text, needle, label] of [
     "--state-correction-l1-observation <path>",
     "--state-correction-recovery-observation <path>",
     "--state-correction-final-snapshot <path>",
-  ].map((flag) => [cliSource, flag, `independent source CLI option ${flag}`]),
+  ].map((flag) => [
+    toolsCliSource,
+    flag,
+    `independent source CLI option ${flag}`,
+  ]),
   [
     finalizerSource,
     "stateCorrectionAcceptanceEvidence",
@@ -353,7 +383,8 @@ process.stdout.write(
     {
       status: "ok",
       skillLines,
-      referencedCommandCount: referencedCommands.size,
+      referencedCommandCount:
+        referencedOperatorCommands.size + referencedToolsCommands.size,
       requiredStepIds,
       requiredTransactionLabels,
       stateCorrectionGateLabels,

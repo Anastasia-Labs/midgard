@@ -60,31 +60,31 @@ import {
   type DeploymentManifestV1Value,
   normalizeDeploymentManifestV1JsonValue,
   parseDeploymentManifestV1Value,
-} from "@/deployment-manifest-v1.js";
+} from "../deployment-manifest-v1.js";
 import {
   bindDeploymentRunStateToMarkerV1,
   defaultDeploymentRunStatePath,
   loadDeploymentRunState,
   mutateDeploymentRunState,
   sha256File,
-} from "@/e2e/run-state.js";
-import { writeJsonFileAtomic } from "@/files/atomic-write.js";
-import { normalizeOgmiosHttpUrl } from "@/local-ledger-slot.js";
-import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
+} from "../e2e/run-state.js";
+import { writeJsonFileAtomic } from "../files/atomic-write.js";
+import { normalizeOgmiosHttpUrl } from "../local-ledger-slot.js";
+import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
 import {
   loadRealBlueprintSha256,
   Lucid,
   MidgardContracts,
   NodeConfig,
-} from "@/services/index.js";
+} from "../services/index.js";
 import {
   buildFraudProofCatalogueDeploymentInfo,
   deriveOperatorDaParams,
   fetchProtocolDeploymentStatus,
   fraudProofsToIndexedValidators,
-} from "@/transactions/initialization.js";
-import { fetchReferenceScriptUtxosAt } from "@/transactions/reference-scripts.js";
-import { compareOutRefs } from "@/tx-context.js";
+} from "../transactions/initialization.js";
+import { fetchReferenceScriptUtxosAt } from "../transactions/reference-scripts.js";
+import { compareOutRefs } from "../tx-context.js";
 
 export type ContractDeploymentInfoRefScriptUTxO = {
   readonly txHash: string;

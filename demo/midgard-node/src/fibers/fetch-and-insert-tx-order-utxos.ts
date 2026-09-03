@@ -32,21 +32,13 @@ import { Effect, Schedule } from "effect";
 import {
   CekProgramMaterialDB,
   ForcedTransactionsDB,
-} from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import {
-  logReconciledVisibleUserEvents,
-  persistVisibleUserEventUTxOs,
-  repeatVisibleUserEventIngestionFiber,
-  runCommitTimeUserEventIngestionBarrier,
-  type UserEventFetchBounds,
-  type UserEventReconcileResult,
-} from "@/fibers/user-event-ingestion.js";
+} from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
 import {
   observeTxOrderMaterialCarriageProgram,
   type TxOrderCarriageReadOptionsV1,
   type TxOrderMaterialCarriageV1,
-} from "@/l1-tx-order-carriage-v1.js";
+} from "../l1-tx-order-carriage-v1.js";
 import {
   ContractDeploymentIdentity,
   Database,
@@ -54,7 +46,15 @@ import {
   Lucid,
   MidgardContracts,
   NodeConfig,
-} from "@/services/index.js";
+} from "../services/index.js";
+import {
+  logReconciledVisibleUserEvents,
+  persistVisibleUserEventUTxOs,
+  repeatVisibleUserEventIngestionFiber,
+  runCommitTimeUserEventIngestionBarrier,
+  type UserEventFetchBounds,
+  type UserEventReconcileResult,
+} from "./user-event-ingestion.js";
 
 const rawDatum = (
   txOrderUTxO: SDK.TxOrderUTxOV1,

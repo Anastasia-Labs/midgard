@@ -14,7 +14,7 @@ import { Effect, Schedule } from "effect";
 import {
   DaPayloadTerminalOutcomesDB,
   StateQueueMutationLeasesDB,
-} from "@/database/index.js";
+} from "../database/index.js";
 import {
   ContractDeploymentIdentity,
   createDatabaseStateQueueCorrectionObserverStoreV1,
@@ -26,7 +26,7 @@ import {
   reconcileStateQueueCorrectionObserverV1,
   reincludeFinalizedStateQueueCorrectionTransition,
   restoreRetractedStateQueueCorrectionTransition,
-} from "@/services/index.js";
+} from "../services/index.js";
 
 export const ATTESTATION_TIMEOUT_ALERT_LEAD_MS =
   STATE_QUEUE_REMOVAL_VALIDITY_BACKDATE_MS;

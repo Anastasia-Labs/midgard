@@ -8,12 +8,12 @@ import {
 import { hexToBytes } from "@al-ft/midgard-core/hex";
 import * as SDK from "@al-ft/midgard-sdk";
 
-import { parseOpenLoopCorpusLine } from "@/commands/stress-open-loop.js";
+import { parseOpenLoopCorpusLine } from "../open-loop-corpus-format.js";
 import {
   encodeTransactionRootValue,
   type MpfInsertBatchOp,
   type TransitionTraceSourceEvent,
-} from "@/workers/utils/mpf.js";
+} from "./utils/mpf.js";
 
 export const canonicalOutrefCborFromLabel = (label: string): Buffer => {
   const match = /^([0-9a-f]{64})#(0|[1-9]\d*)$/u.exec(label.toLowerCase());

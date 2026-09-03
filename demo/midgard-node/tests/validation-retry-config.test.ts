@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CEK_PROGRAM_MATERIAL_MIN_STORE_BYTES,
   NodeConfig,
-} from "@/services/config.js";
+} from "../src/services/config.js";
 
 const loadNodeConfig = () =>
   Effect.runPromise(

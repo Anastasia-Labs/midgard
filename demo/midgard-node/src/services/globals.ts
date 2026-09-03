@@ -5,10 +5,10 @@ import {
   idleSpeculativeCommitState,
   type SpeculativeCommitState,
   type UserEventBarrierWatermarks,
-} from "@/fibers/speculative-commit-state.js";
-import type { SubmitSlotSnapshot } from "@/local-ogmios-slot.js";
-import type { NativeMpfOwnerService } from "@/services/mpf-native-owner/index.js";
-import { SerializedStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
+} from "../fibers/speculative-commit-state.js";
+import type { SubmitSlotSnapshot } from "../local-ogmios-slot.js";
+import { SerializedStateQueueUTxO } from "../workers/utils/commit-block-header.js";
+import type { NativeMpfOwnerService } from "./mpf-native-owner/index.js";
 
 export type CommitPipelinePhase =
   | "idle"

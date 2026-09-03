@@ -23,15 +23,14 @@ import {
   resolveSubmitIngressReservation,
   SUBMIT_HTTP_BODY_MAX_BYTES,
   withSubmitIngressPermit,
-} from "@/commands/listen-router.js";
+} from "../src/commands/listen-router.js";
 import {
   ADMIN_ROUTE_PATHS,
   authorizeAdminRoute,
   isAdminRoutePath,
   normalizeSubmitTxCanonicalCborToNative,
   validateSubmitTxCanonicalCbor,
-} from "@/commands/listen-utils.js";
-
+} from "../src/commands/listen-utils.js";
 import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixtures.js";
 import { makeCardanoTxOutput } from "./midgard-output-helpers.js";
 

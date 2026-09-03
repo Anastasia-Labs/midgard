@@ -7,8 +7,7 @@ import {
   buildE2EProcessEnv,
   loadDotenvFile,
   parseEnvOverride,
-} from "@/e2e/env.js";
-
+} from "../src/e2e/env.js";
 import { createTrackedTempDirFactory } from "./helpers/temp-files.js";
 
 const makeTempDir = createTrackedTempDirFactory("midgard-e2e-env-");

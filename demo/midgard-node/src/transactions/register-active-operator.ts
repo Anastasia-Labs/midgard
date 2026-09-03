@@ -29,33 +29,33 @@ import {
   configuredContractDeploymentInfoPath,
   readFinalizedDeploymentIdentity,
   verifyConfiguredDeploymentManifestProgram,
-} from "@/commands/contract-deployment-info.js";
-import { Lucid, MidgardContracts } from "@/services/index.js";
+} from "../commands/contract-deployment-info.js";
+import { Lucid, MidgardContracts } from "../services/index.js";
+import { compareOutRefs } from "../tx-context.js";
+import { alignedUnixTimeStrictlyAfter } from "../workers/utils/commit-end-time.js";
 import {
   referenceScriptTargetsByCommand,
   resolveReferenceScriptTargetsProgram,
   resolveSpendableWalletUtxos,
   selectWalletFundingUtxos,
   utxoOutRefKey,
-} from "@/transactions/reference-scripts.js";
+} from "./reference-scripts.js";
 import {
   alignUnixTimeMsToSlotBoundary,
   currentTimeMsForLucidOrEmulatorFallback,
   resolveCurrentTimeMs,
-} from "@/transactions/register-active-operator/clock.js";
+} from "./register-active-operator/clock.js";
 import {
   handleSignSubmit,
   TxConfirmError,
   TxSignError,
   TxSubmitError,
-} from "@/transactions/utils.js";
-import { compareOutRefs } from "@/tx-context.js";
-import { alignedUnixTimeStrictlyAfter } from "@/workers/utils/commit-end-time.js";
-export type { ReferenceScriptCommandName } from "@/transactions/reference-scripts.js";
+} from "./utils.js";
+export type { ReferenceScriptCommandName } from "./reference-scripts.js";
 export {
   deployReferenceScriptCommandProgram,
   REFERENCE_SCRIPT_COMMAND_NAMES,
-} from "@/transactions/reference-scripts.js";
+} from "./reference-scripts.js";
 
 const REGISTERED_ACTIVATION_DELAY_MS = 30n;
 const ACTIVATION_VALIDITY_WINDOW_MS = 120_000n;

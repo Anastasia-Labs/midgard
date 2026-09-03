@@ -6,8 +6,8 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { classifyStateQueueCorrectionEventReopen } from "@/database/utils/projected-events.js";
-import { authorizeStateQueueCorrectionReinclusionV1 } from "@/services/state-queue-correction-recovery.js";
+import { classifyStateQueueCorrectionEventReopen } from "../src/database/utils/projected-events.js";
+import { authorizeStateQueueCorrectionReinclusionV1 } from "../src/services/state-queue-correction-recovery.js";
 
 const removedHeader = Buffer.from("11".repeat(28), "hex");
 const h28 = (byte: string): string => byte.repeat(56);

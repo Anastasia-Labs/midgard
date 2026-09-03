@@ -11,18 +11,20 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { evaluateReadiness } from "@/commands/readiness.js";
+import { evaluateReadiness } from "../src/commands/readiness.js";
 import {
   evaluateRetentionCheck,
   retentionCheckExitCode,
-} from "@/commands/retention-check.js";
-import { DaPayloadsDB, DaPayloadTerminalOutcomesDB } from "@/database/index.js";
+} from "../src/commands/retention-check.js";
+import {
+  DaPayloadsDB,
+  DaPayloadTerminalOutcomesDB,
+} from "../src/database/index.js";
+import * as MigrationRunner from "../src/database/migrations/runner.js";
 import {
   computeChallengeableCutoff,
   computeRetentionCutoff,
-} from "@/database/retention-policy.js";
-
-import * as MigrationRunner from "../src/database/migrations/runner.js";
+} from "../src/database/retention-policy.js";
 import { makeFinalizedDeploymentManifestV1Fixture } from "./helpers/finalized-deployment-manifest-v1.js";
 import { deterministicFixtureBytes, provideDatabaseLayers } from "./utils.js";
 

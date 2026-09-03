@@ -1,12 +1,12 @@
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
+import { Database } from "../../services/database.js";
 import {
   DatabaseError,
   logDatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { Database } from "@/services/database.js";
+} from "./common.js";
 
 /**
  * Table adapter for time-indexed user events such as deposits and withdrawals.

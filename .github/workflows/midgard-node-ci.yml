@@ -5,6 +5,7 @@ on:
     branches: ["main"]
     paths:
       - "demo/midgard-node/**"
+      - "demo/midgard-node-tools/**"
       - "demo/lucid-midgard/**"
       - "demo/midgard-sdk/**"
       - "demo/midgard-fault-proofs/**"
@@ -23,6 +24,7 @@ on:
   pull_request:
     paths:
       - "demo/midgard-node/**"
+      - "demo/midgard-node-tools/**"
       - "demo/lucid-midgard/**"
       - "demo/midgard-sdk/**"
       - "demo/midgard-fault-proofs/**"
@@ -280,13 +282,20 @@ jobs:
         run: pnpm --dir demo/midgard-node run db:migrate
       - name: Test Midgard node
         run: pnpm --dir demo/midgard-node test
+      - name: Typecheck, lint, build, and test Midgard node tools
+        run: |
+          pnpm --dir demo/midgard-node-tools run typecheck
+          pnpm --dir demo/midgard-node-tools run lint
+          pnpm --dir demo/midgard-node-tools run build
+          node demo/midgard-node-tools/dist/index.js --help >/dev/null
+          pnpm --dir demo/midgard-node-tools test
       - name: Verify offline throughput gates
         run: |
           pnpm --dir demo/midgard-node run test:mpf:architecture-g-corpus
           pnpm --dir demo/midgard-node run test:mpf:architecture-g-gate-config
           pnpm --dir demo/midgard-node run test:mpf:architecture-g-soak
           pnpm --dir demo/midgard-node run test:mpf:architecture-g-closure
-          node --test demo/midgard-node/scripts/throughput-load-watchdog.test.mjs demo/midgard-node/devnet/phase4-process/tests/assets.test.mjs demo/midgard-node/devnet/phase4-process/tests/custom-chain-config.test.mjs
+          node --test demo/midgard-node/scripts/throughput-load-watchdog.test.mjs
       - name: Verify canonical V1 retained multi-peer DA paths
         env:
           MIDGARD_RUN_DA_PHASE5_JOINED_E2E: "1"

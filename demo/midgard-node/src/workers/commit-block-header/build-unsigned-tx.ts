@@ -2,18 +2,18 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { OperatorWalletView } from "@/operator-wallet-view.js";
+import type { OperatorWalletView } from "../../operator-wallet-view.js";
 import {
   type ContractDeploymentIdentityValue,
   Lucid,
   NodeConfig,
-} from "@/services/index.js";
+} from "../../services/index.js";
 import {
   handleSignSubmitNoConfirmation,
   type NoInlineSubmitRecoveryOptions,
   type TxSignError,
   TxSubmitError,
-} from "@/transactions/utils.js";
+} from "../../transactions/utils.js";
 import {
   COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
   type CommitTimingBudget,
@@ -22,13 +22,12 @@ import {
   makeSubmitSlotAnchoredClock,
   resolveAlignedCommitEndTime,
   resolveCommitValidityInterval,
-} from "@/workers/utils/commit-end-time.js";
+} from "../utils/commit-end-time.js";
 import {
   type CommitTimingDueWork,
   fetchRealStateQueueWitnessContext,
   type RealStateQueueWitnessContext,
-} from "@/workers/utils/scheduler-refresh.js";
-
+} from "../utils/scheduler-refresh.js";
 import {
   getLatestBlockDatumEndTime,
   hashBlockHeaderV1Local,

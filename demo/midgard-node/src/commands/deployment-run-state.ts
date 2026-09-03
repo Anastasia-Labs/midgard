@@ -10,7 +10,6 @@ import {
 import type { LucidEvolution } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import * as ContractDeploymentInfo from "@/commands/contract-deployment-info.js";
 import {
   createDeploymentRunState,
   defaultDeploymentRunStatePath,
@@ -20,7 +19,8 @@ import {
   mutateDeploymentRunState,
   RunStateError,
   transitionDeploymentStep,
-} from "@/e2e/run-state.js";
+} from "../e2e/run-state.js";
+import * as ContractDeploymentInfo from "./contract-deployment-info.js";
 
 export type DeploymentRunCliOptions = {
   readonly runStatePath: string;

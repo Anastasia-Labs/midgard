@@ -8,19 +8,19 @@ import {
 import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 
-import * as DaPayloadsDB from "@/database/daPayloads.js";
-import * as DepositsDB from "@/database/deposits.js";
-import * as ForcedTransactionsDB from "@/database/forcedTransactions.js";
+import { Database } from "../services/database.js";
+import { sha256 } from "../sha256.js";
+import * as DaPayloadsDB from "./daPayloads.js";
+import * as DepositsDB from "./deposits.js";
+import * as ForcedTransactionsDB from "./forcedTransactions.js";
 import {
   clearTable,
   DatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { exactRecord } from "@/database/utils/exact-record.js";
-import * as TxTable from "@/database/utils/tx.js";
-import * as WithdrawalsDB from "@/database/withdrawals.js";
-import { Database } from "@/services/database.js";
-import { sha256 } from "@/sha256.js";
+} from "./utils/common.js";
+import { exactRecord } from "./utils/exact-record.js";
+import * as TxTable from "./utils/tx.js";
+import * as WithdrawalsDB from "./withdrawals.js";
 
 export const tableName = "pending_block_finalizations";
 const depositsTableName = "pending_block_finalization_deposits";

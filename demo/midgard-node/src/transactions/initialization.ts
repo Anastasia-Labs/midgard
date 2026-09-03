@@ -20,29 +20,29 @@ import {
   splitPackedHex,
   VERIFICATION_KEY_HASH_HEX_LENGTH,
   VERIFICATION_KEY_HEX_LENGTH,
-} from "@/da/local-signers.js";
-import { slotToUnixTimeForLucidOrEmulatorFallback } from "@/lucid-time.js";
-import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
-import { NodeConfig } from "@/services/config.js";
-import { Lucid } from "@/services/lucid.js";
+} from "../da/local-signers.js";
+import { slotToUnixTimeForLucidOrEmulatorFallback } from "../lucid-time.js";
+import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
+import { NodeConfig } from "../services/config.js";
+import { Lucid } from "../services/lucid.js";
 import {
   type ContractDeploymentIdentityValue,
   MidgardContracts,
-} from "@/services/midgard-contracts.js";
+} from "../services/midgard-contracts.js";
 import {
   fetchStateQueueTopologyProgram,
   type StateQueueTopology,
-} from "@/services/state-queue-topology.js";
-import { ensurePhasMembershipRewardAccountRegisteredProgram } from "@/transactions/phas-membership-registration.js";
-import { ensureNodeRuntimeReferenceScriptsProgram } from "@/transactions/reference-scripts.js";
+} from "../services/state-queue-topology.js";
+import { outRefLabel } from "../tx-context.js";
+import { MidgardMpf, MpfBatchOp, MpfError } from "../workers/utils/mpf.js";
+import { ensurePhasMembershipRewardAccountRegisteredProgram } from "./phas-membership-registration.js";
+import { ensureNodeRuntimeReferenceScriptsProgram } from "./reference-scripts.js";
 import {
   handleSignSubmit,
   TxConfirmError,
   TxSignError,
   TxSubmitError,
-} from "@/transactions/utils.js";
-import { outRefLabel } from "@/tx-context.js";
-import { MidgardMpf, MpfBatchOp, MpfError } from "@/workers/utils/mpf.js";
+} from "./utils.js";
 
 /**
  * Deployment helpers for the protocol's initial on-chain contract state.

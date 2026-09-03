@@ -4,16 +4,16 @@ import { SqlClient } from "@effect/sql";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
+import { Database } from "../services/database.js";
 import {
   clearTable,
   DatabaseError,
   logDatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import * as Ledger from "@/database/utils/ledger.js";
-import * as ProjectedEvents from "@/database/utils/projected-events.js";
-import * as UserEvents from "@/database/utils/user-events.js";
-import { Database } from "@/services/database.js";
+} from "./utils/common.js";
+import * as Ledger from "./utils/ledger.js";
+import * as ProjectedEvents from "./utils/projected-events.js";
+import * as UserEvents from "./utils/user-events.js";
 
 export const tableName = "deposits_utxos";
 

@@ -12,11 +12,11 @@ import {
   MpfError,
   verifyKeyValuePhasMembershipProof,
   verifyKeyValuePhasNonMembershipProof,
-} from "@/workers/utils/mpf.js";
+} from "../utils/mpf.js";
 import {
   buildAuthenticatedMpfRootInWorker,
   shouldBuildMpfRootInWorker,
-} from "@/workers/utils/mpf-root-pool.js";
+} from "../utils/mpf-root-pool.js";
 
 type DataSchema = Parameters<typeof LucidData.Nullable>[0];
 

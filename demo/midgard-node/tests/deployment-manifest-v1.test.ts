@@ -39,9 +39,8 @@ import {
   type DeploymentManifestV1Value,
   normalizeDeploymentManifestV1JsonValue,
   parseDeploymentManifestV1Value,
-} from "@/deployment-manifest-v1.js";
-import { buildFraudProofCatalogueDeploymentInfo } from "@/transactions/initialization.js";
-
+} from "../src/deployment-manifest-v1.js";
+import { buildFraudProofCatalogueDeploymentInfo } from "../src/transactions/initialization.js";
 import { TEST_AVAILABILITY_CHALLENGE_V1 } from "./helpers/availability-challenge-v1.js";
 
 const NATIVE_SCRIPT_CBOR = `8200581c${"00".repeat(28)}`;

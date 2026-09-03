@@ -40,24 +40,23 @@ import {
   type DeploymentManifestV1IdentityContext,
   parseDeploymentManifestV1,
   verifyDeploymentManifestAgainstConfig,
-} from "@/commands/contract-deployment-info.js";
+} from "../src/commands/contract-deployment-info.js";
 import {
   computeDeploymentManifestId,
   computeDeploymentManifestV1DaCommitteeSignersHash,
   computeDeploymentManifestV1JsonDigest,
   DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   normalizeDeploymentManifestV1JsonValue,
-} from "@/deployment-manifest-v1.js";
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
+} from "../src/deployment-manifest-v1.js";
+import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
 import {
   midgardContractsFromDeploymentManifest,
   parseRuntimeDeploymentManifest,
-} from "@/services/midgard-contracts.js";
+} from "../src/services/midgard-contracts.js";
 import {
   buildFraudProofCatalogueDeploymentInfo,
   fraudProofsToIndexedValidators,
-} from "@/transactions/initialization.js";
-
+} from "../src/transactions/initialization.js";
 import { TEST_AVAILABILITY_CHALLENGE_V1 } from "./helpers/availability-challenge-v1.js";
 
 const testReferenceScriptAuthPolicy = (

@@ -3,7 +3,7 @@ import { SqlClient } from "@effect/sql";
 import { PgClient } from "@effect/sql-pg";
 import { Context, Data, Duration, Effect, Layer, Redacted } from "effect";
 
-import { ConfigError, NodeConfig, NodeConfigDep } from "@/services/config.js";
+import { ConfigError, NodeConfig, NodeConfigDep } from "./config.js";
 
 /**
  * Database service wiring for the Midgard node.

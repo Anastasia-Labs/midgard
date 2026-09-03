@@ -10,10 +10,10 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect, Option, Schedule } from "effect";
 
-import { committeeSignerIndex, daLocalSigners } from "@/da/local-signers.js";
-import { DaPayloadsDB } from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import { NodeConfig } from "@/services/config.js";
+import { committeeSignerIndex, daLocalSigners } from "../da/local-signers.js";
+import { DaPayloadsDB } from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
+import { NodeConfig } from "../services/config.js";
 import {
   availabilityParametersFromExplicitEnvironment,
   availabilityParametersFromManifestV1,
@@ -21,18 +21,18 @@ import {
   Database,
   Lucid,
   MidgardContracts,
-} from "@/services/index.js";
+} from "../services/index.js";
+import { outRefLabel } from "../tx-context.js";
 import {
   fetchReferenceScriptUtxosProgram,
   referenceScriptByName,
-} from "@/transactions/reference-scripts.js";
+} from "./reference-scripts.js";
 import {
   handleSignSubmit,
   TxConfirmError,
   TxSignError,
   TxSubmitError,
-} from "@/transactions/utils.js";
-import { outRefLabel } from "@/tx-context.js";
+} from "./utils.js";
 
 const UTXO_VISIBILITY_RETRY_DELAY = "2 seconds";
 const UTXO_VISIBILITY_RETRY_COUNT = 12;

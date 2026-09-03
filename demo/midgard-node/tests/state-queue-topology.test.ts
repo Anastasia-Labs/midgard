@@ -7,7 +7,7 @@ import {
   fetchCanonicalStateQueueNodesProgram,
   fetchStateQueueSnapshotProgram,
   summarizeStateQueueTopology,
-} from "@/services/state-queue-topology.js";
+} from "../src/services/state-queue-topology.js";
 
 const policyId = "aa".repeat(28);
 const stateQueueAddress =

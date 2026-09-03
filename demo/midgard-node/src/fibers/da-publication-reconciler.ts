@@ -4,19 +4,19 @@ import { hostname } from "node:os";
 import { DA_TRANSPORT_LIMITS_V1 } from "@al-ft/midgard-core/da-transport";
 import { Effect, Metric, Option, Schedule } from "effect";
 
-import { readDaHardeningConfig } from "@/da/hardening-config.js";
+import { readDaHardeningConfig } from "../da/hardening-config.js";
 import {
   loadDaProducerPublicationManifestFromEnv,
   publishDaPayloadAnnouncementFromEnv,
   reconcileDaPayloadPeerFromEnv,
-} from "@/da/libp2p-producer.js";
+} from "../da/libp2p-producer.js";
 import {
   DaPayloadAnnouncementsDB,
   DaPayloadPublicationsDB,
   DaPayloadsDB,
-} from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import type { Database } from "@/services/database.js";
+} from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
+import type { Database } from "../services/database.js";
 
 const daPublishReconcilerAttemptsCounter = Metric.counter(
   "da_publish_reconciler_attempts_total",

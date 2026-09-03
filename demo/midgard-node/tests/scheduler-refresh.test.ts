@@ -8,8 +8,8 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { createSlotAwareDueWorkRegistry } from "@/fibers/slot-aware-due-work.js";
-import { NoInlineSubmitDefer } from "@/transactions/utils.js";
+import { createSlotAwareDueWorkRegistry } from "../src/fibers/slot-aware-due-work.js";
+import { NoInlineSubmitDefer } from "../src/transactions/utils.js";
 import {
   captureSchedulerSlotSnapshot,
   filterLocallyConsumedUtxos,
@@ -27,7 +27,7 @@ import {
   schedulerRefreshStartTimeModeForSpendingScriptHash,
   schedulerSlotSnapshotFromSubmitSlot,
   schedulerStateCoversCommitTarget,
-} from "@/workers/utils/scheduler-refresh.js";
+} from "../src/workers/utils/scheduler-refresh.js";
 
 const mkUtxo = (txHash: string, outputIndex: number): UTxO =>
   ({

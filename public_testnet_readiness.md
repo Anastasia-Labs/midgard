@@ -81,7 +81,7 @@ Current decision: no-go for an open public testnet.
   - Acceptance: protocol-affecting L1 observations finalize only after the selected source mode's authority/agreement rule and configured depth are satisfied.
   - Acceptance: every finalized L1 observation records chain point, source mode, chain-authority/provider identity, observed depth, and finality threshold.
   - Acceptance: rollback before threshold quarantines pending local state; rollback after local finalization is treated as an incident with an explicit recovery path.
-  - Evidence: `demo/midgard-node/src/commands/e2e-release-finality-policy-v1.ts` and the deployment manifest bind a release finality policy (confirmation depth 30, automatic recovery max depth 2160, deep-rollback incident policy), and `STATE_QUEUE_CORRECTION_FINALITY_DEPTH` must equal that depth; it is applied to state-queue correction and DA terminal outcomes, not to commit, merge, deposit, or withdrawal confirmation.
+  - Evidence: `demo/midgard-node-tools/src/commands/e2e-release-finality-policy-v1.ts` and the deployment manifest bind a release finality policy (confirmation depth 30, automatic recovery max depth 2160, deep-rollback incident policy), and `STATE_QUEUE_CORRECTION_FINALITY_DEPTH` must equal that depth; it is applied to state-queue correction and DA terminal outcomes, not to commit, merge, deposit, or withdrawal confirmation.
 
 - [ ] Define public key custody and admin authority model.
 

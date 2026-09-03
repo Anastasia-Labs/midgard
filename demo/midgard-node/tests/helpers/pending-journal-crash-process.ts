@@ -3,8 +3,11 @@ import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-
 import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 
-import { DepositsDB, PendingBlockFinalizationsDB } from "@/database/index.js";
-import { Database } from "@/services/database.js";
+import {
+  DepositsDB,
+  PendingBlockFinalizationsDB,
+} from "../../src/database/index.js";
+import { Database } from "../../src/services/database.js";
 
 const mode = process.argv[2] as "before" | "during" | "after" | undefined;
 const depositIdHex = process.argv[3];

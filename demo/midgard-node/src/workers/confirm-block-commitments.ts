@@ -3,10 +3,10 @@ import { LucidEvolution } from "@lucid-evolution/lucid";
 import { Cause, Data, Effect, Option, pipe } from "effect";
 import { parentPort, workerData } from "worker_threads";
 
-import { ConfigError, NodeConfig } from "@/services/config.js";
-import { Lucid } from "@/services/lucid.js";
-import { MidgardContracts } from "@/services/midgard-contracts.js";
-import { serializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
+import { ConfigError, NodeConfig } from "../services/config.js";
+import { Lucid } from "../services/lucid.js";
+import { MidgardContracts } from "../services/midgard-contracts.js";
+import { serializeStateQueueUTxO } from "./utils/commit-block-header.js";
 import {
   decideUnsubmittedPendingBlockRecovery,
   fetchSortedCommittedStateQueueBlocks,
@@ -18,7 +18,7 @@ import {
   shouldRunFullStateQueueConfirmationScan,
   WorkerInput,
   WorkerOutput,
-} from "@/workers/utils/confirm-block-commitments.js";
+} from "./utils/confirm-block-commitments.js";
 
 type StateQueueAuthValidator = SDK.MidgardValidators["stateQueue"];
 

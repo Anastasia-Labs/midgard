@@ -1,9 +1,9 @@
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import * as Ledger from "@/database/utils/ledger.js";
-import { shouldHydrateCommitBaseEntries } from "@/workers/commit-block-header.js";
-import { indexSelectedLedgerOutputs } from "@/workers/utils/mpf/withdrawal-classification.js";
+import * as Ledger from "../src/database/utils/ledger.js";
+import { shouldHydrateCommitBaseEntries } from "../src/workers/commit-block-header.js";
+import { indexSelectedLedgerOutputs } from "../src/workers/utils/mpf/withdrawal-classification.js";
 
 describe("withdrawal classification selected state", () => {
   it("indexes only the authenticated selected ledger snapshot", async () => {

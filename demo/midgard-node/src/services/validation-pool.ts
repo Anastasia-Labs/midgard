@@ -10,16 +10,16 @@ import {
 } from "@al-ft/midgard-validation";
 import { Context, Data, Duration, Effect, Layer, Metric } from "effect";
 
-import { resolveWorkerEntry } from "@/fibers/resolve-worker-entry.js";
-import { NodeConfig } from "@/services/config.js";
-import { ContractDeploymentIdentity } from "@/services/midgard-contracts.js";
+import { resolveWorkerEntry } from "../fibers/resolve-worker-entry.js";
 import {
   copyToTransferable,
   packPhaseAJob,
   type ValidationJobRequest,
   type ValidationWorkerInit,
   type ValidationWorkerResponse,
-} from "@/workers/utils/validation-pool.js";
+} from "../workers/utils/validation-pool.js";
+import { NodeConfig } from "./config.js";
+import { ContractDeploymentIdentity } from "./midgard-contracts.js";
 
 export class ValidationWorkerError extends Data.TaggedError(
   "ValidationWorkerError",

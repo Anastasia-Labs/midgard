@@ -5,13 +5,13 @@ import { join } from "node:path";
 
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { runL1ProviderPreflight } from "@/commands/l1-provider-preflight.js";
+import { runL1ProviderPreflight } from "../src/commands/l1-provider-preflight.js";
 import {
   classifyProviderHttpResponse,
   clearProviderCooldownsForTest,
   parseRetryAfterMs,
   redactEndpoint,
-} from "@/provider-diagnostics.js";
+} from "../src/provider-diagnostics.js";
 const config = {
   L1_PROVIDER: "Kupmios" as const,
   L1_PROVIDER_PREFLIGHT_TIMEOUT_MS: 1_000,

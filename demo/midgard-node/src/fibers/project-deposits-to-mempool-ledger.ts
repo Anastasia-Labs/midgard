@@ -1,17 +1,17 @@
 import { SqlClient } from "@effect/sql";
 import { Effect, Schedule } from "effect";
 
-import { DepositsDB, MempoolLedgerDB } from "@/database/index.js";
+import { DepositsDB, MempoolLedgerDB } from "../database/index.js";
 import {
   DatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
+} from "../database/utils/common.js";
 import {
   Database,
   Globals,
   NodeConfig,
   publishMempoolLedgerDelta,
-} from "@/services/index.js";
+} from "../services/index.js";
 
 const sameProjectedDepositEntry = (
   expected: MempoolLedgerDB.DepositEntry,

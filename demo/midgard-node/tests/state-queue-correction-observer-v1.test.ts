@@ -21,7 +21,7 @@ import {
   reconcileStateQueueCorrectionObserverV1,
   type StateQueueCorrectionObserverSourceV1,
   type StateQueueCorrectionObserverStoreV1,
-} from "@/services/state-queue-correction-observer-v1.js";
+} from "../src/services/state-queue-correction-observer-v1.js";
 
 const h28 = (byte: string): string => byte.repeat(56);
 const h32 = (byte: string): string => byte.repeat(64);

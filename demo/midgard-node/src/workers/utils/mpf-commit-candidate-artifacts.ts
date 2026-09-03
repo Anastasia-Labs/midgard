@@ -11,11 +11,11 @@ import {
   positiveFiniteNumber,
   positiveSafeInteger,
   sha256Digest,
-} from "@/artifact-schema.js";
+} from "../../artifact-schema.js";
 import {
   ogmiosEndpointIdentitySha256,
   type ShelleyGenesisSlotEvidence,
-} from "@/local-ledger-slot.js";
+} from "../../local-ledger-slot.js";
 
 type JsonRecord = Record<string, unknown>;
 

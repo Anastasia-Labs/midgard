@@ -6,9 +6,8 @@ import { Constr, Data, fromHex } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
-import { withRealStateQueueAndOperatorContracts } from "@/services/midgard-contracts.js";
-
+import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
+import { withRealStateQueueAndOperatorContracts } from "../src/services/midgard-contracts.js";
 import { TEST_AVAILABILITY_PARAMETERS_V1 } from "./helpers/availability-challenge-v1.js";
 
 const oneShotOutRef = {

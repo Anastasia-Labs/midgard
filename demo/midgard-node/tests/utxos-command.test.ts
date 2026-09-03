@@ -7,7 +7,7 @@ import {
   parseAddressArgument,
   parseTxOutRefCborHex,
   parseTxOutRefLabel,
-} from "@/commands/command-utils.js";
+} from "../src/commands/command-utils.js";
 import {
   decodeStoredUtxo,
   encodeStoredUtxo,
@@ -15,8 +15,7 @@ import {
   parseTxOutRefsRequest,
   requireByOutRefsSelector,
   sumAssets,
-} from "@/commands/utxos.js";
-
+} from "../src/commands/utxos.js";
 import {
   makeMidgardTxOutput,
   makeOutRefCbor,

@@ -11,18 +11,21 @@ import {
   shouldRunPreLeaseSchedulerAlignment,
   tryAcquireCommitMutationWorkerPhase,
   tryAcquireCommitSchedulerAlignmentPhase,
-} from "@/fibers/block-commitment.js";
-import { Globals } from "@/services/index.js";
+} from "../src/fibers/block-commitment.js";
+import { Globals } from "../src/services/index.js";
 import {
   shouldPreserveCommitMpfRoots,
   shouldShortCircuitIdleCommitAttempt,
   workerPreIngestionDueWorkOutputFromPlan,
-} from "@/workers/commit-block-header.js";
+} from "../src/workers/commit-block-header.js";
 import type {
   SerializedStateQueueUTxO,
   WorkerOutput,
-} from "@/workers/utils/commit-block-header.js";
-import { MidgardMpf, withMpfRootTransactions } from "@/workers/utils/mpf.js";
+} from "../src/workers/utils/commit-block-header.js";
+import {
+  MidgardMpf,
+  withMpfRootTransactions,
+} from "../src/workers/utils/mpf.js";
 
 const dueWork = {
   kind: "commit_scheduler_refresh",

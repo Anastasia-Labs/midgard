@@ -19,7 +19,7 @@ import {
   resolveCommitEndTimeFit,
   resolveCommitValidityInterval,
   resolveExplicitCommitCandidateEndTimeMs,
-} from "@/workers/utils/commit-end-time.js";
+} from "../src/workers/utils/commit-end-time.js";
 
 /**
  * Builds a Lucid instance for commit-end-time tests.

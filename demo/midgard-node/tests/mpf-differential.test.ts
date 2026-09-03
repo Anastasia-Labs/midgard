@@ -4,8 +4,7 @@ import { it } from "@effect/vitest";
 import { Effect } from "effect";
 import { describe, expect } from "vitest";
 
-import { mpfReplayProgram } from "@/commands/mpf-replay.js";
-
+import { mpfReplayProgram } from "../src/commands/mpf-replay.js";
 import {
   nativeOwnerBinaryPresent,
   warnNativeOwnerBinaryAbsent,

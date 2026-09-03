@@ -4,10 +4,10 @@ import { type LucidEvolution, toUnit, type UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { Lucid as RuntimeLucid } from "@/services/index.js";
-import { resolveLiveTailCommitBase } from "@/workers/commit-block-header/pending-journal.js";
-import { fetchExpectedStateQueueTailLocal } from "@/workers/commit-block-header/state-queue.js";
-import { resolveCommitValidityInterval } from "@/workers/utils/commit-end-time.js";
+import { Lucid as RuntimeLucid } from "../src/services/index.js";
+import { resolveLiveTailCommitBase } from "../src/workers/commit-block-header/pending-journal.js";
+import { fetchExpectedStateQueueTailLocal } from "../src/workers/commit-block-header/state-queue.js";
+import { resolveCommitValidityInterval } from "../src/workers/utils/commit-end-time.js";
 
 const policyId = "aa".repeat(28);
 const stateQueueAddress =

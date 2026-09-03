@@ -8,7 +8,7 @@ import {
 import * as chalk_ from "chalk";
 import { Data, Effect, pipe } from "effect";
 
-import * as Ledger from "@/database/utils/ledger.js";
+import * as Ledger from "./database/utils/ledger.js";
 
 export type ProcessedTx = {
   txId: Buffer;

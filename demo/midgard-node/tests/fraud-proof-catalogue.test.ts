@@ -6,12 +6,12 @@ import { it } from "@effect/vitest";
 import { Effect } from "effect";
 import { describe, expect } from "vitest";
 
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
+import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
 import {
   buildFraudProofCatalogueDeploymentInfo,
   createFraudProofCatalogueMpf,
   fraudProofsToIndexedValidators,
-} from "@/transactions/initialization.js";
+} from "../src/transactions/initialization.js";
 
 describe("Fraud Proof Catalogue Root", () => {
   it.effect(

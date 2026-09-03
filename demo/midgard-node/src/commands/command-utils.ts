@@ -20,7 +20,7 @@ import {
   walletFromSeed,
 } from "@lucid-evolution/lucid";
 
-import type { OutRefLike } from "@/tx-context.js";
+import type { OutRefLike } from "../tx-context.js";
 
 const DEFAULT_MIDGARD_NODE_PORT = "3000";
 

@@ -248,17 +248,14 @@ pnpm listen
 - `pnpm submit:l2-transfer`: build and submit a Midgard-native user transfer.
 - `node dist/index.js project-deposits-once`: fetch L1 deposit events once and
   project newly visible deposits into the local Midgard ledger view.
-- `node dist/index.js create-l2-wallet`: create persisted local stress-wallet
-  seed records plus env/argument helper files for parallel fanout benchmarks.
-- `node dist/index.js stress-wallets:prepare`: fund, project, and verify
-  persisted stress wallets before parallel fanout benchmarks.
-- `node dist/index.js stress-wallets:fanout`: create resumable funding edges
-  for a large prepared wallet set.
-- `node dist/index.js stress-corpus-generate` and `stress-corpus-verify`:
-  create and stream-verify the signed NDJSON transaction corpus used by
-  repeatable benchmarks.
 - `pnpm audit:blocks-immutable`: inspect immutable block state and related
   persistence.
+- The e2e step runner, service supervisor, run finalizer, stress-wallet
+  tooling, corpus generator/verifier, bounded L2 stress harness, and the Phase
+  4 local-devnet acceptance gate are `midgard-node-tools` commands
+  (`../midgard-node-tools/dist/index.js`); see
+  [`../midgard-node-tools/README.md`](../midgard-node-tools/README.md). None
+  of them ship in this operator binary.
 - `pnpm stress:valid`: run the high-throughput valid-transaction submitter.
 
 ### Confirmation polling default
@@ -543,58 +540,10 @@ node dist/index.js init \
 
 ## Parallel Fanout Stress Wallets
 
-Parallel fanout stress uses independent L2 wallets so concurrent workers do not
-race on the same wallet UTxO. Generate a larger pool once, source the generated
-env file, then prepare the subset needed for a run:
-
-```sh
-cd midgard-node
-pnpm build
-
-node dist/index.js create-l2-wallet \
-  --count 128 \
-  --out-dir .stress-wallets
-
-. .stress-wallets/stress-wallets.env
-
-node dist/index.js stress-wallets:prepare \
-  --count 64 \
-  --lovelace-per-wallet 12000000 \
-  --out-dir .stress-wallets
-```
-
-`stress-wallets:prepare` reads existing wallet JSON files, creates missing files
-only when `--create-missing` is passed, submits one deposit for each wallet that
-does not already have sufficient spendable L2 funding, runs deposit projection,
-and verifies each wallet through the node's `/utxos?address=...` endpoint. The
-wallet directory contains private seed phrases and is gitignored.
-
-After preparation, pass the generated argument file to the stress runner. Use 16
-as the first serious concurrency target, then 32 and 64:
-
-```sh
-STRESS_WALLET_ARGS="$(tr '\n' ' ' < .stress-wallets/stress-wallets.args)"
-
-node dist/index.js e2e-stress-l2-throughput \
-  --mode parallel-fanout \
-  --count 256 \
-  --concurrency 16 \
-  $STRESS_WALLET_ARGS
-
-node dist/index.js e2e-stress-l2-throughput \
-  --mode parallel-fanout \
-  --count 512 \
-  --concurrency 32 \
-  --unsafe-allow-large-stress \
-  $STRESS_WALLET_ARGS
-
-node dist/index.js e2e-stress-l2-throughput \
-  --mode parallel-fanout \
-  --count 1024 \
-  --concurrency 64 \
-  --unsafe-allow-large-stress \
-  $STRESS_WALLET_ARGS
-```
+Stress-wallet creation, funding, fan-out, and the bounded
+`e2e-stress-l2-throughput` harness moved to `midgard-node-tools`; see
+[`../midgard-node-tools/README.md`](../midgard-node-tools/README.md). They
+drive this node from the outside and are not part of its binary.
 
 ## Valid Throughput Stress Test
 
@@ -605,20 +554,22 @@ accepted, committed, and merge rates from client and Prometheus evidence. The
 `e2e-stress-l2-throughput` CLI separately collects SQL-grounded stage metrics
 for functional/e2e stress runs.
 
-Generate the corpus from already prepared stress-wallet snapshots, then verify
+Generate the corpus from already prepared stress-wallet snapshots with the
+tooling CLI (built with `pnpm --dir ../midgard-node-tools build`), then verify
 it before use:
 
 ```sh
 cd demo/midgard-node
+TOOLS_CLI=../midgard-node-tools/dist/index.js
 
-node dist/index.js stress-corpus-generate \
+node "$TOOLS_CLI" stress-corpus-generate \
   --target-rate-tps 2500 \
   --duration-ms 300000 \
   --wallets-dir .stress-wallets \
   --out-dir corpus/accept-2500 \
   --yes
 
-node dist/index.js stress-corpus-verify \
+node "$TOOLS_CLI" stress-corpus-verify \
   --corpus-path corpus/accept-2500/corpus.ndjson \
   --rebuild-wallets-dir .stress-wallets
 ```

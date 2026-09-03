@@ -9,18 +9,18 @@ import {
   MempoolTxDeltasDB,
   TxRejectionsDB,
   WithdrawalsDB,
-} from "@/database/index.js";
+} from "../database/index.js";
 import {
   computeChallengeableCutoff,
   computeRetentionCutoff,
   shouldPruneRetention,
-} from "@/database/retention-policy.js";
-import { DatabaseError } from "@/database/utils/common.js";
+} from "../database/retention-policy.js";
+import { DatabaseError } from "../database/utils/common.js";
 import {
   ContractDeploymentIdentity,
   Database,
   NodeConfig,
-} from "@/services/index.js";
+} from "../services/index.js";
 
 /**
  * Executable deadline signal (GOAL_SPEC 9.4 / Q54): milliseconds remaining

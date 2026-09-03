@@ -15,15 +15,14 @@ import { describe, expect, it } from "vitest";
 import {
   buildAtomicProtocolInitTxProgram,
   ensureAtomicProtocolInitReferenceScriptsProgram,
-} from "@/transactions/initialization.js";
+} from "../src/transactions/initialization.js";
 import {
   activateOperatorProgram,
   deployReferenceScriptCommandProgram,
   deregisterOperatorProgram,
   registerAndActivateOperatorProgram,
   registerOperatorProgram,
-} from "@/transactions/register-active-operator.js";
-
+} from "../src/transactions/register-active-operator.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 const EMULATOR_PROTOCOL_PARAMETERS = {

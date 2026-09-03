@@ -7,42 +7,42 @@ import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Duration, Effect, Option, Ref } from "effect";
 
-import * as ContractDeploymentInfo from "@/commands/contract-deployment-info.js";
-import { shouldRunGenesisOnStartup } from "@/commands/startup-policy.js";
 import {
   ConfirmedLedgerDB,
   PendingBlockFinalizationsDB,
-} from "@/database/index.js";
+} from "../database/index.js";
 import {
   fetchCanonicalCommittedHeaders,
   localJournalHasPayloadMembers,
   reviveEarliestCanonicalPayloadJournal,
-} from "@/services/canonical-journal-recovery.js";
+} from "../services/canonical-journal-recovery.js";
 import {
   Globals,
   Lucid,
   MidgardContracts,
   NodeConfig,
-} from "@/services/index.js";
+} from "../services/index.js";
 import {
   fetchStateQueueSnapshotProgram,
   formatStateQueueTopology,
   refreshStateQueueGlobalsFromSnapshot,
-} from "@/services/state-queue-topology.js";
-import * as Initialization from "@/transactions/initialization.js";
+} from "../services/state-queue-topology.js";
+import * as Initialization from "../transactions/initialization.js";
 import {
   ensureNodeRuntimeReferenceScriptsProgram,
   verifyNodeRuntimeReferenceScriptsProgram,
-} from "@/transactions/reference-scripts.js";
+} from "../transactions/reference-scripts.js";
 import {
   applyConfirmedLedgerDeltaChainTransaction,
   materializeConfirmedLedgerSnapshot,
-} from "@/transactions/state-queue/confirmed-ledger-snapshot.js";
-import { deserializeStateQueueUTxO } from "@/workers/utils/commit-block-header.js";
+} from "../transactions/state-queue/confirmed-ledger-snapshot.js";
+import { deserializeStateQueueUTxO } from "../workers/utils/commit-block-header.js";
 import {
   computeLedgerMpfRootFromLedgerEntries,
   synchronizeCommitMpfStoresFromLedgerEntries,
-} from "@/workers/utils/mpf.js";
+} from "../workers/utils/mpf.js";
+import * as ContractDeploymentInfo from "./contract-deployment-info.js";
+import { shouldRunGenesisOnStartup } from "./startup-policy.js";
 
 const STARTUP_BACKGROUND_PROVIDER_TIMEOUT = Duration.seconds(90);
 

@@ -12,7 +12,7 @@ import {
   slotToUnixTimeForLucid,
   slotToUnixTimeForLucidOrEmulatorFallback,
   unixTimeToSlotForConfig,
-} from "@/lucid-time.js";
+} from "../src/lucid-time.js";
 
 describe("lucid-time", () => {
   it("reproduces Lucid's enclosing-slot conversion from plain worker data", async () => {

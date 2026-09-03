@@ -5,14 +5,14 @@ import { describe, expect, it } from "vitest";
 import {
   MIGRATION_MANIFEST_HASH,
   MIGRATIONS,
-} from "@/database/migrations/index.js";
+} from "../src/database/migrations/index.js";
 import {
   type AppliedMigrationRow,
   MigrationError,
   migrationExecutionMs,
   splitSqlStatements,
   validateAppliedMigrationLedger,
-} from "@/database/migrations/runner.js";
+} from "../src/database/migrations/runner.js";
 
 describe("migrationExecutionMs", () => {
   it("never returns a negative duration", () => {

@@ -9,7 +9,7 @@ import {
   type ShelleyGenesisSlotConfig,
   SUBMIT_SLOT_VALIDITY_BUFFER,
   type SubmitSlotSnapshot,
-} from "@/local-ledger-slot.js";
+} from "./local-ledger-slot.js";
 export type CustomSlotConfig = SlotConfig;
 
 const assertValidSlotConfig = (

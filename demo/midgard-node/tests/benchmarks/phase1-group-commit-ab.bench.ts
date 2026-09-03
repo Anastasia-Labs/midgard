@@ -8,10 +8,10 @@ import { SqlClient } from "@effect/sql";
 import { Effect, Exit } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { MigrationRunner, TxAdmissionsDB } from "@/database/index.js";
-import { admissionWriterShardForTxId } from "@/services/admission-writer.js";
-import { NodeConfig } from "@/services/config.js";
-import { AdmissionSql, Database } from "@/services/database.js";
+import { MigrationRunner, TxAdmissionsDB } from "../../src/database/index.js";
+import { admissionWriterShardForTxId } from "../../src/services/admission-writer.js";
+import { NodeConfig } from "../../src/services/config.js";
+import { AdmissionSql, Database } from "../../src/services/database.js";
 
 const operatorEnabled = process.env.BENCH_PHASE1_GROUP_COMMIT_OPERATOR === "1";
 const runToken = process.env.BENCH_PHASE1_GROUP_COMMIT_RUN_TOKEN ?? "";

@@ -3,14 +3,13 @@ import { CML } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { PendingBlockFinalizationsDB } from "@/database/index.js";
-import * as Ledger from "@/database/utils/ledger.js";
+import { PendingBlockFinalizationsDB } from "../src/database/index.js";
+import * as Ledger from "../src/database/utils/ledger.js";
 import {
   materializeConfirmedLedgerDeltaChainV1,
   pendingUtxoMemberToConfirmedLedgerEntry,
-} from "@/transactions/state-queue/confirmed-ledger-snapshot.js";
-import { computeLedgerMpfRootFromLedgerEntries } from "@/workers/utils/mpf.js";
-
+} from "../src/transactions/state-queue/confirmed-ledger-snapshot.js";
+import { computeLedgerMpfRootFromLedgerEntries } from "../src/workers/utils/mpf.js";
 import {
   makeMidgardTxOutput,
   makeOutRefCbor,

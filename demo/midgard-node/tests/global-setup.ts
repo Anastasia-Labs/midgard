@@ -27,10 +27,9 @@ import { SqlClient } from "@effect/sql";
 import { PgClient } from "@effect/sql-pg";
 import { Effect, Layer, Redacted } from "effect";
 
-import { MigrationRunner } from "@/database/index.js";
-import { NodeConfig } from "@/services/config.js";
-import { Database } from "@/services/database.js";
-
+import { MigrationRunner } from "../src/database/index.js";
+import { NodeConfig } from "../src/services/config.js";
+import { Database } from "../src/services/database.js";
 import {
   nativeOwnerBinaryPath,
   nativeOwnerBinaryPresent,
@@ -124,6 +123,25 @@ const buildNativeOwnerBinary = (): void => {
   }
 };
 
+/**
+ * Create and migrate every shard the current fork bound can reach. Shared with
+ * midgard-node-tools, whose suite reuses this shard scheme under its own
+ * database prefix (tests/test-env.ts).
+ */
+export const provisionMidgardNodeTestDatabaseShards =
+  async (): Promise<void> => {
+    applyMidgardNodeTestEnv();
+    const pinnedDatabase = process.env.POSTGRES_DB;
+    try {
+      for (const shard of testDatabaseNames()) {
+        await Effect.runPromise(createShard(shard));
+        await Effect.runPromise(migrateShard(shard));
+      }
+    } finally {
+      process.env.POSTGRES_DB = pinnedDatabase;
+    }
+  };
+
 export const setup = async (): Promise<void> => {
   buildNativeOwnerBinary();
   // The package's existing opt-out for database-backed tests. Provisioning
@@ -133,14 +151,5 @@ export const setup = async (): Promise<void> => {
   if (process.env.MIDGARD_SKIP_DB_TESTS === "1") {
     return;
   }
-  applyMidgardNodeTestEnv();
-  const pinnedDatabase = process.env.POSTGRES_DB;
-  try {
-    for (const shard of testDatabaseNames()) {
-      await Effect.runPromise(createShard(shard));
-      await Effect.runPromise(migrateShard(shard));
-    }
-  } finally {
-    process.env.POSTGRES_DB = pinnedDatabase;
-  }
+  await provisionMidgardNodeTestDatabaseShards();
 };

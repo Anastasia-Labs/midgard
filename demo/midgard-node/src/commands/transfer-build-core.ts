@@ -23,11 +23,8 @@ import {
 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { type Assets, CML, type Network } from "@lucid-evolution/lucid";
 
-import {
-  type NodeUtxo,
-  walletNetworkFromId,
-} from "@/commands/command-utils.js";
-import { compareOutRefs, outRefLabel } from "@/tx-context.js";
+import { compareOutRefs, outRefLabel } from "../tx-context.js";
+import { type NodeUtxo, walletNetworkFromId } from "./command-utils.js";
 
 export type TransferNetworkName = Network;
 export type TransferConsensusProfile = MidgardConsensusProfileV1;

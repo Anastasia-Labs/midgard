@@ -1,9 +1,9 @@
 import { Cause, Duration, Effect, Metric, Ref, Schedule } from "effect";
 
-import * as TxAdmissionsDB from "@/database/txAdmissions.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import { Database } from "@/services/database.js";
-import { AdmissionBacklogGaugeState, Globals } from "@/services/globals.js";
+import * as TxAdmissionsDB from "../database/txAdmissions.js";
+import { DatabaseError } from "../database/utils/common.js";
+import { Database } from "../services/database.js";
+import { AdmissionBacklogGaugeState, Globals } from "../services/globals.js";
 
 export const beginAdmissionBacklogRefresh = (
   current: AdmissionBacklogGaugeState,

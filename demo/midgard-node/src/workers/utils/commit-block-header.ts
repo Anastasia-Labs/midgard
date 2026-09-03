@@ -10,12 +10,12 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { SlotAwareDueWork } from "@/fibers/slot-aware-due-work.js";
+import type { SlotAwareDueWork } from "../../fibers/slot-aware-due-work.js";
 import type {
   SpeculativeCandidateSummary,
   SpeculativeInvalidationReason,
   UserEventBarrierWatermarks,
-} from "@/fibers/speculative-commit-state.js";
+} from "../../fibers/speculative-commit-state.js";
 
 export type SpeculativeCommitBaseInput = {
   readonly headerHash: string;

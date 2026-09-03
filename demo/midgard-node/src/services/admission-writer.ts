@@ -17,9 +17,9 @@ import {
   Scope,
 } from "effect";
 
-import * as TxAdmissionsDB from "@/database/txAdmissions.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import { AdmissionSql } from "@/services/database.js";
+import * as TxAdmissionsDB from "../database/txAdmissions.js";
+import { DatabaseError } from "../database/utils/common.js";
+import { AdmissionSql } from "./database.js";
 
 export const ADMISSION_WRITE_SHARD_COUNT = 2;
 export const ADMISSION_WRITE_BATCH_MAX_ROWS = 256;

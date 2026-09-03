@@ -1,8 +1,8 @@
 import { Effect, Option } from "effect";
 import { describe, expect, it } from "vitest";
 
-import * as Ledger from "@/database/utils/ledger.js";
-import { resolveWithdrawalLedgerOutputAtSelectedBaseV1 } from "@/workers/utils/mpf/withdrawal-classification.js";
+import * as Ledger from "../src/database/utils/ledger.js";
+import { resolveWithdrawalLedgerOutputAtSelectedBaseV1 } from "../src/workers/utils/mpf/withdrawal-classification.js";
 
 describe("withdrawal classification selected-base ledger", () => {
   it("uses the speculative base snapshot instead of stale persisted state", async () => {

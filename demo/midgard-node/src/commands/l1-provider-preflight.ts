@@ -4,7 +4,7 @@ import {
   localOgmiosSubmitSlotEvidence,
   readLocalOgmiosSubmitSlot,
   type SubmitSlotSnapshot,
-} from "@/local-ogmios-slot.js";
+} from "../local-ogmios-slot.js";
 import {
   classifyProviderHttpResponse,
   getProviderCooldown,
@@ -13,7 +13,7 @@ import {
   providerRouteSummary,
   redactEndpoint,
   summarizeProviderBody,
-} from "@/provider-diagnostics.js";
+} from "../provider-diagnostics.js";
 
 export type L1ProviderPreflightConfig = {
   readonly L1_PROVIDER: "Kupmios";

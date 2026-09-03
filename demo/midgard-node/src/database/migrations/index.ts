@@ -1,5 +1,4 @@
-import { sha256Hex } from "@/sha256.js";
-
+import { sha256Hex } from "../../sha256.js";
 import initialSchemaSql from "./sql/0001_initial_schema.sql";
 
 export type Migration = {

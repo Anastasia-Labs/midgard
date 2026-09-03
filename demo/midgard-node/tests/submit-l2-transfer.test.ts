@@ -35,7 +35,7 @@ import {
   DEFAULT_WALLET_SEED_ENV,
   type NodeUtxo,
   resolveWalletSeedPhrase,
-} from "@/commands/command-utils.js";
+} from "../src/commands/command-utils.js";
 import {
   buildTerminalDrainTx,
   buildTransferTx,
@@ -48,12 +48,14 @@ import {
   submitL2TransferProgram,
   submitNativeTransferTx,
   toQueuedTx,
-} from "@/commands/submit-l2-transfer.js";
-import { NodeConfig } from "@/services/config.js";
-import { Lucid as LucidService } from "@/services/lucid.js";
-import { ContractDeploymentIdentity } from "@/services/midgard-contracts.js";
-import { WriteBehind, WriteBehindService } from "@/services/write-behind.js";
-
+} from "../src/commands/submit-l2-transfer.js";
+import { NodeConfig } from "../src/services/config.js";
+import { Lucid as LucidService } from "../src/services/lucid.js";
+import { ContractDeploymentIdentity } from "../src/services/midgard-contracts.js";
+import {
+  WriteBehind,
+  WriteBehindService,
+} from "../src/services/write-behind.js";
 import {
   makeMidgardTxOutput,
   makeOutRefCbor,

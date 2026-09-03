@@ -7,11 +7,10 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { ForcedTransactionsDB } from "@/database/index.js";
-import { buildAuthenticatedRootFromEncodedEntries } from "@/workers/commit-block-header/transition-roots.js";
-import { encodeTransactionRootValue as encodeProductionTransactionRootValue } from "@/workers/utils/mpf.js";
-
 import { encodeForcedInclusionValueV1 } from "../src/database/forcedTransactions.js";
+import { ForcedTransactionsDB } from "../src/database/index.js";
+import { buildAuthenticatedRootFromEncodedEntries } from "../src/workers/commit-block-header/transition-roots.js";
+import { encodeTransactionRootValue as encodeProductionTransactionRootValue } from "../src/workers/utils/mpf.js";
 
 type GoldenEntry = {
   readonly name: string;

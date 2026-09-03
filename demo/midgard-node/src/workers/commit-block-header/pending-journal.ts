@@ -5,25 +5,24 @@ import { Effect } from "effect";
 import {
   PendingBlockFinalizationsDB,
   StateQueueMutationLeasesDB,
-} from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import * as Ledger from "@/database/utils/ledger.js";
+} from "../../database/index.js";
+import { DatabaseError } from "../../database/utils/common.js";
+import * as Ledger from "../../database/utils/ledger.js";
 import {
   type ContractDeploymentIdentityValue,
   type Database,
   Lucid,
-} from "@/services/index.js";
+} from "../../services/index.js";
 import {
   serializeStateQueueUTxO,
   type WorkerInput,
-} from "@/workers/utils/commit-block-header.js";
+} from "../utils/commit-block-header.js";
 import {
   computeLedgerMpfRootFromLedgerEntries,
   computeUtxoPayloadRoot,
   type LedgerDelta,
   type UtxoPayloadEntry,
-} from "@/workers/utils/mpf.js";
-
+} from "../utils/mpf.js";
 import {
   fetchExpectedStateQueueTailLocal,
   getConfirmedStateFromStateQueueDatumLocal,

@@ -19,6 +19,7 @@ import { JsonFileWatcherStore } from "da-committee-node/store";
 import { build as bundleWithTsup } from "tsup";
 import { describe, expect, it } from "vitest";
 
+import { makePayloadFixture } from "../../da-committee-node/tests/helpers.js";
 import {
   createDaLibp2pProducerTransport,
   DaPayloadPublicationError,
@@ -26,11 +27,9 @@ import {
   type DaProducerPublicationManifest,
   probeDaEnvelopeCapabilities,
   publishDaPayloadInsert,
-} from "@/da/libp2p-producer.js";
-import { DaPayloadsDB } from "@/database/index.js";
-import { sha256Hex } from "@/sha256.js";
-
-import { makePayloadFixture } from "../../da-committee-node/tests/helpers.js";
+} from "../src/da/libp2p-producer.js";
+import { DaPayloadsDB } from "../src/database/index.js";
+import { sha256Hex } from "../src/sha256.js";
 
 const packageRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const DEPLOYMENT = "b6".repeat(32);

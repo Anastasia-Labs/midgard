@@ -5,13 +5,13 @@ import * as SDK from "@al-ft/midgard-sdk";
 import type { LucidEvolution, UTxO } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { Lucid } from "@/services/lucid.js";
+import { Lucid } from "../services/lucid.js";
 import {
   awaitExactTransactionConfirmation,
   awaitSubmittedTransactionConfirmation,
   signSubmitTransaction,
   TxConfirmError,
-} from "@/transactions/utils.js";
+} from "../transactions/utils.js";
 
 export const DEFAULT_NONCE_LOVELACE = 5_000_000n;
 const DEFAULT_CONFIRMATION_RECONCILE_TIMEOUT_MS = 300_000;

@@ -35,14 +35,12 @@ import {
 } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { nodeUtxoFromCorpusFunding } from "@/commands/stress-corpus/build-chain.js";
-import type { OpenLoopCorpusRow } from "@/commands/stress-open-loop.js";
 import {
   DepositsDB,
   MempoolLedgerDB,
   MigrationRunner,
-} from "@/database/index.js";
-import { projectDepositsToMempoolLedger } from "@/fibers/project-deposits-to-mempool-ledger.js";
+} from "../../src/database/index.js";
+import { projectDepositsToMempoolLedger } from "../../src/fibers/project-deposits-to-mempool-ledger.js";
 import {
   txQueueProcessorDrainOnce,
   validationBatchDurationSummary,
@@ -52,31 +50,33 @@ import {
   validationMempoolInsertDurationTimer,
   validationPhaseADurationTimer,
   validationPhaseBDurationTimer,
-} from "@/fibers/tx-queue-processor.js";
-import { NodeConfig } from "@/services/config.js";
-import { BatchSql } from "@/services/database.js";
-import { Globals } from "@/services/globals.js";
-import { Lucid } from "@/services/lucid.js";
+} from "../../src/fibers/tx-queue-processor.js";
+import type { OpenLoopCorpusRow } from "../../src/open-loop-corpus-format.js";
+import { nodeUtxoFromCorpusFunding } from "../../src/open-loop-corpus-format.js";
+import { NodeConfig } from "../../src/services/config.js";
+import { BatchSql } from "../../src/services/database.js";
+import { Globals } from "../../src/services/globals.js";
+import { Lucid } from "../../src/services/lucid.js";
 import {
   makeMempoolLedgerCacheService,
   MempoolLedgerCache,
   validationLedgerCacheDeltaApplyCounter,
   validationLedgerCacheFullReloadCounter,
-} from "@/services/mempool-ledger-cache.js";
+} from "../../src/services/mempool-ledger-cache.js";
 import {
   FixedValidationWorkerPool,
   ValidationPool,
   type ValidationPoolService,
   ValidationWorkerError,
-} from "@/services/validation-pool.js";
+} from "../../src/services/validation-pool.js";
 import {
   makeWriteBehind,
   readWriteBehindTelemetry,
   summarizeWriteBehindTelemetry,
   WriteBehind,
-} from "@/services/write-behind.js";
-import type { ValidationCacheStats } from "@/workers/utils/validation-pool.js";
-import { packPhaseAJob } from "@/workers/utils/validation-pool.js";
+} from "../../src/services/write-behind.js";
+import type { ValidationCacheStats } from "../../src/workers/utils/validation-pool.js";
+import { packPhaseAJob } from "../../src/workers/utils/validation-pool.js";
 
 type WorkerCacheSnapshot = {
   readonly publicKeyCache: ValidationCacheStats;

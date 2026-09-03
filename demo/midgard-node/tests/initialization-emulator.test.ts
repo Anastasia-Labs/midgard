@@ -14,20 +14,19 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
+import { loadPhasMembershipWithdrawalScript } from "../src/phas-membership.js";
 import {
   buildAtomicProtocolInitTxProgram,
   ensureAtomicProtocolInitReferenceScriptsProgram,
   fetchHubOracleWitness,
   fetchProtocolDeploymentStatus,
   isSchedulerInitialized,
-} from "@/transactions/initialization.js";
-import { verifyNodeRuntimeReferenceScriptsProgram } from "@/transactions/reference-scripts.js";
+} from "../src/transactions/initialization.js";
+import { verifyNodeRuntimeReferenceScriptsProgram } from "../src/transactions/reference-scripts.js";
 import {
   activateOperatorProgram,
   registerOperatorProgram,
-} from "@/transactions/register-active-operator.js";
-
+} from "../src/transactions/register-active-operator.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 const loadContracts = (

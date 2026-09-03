@@ -8,12 +8,12 @@ import dotenv from "dotenv";
 import { Effect } from "effect";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import * as Services from "@/services/index.js";
+import * as Services from "../src/services/index.js";
 import {
   activateOperatorProgram,
   deregisterOperatorProgram,
   registerOperatorProgram,
-} from "@/transactions/register-active-operator.js";
+} from "../src/transactions/register-active-operator.js";
 
 dotenv.config();
 

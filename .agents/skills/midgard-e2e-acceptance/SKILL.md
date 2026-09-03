@@ -67,6 +67,11 @@ required by `docs/agents/state-reset.md`.
 ## Hard rules
 
 - Work from `demo/midgard-node` for operational commands.
+- `e2e-run-step`, `e2e-start-service`, `e2e-finalize-summary`,
+  `e2e-stress-l2-throughput`, and the `stress-*` commands are
+  `midgard-node-tools` commands (`node "$TOOLS_CLI" ...`, built with
+  `pnpm --dir demo/midgard-node-tools build`); they are not in the operator
+  binary.
 - `listen` and Docker startup attach; `init` bootstraps.
 - Never wipe local durable state without a full fresh on-chain deployment.
 - Never attach value-submitting flows to an old deployment after local state was

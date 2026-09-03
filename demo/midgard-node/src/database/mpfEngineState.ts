@@ -1,11 +1,8 @@
 import { SqlClient } from "@effect/sql";
 import { Duration, Effect, Fiber } from "effect";
 
-import {
-  DatabaseError,
-  sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { Database } from "@/services/database.js";
+import { Database } from "../services/database.js";
+import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
 export const tableName = "mpf_engine_state";
 

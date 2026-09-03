@@ -8,9 +8,9 @@ import {
   encodePipelineStatusOldestActive,
   PIPELINE_STATUS_ACTIVE_PENDING_FINALIZATION_STATUSES,
   type PipelineStatusOldestActiveRow,
-} from "@/commands/listen-router.js";
-import { PendingBlockFinalizationsDB } from "@/database/index.js";
-import { Globals } from "@/services/index.js";
+} from "../src/commands/listen-router.js";
+import { PendingBlockFinalizationsDB } from "../src/database/index.js";
+import { Globals } from "../src/services/index.js";
 
 const ACTIVE_STATUSES = [
   PendingBlockFinalizationsDB.Status.PendingSubmission,

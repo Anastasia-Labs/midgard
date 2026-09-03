@@ -4,7 +4,7 @@ import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect, Logger, LogLevel } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { deriveOperatorDaParams } from "@/transactions/initialization.js";
+import { deriveOperatorDaParams } from "../src/transactions/initialization.js";
 
 const OPERATOR_SEED =
   "panther fly crawl express smile lend company blue slogan dawn wall tip angle tomorrow battle myth category vanish misery ocean include salon wood rail";

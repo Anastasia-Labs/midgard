@@ -19,15 +19,6 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  FixedValidationWorkerPool,
-  ValidationWorkerError,
-} from "@/services/validation-pool.js";
-import {
-  copyToTransferable,
-  packPhaseAJob,
-} from "@/workers/utils/validation-pool.js";
-
-import {
   hashScriptWitness,
   makeNativeTx,
   makeOutput,
@@ -38,6 +29,14 @@ import {
   outRefFromTxId,
   plutusV3ScriptWitness,
 } from "../../midgard-validation/tests/validation-fixtures.js";
+import {
+  FixedValidationWorkerPool,
+  ValidationWorkerError,
+} from "../src/services/validation-pool.js";
+import {
+  copyToTransferable,
+  packPhaseAJob,
+} from "../src/workers/utils/validation-pool.js";
 
 const workerEntry = pathToFileURL(resolve("dist/validation.js"));
 const init = {

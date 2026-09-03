@@ -11,8 +11,7 @@ import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { MigrationRunner, TxAdmissionsDB } from "@/database/index.js";
-
+import { MigrationRunner, TxAdmissionsDB } from "../src/database/index.js";
 import { provideDatabaseLayers } from "./utils.js";
 
 describe("durable admission monotone timestamps", () => {

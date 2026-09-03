@@ -15,14 +15,14 @@ import { SqlClient } from "@effect/sql";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
+import { Database } from "../services/database.js";
+import { sha256 } from "../sha256.js";
 import {
   clearTable,
   DatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { exactRecord } from "@/database/utils/exact-record.js";
-import { Database } from "@/services/database.js";
-import { sha256 } from "@/sha256.js";
+} from "./utils/common.js";
+import { exactRecord } from "./utils/exact-record.js";
 
 export const tableName = "foreign_tip_reconciliations";
 export const FOREIGN_TIP_RECONCILIATION_V1_VERSION = 1 as const;

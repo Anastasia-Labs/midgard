@@ -5,25 +5,25 @@ import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { TxAdmissionsDB, TxUtils as TxTable } from "@/database/index.js";
+import { TxAdmissionsDB, TxUtils as TxTable } from "../src/database/index.js";
 import {
   ContractDeploymentIdentity,
   Lucid,
   NodeConfig,
-} from "@/services/index.js";
-import { runCommitBlockHeaderWorkerProgram } from "@/workers/commit-block-header.js";
-import { buildUnsignedCommitTx } from "@/workers/commit-block-header/build-unsigned-tx.js";
+} from "../src/services/index.js";
+import { runCommitBlockHeaderWorkerProgram } from "../src/workers/commit-block-header.js";
+import { buildUnsignedCommitTx } from "../src/workers/commit-block-header/build-unsigned-tx.js";
 import {
   submitDepositOnlyCommit,
   submitTxBackedCommit,
-} from "@/workers/commit-block-header/submission.js";
-import type { WorkerInput } from "@/workers/utils/commit-block-header.js";
-import { processMpfs } from "@/workers/utils/mpf.js";
+} from "../src/workers/commit-block-header/submission.js";
+import type { WorkerInput } from "../src/workers/utils/commit-block-header.js";
+import { processMpfs } from "../src/workers/utils/mpf.js";
 
-vi.mock("@/database/index.js", async () => {
-  const actual = await vi.importActual<typeof import("@/database/index.js")>(
-    "@/database/index.js",
-  );
+vi.mock("../src/database/index.js", async () => {
+  const actual = await vi.importActual<
+    typeof import("../src/database/index.js")
+  >("../src/database/index.js");
   const workerTx = {
     [actual.TxUtils.Columns.TX_ID]: Buffer.from("02", "hex"),
     [actual.TxUtils.Columns.TX]: Buffer.from("tx"),
@@ -95,57 +95,60 @@ vi.mock("@/database/index.js", async () => {
   };
 });
 
-vi.mock("@/transactions/state-queue/confirmed-ledger-snapshot.js", async () => {
-  const actual = await vi.importActual<
-    typeof import("@/transactions/state-queue/confirmed-ledger-snapshot.js")
-  >("@/transactions/state-queue/confirmed-ledger-snapshot.js");
-  return {
-    ...actual,
-    materializeConfirmedLedgerSnapshot: vi.fn(() =>
-      Effect.succeed({
-        entries: [],
-        baseRoot: "33".repeat(32),
-        root: "33".repeat(32),
-        deltaChain: [],
-        delta: { spent: [], produced: [] },
-      }),
-    ),
-  };
-});
+vi.mock(
+  "../src/transactions/state-queue/confirmed-ledger-snapshot.js",
+  async () => {
+    const actual = await vi.importActual<
+      typeof import("../src/transactions/state-queue/confirmed-ledger-snapshot.js")
+    >("../src/transactions/state-queue/confirmed-ledger-snapshot.js");
+    return {
+      ...actual,
+      materializeConfirmedLedgerSnapshot: vi.fn(() =>
+        Effect.succeed({
+          entries: [],
+          baseRoot: "33".repeat(32),
+          root: "33".repeat(32),
+          deltaChain: [],
+          delta: { spent: [], produced: [] },
+        }),
+      ),
+    };
+  },
+);
 
-vi.mock("@/fibers/fetch-and-insert-deposit-utxos.js", () => ({
+vi.mock("../src/fibers/fetch-and-insert-deposit-utxos.js", () => ({
   fetchAndInsertDepositUTxOsForCommitBarrier: vi.fn((end: Date) =>
     Effect.succeed(end),
   ),
 }));
-vi.mock("@/fibers/fetch-and-insert-withdrawal-utxos.js", () => ({
+vi.mock("../src/fibers/fetch-and-insert-withdrawal-utxos.js", () => ({
   fetchAndInsertWithdrawalUTxOsForCommitBarrier: vi.fn((end: Date) =>
     Effect.succeed(end),
   ),
 }));
-vi.mock("@/fibers/fetch-and-insert-tx-order-utxos.js", () => ({
+vi.mock("../src/fibers/fetch-and-insert-tx-order-utxos.js", () => ({
   fetchAndInsertTxOrderUTxOsForCommitBarrier: vi.fn((end: Date) =>
     Effect.succeed(end),
   ),
 }));
-vi.mock("@/e2e/pipelined-commit-crash-checkpoint.js", () => ({
+vi.mock("../src/e2e/pipelined-commit-crash-checkpoint.js", () => ({
   reachPipelinedCommitCrashCheckpoint: vi.fn(() => Effect.void),
 }));
-vi.mock("@/operator-wallet-view.js", () => ({
+vi.mock("../src/operator-wallet-view.js", () => ({
   fetchOperatorWalletView: vi.fn(),
   isPotentiallyStaleOperatorWalletViewError: vi.fn(() => false),
 }));
-vi.mock("@/workers/commit-block-header/build-unsigned-tx.js", () => ({
+vi.mock("../src/workers/commit-block-header/build-unsigned-tx.js", () => ({
   buildUnsignedCommitTx: vi.fn(),
 }));
-vi.mock("@/workers/commit-block-header/event-roots.js", () => ({
+vi.mock("../src/workers/commit-block-header/event-roots.js", () => ({
   resolveDepositsRoot: vi.fn(() => Effect.succeed(Option.none())),
   resolveForcedTransactionsRoot: vi.fn(() =>
     Effect.succeed(Option.some("forced-root")),
   ),
   resolveWithdrawalsRoot: vi.fn(() => Effect.succeed(Option.none())),
 }));
-vi.mock("@/workers/commit-block-header/pending-journal.js", () => ({
+vi.mock("../src/workers/commit-block-header/pending-journal.js", () => ({
   assertLiveTailCommitBase: vi.fn(() => Effect.void),
   assertPendingJournalCompleteness: vi.fn(() => Effect.void),
   buildPendingJournalMetadata: vi.fn(() => Effect.succeed({})),
@@ -157,7 +160,7 @@ vi.mock("@/workers/commit-block-header/pending-journal.js", () => ({
   ),
   revalidateStateQueueLease: vi.fn(() => Effect.void),
 }));
-vi.mock("@/workers/commit-block-header/transition-commitments.js", () => ({
+vi.mock("../src/workers/commit-block-header/transition-commitments.js", () => ({
   makeEventCommitments: vi.fn(() =>
     Effect.succeed({
       transitionTraceRoot: "transition-root",
@@ -174,10 +177,10 @@ vi.mock("@/workers/commit-block-header/transition-commitments.js", () => ({
   ),
 }));
 
-vi.mock("@/workers/utils/mpf.js", async () => {
-  const actual = await vi.importActual<typeof import("@/workers/utils/mpf.js")>(
-    "@/workers/utils/mpf.js",
-  );
+vi.mock("../src/workers/utils/mpf.js", async () => {
+  const actual = await vi.importActual<
+    typeof import("../src/workers/utils/mpf.js")
+  >("../src/workers/utils/mpf.js");
   const fakeMpf = {
     close: vi.fn(() => Effect.void),
     rootHex: vi.fn(() => Effect.succeed("33".repeat(32))),

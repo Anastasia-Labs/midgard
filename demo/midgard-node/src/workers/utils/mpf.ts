@@ -59,35 +59,38 @@ import { Data, Effect, Fiber, Metric, Option } from "effect";
 import * as FS from "fs";
 import { Level } from "level";
 
-import { positiveSafeInteger } from "@/artifact-schema.js";
-import * as CekProgramMaterialDB from "@/database/cekProgramMaterial.js";
-import * as ConfirmedLedgerDB from "@/database/confirmedLedger.js";
-import * as DepositsDB from "@/database/deposits.js";
-import * as ForcedTransactionsDB from "@/database/forcedTransactions.js";
-import * as MempoolDB from "@/database/mempool.js";
-import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
-import * as MempoolTxDeltasDB from "@/database/mempoolTxDeltas.js";
-import * as MpfEngineStateDB from "@/database/mpfEngineState.js";
-import * as PendingBlockFinalizationsDB from "@/database/pendingBlockFinalizations.js";
-import * as TxAdmissionsDB from "@/database/txAdmissions.js";
-import * as TxRejectionsDB from "@/database/txRejections.js";
+import { positiveSafeInteger } from "../../artifact-schema.js";
+import * as CekProgramMaterialDB from "../../database/cekProgramMaterial.js";
+import * as ConfirmedLedgerDB from "../../database/confirmedLedger.js";
+import * as DepositsDB from "../../database/deposits.js";
+import * as ForcedTransactionsDB from "../../database/forcedTransactions.js";
+import * as MempoolDB from "../../database/mempool.js";
+import * as MempoolLedgerDB from "../../database/mempoolLedger.js";
+import * as MempoolTxDeltasDB from "../../database/mempoolTxDeltas.js";
+import * as MpfEngineStateDB from "../../database/mpfEngineState.js";
+import * as PendingBlockFinalizationsDB from "../../database/pendingBlockFinalizations.js";
+import * as TxAdmissionsDB from "../../database/txAdmissions.js";
+import * as TxRejectionsDB from "../../database/txRejections.js";
 import {
   DatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import * as Ledger from "@/database/utils/ledger.js";
-import * as Tx from "@/database/utils/tx.js";
-import * as WithdrawalsDB from "@/database/withdrawals.js";
-import { Database, NodeConfig, type NodeConfigDep } from "@/services/index.js";
-import type { ContractDeploymentIdentityValue } from "@/services/midgard-contracts.js";
+} from "../../database/utils/common.js";
+import * as Ledger from "../../database/utils/ledger.js";
+import * as Tx from "../../database/utils/tx.js";
+import * as WithdrawalsDB from "../../database/withdrawals.js";
+import {
+  Database,
+  NodeConfig,
+  type NodeConfigDep,
+} from "../../services/index.js";
+import type { ContractDeploymentIdentityValue } from "../../services/midgard-contracts.js";
 import {
   encodeNativeMpfEventLog,
   type NativeMpfGenerationHandle,
   type NativeMpfOwnerClient,
-} from "@/services/mpf-native-owner/index.js";
-import { sha256 } from "@/sha256.js";
-import { FileSystemError, findSpentAndProducedUTxOs } from "@/utils.js";
-
+} from "../../services/mpf-native-owner/index.js";
+import { sha256 } from "../../sha256.js";
+import { FileSystemError, findSpentAndProducedUTxOs } from "../../utils.js";
 import { keyValuePhasRoot, keyValuePhasRootWithCount } from "./mpf/phas.js";
 import {
   type ClassifiedWithdrawal,

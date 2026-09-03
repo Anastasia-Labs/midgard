@@ -29,28 +29,30 @@ import {
 import { Effect } from "effect";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import { ForcedTransactionsDB, MigrationRunner } from "@/database/index.js";
+import {
+  ForcedTransactionsDB,
+  MigrationRunner,
+} from "../src/database/index.js";
 import {
   observeVisibleTxOrderCarriageV1,
   reconcileVisibleTxOrderUTxOs,
   reconstructTxOrderMaterialV1,
-} from "@/fibers/fetch-and-insert-tx-order-utxos.js";
+} from "../src/fibers/fetch-and-insert-tx-order-utxos.js";
 import {
   fetchKupoAncestorPointV1,
   fetchKupoCreationPointV1,
   readOgmiosBlockTransactionV1,
   resolveCarriageReferenceInputsV1,
   txOrderMintRedeemerV1,
-} from "@/l1-tx-order-carriage-v1.js";
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
+} from "../src/l1-tx-order-carriage-v1.js";
+import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
 import {
   ContractDeploymentIdentity,
   Database,
   Lucid as LucidService,
   MidgardContracts,
   NodeConfig,
-} from "@/services/index.js";
-
+} from "../src/services/index.js";
 import {
   type LocalL1V1,
   startLocalL1ObservationV1,

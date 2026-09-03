@@ -31,7 +31,20 @@ import { Effect } from "effect";
 import {
   parseAdditionalAssetSpecs,
   parseLovelaceAmount,
-} from "@/asset-specs.js";
+} from "../asset-specs.js";
+import * as MempoolDB from "../database/mempool.js";
+import * as MempoolLedgerDB from "../database/mempoolLedger.js";
+import * as TxRejectionsDB from "../database/txRejections.js";
+import { DatabaseError } from "../database/utils/common.js";
+import {
+  ContractDeploymentIdentity,
+  Database as DatabaseService,
+  Lucid,
+  NodeConfig as NodeConfigService,
+  WriteBehind,
+} from "../services/index.js";
+import { sleep } from "../sleep.js";
+import { compareOutRefs, outRefLabel } from "../tx-context.js";
 import {
   decodeNodeUtxo,
   defaultMidgardNodeEndpoint,
@@ -42,25 +55,12 @@ import {
   parseNodeEndpoint,
   type ResolvedWalletSeedPhrase,
   walletNetworkFromId,
-} from "@/commands/command-utils.js";
+} from "./command-utils.js";
 import {
   buildTerminalDrainTx,
   buildTransferTxWithMinFee,
   type BuiltTransferTx,
-} from "@/commands/transfer-build-core.js";
-import * as MempoolDB from "@/database/mempool.js";
-import * as MempoolLedgerDB from "@/database/mempoolLedger.js";
-import * as TxRejectionsDB from "@/database/txRejections.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import {
-  ContractDeploymentIdentity,
-  Database as DatabaseService,
-  Lucid,
-  NodeConfig as NodeConfigService,
-  WriteBehind,
-} from "@/services/index.js";
-import { sleep } from "@/sleep.js";
-import { compareOutRefs, outRefLabel } from "@/tx-context.js";
+} from "./transfer-build-core.js";
 
 export {
   buildTerminalDrainTx,
@@ -71,7 +71,7 @@ export {
   makeTransferMidgard,
   type PrivateKeyInput,
   type TransferNetworkName,
-} from "@/commands/transfer-build-core.js";
+} from "./transfer-build-core.js";
 
 export type SubmissionMode = "api" | "local";
 

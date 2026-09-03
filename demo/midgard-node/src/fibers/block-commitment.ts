@@ -22,14 +22,10 @@ import {
   PendingBlockFinalizationsDB,
   StateQueueMutationLeasesDB,
   WithdrawalsDB,
-} from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import {
-  reduceSpeculativeCommitState,
-  type SpeculativeCommitState,
-} from "@/fibers/speculative-commit-state.js";
-import { canonicalSlotConfigForLucid } from "@/lucid-time.js";
-import { publishMempoolLedgerDelta } from "@/services/globals.js";
+} from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
+import { canonicalSlotConfigForLucid } from "../lucid-time.js";
+import { publishMempoolLedgerDelta } from "../services/globals.js";
 import {
   type CommitPipelinePhase,
   Database,
@@ -38,33 +34,32 @@ import {
   MidgardContracts,
   NodeConfig,
   withL1ControlPlane,
-} from "@/services/index.js";
+} from "../services/index.js";
 import type {
   NativeMpfGenerationHandle,
   NativeMpfOwnerService,
   PersistedNativeMpfReplay,
-} from "@/services/mpf-native-owner/index.js";
+} from "../services/mpf-native-owner/index.js";
 import {
   fetchStateQueueSnapshotProgram,
   refreshStateQueueGlobalsFromSnapshot,
   type StateQueueSnapshot,
-} from "@/services/state-queue-topology.js";
+} from "../services/state-queue-topology.js";
 import {
   type SerializedStateQueueUTxO,
   WorkerInput,
   WorkerOutput,
-} from "@/workers/utils/commit-block-header.js";
+} from "../workers/utils/commit-block-header.js";
 import type {
   CommitSchedulerStateQueueEvidence,
   EarliestCommitSchedulerPlan,
-} from "@/workers/utils/commit-block-planner.js";
-import { COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS } from "@/workers/utils/commit-end-time.js";
-import { WorkerError } from "@/workers/utils/common.js";
+} from "../workers/utils/commit-block-planner.js";
+import { COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS } from "../workers/utils/commit-end-time.js";
+import { WorkerError } from "../workers/utils/common.js";
 import {
   fetchRealStateQueueWitnessContext,
   resolveEarliestCommitSchedulerDueWorkPlan,
-} from "@/workers/utils/scheduler-refresh.js";
-
+} from "../workers/utils/scheduler-refresh.js";
 import { classifyCommitWorkerOutputForMutationLease } from "./commit-worker-failure-classification.js";
 import {
   publishFinalizedDaPayloadBestEffort,
@@ -79,6 +74,10 @@ import {
   registerSlotAwareDueWork,
   type SlotAwareDueWork,
 } from "./slot-aware-due-work.js";
+import {
+  reduceSpeculativeCommitState,
+  type SpeculativeCommitState,
+} from "./speculative-commit-state.js";
 import { makeAwaitedWorkerTerminator } from "./worker-lifecycle.js";
 
 /**

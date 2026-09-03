@@ -15,7 +15,7 @@ import { SqlClient } from "@effect/sql";
 import { fromHex } from "@lucid-evolution/lucid";
 import { Data, Effect, Option } from "effect";
 
-import { readDaHardeningConfig } from "@/da/hardening-config.js";
+import { readDaHardeningConfig } from "../../da/hardening-config.js";
 import {
   DepositsDB,
   ForcedTransactionsDB,
@@ -25,23 +25,23 @@ import {
   TxAdmissionsDB,
   TxUtils as TxTable,
   WithdrawalsDB,
-} from "@/database/index.js";
+} from "../../database/index.js";
 import {
   DatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import type * as Ledger from "@/database/utils/ledger.js";
-import { Columns as TxColumns } from "@/database/utils/tx.js";
-import { reachPipelinedCommitCrashCheckpoint } from "@/e2e/pipelined-commit-crash-checkpoint.js";
-import { fetchAndInsertDepositUTxOsForCommitBarrier } from "@/fibers/fetch-and-insert-deposit-utxos.js";
-import { fetchAndInsertTxOrderUTxOsForCommitBarrier } from "@/fibers/fetch-and-insert-tx-order-utxos.js";
-import { fetchAndInsertWithdrawalUTxOsForCommitBarrier } from "@/fibers/fetch-and-insert-withdrawal-utxos.js";
-import { sameSpeculativeSourceIdSet } from "@/fibers/speculative-commit-state.js";
+} from "../../database/utils/common.js";
+import type * as Ledger from "../../database/utils/ledger.js";
+import { Columns as TxColumns } from "../../database/utils/tx.js";
+import { reachPipelinedCommitCrashCheckpoint } from "../../e2e/pipelined-commit-crash-checkpoint.js";
+import { fetchAndInsertDepositUTxOsForCommitBarrier } from "../../fibers/fetch-and-insert-deposit-utxos.js";
+import { fetchAndInsertTxOrderUTxOsForCommitBarrier } from "../../fibers/fetch-and-insert-tx-order-utxos.js";
+import { fetchAndInsertWithdrawalUTxOsForCommitBarrier } from "../../fibers/fetch-and-insert-withdrawal-utxos.js";
+import { sameSpeculativeSourceIdSet } from "../../fibers/speculative-commit-state.js";
 import {
   fetchOperatorWalletView,
   isPotentiallyStaleOperatorWalletViewError,
   type OperatorWalletView,
-} from "@/operator-wallet-view.js";
+} from "../../operator-wallet-view.js";
 import {
   ContractDeploymentIdentity,
   type ContractDeploymentIdentityValue,
@@ -49,23 +49,23 @@ import {
   Lucid,
   MidgardContracts,
   NodeConfig,
-} from "@/services/index.js";
+} from "../../services/index.js";
 import {
   isUnknownOutputReferenceSubmitError,
   TxSignError,
   TxSubmitError,
-} from "@/transactions/utils.js";
+} from "../../transactions/utils.js";
 import type {
   WorkerInput,
   WorkerOutput,
-} from "@/workers/utils/commit-block-header.js";
-import { selectCommitRoots } from "@/workers/utils/commit-block-planner.js";
+} from "../utils/commit-block-header.js";
+import { selectCommitRoots } from "../utils/commit-block-planner.js";
 import {
   failedSubmissionProgram,
   recoverSubmittedTxHashByHeaderProgram,
   skippedSubmissionProgram,
   successfulLocalFinalizationRecoveryProgram,
-} from "@/workers/utils/commit-submission.js";
+} from "../utils/commit-submission.js";
 import {
   emptyRootHexProgram,
   encodeTransactionRootValue,
@@ -77,8 +77,7 @@ import {
   type RetainedValidationTraceMember,
   type UtxoPayloadEntry,
   type UtxoPayloadSizeAggregate,
-} from "@/workers/utils/mpf.js";
-
+} from "../utils/mpf.js";
 import { buildUnsignedCommitTx } from "./build-unsigned-tx.js";
 import {
   resolveDepositsRoot,

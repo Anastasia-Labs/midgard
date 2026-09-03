@@ -2,17 +2,17 @@ import { SqlClient } from "@effect/sql";
 import { Address } from "@lucid-evolution/lucid";
 import { Duration, Effect, Metric } from "effect";
 
-import * as ImmutableDB from "@/database/immutable.js";
-import * as MempoolDB from "@/database/mempool.js";
+import { Database } from "../services/database.js";
+import * as ImmutableDB from "./immutable.js";
+import * as MempoolDB from "./mempool.js";
 import {
   clearTable,
   DatabaseError,
   logDatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import * as Ledger from "@/database/utils/ledger.js";
-import * as Tx from "@/database/utils/tx.js";
-import { Database } from "@/services/database.js";
+} from "./utils/common.js";
+import * as Ledger from "./utils/ledger.js";
+import * as Tx from "./utils/tx.js";
 
 const tableName = "address_history";
 

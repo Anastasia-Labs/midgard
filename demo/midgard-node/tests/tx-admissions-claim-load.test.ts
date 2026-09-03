@@ -6,8 +6,7 @@ import { it } from "@effect/vitest";
 import { Deferred, Duration, Effect, Fiber } from "effect";
 import { beforeAll, describe, expect } from "vitest";
 
-import { MigrationRunner, TxAdmissionsDB } from "@/database/index.js";
-
+import { MigrationRunner, TxAdmissionsDB } from "../src/database/index.js";
 import {
   deterministicFixtureBytes,
   deterministicFixtureTxHash,

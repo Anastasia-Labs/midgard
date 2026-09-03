@@ -68,8 +68,7 @@ import { describe, expect, it } from "vitest";
 import {
   nodeRuntimeReferenceScriptTargets,
   type ReferenceScriptTarget,
-} from "@/transactions/reference-scripts.js";
-
+} from "../src/transactions/reference-scripts.js";
 import { loadRealMidgardContractsForTest } from "./helpers/real-midgard-contracts.js";
 
 const moduleDirectory = dirname(fileURLToPath(import.meta.url));

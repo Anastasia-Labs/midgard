@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { evaluateReadiness } from "@/commands/readiness.js";
+import { evaluateReadiness } from "../src/commands/readiness.js";
 
 const now = 1_000_000;
 type ReadinessInput = Parameters<typeof evaluateReadiness>[0];

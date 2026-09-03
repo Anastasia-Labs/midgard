@@ -409,6 +409,9 @@ importers:
       fast-check:
         specifier: ^4.5.3
         version: 4.7.0
+      midgard-node-tools:
+        specifier: workspace:*
+        version: link:../midgard-node-tools
       prettier:
         specifier: ^3.5.2
         version: 3.5.2
@@ -421,6 +424,181 @@ importers:
       vite:
         specifier: ^6.3.5
         version: 6.4.2(@types/node@22.19.17)(yaml@2.9.0)
+
+  midgard-node-tools:
+    dependencies:
+      '@aiken-lang/merkle-patricia-forestry':
+        specifier: github:Anastasia-Labs/merkle-patricia-forestry#b139785f7c118854f9824c26cc443e2df95cb50e&path:/off-chain
+        version: https://codeload.github.com/Anastasia-Labs/merkle-patricia-forestry/tar.gz/b139785f7c118854f9824c26cc443e2df95cb50e#path:/off-chain
+      '@al-ft/lucid-midgard':
+        specifier: workspace:*
+        version: link:../lucid-midgard
+      '@al-ft/midgard-core':
+        specifier: workspace:*
+        version: link:../midgard-core
+      '@al-ft/midgard-fault-proofs':
+        specifier: workspace:*
+        version: link:../midgard-fault-proofs
+      '@al-ft/midgard-sdk':
+        specifier: workspace:*
+        version: link:../midgard-sdk
+      '@al-ft/midgard-validation':
+        specifier: workspace:*
+        version: link:../midgard-validation
+      '@chainsafe/libp2p-noise':
+        specifier: 17.0.0
+        version: 17.0.0
+      '@chainsafe/libp2p-yamux':
+        specifier: 8.0.1
+        version: 8.0.1
+      '@effect/experimental':
+        specifier: ^0.46.0
+        version: 0.46.8(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2)
+      '@effect/opentelemetry':
+        specifier: ^0.44.6
+        version: 0.44.12(@opentelemetry/api@1.9.0)(@opentelemetry/resources@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-metrics@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-node@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-web@1.30.1(@opentelemetry/api@1.9.0))(@opentelemetry/semantic-conventions@1.30.0)(effect@3.21.2)
+      '@effect/platform':
+        specifier: ^0.80.0
+        version: 0.80.21(effect@3.21.2)
+      '@effect/platform-node':
+        specifier: ^0.80.0
+        version: 0.80.3(@effect/cluster@0.33.3(@effect/platform@0.80.21(effect@3.21.2))(@effect/rpc@0.59.9(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.80.21(effect@3.21.2))(@effect/rpc@0.59.9(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
+      '@effect/sql':
+        specifier: ^0.34.1
+        version: 0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2)
+      '@effect/sql-pg':
+        specifier: ^0.35.1
+        version: 0.35.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.80.21(effect@3.21.2))(@effect/sql@0.34.1(@effect/experimental@0.46.8(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.80.21(effect@3.21.2))(effect@3.21.2))(effect@3.21.2)
+      '@harmoniclabs/bytestring':
+        specifier: 1.0.0
+        version: 1.0.0
+      '@harmoniclabs/cbor':
+        specifier: 1.6.6
+        version: 1.6.6
+      '@harmoniclabs/pair':
+        specifier: 1.0.0
+        version: 1.0.0
+      '@harmoniclabs/plutus-data':
+        specifier: 1.2.6
+        version: 1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)
+      '@harmoniclabs/plutus-machine':
+        specifier: 2.1.3
+        version: 2.1.3(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/pair@1.0.0)(@harmoniclabs/plutus-data@1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6))(@harmoniclabs/uplc@1.4.1(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(@harmoniclabs/plutus-data@1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)))
+      '@harmoniclabs/uplc':
+        specifier: 1.4.1
+        version: 1.4.1(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(@harmoniclabs/plutus-data@1.2.6(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6))
+      '@libp2p/bootstrap':
+        specifier: 12.0.25
+        version: 12.0.25
+      '@libp2p/crypto':
+        specifier: 5.1.20
+        version: 5.1.20
+      '@libp2p/gossipsub':
+        specifier: 16.0.3
+        version: 16.0.3
+      '@libp2p/identify':
+        specifier: 4.1.8
+        version: 4.1.8
+      '@libp2p/interface':
+        specifier: 3.2.4
+        version: 3.2.4
+      '@libp2p/peer-id':
+        specifier: 6.0.11
+        version: 6.0.11
+      '@libp2p/tcp':
+        specifier: 11.0.22
+        version: 11.0.22
+      '@lucid-evolution/lucid':
+        specifier: 0.6.2
+        version: 0.6.2(@harmoniclabs/bytestring@1.0.0)(@harmoniclabs/cbor@1.6.6)(@harmoniclabs/crypto@0.3.0)(@harmoniclabs/pair@1.0.0)(encoding@0.1.13)(fast-check@4.7.0)
+      '@lucid-evolution/uplc':
+        specifier: 0.2.22
+        version: 0.2.22
+      '@multiformats/multiaddr':
+        specifier: 13.0.3
+        version: 13.0.3
+      '@noble/hashes':
+        specifier: ^2.0.1
+        version: 2.2.0
+      '@opentelemetry/api':
+        specifier: ^1.9.0
+        version: 1.9.0
+      '@opentelemetry/exporter-prometheus':
+        specifier: ^0.57.2
+        version: 0.57.2(@opentelemetry/api@1.9.0)
+      '@opentelemetry/exporter-trace-otlp-http':
+        specifier: ^0.57.2
+        version: 0.57.2(@opentelemetry/api@1.9.0)
+      '@opentelemetry/sdk-trace-base':
+        specifier: ^1.30.1
+        version: 1.30.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/sdk-trace-node':
+        specifier: ^1.30.1
+        version: 1.30.1(@opentelemetry/api@1.9.0)
+      '@opentelemetry/sdk-trace-web':
+        specifier: ^1.30.1
+        version: 1.30.1(@opentelemetry/api@1.9.0)
+      bip39:
+        specifier: ^3.1.0
+        version: 3.1.0
+      blake2b:
+        specifier: 2.1.4
+        version: 2.1.4(patch_hash=amsgm2cgjjoucvcdg3i4tuosl4)
+      cborg:
+        specifier: ^4.5.8
+        version: 4.5.8
+      chalk:
+        specifier: ^5.4.1
+        version: 5.4.1
+      commander:
+        specifier: ^13.1.0
+        version: 13.1.0
+      dotenv:
+        specifier: ^16.4.7
+        version: 16.4.7
+      effect:
+        specifier: ^3.14.22
+        version: 3.21.2
+      level:
+        specifier: ^10.0.0
+        version: 10.0.0
+      libp2p:
+        specifier: 3.3.4
+        version: 3.3.4
+      libsodium-wrappers-sumo:
+        specifier: 0.7.15
+        version: 0.7.15
+      midgard-node:
+        specifier: workspace:*
+        version: link:../midgard-node
+      undici:
+        specifier: ^7.25.0
+        version: 7.25.0
+    devDependencies:
+      '@types/node':
+        specifier: ^22.17.0
+        version: 22.19.17
+      da-committee-node:
+        specifier: workspace:*
+        version: link:../da-committee-node
+      prettier:
+        specifier: ^3.5.2
+        version: 3.5.2
+      rimraf:
+        specifier: ^6.0.1
+        version: 6.1.3
+      tsup:
+        specifier: ^8.4.0
+        version: 8.4.0(postcss@8.5.3)(typescript@5.7.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.7.3
+        version: 5.7.3
+      vite:
+        specifier: ^6.3.5
+        version: 6.4.2(@types/node@22.19.17)(yaml@2.9.0)
+      vitest:
+        specifier: ^3.0.7
+        version: 3.0.7(@types/node@22.19.17)(yaml@2.9.0)
 
   midgard-sdk:
     dependencies:
@@ -2492,14 +2670,6 @@ packages:
   fastq@1.20.1:
     resolution: {integrity: sha512-GGToxJ/w1x32s/D2EKND7kTil4n8OVk/9mycTc4VDza13lOvpUZTGX3mFSCtV9ksdGBVzvsyAVLM6mHFThxXxw==}
 
-  fdir@6.4.3:
-    resolution: {integrity: sha512-PMXmW2y1hDDfTSRc9gaXIuCCRpuoz3Kaz8cUelp3smouvfT632ozg2vrT6lJsHKKOF59YLbOGfAWGUcKEfRMQw==}
-    peerDependencies:
-      picomatch: ^3 || ^4
-    peerDependenciesMeta:
-      picomatch:
-        optional: true
-
   fdir@6.5.0:
     resolution: {integrity: sha512-tIbYtZbucOs0BRGqPJkshJUYdL+SDH7dVM8gjy+ERp3WAUjLEFJE+02kanyHtwjWOnwrKYBiwAmM0p4kLJAnXg==}
     engines: {node: '>=12.0.0'}
@@ -2952,10 +3122,6 @@ packages:
 
   minimatch@9.0.5:
     resolution: {integrity: sha512-G6T0ZX48xgozx7587koeX9Ys2NYy6Gmv//P89sEte9V9whIapMNF4idKxnW2QtCcLiTWlb/wfCabAtAFWhhBow==}
-    engines: {node: '>=16 || 14 >=14.17'}
-
-  minipass@7.1.2:
-    resolution: {integrity: sha512-qOOzS1cBTWYF4BH8fVePDBOO9iptMnGUEZwNc/cMWnTV2nVLZ7VoNWEPHkYczZA0pdoA7dl6e7FL659nX9S2aw==}
     engines: {node: '>=16 || 14 >=14.17'}
 
   minipass@7.1.3:
@@ -3467,10 +3633,6 @@ packages:
 
   tinyexec@0.3.2:
     resolution: {integrity: sha512-KQQR9yN7R5+OSwaK0XQoj22pwHoTlgYqmUscPYoknOoWCWfj/5/ABTMRi69FrKU5ffPVh5QcFikpWJI/P1ocHA==}
-
-  tinyglobby@0.2.12:
-    resolution: {integrity: sha512-qkf4trmKSIiMTs/E63cxH+ojC2unam7rJ0WrauAzpT3ECNTxGRMlaXxVbfxMUC/w0LaYk6jQ4y/nGR9uBO3tww==}
-    engines: {node: '>=12.0.0'}
 
   tinyglobby@0.2.16:
     resolution: {integrity: sha512-pn99VhoACYR8nFHhxqix+uvsbXineAasWm5ojXoN8xEwK5Kd3/TrhNn1wByuD52UxWRLy8pu+kRMniEi6Eq9Zg==}
@@ -6125,10 +6287,6 @@ snapshots:
     dependencies:
       reusify: 1.1.0
 
-  fdir@6.4.3(picomatch@4.0.2):
-    optionalDependencies:
-      picomatch: 4.0.2
-
   fdir@6.5.0(picomatch@4.0.2):
     optionalDependencies:
       picomatch: 4.0.2
@@ -6214,7 +6372,7 @@ snapshots:
       foreground-child: 3.3.1
       jackspeak: 3.4.3
       minimatch: 9.0.5
-      minipass: 7.1.2
+      minipass: 7.1.3
       package-json-from-dist: 1.0.1
       path-scurry: 1.11.1
 
@@ -6589,8 +6747,6 @@ snapshots:
     dependencies:
       brace-expansion: 2.0.1
 
-  minipass@7.1.2: {}
-
   minipass@7.1.3: {}
 
   mlly@1.7.4:
@@ -6737,7 +6893,7 @@ snapshots:
   path-scurry@1.11.1:
     dependencies:
       lru-cache: 10.4.3
-      minipass: 7.1.2
+      minipass: 7.1.3
 
   path-scurry@2.0.2:
     dependencies:
@@ -7110,11 +7266,6 @@ snapshots:
 
   tinyexec@0.3.2: {}
 
-  tinyglobby@0.2.12:
-    dependencies:
-      fdir: 6.4.3(picomatch@4.0.2)
-      picomatch: 4.0.2
-
   tinyglobby@0.2.16:
     dependencies:
       fdir: 6.5.0(picomatch@4.0.4)
@@ -7190,11 +7341,11 @@ snapshots:
       picocolors: 1.1.1
       postcss-load-config: 6.0.1(postcss@8.5.3)(yaml@2.9.0)
       resolve-from: 5.0.0
-      rollup: 4.34.8
+      rollup: 4.60.2
       source-map: 0.8.0-beta.0
       sucrase: 3.35.0
       tinyexec: 0.3.2
-      tinyglobby: 0.2.12
+      tinyglobby: 0.2.16
       tree-kill: 1.2.2
     optionalDependencies:
       postcss: 8.5.3

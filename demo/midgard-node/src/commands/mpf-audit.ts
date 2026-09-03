@@ -7,14 +7,14 @@ import {
   MpfEngineStateDB,
   PendingBlockFinalizationsDB,
   StateQueueMutationLeasesDB,
-} from "@/database/index.js";
-import { Database, NodeConfig } from "@/services/index.js";
+} from "../database/index.js";
+import { Database, NodeConfig } from "../services/index.js";
 import {
   computeLedgerMpfRootFromLedgerEntries,
   ledgerPayloadAggregateFromEntries,
   MidgardMpf,
   setMpfScratchBuild,
-} from "@/workers/utils/mpf.js";
+} from "../workers/utils/mpf.js";
 
 export type MpfAuditResult = {
   readonly persistedRoot: string;

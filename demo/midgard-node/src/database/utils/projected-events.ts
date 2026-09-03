@@ -1,11 +1,8 @@
 import { SqlClient, SqlError } from "@effect/sql";
 import { Effect } from "effect";
 
-import {
-  DatabaseError,
-  sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { Database } from "@/services/database.js";
+import { Database } from "../../services/database.js";
+import { DatabaseError, sqlErrorToDatabaseError } from "./common.js";
 
 export type ProjectedEventRow = Record<string, unknown>;
 

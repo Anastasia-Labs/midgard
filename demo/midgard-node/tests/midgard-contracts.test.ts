@@ -21,14 +21,14 @@ import {
   buildContractDeploymentInfoFromContracts,
   buildDeploymentManifestV1,
   type DeploymentManifestV1IdentityContext,
-} from "@/commands/contract-deployment-info.js";
+} from "../src/commands/contract-deployment-info.js";
 import {
   computeDeploymentManifestV1DaCommitteeSignersHash,
   computeDeploymentManifestV1JsonDigest,
   DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   normalizeDeploymentManifestV1JsonValue,
-} from "@/deployment-manifest-v1.js";
-import { AlwaysSucceedsContract } from "@/services/always-succeeds.js";
+} from "../src/deployment-manifest-v1.js";
+import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
 import {
   assertDeploymentManifestMatchesConfig,
   buildRealTxOrderContracts,
@@ -45,12 +45,11 @@ import {
   REAL_TX_ORDER_SCRIPT_TITLES,
   REAL_WITHDRAWAL_SCRIPT_TITLES,
   withRealStateQueueAndOperatorContracts,
-} from "@/services/midgard-contracts.js";
+} from "../src/services/midgard-contracts.js";
 import {
   buildFraudProofCatalogueDeploymentInfo,
   fraudProofsToIndexedValidators,
-} from "@/transactions/initialization.js";
-
+} from "../src/transactions/initialization.js";
 import {
   TEST_AVAILABILITY_CHALLENGE_V1,
   TEST_AVAILABILITY_PARAMETERS_V1,

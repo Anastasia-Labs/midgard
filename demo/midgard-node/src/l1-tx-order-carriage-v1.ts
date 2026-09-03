@@ -8,7 +8,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { normalizeOgmiosHttpUrl } from "@/local-ledger-slot.js";
+import { normalizeOgmiosHttpUrl } from "./local-ledger-slot.js";
 
 /**
  * The node's own read of a forced order's `docs/spec/midgard-tx.md` §8 carriage

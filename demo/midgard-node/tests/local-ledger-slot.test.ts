@@ -6,7 +6,7 @@ import {
   fetchLocalOgmiosSubmitSlotSnapshot,
   normalizeOgmiosHttpUrl,
   parseOgmiosShelleyGenesisSlotConfig,
-} from "@/local-ledger-slot.js";
+} from "../src/local-ledger-slot.js";
 
 const jsonResponse = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {

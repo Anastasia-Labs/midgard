@@ -8,14 +8,14 @@ import {
 import { SqlClient } from "@effect/sql";
 import { Duration, Effect, Metric } from "effect";
 
+import { Database } from "../services/database.js";
 import {
   clearTable,
   DatabaseError,
   logDatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import * as Ledger from "@/database/utils/ledger.js";
-import { Database } from "@/services/database.js";
+} from "./utils/common.js";
+import * as Ledger from "./utils/ledger.js";
 
 export const tableName = "mempool_tx_deltas";
 

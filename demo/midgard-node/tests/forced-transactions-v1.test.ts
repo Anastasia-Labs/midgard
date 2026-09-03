@@ -37,16 +37,6 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
-  ForcedTransactionsDB,
-  PendingBlockFinalizationsDB,
-} from "@/database/index.js";
-import { publishedProgramMaterialEntries } from "@/fibers/fetch-and-insert-tx-order-utxos.js";
-import {
-  buildDeterministicValidationTraceMembers,
-  classifyForcedTransactionsV1,
-} from "@/workers/utils/mpf.js";
-
-import {
   encodeRecomputedNativeTx,
   FUNDED_OUTPUT_LOVELACE_V1,
   makeMintPreimageCbor,
@@ -56,6 +46,15 @@ import {
   outRefFromByte,
   outRefFromTxId,
 } from "../../midgard-validation/tests/validation-fixtures.js";
+import {
+  ForcedTransactionsDB,
+  PendingBlockFinalizationsDB,
+} from "../src/database/index.js";
+import { publishedProgramMaterialEntries } from "../src/fibers/fetch-and-insert-tx-order-utxos.js";
+import {
+  buildDeterministicValidationTraceMembers,
+  classifyForcedTransactionsV1,
+} from "../src/workers/utils/mpf.js";
 import { makeOutRefCbor } from "./midgard-output-helpers.js";
 
 const canonicalTransaction = (

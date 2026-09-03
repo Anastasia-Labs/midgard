@@ -10,14 +10,14 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { exactObjectKeys } from "@/exact-object-keys.js";
-import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
+import { exactObjectKeys } from "../exact-object-keys.js";
+import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
 import {
   handleSignSubmit,
   TxConfirmError,
   TxSignError,
   TxSubmitError,
-} from "@/transactions/utils.js";
+} from "./utils.js";
 
 export type PhasMembershipRewardRegistrationResult = {
   readonly rewardAddress: string;

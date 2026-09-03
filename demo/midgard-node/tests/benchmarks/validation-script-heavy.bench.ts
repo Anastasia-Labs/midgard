@@ -19,12 +19,6 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { FixedValidationWorkerPool } from "@/services/validation-pool.js";
-import {
-  copyToTransferable,
-  packPhaseAJob,
-} from "@/workers/utils/validation-pool.js";
-
 import {
   hashScriptWitness,
   makeNativeTx,
@@ -34,6 +28,11 @@ import {
   outRefFromByte,
   plutusV3ScriptWitness,
 } from "../../../midgard-validation/tests/validation-fixtures.js";
+import { FixedValidationWorkerPool } from "../../src/services/validation-pool.js";
+import {
+  copyToTransferable,
+  packPhaseAJob,
+} from "../../src/workers/utils/validation-pool.js";
 import {
   readPhase2ContainerIdentity,
   readPhase2CpuTopology,

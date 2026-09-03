@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 
-import { StateQueueMutationLeasesDB } from "@/database/index.js";
-import { Database } from "@/services/database.js";
+import { StateQueueMutationLeasesDB } from "../../src/database/index.js";
+import { Database } from "../../src/services/database.js";
 
 const mode = process.argv[2];
 const holder = process.argv[3] ?? `lease-probe-${process.pid.toString()}`;

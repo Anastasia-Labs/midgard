@@ -7,7 +7,7 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
+import { loadPhasMembershipWithdrawalScript } from "../src/phas-membership.js";
 import {
   type CapturedPhasMembershipRegistrationTransaction,
   decodePhasMembershipRegistrationTransactionBodyEvidenceV1,
@@ -16,8 +16,8 @@ import {
   inspectPhasMembershipRegistrationTransaction,
   isPhasMembershipAlreadyRegisteredError,
   queryPhasMembershipRewardAccountRegisteredProgram,
-} from "@/transactions/phas-membership-registration.js";
-import { TxSubmitError } from "@/transactions/utils.js";
+} from "../src/transactions/phas-membership-registration.js";
+import { TxSubmitError } from "../src/transactions/utils.js";
 
 const phasIdentity = SDK.phasMembershipIdentity(
   "Preprod",

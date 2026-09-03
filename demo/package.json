@@ -11,7 +11,7 @@
     "format-check": "prettier --check \"**/*.{ts,tsx,md}\" \"!**/.architecture-f-wasm/**\" \"!**/coverage/**\" \"!**/deploymentInfo/**\" \"!**/dist/**\" \"!**/logs/**\" \"!**/node_modules/**\"",
     "hooks:install": "bash ../.githooks/install",
     "test:tx-prep:sdk": "pnpm --filter @al-ft/lucid-midgard test && pnpm --filter @al-ft/midgard-sdk test",
-    "test:tx-prep:node": "pnpm --filter midgard-node run test:tx-prep:node",
+    "test:tx-prep:node": "pnpm --filter midgard-node run test:tx-prep:node && pnpm --filter midgard-node-tools run test:e2e-reliability",
     "test:tx-prep:emulator": "pnpm --filter midgard-node run test:tx-prep:emulator && pnpm --filter @al-ft/midgard-fault-proofs exec vitest run --pool=forks --no-file-parallelism tests/submit-init-emulator",
     "test:tx-prep:local": "pnpm run test:tx-prep:sdk && pnpm run test:tx-prep:node && pnpm run test:tx-prep:emulator",
     "fixtures:transaction-root-v1": "pnpm --dir midgard-node run fixtures:transaction-root-v1",

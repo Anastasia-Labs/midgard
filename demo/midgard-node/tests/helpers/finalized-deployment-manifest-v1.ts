@@ -15,7 +15,7 @@ import {
   buildContractDeploymentInfoFromContracts,
   buildDeploymentManifestV1,
   type DeploymentManifestV1IdentityContext,
-} from "@/commands/contract-deployment-info.js";
+} from "../../src/commands/contract-deployment-info.js";
 import {
   computeDeploymentManifestV1DaCommitteeSignersHash,
   computeDeploymentManifestV1JsonDigest,
@@ -23,12 +23,11 @@ import {
   type DeploymentManifestV1Value,
   normalizeDeploymentManifestV1JsonValue,
   parseDeploymentManifestV1Value,
-} from "@/deployment-manifest-v1.js";
+} from "../../src/deployment-manifest-v1.js";
 import {
   buildFraudProofCatalogueDeploymentInfo,
   fraudProofsToIndexedValidators,
-} from "@/transactions/initialization.js";
-
+} from "../../src/transactions/initialization.js";
 import { TEST_AVAILABILITY_CHALLENGE_V1 } from "./availability-challenge-v1.js";
 import { TEST_CARDANO_PROTOCOL_PARAMETERS_V1 } from "./cardano-protocol-parameters-v1.js";
 import { loadRealMidgardContractsForTest } from "./real-midgard-contracts.js";

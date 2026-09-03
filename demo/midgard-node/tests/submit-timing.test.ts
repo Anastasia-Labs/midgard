@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   planSubmitTiming,
   planSubmitTimingAfterInlineWait,
-} from "@/transactions/submit-timing.js";
+} from "../src/transactions/submit-timing.js";
 
 const snapshot = (currentSlot: number) => ({
   source: "test" as const,

@@ -21,6 +21,10 @@ Start from the repository root. Keep local Preprod provider state intact.
 ```bash
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 NODE_DIR="$REPO_ROOT/demo/midgard-node"
+# The e2e step runner, service supervisor, finalizer, and stress commands live
+# in the tooling binary; operator commands stay on the node's dist/index.js.
+TOOLS_DIR="$REPO_ROOT/demo/midgard-node-tools"
+TOOLS_CLI="$TOOLS_DIR/dist/index.js"
 DA_NODE_DIR="$REPO_ROOT/demo/da-committee-node"
 cd "$NODE_DIR"
 
@@ -43,11 +47,13 @@ Verify `.env` without printing seed phrases:
   and
 - `DA_LIBP2P_PRIVATE_KEY_SOURCE` matches the producer manifest identity.
 
-Build the current CLI and start only the local provider plumbing needed by host
-commands. Compose dependencies start Cardano node and bootstrap services.
+Build the current operator CLI and the tooling CLI, then start only the local
+provider plumbing needed by host commands. Compose dependencies start Cardano
+node and bootstrap services.
 
 ```bash
 pnpm build
+pnpm --dir "$TOOLS_DIR" build
 $COMPOSE up -d cardano-node-ogmios kupo
 node dist/index.js l1-provider-preflight --json
 ```
@@ -101,7 +107,7 @@ The local Kupmios stack must be healthy before this transaction.
 ```bash
 HUB_ORACLE_NONCE_LOG="logs/$RUN_ID/hub-oracle-nonce.log"
 HUB_ORACLE_NONCE_STEP="$E2E_STEP_DIR/hub-oracle-nonce.json"
-node dist/index.js e2e-run-step \
+node "$TOOLS_CLI" e2e-run-step \
   --id hub-oracle-nonce \
   --cwd "$NODE_DIR" \
   --raw-log "$HUB_ORACLE_NONCE_LOG" \
@@ -151,7 +157,7 @@ deployment identity.
 ```bash
 REFERENCE_LOG="logs/$RUN_ID/reference-scripts.log"
 REFERENCE_STEP="$E2E_STEP_DIR/reference-scripts.json"
-node dist/index.js e2e-run-step \
+node "$TOOLS_CLI" e2e-run-step \
   --id reference-scripts \
   --cwd "$NODE_DIR" \
   --raw-log "$REFERENCE_LOG" \
@@ -181,7 +187,7 @@ identities.
 ```bash
 INIT_LOG="logs/$RUN_ID/init-protocol.log"
 INIT_STEP="$E2E_STEP_DIR/init-protocol.json"
-node dist/index.js e2e-run-step \
+node "$TOOLS_CLI" e2e-run-step \
   --id init-protocol \
   --cwd "$NODE_DIR" \
   --raw-log "$INIT_LOG" \
@@ -211,7 +217,7 @@ node dist/index.js reconcile deployment-manifest \
 
 OPERATOR_LOG="logs/$RUN_ID/operator-lifecycle.log"
 OPERATOR_STEP="$E2E_STEP_DIR/operator-lifecycle.json"
-node dist/index.js e2e-run-step \
+node "$TOOLS_CLI" e2e-run-step \
   --id operator-lifecycle \
   --cwd "$NODE_DIR" \
   --raw-log "$OPERATOR_LOG" \
@@ -349,7 +355,7 @@ export "${DA_WATCHER_ENV[@]}"
 
 DA_WALLET_PREFLIGHT_LOG="logs/$RUN_ID/da-l1-wallet-preflight.log"
 DA_WALLET_PREFLIGHT_STEP="$E2E_STEP_DIR/da-l1-wallet-preflight.json"
-node dist/index.js e2e-run-step \
+node "$TOOLS_CLI" e2e-run-step \
   --id da-l1-wallet-preflight \
   --cwd "$NODE_DIR" \
   --raw-log "$DA_WALLET_PREFLIGHT_LOG" \
@@ -367,7 +373,7 @@ Start the watcher before probing producer-to-committee reachability:
 ```bash
 DA_NODE_LOG="logs/$RUN_ID/da-committee-node.log"
 DA_NODE_PID="$DA_NODE_DIR/run/$RUN_ID-watcher.pid"
-node dist/index.js e2e-start-service \
+node "$TOOLS_CLI" e2e-start-service \
   --service da-committee-node \
   --cwd "$DA_NODE_DIR" \
   --raw-log "$DA_NODE_LOG" \
@@ -387,7 +393,7 @@ unset DA_WATCHER_ENV
 
 DA_LIBP2P_PREFLIGHT_LOG="logs/$RUN_ID/da-libp2p-bind-listen-preflight.log"
 DA_LIBP2P_PREFLIGHT_STEP="$E2E_STEP_DIR/da-libp2p-bind-listen-preflight.json"
-node dist/index.js e2e-run-step \
+node "$TOOLS_CLI" e2e-run-step \
   --id da-libp2p-bind-listen-preflight \
   --cwd "$NODE_DIR" \
   --raw-log "$DA_LIBP2P_PREFLIGHT_LOG" \
@@ -417,7 +423,7 @@ $COMPOSE up -d midgard-node
 
 READY_LOG="logs/$RUN_ID/midgard-node-ready.log"
 READY_STEP="$E2E_STEP_DIR/midgard-node-ready.json"
-node dist/index.js e2e-run-step \
+node "$TOOLS_CLI" e2e-run-step \
   --id midgard-node-ready \
   --cwd "$NODE_DIR" \
   --raw-log "$READY_LOG" \
@@ -467,7 +473,7 @@ DEST_B="$(node --input-type=module -e '
 
 DEPOSIT_LOG="logs/$RUN_ID/submit-deposit.log"
 DEPOSIT_STEP="$E2E_STEP_DIR/submit-deposit.json"
-node dist/index.js e2e-run-step \
+node "$TOOLS_CLI" e2e-run-step \
   --id submit-deposit \
   --cwd "$NODE_DIR" \
   --raw-log "$DEPOSIT_LOG" \
@@ -482,7 +488,7 @@ node dist/index.js e2e-run-step \
 
 PROJECT_DEPOSITS_LOG="logs/$RUN_ID/project-deposits.log"
 PROJECT_DEPOSITS_STEP="$E2E_STEP_DIR/project-deposits.json"
-node dist/index.js e2e-run-step \
+node "$TOOLS_CLI" e2e-run-step \
   --id project-deposits \
   --cwd "$NODE_DIR" \
   --raw-log "$PROJECT_DEPOSITS_LOG" \
@@ -508,7 +514,7 @@ curl -sf http://127.0.0.1:8787/readyz
 
 L2_TRANSFER_A_LOG="logs/$RUN_ID/submit-l2-transfer-a.log"
 L2_TRANSFER_A_STEP="$E2E_STEP_DIR/submit-l2-transfer-a.json"
-node dist/index.js e2e-run-step \
+node "$TOOLS_CLI" e2e-run-step \
   --id submit-l2-transfer-a \
   --cwd "$NODE_DIR" \
   --raw-log "$L2_TRANSFER_A_LOG" \
@@ -519,7 +525,7 @@ node dist/index.js e2e-run-step \
 
 L2_TRANSFER_B_LOG="logs/$RUN_ID/submit-l2-transfer-b.log"
 L2_TRANSFER_B_STEP="$E2E_STEP_DIR/submit-l2-transfer-b.json"
-node dist/index.js e2e-run-step \
+node "$TOOLS_CLI" e2e-run-step \
   --id submit-l2-transfer-b \
   --cwd "$NODE_DIR" \
   --raw-log "$L2_TRANSFER_B_LOG" \
@@ -569,7 +575,7 @@ Wait for the running merge fiber to empty the state queue:
 ```bash
 AUTOMATIC_MERGE_LOG="logs/$RUN_ID/await-automatic-merge.log"
 AUTOMATIC_MERGE_STEP="$E2E_STEP_DIR/await-automatic-merge.json"
-node dist/index.js e2e-run-step \
+node "$TOOLS_CLI" e2e-run-step \
   --id await-automatic-merge \
   --cwd "$NODE_DIR" \
   --raw-log "$AUTOMATIC_MERGE_LOG" \
@@ -892,7 +898,7 @@ esac
 POSTGRES_HOST=127.0.0.1 \
 POSTGRES_PORT=5433 \
 ADMIN_API_KEY="${ADMIN_API_KEY:-localdev-admin}" \
-node dist/index.js e2e-finalize-summary \
+node "$TOOLS_CLI" e2e-finalize-summary \
   --mode "$SUMMARY_MODE" \
   --run-id "$RUN_ID" \
   --out-dir "logs/$RUN_ID" \

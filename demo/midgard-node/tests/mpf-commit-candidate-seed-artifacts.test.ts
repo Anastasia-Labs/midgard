@@ -5,7 +5,7 @@ import {
   decodeArchitectureGCorpusFundingV1,
   toJsonSafeCount,
   validateArchitectureGCommitCandidateSeedResultV1,
-} from "@/workers/utils/mpf-commit-candidate-artifacts.js";
+} from "../src/workers/utils/mpf-commit-candidate-artifacts.js";
 
 const hash = (byte: number): string =>
   byte.toString(16).padStart(2, "0").repeat(32);

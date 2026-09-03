@@ -10,29 +10,10 @@ import {
   MpfEngineStateDB,
   PendingBlockFinalizationsDB,
   StateQueueMutationLeasesDB,
-} from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import { reachPipelinedCommitCrashCheckpoint } from "@/e2e/pipelined-commit-crash-checkpoint.js";
-import {
-  promoteOrRecoverNativeMpf,
-  publishCommitMempoolLedgerMutation,
-} from "@/fibers/block-commitment.js";
-import {
-  publishFinalizedDaPayloadBestEffort,
-  runAfterL1ControlPlaneRelease,
-} from "@/fibers/da-publication-trigger.js";
-import { resolveWorkerEntry } from "@/fibers/resolve-worker-entry.js";
-import {
-  barrierWatermarksAreFresh,
-  reduceSpeculativeCommitState,
-  shouldRetrySpeculativeConfirmationWake,
-  speculationOverlapEfficiency,
-  type SpeculativeCandidateSummary,
-  type SpeculativeCommitState,
-  type SpeculativeInvalidationReason,
-} from "@/fibers/speculative-commit-state.js";
-import { makeAwaitedWorkerTerminator } from "@/fibers/worker-lifecycle.js";
-import { canonicalSlotConfigForLucid } from "@/lucid-time.js";
+} from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
+import { reachPipelinedCommitCrashCheckpoint } from "../e2e/pipelined-commit-crash-checkpoint.js";
+import { canonicalSlotConfigForLucid } from "../lucid-time.js";
 import {
   type CommitSubmitWake,
   ContractDeploymentIdentity,
@@ -43,19 +24,38 @@ import {
   NodeConfig,
   type NodeConfigDep,
   withL1ControlPlane,
-} from "@/services/index.js";
+} from "../services/index.js";
 import {
   fetchStateQueueSnapshotProgram,
   refreshStateQueueGlobalsFromSnapshot,
-} from "@/services/state-queue-topology.js";
-import { stateQueueBaseHeaderHash } from "@/workers/commit-block-header/state-queue.js";
+} from "../services/state-queue-topology.js";
+import { stateQueueBaseHeaderHash } from "../workers/commit-block-header/state-queue.js";
 import {
   deserializeStateQueueUTxO,
   type SpeculativeCommitWorkerInstruction,
   type WorkerInput,
   type WorkerOutput,
-} from "@/workers/utils/commit-block-header.js";
-import { WorkerError } from "@/workers/utils/common.js";
+} from "../workers/utils/commit-block-header.js";
+import { WorkerError } from "../workers/utils/common.js";
+import {
+  promoteOrRecoverNativeMpf,
+  publishCommitMempoolLedgerMutation,
+} from "./block-commitment.js";
+import {
+  publishFinalizedDaPayloadBestEffort,
+  runAfterL1ControlPlaneRelease,
+} from "./da-publication-trigger.js";
+import { resolveWorkerEntry } from "./resolve-worker-entry.js";
+import {
+  barrierWatermarksAreFresh,
+  reduceSpeculativeCommitState,
+  shouldRetrySpeculativeConfirmationWake,
+  speculationOverlapEfficiency,
+  type SpeculativeCandidateSummary,
+  type SpeculativeCommitState,
+  type SpeculativeInvalidationReason,
+} from "./speculative-commit-state.js";
+import { makeAwaitedWorkerTerminator } from "./worker-lifecycle.js";
 
 const speculativeBuildDuration = Metric.timer(
   "speculative_build_duration_ms",

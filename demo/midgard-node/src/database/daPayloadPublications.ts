@@ -1,12 +1,9 @@
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
-import type { DaProducerCommitteePeer } from "@/da/libp2p-producer.js";
-import {
-  DatabaseError,
-  sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { Database } from "@/services/database.js";
+import type { DaProducerCommitteePeer } from "../da/libp2p-producer.js";
+import { Database } from "../services/database.js";
+import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
 export const tableName = "da_payload_publications";
 

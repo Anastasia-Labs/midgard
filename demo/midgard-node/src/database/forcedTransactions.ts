@@ -26,14 +26,14 @@ import { SqlClient } from "@effect/sql";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";
 
+import { Database } from "../services/database.js";
+import { sha256 } from "../sha256.js";
 import {
   clearTable,
   DatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import * as ProjectedEvents from "@/database/utils/projected-events.js";
-import { Database } from "@/services/database.js";
-import { sha256 } from "@/sha256.js";
+} from "./utils/common.js";
+import * as ProjectedEvents from "./utils/projected-events.js";
 
 export const tableName = "forced_transaction_utxos";
 const PROOF_MAX_CANONICAL_TRANSACTION_BYTES = 295_041;

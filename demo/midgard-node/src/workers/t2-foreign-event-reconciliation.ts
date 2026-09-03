@@ -13,10 +13,10 @@ import {
   ForeignTipReconciliationsDB,
   MempoolLedgerDB,
   WithdrawalsDB,
-} from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import { ContractDeploymentIdentity, Database } from "@/services/index.js";
-import { computeDaPayloadRoots } from "@/workers/commit-block-header/da-payload.js";
+} from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
+import { ContractDeploymentIdentity, Database } from "../services/index.js";
+import { computeDaPayloadRoots } from "./commit-block-header/da-payload.js";
 
 export type T2CandidateEventIds = {
   readonly deposits: readonly string[];

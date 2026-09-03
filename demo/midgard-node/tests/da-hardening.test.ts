@@ -4,12 +4,12 @@ import { makeDeploymentMarkerV1 } from "@al-ft/midgard-core/deployment-manifest-
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { readDaHardeningConfig } from "@/da/hardening-config.js";
+import { readDaHardeningConfig } from "../src/da/hardening-config.js";
 import {
   assertDaDeploymentIdentityCompatible,
   assertDaThresholdCompatible,
   runDaIdentityGatedStartupSequence,
-} from "@/da/startup.js";
+} from "../src/da/startup.js";
 
 describe("DA hardening startup and configuration", () => {
   it("runs the required native zstd startup round-trip", async () => {

@@ -6,8 +6,8 @@ import { describe, expect, it } from "vitest";
 import {
   classifyCommitWorkerOutputForMutationLease,
   type CommitWorkerFailureJournalEvidence,
-} from "@/fibers/commit-worker-failure-classification.js";
-import { WorkerError } from "@/workers/utils/common.js";
+} from "../src/fibers/commit-worker-failure-classification.js";
+import { WorkerError } from "../src/workers/utils/common.js";
 
 const failureOutput = {
   type: "FailureOutput",

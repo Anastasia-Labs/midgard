@@ -16,7 +16,7 @@ import { SqlClient } from "@effect/sql";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import * as DaPayloadTerminalOutcomesDB from "@/database/daPayloadTerminalOutcomes.js";
+import * as DaPayloadTerminalOutcomesDB from "../database/daPayloadTerminalOutcomes.js";
 import {
   fetchKupoAncestorPointV1,
   fetchKupoSpendV1,
@@ -26,8 +26,8 @@ import {
   type ObservedL1TransactionAtPointV1,
   readOgmiosBlockTransactionV1,
   type WebSocketFactory,
-} from "@/l1-tx-order-carriage-v1.js";
-import { normalizeOgmiosHttpUrl } from "@/local-ledger-slot.js";
+} from "../l1-tx-order-carriage-v1.js";
+import { normalizeOgmiosHttpUrl } from "../local-ledger-slot.js";
 
 export const STATE_QUEUE_CORRECTION_OBSERVER_V1_SCHEMA_VERSION =
   "midgard-node-state-queue-correction-observer-v1" as const;

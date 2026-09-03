@@ -25,7 +25,7 @@ import {
 import { EMPTY_MERKLE_TREE_ROOT } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { loadDaLibp2pIdentity } from "@/da/libp2p-identity.js";
+import { loadDaLibp2pIdentity } from "../src/da/libp2p-identity.js";
 import {
   assertDaEnvelopeCapabilityQuorum,
   closeDaLibp2pPublicationTransport,
@@ -42,8 +42,8 @@ import {
   runDaLibp2pPreflight,
   runDaLibp2pPreflightFromEnv,
   writeSharedDaFrameChunksForTest,
-} from "@/da/libp2p-producer.js";
-import { DaPayloadsDB } from "@/database/index.js";
+} from "../src/da/libp2p-producer.js";
+import { DaPayloadsDB } from "../src/database/index.js";
 
 const PEER_A = "12D3KooWJzVqLz7QpLdfW6M5G2X1L8L6GQ9QJ3uCHZP8X8J6BC8u";
 const PEER_B = "12D3KooWR3iZBFz6W2fyFdRt2t45x2Ytz9p6c9JwHyDqaN49XU47";

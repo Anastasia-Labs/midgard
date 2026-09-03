@@ -24,22 +24,15 @@ import {
   Schedule,
 } from "effect";
 
-import { buildListenRouter } from "@/commands/listen-router.js";
-import {
-  ensureProtocolInitializedOnStartup,
-  hydratePendingBlockFinalizationOnStartup,
-  seedLatestLocalBlockBoundaryOnStartup,
-} from "@/commands/listen-startup.js";
-import { shouldRunGenesisOnStartup } from "@/commands/startup-policy.js";
 import {
   closeDaLibp2pPublicationTransport,
   startDaLibp2pRetainedPayloadServerFromEnv,
-} from "@/da/libp2p-producer.js";
+} from "../da/libp2p-producer.js";
 import {
   assertDaHardeningProviderStartup,
   prepareDaHardeningStartup,
   runDaIdentityGatedStartupSequence,
-} from "@/da/startup.js";
+} from "../da/startup.js";
 import {
   DaPayloadsDB,
   InitDB,
@@ -47,9 +40,9 @@ import {
   MpfEngineStateDB,
   MutationJobsDB,
   PendingBlockFinalizationsDB,
-} from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import { assertPhase1AcceptCrashCheckpointConfiguration } from "@/e2e/phase1-accept-crash-checkpoint.js";
+} from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
+import { assertPhase1AcceptCrashCheckpointConfiguration } from "../e2e/phase1-accept-crash-checkpoint.js";
 import {
   admissionBacklogGaugeFiber,
   attestationTimeoutCorrectionFiber,
@@ -73,8 +66,8 @@ import {
   speculativeCommitSubmitterFiber,
   txQueueProcessorFiber,
   userEventBarrierRefresherFiber,
-} from "@/fibers/index.js";
-import * as Genesis from "@/genesis.js";
+} from "../fibers/index.js";
+import * as Genesis from "../genesis.js";
 import {
   admissionAsDefaultSqlLayer,
   AdmissionSql,
@@ -93,12 +86,19 @@ import {
   validationPoolLayer,
   WriteBehind,
   writeBehindFiber,
-} from "@/services/index.js";
-import { backfillMissingDaPayloadsFromFinalizedJournals } from "@/workers/commit-block-header/da-payload-backfill.js";
+} from "../services/index.js";
+import { backfillMissingDaPayloadsFromFinalizedJournals } from "../workers/commit-block-header/da-payload-backfill.js";
 import {
   MidgardMpf,
   utxoToLedgerInsertMaterialV1,
-} from "@/workers/utils/mpf.js";
+} from "../workers/utils/mpf.js";
+import { buildListenRouter } from "./listen-router.js";
+import {
+  ensureProtocolInitializedOnStartup,
+  hydratePendingBlockFinalizationOnStartup,
+  seedLatestLocalBlockBoundaryOnStartup,
+} from "./listen-startup.js";
+import { shouldRunGenesisOnStartup } from "./startup-policy.js";
 
 const logStartupFailure = (message: string) => (error: unknown) =>
   Effect.logError(`${message}: ${formatUnknownError(error)}`);
@@ -341,13 +341,13 @@ export const runNode = (
   | ConfigError
   | DatabaseError
   | DatabaseInitializationError
-  | import("@/services/validation-pool.js").ValidationWorkerError,
+  | import("../services/validation-pool.js").ValidationWorkerError,
   | NodeConfig
   | Database
   | AdmissionSql
   | AdmissionWriter
   | BatchSql
-  | import("@/services/midgard-contracts.js").ContractDeploymentIdentity
+  | import("../services/midgard-contracts.js").ContractDeploymentIdentity
   | MidgardContracts
   | Lucid
   | WriteBehind

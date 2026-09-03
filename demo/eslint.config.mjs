@@ -76,6 +76,8 @@ export default tseslint.config(
             "midgard-node/tsup.config.ts",
             "midgard-node/vitest.bench.config.ts",
             "midgard-node/vitest.config.ts",
+            "midgard-node-tools/tsup.config.ts",
+            "midgard-node-tools/vitest.config.ts",
             "midgard-sdk/tsup.config.ts",
             "midgard-sdk/vitest.config.ts",
             "midgard-validation/vitest.config.ts",
@@ -147,6 +149,7 @@ export default tseslint.config(
   {
     files: [
       "midgard-node/src/index.ts",
+      "midgard-node-tools/src/index.ts",
       "midgard-watcher/src/settlement-indexer.ts",
     ],
     rules: {
@@ -167,6 +170,24 @@ export default tseslint.config(
               group: ["@/*"],
               message:
                 "midgard-sdk src is resolved from source by every consumer through the midgard-source exports condition. The @/ alias exists only in this package's tsconfig/vitest config, so src must use relative specifiers.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["midgard-node/**/*.ts", "midgard-node-tools/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            workspacePackageBoundary,
+            {
+              group: ["@/*"],
+              message:
+                "midgard-node is compiled from source by midgard-node-tools through the midgard-source exports condition, so neither package has a @/ alias: use relative specifiers inside a package and `midgard-node/<subpath>` from the tooling package.",
             },
           ],
         },

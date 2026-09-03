@@ -17,12 +17,9 @@ import { SqlClient } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";
 import { Effect } from "effect";
 
-import {
-  DatabaseError,
-  sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { NodeConfig } from "@/services/config.js";
-import { Database } from "@/services/database.js";
+import { NodeConfig } from "../services/config.js";
+import { Database } from "../services/database.js";
+import { DatabaseError, sqlErrorToDatabaseError } from "./utils/common.js";
 
 export const entryTableName = "cek_program_material_entries";
 export const membershipTableName = "cek_program_material_memberships";

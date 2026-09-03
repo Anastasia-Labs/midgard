@@ -12,7 +12,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { dedupeByOutRef, outRefLabel, type OutRefLike } from "@/tx-context.js";
+import { dedupeByOutRef, outRefLabel, type OutRefLike } from "./tx-context.js";
 
 export type OperatorWalletView = {
   readonly walletAddress: string;

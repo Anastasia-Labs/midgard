@@ -2,8 +2,7 @@ import { Worker } from "node:worker_threads";
 
 import * as SDK from "@al-ft/midgard-sdk";
 
-import { resolveWorkerEntry } from "@/fibers/resolve-worker-entry.js";
-
+import { resolveWorkerEntry } from "../../fibers/resolve-worker-entry.js";
 import type {
   MpfRootBuilderRequest,
   MpfRootBuilderResponse,

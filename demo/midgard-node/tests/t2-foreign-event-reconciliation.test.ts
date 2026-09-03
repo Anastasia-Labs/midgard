@@ -2,11 +2,11 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { computeDaPayloadRoots } from "@/workers/commit-block-header/da-payload.js";
+import { computeDaPayloadRoots } from "../src/workers/commit-block-header/da-payload.js";
 import {
   resolveT2ForeignEventEvidence,
   type T2CandidateEventIds,
-} from "@/workers/t2-foreign-event-reconciliation.js";
+} from "../src/workers/t2-foreign-event-reconciliation.js";
 
 const emptyIds = (): T2CandidateEventIds => ({
   deposits: [],

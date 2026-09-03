@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import { Effect } from "effect";
 
-import { ConfigError } from "@/services/config.js";
+import { ConfigError } from "../services/config.js";
 
 export const PHASE1_ACCEPT_CRASH_CHECKPOINT_TOKEN_ENV =
   "PHASE1_ACCEPT_CRASH_CHECKPOINT_TOKEN";

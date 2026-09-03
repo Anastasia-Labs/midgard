@@ -1,12 +1,5 @@
 import { Duration, Effect, Metric, Queue, Ref, Schedule } from "effect";
 
-import { fetchAndInsertDepositUTxOsForCommitBarrier } from "@/fibers/fetch-and-insert-deposit-utxos.js";
-import { fetchAndInsertTxOrderUTxOsForCommitBarrier } from "@/fibers/fetch-and-insert-tx-order-utxos.js";
-import { fetchAndInsertWithdrawalUTxOsForCommitBarrier } from "@/fibers/fetch-and-insert-withdrawal-utxos.js";
-import {
-  minimumBarrierWatermarkMs,
-  type UserEventBarrierWatermarks,
-} from "@/fibers/speculative-commit-state.js";
 import {
   ContractDeploymentIdentity,
   Database,
@@ -15,7 +8,14 @@ import {
   MidgardContracts,
   NodeConfig,
   withL1ControlPlane,
-} from "@/services/index.js";
+} from "../services/index.js";
+import { fetchAndInsertDepositUTxOsForCommitBarrier } from "./fetch-and-insert-deposit-utxos.js";
+import { fetchAndInsertTxOrderUTxOsForCommitBarrier } from "./fetch-and-insert-tx-order-utxos.js";
+import { fetchAndInsertWithdrawalUTxOsForCommitBarrier } from "./fetch-and-insert-withdrawal-utxos.js";
+import {
+  minimumBarrierWatermarkMs,
+  type UserEventBarrierWatermarks,
+} from "./speculative-commit-state.js";
 
 const userEventBarrierRefreshDuration = Metric.timer(
   "user_event_barrier_refresh_duration_ms",

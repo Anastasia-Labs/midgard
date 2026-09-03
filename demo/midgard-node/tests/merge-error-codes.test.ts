@@ -10,12 +10,12 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { extractStateQueueErrorCode } from "@/commands/listen-response.js";
+import { extractStateQueueErrorCode } from "../src/commands/listen-response.js";
 import {
   diagnoseMissingBlockTxs,
   preflightDecodeBlockTxs,
   synchronizeCommitMpfAfterConfirmedMerge,
-} from "@/transactions/state-queue/merge-to-confirmed-state.js";
+} from "../src/transactions/state-queue/merge-to-confirmed-state.js";
 
 type TxFixture = {
   readonly cborHex: string;

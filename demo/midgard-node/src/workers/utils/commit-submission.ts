@@ -9,7 +9,7 @@ import { SqlClient } from "@effect/sql";
 import { fromHex } from "@lucid-evolution/lucid";
 import { Duration, Effect, Metric, Option, Schedule } from "effect";
 
-import { seedDaPayloadPublicationOutboxFromEnv } from "@/da/libp2p-producer.js";
+import { seedDaPayloadPublicationOutboxFromEnv } from "../../da/libp2p-producer.js";
 import {
   BlocksDB,
   CekProgramMaterialDB,
@@ -24,26 +24,23 @@ import {
   ProcessedMempoolDB,
   TxUtils as TxTable,
   WithdrawalsDB,
-} from "@/database/index.js";
+} from "../../database/index.js";
 import {
   DatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { Columns as TxColumns } from "@/database/utils/tx.js";
-import { type Database, Lucid } from "@/services/index.js";
-import { materializeConfirmedLedgerSnapshot } from "@/transactions/state-queue/confirmed-ledger-snapshot.js";
-import type { TxSubmitError } from "@/transactions/utils.js";
-import { batchProgram } from "@/utils.js";
-import { buildDaPayloadInsert } from "@/workers/commit-block-header/da-payload.js";
-import type {
-  WorkerInput,
-  WorkerOutput,
-} from "@/workers/utils/commit-block-header.js";
+} from "../../database/utils/common.js";
+import { Columns as TxColumns } from "../../database/utils/tx.js";
+import { type Database, Lucid } from "../../services/index.js";
+import { materializeConfirmedLedgerSnapshot } from "../../transactions/state-queue/confirmed-ledger-snapshot.js";
+import type { TxSubmitError } from "../../transactions/utils.js";
+import { batchProgram } from "../../utils.js";
+import { buildDaPayloadInsert } from "../commit-block-header/da-payload.js";
+import type { WorkerInput, WorkerOutput } from "./commit-block-header.js";
 import {
   buildSuccessfulCommitBatches,
   type SuccessfulCommitBatch,
-} from "@/workers/utils/commit-block-planner.js";
-import type { MidgardMpf, MpfError } from "@/workers/utils/mpf.js";
+} from "./commit-block-planner.js";
+import type { MidgardMpf, MpfError } from "./mpf.js";
 
 const BATCH_SIZE = 100;
 const SKIPPED_SUBMISSION_TRANSFER_RETRIES = 2;

@@ -7,8 +7,8 @@ import {
   type CanonicalDaAttestationObservation,
   classifyCanonicalDaAttestation,
   reconcileDaAttestedProgram,
-} from "@/commands/reconcile.js";
-import { Lucid, MidgardContracts } from "@/services/index.js";
+} from "../src/commands/reconcile.js";
+import { Lucid, MidgardContracts } from "../src/services/index.js";
 
 vi.mock("@al-ft/midgard-sdk", async () => {
   const actual =

@@ -14,21 +14,21 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "@/deployment-manifest-v1.js";
-import { loadPhasMembershipWithdrawalScript } from "@/phas-membership.js";
-import { runProviderStepWithRetry } from "@/provider-retry.js";
+import { DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "../deployment-manifest-v1.js";
+import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
+import { runProviderStepWithRetry } from "../provider-retry.js";
+import { compareOutRefs, outRefLabel } from "../tx-context.js";
 import {
   handleSignSubmit,
   TxConfirmError,
   TxSignError,
   TxSubmitError,
-} from "@/transactions/utils.js";
+} from "./utils.js";
 import {
   hasPositiveNonLovelaceAsset,
   isPlainAdaOnlyUtxo,
   lovelaceOf,
-} from "@/transactions/wallet-hygiene.js";
-import { compareOutRefs, outRefLabel } from "@/tx-context.js";
+} from "./wallet-hygiene.js";
 
 export type ReferenceScriptTarget = SDK.ReferenceScriptTarget;
 

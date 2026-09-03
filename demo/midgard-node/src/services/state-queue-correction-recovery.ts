@@ -13,12 +13,12 @@ import {
   PendingBlockFinalizationsDB,
   ProcessedMempoolDB,
   WithdrawalsDB,
-} from "@/database/index.js";
+} from "../database/index.js";
 import {
   DatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { Database } from "@/services/database.js";
+} from "../database/utils/common.js";
+import { Database } from "./database.js";
 
 export type CorrectedBlockReinclusionResult = {
   readonly headerHash: string;

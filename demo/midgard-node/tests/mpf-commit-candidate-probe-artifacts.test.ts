@@ -8,14 +8,14 @@ import { afterAll, describe, expect, it } from "vitest";
 import {
   ogmiosEndpointIdentitySha256,
   parseOgmiosShelleyGenesisSlotConfig,
-} from "@/local-ledger-slot.js";
+} from "../src/local-ledger-slot.js";
 import {
   assertArchitectureGCandidateSlotRuntimeIdentityV1,
   decodeArchitectureGCommitCandidateInputV1,
   decodeArchitectureGFixtureCreationV1,
   validateArchitectureGCommitCandidateProbeResultV1,
   validateArchitectureGRootProbeResultV1,
-} from "@/workers/utils/mpf-commit-candidate-artifacts.js";
+} from "../src/workers/utils/mpf-commit-candidate-artifacts.js";
 
 const hash = (byte: number): string =>
   byte.toString(16).padStart(2, "0").repeat(32);

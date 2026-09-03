@@ -20,18 +20,18 @@ import { Config, Context, Data, Effect, Layer, Option } from "effect";
 import {
   positiveFiniteNumber,
   positiveSafeInteger,
-} from "@/artifact-schema.js";
-import { readDaHardeningConfig } from "@/da/hardening-config.js";
+} from "../artifact-schema.js";
+import { readDaHardeningConfig } from "../da/hardening-config.js";
 import {
   isStrictlyAscending,
   splitPackedHex,
   VERIFICATION_KEY_HASH_HEX_LENGTH,
   VERIFICATION_KEY_HEX_LENGTH,
-} from "@/da/local-signers.js";
+} from "../da/local-signers.js";
 import {
   assertRetentionDaysMatchesDeploymentV1,
   validateRetentionDays,
-} from "@/database/retention-policy.js";
+} from "../database/retention-policy.js";
 
 /**
  * Validates the *encoding* of one of the DA key sets (`DA_COMMITTEE_HEX`,

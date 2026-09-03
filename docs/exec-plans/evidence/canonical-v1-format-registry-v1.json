@@ -31,7 +31,8 @@
       "paths": [
         "demo/da-committee-node/src",
         "demo/midgard-core/src",
-        "demo/midgard-node/src"
+        "demo/midgard-node/src",
+        "demo/midgard-node-tools/src"
       ],
       "patterns": [
         "midgard-da-libp2p-runtime-manifest-v[2-9][0-9]*",
@@ -45,6 +46,7 @@
         "demo/lucid-midgard/src",
         "demo/midgard-core/src",
         "demo/midgard-node/src",
+        "demo/midgard-node-tools/src",
         "demo/midgard-sdk/src"
       ],
       "patterns": [
@@ -54,12 +56,20 @@
     },
     {
       "id": "P07-retired-unversioned-worker-candidate",
-      "paths": ["demo/midgard-node/src", "demo/midgard-validation/src"],
+      "paths": [
+        "demo/midgard-node/src",
+        "demo/midgard-node-tools/src",
+        "demo/midgard-validation/src"
+      ],
       "patterns": ["\\bWirePhaseACandidate\\b"]
     },
     {
       "id": "P05-retired-event-flat-overlay-identities",
-      "paths": ["demo/midgard-node/native", "demo/midgard-node/src"],
+      "paths": [
+        "demo/midgard-node/native",
+        "demo/midgard-node/src",
+        "demo/midgard-node-tools/src"
+      ],
       "patterns": [
         "ParkedEventFlat(?:Overlay|Shard)V[2-9][0-9]*",
         "ResumedEventFlatOverlayV[2-9][0-9]*",
@@ -72,6 +82,7 @@
         "demo/da-committee-node/src",
         "demo/midgard-fault-proofs/src",
         "demo/midgard-node/src",
+        "demo/midgard-node-tools/src",
         "demo/midgard-sdk/src",
         "onchain/aiken/lib",
         "onchain/aiken/validators"
@@ -94,7 +105,9 @@
         "demo/midgard-sdk/src",
         "demo/midgard-sdk/tests",
         "demo/midgard-node/src",
+        "demo/midgard-node-tools/src",
         "demo/midgard-node/tests",
+        "demo/midgard-node-tools/tests",
         "demo/midgard-watcher/src",
         "demo/midgard-watcher/tests",
         "demo/midgard-fault-proofs/src",
@@ -164,6 +177,7 @@
         "demo/midgard-core/src",
         "demo/midgard-fault-proofs/src",
         "demo/midgard-node/src",
+        "demo/midgard-node-tools/src",
         "demo/midgard-validation/src",
         "onchain/aiken/lib",
         "onchain/aiken/validators"
@@ -178,6 +192,7 @@
       "paths": [
         "demo/midgard-fault-proofs/src",
         "demo/midgard-node/src",
+        "demo/midgard-node-tools/src",
         "demo/midgard-sdk/src",
         "demo/midgard-validation/src",
         "onchain/aiken/lib",
@@ -254,6 +269,7 @@
       "id": "L13-L15-retired-finalization-recovery-identities",
       "paths": [
         "demo/midgard-node/src/commands",
+        "demo/midgard-node-tools/src/commands",
         "demo/midgard-node/src/database",
         "demo/midgard-node/src/fibers",
         "demo/midgard-node/src/transactions",
@@ -270,7 +286,11 @@
     },
     {
       "id": "A21-obsolete-architecture-g-artifact-identities",
-      "paths": ["demo/midgard-node/scripts", "demo/midgard-node/src/workers"],
+      "paths": [
+        "demo/midgard-node/scripts",
+        "demo/midgard-node-tools/scripts",
+        "demo/midgard-node/src/workers"
+      ],
       "patterns": [
         "midgard-architecture-g-(?:phase1-formal-binding-identity|runtime-identity|corpus-preparation|corpus-funding|production-root-gate|root-diagnostic-smoke|commit-candidate-seed|commit-candidate-seed-result|commit-candidate-input|commit-candidate-probe|commit-candidate-gate|commit-candidate-smoke)-v[2-9][0-9]*"
       ]
@@ -299,7 +319,9 @@
         "demo/midgard-fault-proofs/src",
         "demo/midgard-fault-proofs/tests",
         "demo/midgard-node/src",
+        "demo/midgard-node-tools/src",
         "demo/midgard-node/tests",
+        "demo/midgard-node-tools/tests",
         "demo/midgard-sdk/src",
         "demo/midgard-sdk/tests",
         "demo/midgard-validation/src",
@@ -311,9 +333,13 @@
       "id": "A22-retired-phase5-da-artifacts",
       "paths": [
         "demo/midgard-node/package.json",
+        "demo/midgard-node-tools/package.json",
         "demo/midgard-node/scripts",
+        "demo/midgard-node-tools/scripts",
         "demo/midgard-node/src",
-        "demo/midgard-node/tests"
+        "demo/midgard-node-tools/src",
+        "demo/midgard-node/tests",
+        "demo/midgard-node-tools/tests"
       ],
       "patterns": [
         "MIDGARD_DA_LARGE_OPERATIONAL_ENVELOPE",
@@ -326,10 +352,11 @@
     {
       "id": "A13-A16-retired-stress-artifacts",
       "paths": [
-        "demo/midgard-node/src/commands/stress-wallets.ts",
-        "demo/midgard-node/src/commands/stress-corpus-generate.ts",
-        "demo/midgard-node/src/commands/stress-corpus",
-        "demo/midgard-node/src/commands/stress-open-loop.ts",
+        "demo/midgard-node-tools/src/commands/stress-wallets.ts",
+        "demo/midgard-node-tools/src/commands/stress-corpus-generate.ts",
+        "demo/midgard-node-tools/src/commands/stress-corpus",
+        "demo/midgard-node-tools/src/commands/stress-open-loop.ts",
+        "demo/midgard-node/src/open-loop-corpus-format.ts",
         "demo/midgard-node/scripts/throughput-valid-stress-corpus.mjs"
       ],
       "patterns": [
@@ -359,7 +386,9 @@
         "demo/midgard-sdk/src",
         "demo/midgard-sdk/tests",
         "demo/midgard-node/src",
+        "demo/midgard-node-tools/src",
         "demo/midgard-node/tests",
+        "demo/midgard-node-tools/tests",
         "demo/midgard-validation/src",
         "demo/midgard-validation/tests",
         "demo/midgard-fault-proofs/src",
@@ -381,7 +410,9 @@
         "demo/midgard-core/src",
         "demo/midgard-core/tests",
         "demo/midgard-node/src",
+        "demo/midgard-node-tools/src",
         "demo/midgard-node/tests",
+        "demo/midgard-node-tools/tests",
         "demo/da-committee-node/src",
         "demo/da-committee-node/tests",
         "demo/midgard-fault-proofs/src",
@@ -458,12 +489,12 @@
     {
       "id": "A10-A12-obsolete-phase4-artifacts",
       "paths": [
-        "demo/midgard-node/src/commands/e2e-pipelined-commit-process-acceptance.ts",
-        "demo/midgard-node/src/commands/phase4-genesis-ledger.ts",
-        "demo/midgard-node/src/commands/phase4-t1-recovery.ts",
+        "demo/midgard-node-tools/src/commands/e2e-pipelined-commit-process-acceptance.ts",
+        "demo/midgard-node-tools/src/commands/phase4-genesis-ledger.ts",
+        "demo/midgard-node-tools/src/commands/phase4-t1-recovery.ts",
         "demo/midgard-node/src/transactions/phas-membership-registration.ts",
         "demo/midgard-node/scripts/phase4-environment-fingerprint-lib.mjs",
-        "demo/midgard-node/scripts/verify-phase4-pipelined-process-summary.mjs",
+        "demo/midgard-node-tools/scripts/verify-phase4-pipelined-process-summary.mjs",
         "demo/midgard-node/scripts/verify-phase4-pipelined-report.mjs"
       ],
       "patterns": [
@@ -479,13 +510,13 @@
       "id": "A03-A09-obsolete-e2e-artifacts",
       "paths": [
         "demo/midgard-node/src/e2e/run-state.ts",
-        "demo/midgard-node/src/e2e/runner.ts",
-        "demo/midgard-node/src/e2e/summary.ts",
-        "demo/midgard-node/src/e2e/da-gates.ts",
-        "demo/midgard-node/src/e2e/service-supervisor.ts",
-        "demo/midgard-node/src/e2e/process-ownership.ts",
-        "demo/midgard-node/src/commands/e2e-service.ts",
-        "demo/midgard-node/src/commands/e2e-stress-l2-throughput.ts",
+        "demo/midgard-node-tools/src/e2e/runner.ts",
+        "demo/midgard-node-tools/src/e2e/summary.ts",
+        "demo/midgard-node-tools/src/e2e/da-gates.ts",
+        "demo/midgard-node-tools/src/e2e/service-supervisor.ts",
+        "demo/midgard-node-tools/src/e2e/process-ownership.ts",
+        "demo/midgard-node-tools/src/commands/e2e-service.ts",
+        "demo/midgard-node-tools/src/commands/e2e-stress-l2-throughput.ts",
         "demo/midgard-node/src/commands/reconcile.ts"
       ],
       "patterns": [
@@ -508,7 +539,9 @@
         "demo/lucid-midgard/src",
         "demo/lucid-midgard/tests",
         "demo/midgard-node/src",
+        "demo/midgard-node-tools/src",
         "demo/midgard-node/tests",
+        "demo/midgard-node-tools/tests",
         "demo/midgard-sdk/src",
         "demo/midgard-sdk/tests",
         "demo/midgard-fault-proofs/src",
@@ -1268,7 +1301,7 @@
       "classification": "sentinel",
       "canonicalResult": "Preserve authenticated genesis sentinel 0 and transition every first ordinary header to protocol version 1",
       "boundaryBindingAndPersistence": "State-queue root NFT datum at initialization, first-header construction/validation, and first merge to confirmed state",
-      "requiredEvidence": "Exact six-field genesis constructor, mutation rejection, distinct ordinary V1 state, first-header 0\u21921 transition, production consumer wiring, and same-vector TypeScript/Aiken tests",
+      "requiredEvidence": "Exact six-field genesis constructor, mutation rejection, distinct ordinary V1 state, first-header 0→1 transition, production consumer wiring, and same-vector TypeScript/Aiken tests",
       "disposition": "sentinel",
       "auditStatus": "PASS",
       "sourceEvidence": [
@@ -3554,7 +3587,7 @@
       },
       "obsoleteBranchEvidence": [],
       "notes": [
-        "The exact shared vector is 0\u21920, 1\u21921, 2\u21923, 3\u21926. TypeScript also checks the reverse mapping; both sides reject purpose -1/4, adjacent unsupported tags, and every canonical tag with a mismatched pointer index.",
+        "The exact shared vector is 0→0, 1→1, 2→3, 3→6. TypeScript also checks the reverse mapping; both sides reject purpose -1/4, adjacent unsupported tags, and every canonical tag with a mismatched pointer index.",
         "Pinned Aiken v1.1.21 focused check collected exactly one passing test for the exhaustive Aiken vector."
       ]
     },
@@ -7695,7 +7728,7 @@
       ],
       "notes": [
         "Final-tree exact Aiken fragment/link selectors passed individually on the pre-retirement tree; the modules they selected are deleted as of the note below, so the run is historical evidence and is not reproducible on this tree.",
-        "TxFieldPreimageV1, TxOrderFieldFragmentV1, and TxOrderFragmentBundleV1 were the counted per-item publication fragment and its off-chain plan. #587 deleted all three with the receipt chain: under docs/spec/midgard-tx.md \u00a74 a field commitment is one flat blake2b-256 over the whole preimage, so a per-item Merkle opening has nothing to be checked against and the mint policy that consumed these was unsatisfiable for any payload whose commitments were the \u00a74 flat hashes of real material. It was not unsatisfiable outright \u2014 the opening is checked against the commitment the payload's own compact declares, so a payload declaring counted roots could satisfy it and have a material-bearing order authenticated. The tx-order mint's all-empty verify_order_material closes that residual by construction. The \u00a78 successor is a different artifact, not a renamed one \u2014 FieldPreimageCertificateV1 over \u00a78.4 chunks \u2014 and #589 will add its registry row when the certificate ships; no such row exists yet."
+        "TxFieldPreimageV1, TxOrderFieldFragmentV1, and TxOrderFragmentBundleV1 were the counted per-item publication fragment and its off-chain plan. #587 deleted all three with the receipt chain: under docs/spec/midgard-tx.md §4 a field commitment is one flat blake2b-256 over the whole preimage, so a per-item Merkle opening has nothing to be checked against and the mint policy that consumed these was unsatisfiable for any payload whose commitments were the §4 flat hashes of real material. It was not unsatisfiable outright — the opening is checked against the commitment the payload's own compact declares, so a payload declaring counted roots could satisfy it and have a material-bearing order authenticated. The tx-order mint's all-empty verify_order_material closes that residual by construction. The §8 successor is a different artifact, not a renamed one — FieldPreimageCertificateV1 over §8.4 chunks — and #589 will add its registry row when the certificate ships; no such row exists yet."
       ]
     },
     {
@@ -7728,7 +7761,7 @@
       ],
       "notes": [
         "All receipt chain and burn selectors passed individually on the pre-retirement tree; the modules they selected are deleted as of the note below, so the run is historical evidence and is not reproducible on this tree.",
-        "TxFieldReceiptV1 and the receipt mint/burn redeemers were the counted publication receipt chain's datum and policy interface. #587 deleted them along with validators/user-events/tx-field-receipt-v1.ak and its library, for the reason recorded on L09 \u2014 including that the gate was unsatisfiable only for payloads whose commitments were the \u00a74 flat hashes of real material, not outright. The tx-order mint's availability check is now verify_order_material, whose all-empty clause is strictly narrower than the chain it replaced; its \u00a78.6-certified re-expression is recorded as a Deviation on #587 and owned by #589."
+        "TxFieldReceiptV1 and the receipt mint/burn redeemers were the counted publication receipt chain's datum and policy interface. #587 deleted them along with validators/user-events/tx-field-receipt-v1.ak and its library, for the reason recorded on L09 — including that the gate was unsatisfiable only for payloads whose commitments were the §4 flat hashes of real material, not outright. The tx-order mint's availability check is now verify_order_material, whose all-empty clause is strictly narrower than the chain it replaced; its §8.6-certified re-expression is recorded as a Deviation on #587 and owned by #589."
       ]
     },
     {
@@ -10300,7 +10333,7 @@
         }
       ],
       "notes": [
-        "The shared envelope hash is e9d2696e\u2026fdefa. Both parsers reject non-minimal CBOR, adjacent wrapper/UPLC versions, zero and over-bound counts, malformed roots, trailing bytes, and envelopes above 50 bytes."
+        "The shared envelope hash is e9d2696e…fdefa. Both parsers reject non-minimal CBOR, adjacent wrapper/UPLC versions, zero and over-bound counts, malformed roots, trailing bytes, and envelopes above 50 bytes."
       ]
     },
     {
@@ -10425,7 +10458,7 @@
         }
       ],
       "notes": [
-        "The shared compute-state hash is 8a475241\u202688d1; case-apply and semantic-builtin state hashes are independently pinned on both sides."
+        "The shared compute-state hash is 8a475241…88d1; case-apply and semantic-builtin state hashes are independently pinned on both sides."
       ]
     },
     {
@@ -10842,7 +10875,7 @@
         }
       ],
       "notes": [
-        "The shared nested Data root is 9ce9a6db\u202669de and the ordered map root is 96cf66f3\u2026bb51. Aiken v1.1.22 is required because v1.1.21 mis-reified the canonical negative bignum immediately below -2^64 in tests."
+        "The shared nested Data root is 9ce9a6db…69de and the ordered map root is 96cf66f3…bb51. Aiken v1.1.22 is required because v1.1.21 mis-reified the canonical negative bignum immediately below -2^64 in tests."
       ]
     },
     {
@@ -10983,7 +11016,7 @@
         }
       ],
       "notes": [
-        "The exact shared initial/terminal control hashes are 6b5258f7\u202607e4 and 865b9c51\u2026538fa. TypeScript validation now mirrors every Aiken control/frame/hash precondition before emitting evidence."
+        "The exact shared initial/terminal control hashes are 6b5258f7…07e4 and 865b9c51…538fa. TypeScript validation now mirrors every Aiken control/frame/hash precondition before emitting evidence."
       ]
     },
     {
@@ -15497,7 +15530,7 @@
         {
           "name": "DeploymentRunStateV1",
           "kind": "exact persisted JSON deployment run-state artifact",
-          "wireRepresentation": "JSON object serialized as 2-space-indented UTF-8 with a trailing newline; every value is a canonical trimmed non-empty string, non-negative safe integer, plain-object map, or array \u2014 no bigint and no non-plain-object value is accepted at any depth",
+          "wireRepresentation": "JSON object serialized as 2-space-indented UTF-8 with a trailing newline; every value is a canonical trimmed non-empty string, non-negative safe integer, plain-object map, or array — no bigint and no non-plain-object value is accepted at any depth",
           "versionPolicy": "schemaVersion is required and must equal exactly \"midgard-deployment-run-state-v1\"; any other or missing value fails with \"Unsupported run-state schemaVersion\" before any field is trusted, and no historical or defaulted version is accepted",
           "exactFields": [
             "required: schemaVersion",
@@ -15642,7 +15675,7 @@
       "auditStatus": "PASS",
       "sourceEvidence": [
         {
-          "path": "demo/midgard-node/src/e2e/runner.ts",
+          "path": "demo/midgard-node-tools/src/e2e/runner.ts",
           "symbols": [
             "E2E_STEP_SCHEMA_VERSION",
             "midgard-e2e-step-v1",
@@ -15665,19 +15698,19 @@
           ]
         },
         {
-          "path": "demo/midgard-node/src/e2e/process-cleanup.ts",
+          "path": "demo/midgard-node-tools/src/e2e/process-cleanup.ts",
           "symbols": ["ChildProcessCleanupResult"]
         },
         {
-          "path": "demo/midgard-node/src/e2e/summary.ts",
+          "path": "demo/midgard-node-tools/src/e2e/summary.ts",
           "symbols": ["parseE2EStepV1"]
         },
         {
-          "path": "demo/midgard-node/src/commands/e2e-finalize-summary.ts",
+          "path": "demo/midgard-node-tools/src/commands/e2e-finalize-summary.ts",
           "symbols": ["parseE2EStepV1", "loadStepSummaries"]
         },
         {
-          "path": "demo/midgard-node/src/index.ts",
+          "path": "demo/midgard-node-tools/src/index.ts",
           "symbols": ["runCommandStep", "e2e-run-step"]
         }
       ],
@@ -15685,7 +15718,7 @@
         {
           "name": "E2EStepV1",
           "kind": "exact E2E step-summary JSON record",
-          "wireRepresentation": "JSON object; every root value is a canonical string, safe integer, boolean, null, or array, and parsedJson is an arbitrary but strictly JSON-validated value (assertJsonValue rejects non-finite numbers and non-plain objects) \u2014 no bigint appears anywhere",
+          "wireRepresentation": "JSON object; every root value is a canonical string, safe integer, boolean, null, or array, and parsedJson is an arbitrary but strictly JSON-validated value (assertJsonValue rejects non-finite numbers and non-plain objects) — no bigint appears anywhere",
           "versionPolicy": "schemaVersion is required and must equal exactly \"midgard-e2e-step-v1\"; \"midgard-e2e-step-v0\" and every other value are rejected before any field is trusted, and there is no defaulted or historical version path",
           "exactFields": [
             "required: schemaVersion",
@@ -15721,7 +15754,7 @@
           "persistence": "stdout JSON from the e2e-run-step command plus the optional --summary-out step JSON file that loadStepSummaries re-reads, and the same record nested inside `steps` of the atomically published run summary (writeSummaryJsonAtomic -> writeJsonFileAtomic -> writeTextFileAtomic: exclusive 'wx' temp file, fsync, rename over the target, parent-directory fsync).",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/e2e/runner.ts",
+              "path": "demo/midgard-node-tools/src/e2e/runner.ts",
               "symbols": [
                 "runCommandStep",
                 "redactedCommand",
@@ -15735,11 +15768,11 @@
               ]
             },
             {
-              "path": "demo/midgard-node/src/index.ts",
+              "path": "demo/midgard-node-tools/src/index.ts",
               "symbols": ["runCommandStep", "e2e-run-step"]
             },
             {
-              "path": "demo/midgard-node/src/e2e/summary.ts",
+              "path": "demo/midgard-node-tools/src/e2e/summary.ts",
               "symbols": ["writeSummaryJsonAtomic"]
             },
             {
@@ -15756,7 +15789,7 @@
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/e2e/runner.ts",
+              "path": "demo/midgard-node-tools/src/e2e/runner.ts",
               "symbols": [
                 "parseE2EStepV1",
                 "parseRedactedCommandV1",
@@ -15778,11 +15811,11 @@
               ]
             },
             {
-              "path": "demo/midgard-node/src/e2e/summary.ts",
+              "path": "demo/midgard-node-tools/src/e2e/summary.ts",
               "symbols": ["parseE2EStepV1"]
             },
             {
-              "path": "demo/midgard-node/src/commands/e2e-finalize-summary.ts",
+              "path": "demo/midgard-node-tools/src/commands/e2e-finalize-summary.ts",
               "symbols": ["parseE2EStepV1", "loadStepSummaries"]
             }
           ]
@@ -15790,7 +15823,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-node/tests/e2e-runner.test.ts",
+          "path": "demo/midgard-node-tools/tests/e2e-runner.test.ts",
           "testNames": [
             "accepts only the exact V1 step and command shapes",
             "records successful JSON output and explicit submitted tx hashes",
@@ -15803,7 +15836,7 @@
           ]
         },
         {
-          "path": "demo/midgard-node/tests/e2e-summary.test.ts",
+          "path": "demo/midgard-node-tools/tests/e2e-summary.test.ts",
           "testNames": [
             "classifies a fully satisfied run as complete",
             "counts required fresh tx evidence derived from step summaries",
@@ -15813,7 +15846,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-node/tests/e2e-runner.test.ts",
+          "path": "demo/midgard-node-tools/tests/e2e-runner.test.ts",
           "testNames": [
             "accepts only the exact V1 step and command shapes",
             "does not promote generic JSON tx hashes without explicit tx status",
@@ -15851,7 +15884,7 @@
       "auditStatus": "PASS",
       "sourceEvidence": [
         {
-          "path": "demo/midgard-node/src/e2e/summary.ts",
+          "path": "demo/midgard-node-tools/src/e2e/summary.ts",
           "symbols": [
             "E2E_SUMMARY_SCHEMA_VERSION",
             "midgard-e2e-summary-v1",
@@ -15868,7 +15901,7 @@
           "symbols": ["exactRecord", "openRecord", "isoTimestamp"]
         },
         {
-          "path": "demo/midgard-node/src/e2e/runner.ts",
+          "path": "demo/midgard-node-tools/src/e2e/runner.ts",
           "symbols": ["parseE2EStepV1", "parseTxObservationV1"]
         },
         {
@@ -15883,7 +15916,7 @@
           ]
         },
         {
-          "path": "demo/midgard-node/src/commands/e2e-finalize-summary.ts",
+          "path": "demo/midgard-node-tools/src/commands/e2e-finalize-summary.ts",
           "symbols": ["writeSummaryJsonAtomic", "writeSummaryMarkdownAtomic"]
         }
       ],
@@ -15891,7 +15924,7 @@
         {
           "name": "E2ERunSummaryV1",
           "kind": "exact persisted JSON run-summary artifact with a derived Markdown projection",
-          "wireRepresentation": "JSON object serialized as 2-space-indented UTF-8 with a trailing newline, plus a deterministic Markdown rendering of the same record; all values are canonical strings, safe integers, arrays, or nested exact records, and gate/db `details` maps are open-keyed but strictly string-valued \u2014 no bigint appears anywhere",
+          "wireRepresentation": "JSON object serialized as 2-space-indented UTF-8 with a trailing newline, plus a deterministic Markdown rendering of the same record; all values are canonical strings, safe integers, arrays, or nested exact records, and gate/db `details` maps are open-keyed but strictly string-valued — no bigint appears anywhere",
           "versionPolicy": "schemaVersion is required and must equal exactly \"midgard-e2e-summary-v1\"; \"midgard-e2e-summary-v0\" and every other value are rejected, and no code path emits or accepts a post-V1 summary identity (the registry's historical v2 naming has no reader or writer left)",
           "exactFields": [
             "required: schemaVersion",
@@ -15932,7 +15965,7 @@
           "persistence": "summary.json and summary.md under the run's output directory, published through writeSummaryJsonAtomic and writeSummaryMarkdownAtomic -> writeJsonFileAtomic / writeTextFileAtomic, which open an exclusive 'wx' temporary file, fsync the handle, rename it over the target, and then fsync the parent directory.",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/e2e/summary.ts",
+              "path": "demo/midgard-node-tools/src/e2e/summary.ts",
               "symbols": [
                 "createE2ERunSummary",
                 "updateE2ERunSummary",
@@ -15961,7 +15994,7 @@
               ]
             },
             {
-              "path": "demo/midgard-node/src/commands/e2e-finalize-summary.ts",
+              "path": "demo/midgard-node-tools/src/commands/e2e-finalize-summary.ts",
               "symbols": [
                 "writeSummaryJsonAtomic",
                 "writeSummaryMarkdownAtomic"
@@ -15970,7 +16003,7 @@
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/e2e/summary.ts",
+              "path": "demo/midgard-node-tools/src/e2e/summary.ts",
               "symbols": [
                 "parseE2ERunSummaryV1",
                 "parseStepRetrySummaryV1",
@@ -15985,7 +16018,7 @@
               ]
             },
             {
-              "path": "demo/midgard-node/src/e2e/runner.ts",
+              "path": "demo/midgard-node-tools/src/e2e/runner.ts",
               "symbols": ["parseE2EStepV1", "parseTxObservationV1"]
             },
             {
@@ -16003,7 +16036,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-node/tests/e2e-summary.test.ts",
+          "path": "demo/midgard-node-tools/tests/e2e-summary.test.ts",
           "testNames": [
             "accepts only the exact V1 summary shape",
             "classifies a fully satisfied run as complete",
@@ -16020,7 +16053,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-node/tests/e2e-summary.test.ts",
+          "path": "demo/midgard-node-tools/tests/e2e-summary.test.ts",
           "testNames": [
             "accepts only the exact V1 summary shape",
             "fails the run when a required evidence gate fails",
@@ -16063,7 +16096,7 @@
       "auditStatus": "PASS",
       "sourceEvidence": [
         {
-          "path": "demo/midgard-node/src/e2e/da-gates.ts",
+          "path": "demo/midgard-node-tools/src/e2e/da-gates.ts",
           "symbols": [
             "E2E_DA_GATE_SCHEMA_VERSION",
             "parseDaGateResultWithKind",
@@ -16129,13 +16162,13 @@
           "persistence": "In-process return value only: the artifact is re-parsed by its own exact V1 decoder before it leaves probeDaGate, and da-gates.ts performs no file, stdout, or database write.",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/e2e/da-gates.ts",
+              "path": "demo/midgard-node-tools/src/e2e/da-gates.ts",
               "symbols": ["probeDaGate", "classifyProbe"]
             }
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/e2e/da-gates.ts",
+              "path": "demo/midgard-node-tools/src/e2e/da-gates.ts",
               "symbols": [
                 "parseDaGateProbeResultV1",
                 "parseDaGateResultWithKind",
@@ -16175,13 +16208,13 @@
           "persistence": "In-process return value only: every returned observation is re-parsed by the exact V1 decoder; da-gates.ts performs no file, stdout, or database write.",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/e2e/da-gates.ts",
+              "path": "demo/midgard-node-tools/src/e2e/da-gates.ts",
               "symbols": ["waitForDaGate", "probeDaGate", "classifyProbe"]
             }
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/e2e/da-gates.ts",
+              "path": "demo/midgard-node-tools/src/e2e/da-gates.ts",
               "symbols": [
                 "parseWaitForDaGateResultV1",
                 "parseDaGateResultWithKind",
@@ -16194,7 +16227,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-node/tests/e2e-da-gates.test.ts",
+          "path": "demo/midgard-node-tools/tests/e2e-da-gates.test.ts",
           "testNames": [
             "classifies threshold libp2p publication as satisfied",
             "keeps below-threshold publication pending",
@@ -16206,7 +16239,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-node/tests/e2e-da-gates.test.ts",
+          "path": "demo/midgard-node-tools/tests/e2e-da-gates.test.ts",
           "testNames": [
             "rejects missing, extra, wrong-version, and cross-kind artifacts",
             "rejects malformed header hashes"
@@ -16242,7 +16275,7 @@
       "auditStatus": "PASS",
       "sourceEvidence": [
         {
-          "path": "demo/midgard-node/src/commands/e2e-stress-l2-throughput.ts",
+          "path": "demo/midgard-node-tools/src/commands/e2e-stress-l2-throughput.ts",
           "symbols": [
             "E2E_L2_STRESS_CONFIG_SCHEMA_VERSION",
             "E2E_L2_STRESS_SUMMARY_SCHEMA_VERSION",
@@ -16328,7 +16361,7 @@
           "persistence": "config.json in the run outDir, written with flag \"w\" after the artifact has passed its own decoder",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/commands/e2e-stress-l2-throughput.ts",
+              "path": "demo/midgard-node-tools/src/commands/e2e-stress-l2-throughput.ts",
               "symbols": [
                 "rawArtifactConfig",
                 "artifactConfig",
@@ -16338,7 +16371,7 @@
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/commands/e2e-stress-l2-throughput.ts",
+              "path": "demo/midgard-node-tools/src/commands/e2e-stress-l2-throughput.ts",
               "symbols": [
                 "parseE2EL2StressConfigArtifactV1",
                 "assertMeasurementPolicyV1",
@@ -16401,7 +16434,7 @@
           "persistence": "summary.json in the run outDir plus the derived summary.md, both written only after parseE2EL2StressSummaryV1 accepts the object; artifactPaths records the retained config/events/summary/engine/submit-record/calibration paths",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/commands/e2e-stress-l2-throughput.ts",
+              "path": "demo/midgard-node-tools/src/commands/e2e-stress-l2-throughput.ts",
               "symbols": [
                 "runE2EL2StressThroughput",
                 "renderStressSummaryMarkdown",
@@ -16411,7 +16444,7 @@
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/commands/e2e-stress-l2-throughput.ts",
+              "path": "demo/midgard-node-tools/src/commands/e2e-stress-l2-throughput.ts",
               "symbols": [
                 "parseE2EL2StressSummaryV1",
                 "assertStressTransactionV1",
@@ -16426,7 +16459,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-node/tests/e2e-stress-l2-throughput.test.ts",
+          "path": "demo/midgard-node-tools/tests/e2e-stress-l2-throughput.test.ts",
           "testNames": [
             "runs serial stress, polls tx-status, and writes all artifacts",
             "runs open-loop upper-bound from a corpus without wallet or tx-status work",
@@ -16437,7 +16470,7 @@
           ]
         },
         {
-          "path": "demo/midgard-node/tests/stress-db-metrics.test.ts",
+          "path": "demo/midgard-node-tools/tests/stress-db-metrics.test.ts",
           "testNames": [
             "builds steady-state rates and latency percentiles over the trimmed rows",
             "records fixed throughput knobs and hashes config profiles"
@@ -16446,7 +16479,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-node/tests/e2e-stress-l2-throughput.test.ts",
+          "path": "demo/midgard-node-tools/tests/e2e-stress-l2-throughput.test.ts",
           "testNames": [
             "runs serial stress, polls tx-status, and writes all artifacts",
             "rejects non-positive and unbounded parameters by default",
@@ -16486,7 +16519,7 @@
       "auditStatus": "PASS",
       "sourceEvidence": [
         {
-          "path": "demo/midgard-node/src/commands/e2e-service.ts",
+          "path": "demo/midgard-node-tools/src/commands/e2e-service.ts",
           "symbols": [
             "E2E_MANAGED_SERVICE_SCHEMA_VERSION",
             "parseManagedServiceSummaryV1",
@@ -16496,7 +16529,7 @@
           ]
         },
         {
-          "path": "demo/midgard-node/src/e2e/service-supervisor.ts",
+          "path": "demo/midgard-node-tools/src/e2e/service-supervisor.ts",
           "symbols": [
             "E2E_SERVICE_SUPERVISOR_SCHEMA_VERSION",
             "parseServiceSupervisorSummaryV1",
@@ -16511,7 +16544,7 @@
           ]
         },
         {
-          "path": "demo/midgard-node/src/e2e/process-ownership.ts",
+          "path": "demo/midgard-node-tools/src/e2e/process-ownership.ts",
           "symbols": [
             "OWNED_PROCESS_GROUP_SCHEMA_VERSION",
             "parseOwnedProcessGroupRecordV1",
@@ -16527,30 +16560,30 @@
           ]
         },
         {
-          "path": "demo/midgard-node/src/e2e/runner.ts",
+          "path": "demo/midgard-node-tools/src/e2e/runner.ts",
           "symbols": ["parseRedactedCommandV1", "parseChildProcessCleanupV1"]
         },
         {
-          "path": "demo/midgard-node/src/index.ts",
+          "path": "demo/midgard-node-tools/src/index.ts",
           "symbols": ["startManagedService", "writeJson"]
         },
         {
-          "path": "demo/midgard-node/scripts/verify-phase4-pipelined-process-summary.mjs",
+          "path": "demo/midgard-node-tools/scripts/verify-phase4-pipelined-process-summary.mjs",
           "symbols": ["SUPERVISOR_SCHEMA"]
         },
         {
-          "path": "demo/midgard-node/src/e2e/logged-child-process.ts",
+          "path": "demo/midgard-node-tools/src/e2e/logged-child-process.ts",
           "symbols": [
             "writeOwnedProcessGroupRecord",
             "removeOwnedProcessGroupRecord"
           ]
         },
         {
-          "path": "demo/midgard-node/src/e2e/process-cleanup.ts",
+          "path": "demo/midgard-node-tools/src/e2e/process-cleanup.ts",
           "symbols": ["terminateOwnedProcessGroup"]
         },
         {
-          "path": "demo/midgard-node/src/commands/e2e-process-cleanup.ts",
+          "path": "demo/midgard-node-tools/src/commands/e2e-process-cleanup.ts",
           "symbols": ["cleanupOwnedProcessGroupAndRecord"]
         }
       ],
@@ -16577,25 +16610,25 @@
           "persistence": "stdout JSON from the e2e-start-service command; the same PID is durably recorded in the pid file and an e2e_managed_service_started event line is appended to the raw log before readiness polling begins",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/commands/e2e-service.ts",
+              "path": "demo/midgard-node-tools/src/commands/e2e-service.ts",
               "symbols": ["startManagedService", "redactedServiceCommand"]
             },
             {
-              "path": "demo/midgard-node/src/index.ts",
+              "path": "demo/midgard-node-tools/src/index.ts",
               "symbols": ["startManagedService", "writeJson"]
             }
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/commands/e2e-service.ts",
+              "path": "demo/midgard-node-tools/src/commands/e2e-service.ts",
               "symbols": ["parseManagedServiceSummaryV1"]
             },
             {
-              "path": "demo/midgard-node/src/e2e/service-supervisor.ts",
+              "path": "demo/midgard-node-tools/src/e2e/service-supervisor.ts",
               "symbols": ["parsePidFileObservationV1", "parseHttpProbeSampleV1"]
             },
             {
-              "path": "demo/midgard-node/src/e2e/runner.ts",
+              "path": "demo/midgard-node-tools/src/e2e/runner.ts",
               "symbols": ["parseRedactedCommandV1"]
             }
           ]
@@ -16623,13 +16656,13 @@
           "persistence": "In-process return value at the supervisor boundary, additionally persisted embedded inside the phase-4 pipelined process-acceptance summary.json and re-validated from those bytes by the standalone Node verifier",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/e2e/service-supervisor.ts",
+              "path": "demo/midgard-node-tools/src/e2e/service-supervisor.ts",
               "symbols": ["superviseHostProcess", "classifyServiceError"]
             }
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/e2e/service-supervisor.ts",
+              "path": "demo/midgard-node-tools/src/e2e/service-supervisor.ts",
               "symbols": [
                 "parseServiceSupervisorSummaryV1",
                 "parseServiceAttemptSummaryV1",
@@ -16637,14 +16670,14 @@
               ]
             },
             {
-              "path": "demo/midgard-node/src/e2e/runner.ts",
+              "path": "demo/midgard-node-tools/src/e2e/runner.ts",
               "symbols": [
                 "parseRedactedCommandV1",
                 "parseChildProcessCleanupV1"
               ]
             },
             {
-              "path": "demo/midgard-node/scripts/verify-phase4-pipelined-process-summary.mjs",
+              "path": "demo/midgard-node-tools/scripts/verify-phase4-pipelined-process-summary.mjs",
               "symbols": ["SUPERVISOR_SCHEMA"]
             }
           ]
@@ -16675,7 +16708,7 @@
           "persistence": "0600 JSON file under a 0700 directory, published by linkSync from a 0600 exclusive temporary file so that publication is atomic and refuses to replace an existing orphan record; removed only after validated cleanup",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/e2e/process-ownership.ts",
+              "path": "demo/midgard-node-tools/src/e2e/process-ownership.ts",
               "symbols": [
                 "writeOwnedProcessGroupRecord",
                 "ownedProcessCommandSha256",
@@ -16683,13 +16716,13 @@
               ]
             },
             {
-              "path": "demo/midgard-node/src/e2e/logged-child-process.ts",
+              "path": "demo/midgard-node-tools/src/e2e/logged-child-process.ts",
               "symbols": ["writeOwnedProcessGroupRecord"]
             }
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/e2e/process-ownership.ts",
+              "path": "demo/midgard-node-tools/src/e2e/process-ownership.ts",
               "symbols": [
                 "parseOwnedProcessGroupRecordV1",
                 "parseRecord",
@@ -16701,7 +16734,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-node/tests/e2e-service-supervisor.test.ts",
+          "path": "demo/midgard-node-tools/tests/e2e-service-supervisor.test.ts",
           "testNames": [
             "accepts only the exact managed-service V1 shape",
             "restarts transient failures within the configured budget",
@@ -16711,13 +16744,13 @@
           ]
         },
         {
-          "path": "demo/midgard-node/tests/process-ownership.test.ts",
+          "path": "demo/midgard-node-tools/tests/process-ownership.test.ts",
           "testNames": [
             "reclaims a recorded leader and grandchild after controller state is abandoned while preserving a sentinel"
           ]
         },
         {
-          "path": "demo/midgard-node/tests/phase4-pipelined-process-summary-verifier.test.mjs",
+          "path": "demo/midgard-node-tools/tests/phase4-pipelined-process-summary-verifier.test.mjs",
           "testNames": [
             "accepts a complete internally consistent process-acceptance fixture"
           ]
@@ -16731,14 +16764,14 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-node/tests/e2e-service-supervisor.test.ts",
+          "path": "demo/midgard-node-tools/tests/e2e-service-supervisor.test.ts",
           "testNames": [
             "accepts only the exact managed-service V1 shape",
             "restarts transient failures within the configured budget"
           ]
         },
         {
-          "path": "demo/midgard-node/tests/process-ownership.test.ts",
+          "path": "demo/midgard-node-tools/tests/process-ownership.test.ts",
           "testNames": [
             "reclaims a recorded leader and grandchild after controller state is abandoned while preserving a sentinel",
             "refuses a record from another run token",
@@ -16746,7 +16779,7 @@
           ]
         },
         {
-          "path": "demo/midgard-node/tests/phase4-pipelined-process-summary-verifier.test.mjs",
+          "path": "demo/midgard-node-tools/tests/phase4-pipelined-process-summary-verifier.test.mjs",
           "testNames": [
             "fails closed on schema, isolation, crash, T1, and contention mutations"
           ]
@@ -16932,7 +16965,7 @@
       "auditStatus": "PASS",
       "sourceEvidence": [
         {
-          "path": "demo/midgard-node/src/commands/e2e-pipelined-commit-process-acceptance.ts",
+          "path": "demo/midgard-node-tools/src/commands/e2e-pipelined-commit-process-acceptance.ts",
           "symbols": [
             "RESET_ATTESTATION_SCHEMA",
             "midgard-phase4-local-devnet-reset-attestation-v1",
@@ -16945,7 +16978,7 @@
           ]
         },
         {
-          "path": "demo/midgard-node/devnet/phase4-process/scripts/reset.sh",
+          "path": "demo/midgard-node-tools/devnet/phase4-process/scripts/reset.sh",
           "symbols": [
             "midgard-phase4-local-devnet-reset-attestation-v1",
             "attestation_pending_path",
@@ -16980,7 +17013,7 @@
           "persistence": "$MIDGARD_PHASE4_RUN_DIR/work/reset-attestation.json, published by mv from reset-attestation.pending.json only after the recreated producer and Kupo advance strictly beyond the frozen checkpoint, and then printed as the command's single JSON stdout object",
           "encoders": [
             {
-              "path": "demo/midgard-node/devnet/phase4-process/scripts/reset.sh",
+              "path": "demo/midgard-node-tools/devnet/phase4-process/scripts/reset.sh",
               "symbols": [
                 "midgard-phase4-local-devnet-reset-attestation-v1",
                 "attestation_pending_path",
@@ -16990,7 +17023,7 @@
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/commands/e2e-pipelined-commit-process-acceptance.ts",
+              "path": "demo/midgard-node-tools/src/commands/e2e-pipelined-commit-process-acceptance.ts",
               "symbols": [
                 "decodePhase4ResetAttestationV1",
                 "parseResetAttestation",
@@ -17002,7 +17035,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-node/tests/phase4-process-isolation.test.ts",
+          "path": "demo/midgard-node-tools/tests/phase4-process-isolation.test.ts",
           "testNames": [
             "accepts a fully bound reset attestation",
             "decodes exact reset, snapshot, and PHAS V1 shapes only"
@@ -17011,7 +17044,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-node/tests/phase4-process-isolation.test.ts",
+          "path": "demo/midgard-node-tools/tests/phase4-process-isolation.test.ts",
           "testNames": [
             "decodes exact reset, snapshot, and PHAS V1 shapes only",
             "rejects reset logs around the JSON",
@@ -17049,7 +17082,7 @@
       "auditStatus": "PASS",
       "sourceEvidence": [
         {
-          "path": "demo/midgard-node/src/commands/e2e-pipelined-commit-process-acceptance.ts",
+          "path": "demo/midgard-node-tools/src/commands/e2e-pipelined-commit-process-acceptance.ts",
           "symbols": [
             "Phase4MatchedSnapshotIdentityV1",
             "decodePhase4MatchedSnapshotIdentityV1",
@@ -17062,7 +17095,7 @@
           ]
         },
         {
-          "path": "demo/midgard-node/devnet/phase4-process/scripts/capture-snapshot.sh",
+          "path": "demo/midgard-node-tools/devnet/phase4-process/scripts/capture-snapshot.sh",
           "symbols": [
             "midgard-phase4-matched-snapshot-identity-v1",
             "snapshot-identity.json",
@@ -17071,7 +17104,7 @@
           ]
         },
         {
-          "path": "demo/midgard-node/devnet/phase4-process/scripts/t1-recover.sh",
+          "path": "demo/midgard-node-tools/devnet/phase4-process/scripts/t1-recover.sh",
           "symbols": ["midgard-phase4-matched-snapshot-identity-v1"]
         }
       ],
@@ -17101,7 +17134,7 @@
           "persistence": "$snapshot_dir/snapshot-identity.json inside the immutable snapshot set, with its own SHA-256 recorded in SNAPSHOT_IDENTITY_SHA256 and recomputed from the file bytes by every reader",
           "encoders": [
             {
-              "path": "demo/midgard-node/devnet/phase4-process/scripts/capture-snapshot.sh",
+              "path": "demo/midgard-node-tools/devnet/phase4-process/scripts/capture-snapshot.sh",
               "symbols": [
                 "midgard-phase4-matched-snapshot-identity-v1",
                 "snapshot_identity",
@@ -17111,7 +17144,7 @@
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/commands/e2e-pipelined-commit-process-acceptance.ts",
+              "path": "demo/midgard-node-tools/src/commands/e2e-pipelined-commit-process-acceptance.ts",
               "symbols": [
                 "decodePhase4MatchedSnapshotIdentityV1",
                 "validatePhase4PhasRegistrationTransactionBody",
@@ -17123,7 +17156,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-node/tests/phase4-process-isolation.test.ts",
+          "path": "demo/midgard-node-tools/tests/phase4-process-isolation.test.ts",
           "testNames": [
             "decodes exact reset, snapshot, and PHAS V1 shapes only",
             "accepts only the exact submitted PHAS registration transaction body"
@@ -17132,7 +17165,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-node/tests/phase4-process-isolation.test.ts",
+          "path": "demo/midgard-node-tools/tests/phase4-process-isolation.test.ts",
           "testNames": [
             "decodes exact reset, snapshot, and PHAS V1 shapes only",
             "rejects witness-bearing CBOR even when its body hash is the submitted transaction"
@@ -17194,7 +17227,7 @@
           ]
         },
         {
-          "path": "demo/midgard-node/src/commands/phase4-genesis-ledger.ts",
+          "path": "demo/midgard-node-tools/src/commands/phase4-genesis-ledger.ts",
           "symbols": [
             "PHASE4_GENESIS_LEDGER_SCHEMA",
             "midgard-phase4-local-genesis-ledger-v1",
@@ -17204,7 +17237,7 @@
           ]
         },
         {
-          "path": "demo/midgard-node/src/commands/phase4-t1-recovery.ts",
+          "path": "demo/midgard-node-tools/src/commands/phase4-t1-recovery.ts",
           "symbols": [
             "PHASE4_T1_PROBE_SCHEMA",
             "PHASE4_T1_ADVANCE_SCHEMA",
@@ -17227,7 +17260,7 @@
           ]
         },
         {
-          "path": "demo/midgard-node/scripts/verify-phase4-pipelined-process-summary.mjs",
+          "path": "demo/midgard-node-tools/scripts/verify-phase4-pipelined-process-summary.mjs",
           "symbols": [
             "PHASE4_PROCESS_SUMMARY_SCHEMA",
             "midgard-phase4-pipelined-commit-process-acceptance-v1",
@@ -17239,7 +17272,7 @@
           ]
         },
         {
-          "path": "demo/midgard-node/src/commands/e2e-pipelined-commit-process-acceptance.ts",
+          "path": "demo/midgard-node-tools/src/commands/e2e-pipelined-commit-process-acceptance.ts",
           "symbols": [
             "midgard-phase4-pipelined-commit-process-acceptance-v1",
             "runPipelinedCommitProcessAcceptance",
@@ -17251,7 +17284,7 @@
           ]
         },
         {
-          "path": "demo/midgard-node/src/index.ts",
+          "path": "demo/midgard-node-tools/src/index.ts",
           "symbols": [
             "phase4GenesisLedgerProgram",
             "phase4T1ProbeProgram",
@@ -17345,7 +17378,7 @@
           "persistence": "Process stdout only (tapJson on the CLI action); it is re-parsed from the captured child output rather than stored",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/commands/phase4-genesis-ledger.ts",
+              "path": "demo/midgard-node-tools/src/commands/phase4-genesis-ledger.ts",
               "symbols": [
                 "phase4GenesisLedgerProgram",
                 "PHASE4_GENESIS_LEDGER_SCHEMA"
@@ -17354,11 +17387,11 @@
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/commands/phase4-genesis-ledger.ts",
+              "path": "demo/midgard-node-tools/src/commands/phase4-genesis-ledger.ts",
               "symbols": ["decodePhase4GenesisLedgerReportV1"]
             },
             {
-              "path": "demo/midgard-node/src/commands/e2e-pipelined-commit-process-acceptance.ts",
+              "path": "demo/midgard-node-tools/src/commands/e2e-pipelined-commit-process-acceptance.ts",
               "symbols": [
                 "assertExactGenesisPreflightOutput",
                 "decodePhase4GenesisLedgerReportV1"
@@ -17385,13 +17418,13 @@
           "persistence": "An absolute fresh evidence path written by writeTextFileAtomicNoReplace with mode 0o600 (no clobber of an existing artifact)",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/commands/phase4-t1-recovery.ts",
+              "path": "demo/midgard-node-tools/src/commands/phase4-t1-recovery.ts",
               "symbols": ["phase4T1ProbeProgram", "writePhase4T1Evidence"]
             }
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/commands/phase4-t1-recovery.ts",
+              "path": "demo/midgard-node-tools/src/commands/phase4-t1-recovery.ts",
               "symbols": [
                 "decodePhase4T1ProbeEvidenceV1",
                 "decodePhase4T1CanonicalTipV1"
@@ -17425,13 +17458,13 @@
           "persistence": "An absolute fresh evidence path written by writeTextFileAtomicNoReplace with mode 0o600",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/commands/phase4-t1-recovery.ts",
+              "path": "demo/midgard-node-tools/src/commands/phase4-t1-recovery.ts",
               "symbols": ["phase4T1AdvanceProgram", "writePhase4T1Evidence"]
             }
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/commands/phase4-t1-recovery.ts",
+              "path": "demo/midgard-node-tools/src/commands/phase4-t1-recovery.ts",
               "symbols": ["decodePhase4T1AdvanceEvidenceV1"]
             }
           ]
@@ -17466,14 +17499,14 @@
           "persistence": "Command stdout, re-parsed by the acceptance controller and then embedded in the persisted summary.json acceptance artifact",
           "parsers": [
             {
-              "path": "demo/midgard-node/src/commands/phase4-t1-recovery.ts",
+              "path": "demo/midgard-node-tools/src/commands/phase4-t1-recovery.ts",
               "symbols": [
                 "decodePhase4T1RecoveryAttestationV1",
                 "parseAndValidatePhase4T1RecoveryAttestation"
               ]
             },
             {
-              "path": "demo/midgard-node/scripts/verify-phase4-pipelined-process-summary.mjs",
+              "path": "demo/midgard-node-tools/scripts/verify-phase4-pipelined-process-summary.mjs",
               "symbols": ["T1_RECOVERY_SCHEMA", "validateT1Recovery"]
             }
           ],
@@ -17508,11 +17541,11 @@
           "persistence": "phas-registration-proof.json in the immutable snapshot set (its digest is recorded as artifacts.phasRegistrationProofSha256) and embedded byte-identically in the matched snapshot identity, each reset attestation, and the persisted acceptance summary",
           "parsers": [
             {
-              "path": "demo/midgard-node/src/commands/e2e-pipelined-commit-process-acceptance.ts",
+              "path": "demo/midgard-node-tools/src/commands/e2e-pipelined-commit-process-acceptance.ts",
               "symbols": ["validatePhase4PhasRegistrationProof"]
             },
             {
-              "path": "demo/midgard-node/scripts/verify-phase4-pipelined-process-summary.mjs",
+              "path": "demo/midgard-node-tools/scripts/verify-phase4-pipelined-process-summary.mjs",
               "symbols": ["validatePhasRegistrationProof"]
             }
           ],
@@ -17571,14 +17604,14 @@
           "persistence": "Nested inside phas-registration-proof.json (and therefore inside the snapshot identity, each reset attestation, and the acceptance summary) beside the phas-registration-transaction-body.json envelope in the same snapshot directory",
           "parsers": [
             {
-              "path": "demo/midgard-node/src/commands/e2e-pipelined-commit-process-acceptance.ts",
+              "path": "demo/midgard-node-tools/src/commands/e2e-pipelined-commit-process-acceptance.ts",
               "symbols": [
                 "validatePhase4PhasRegistrationProof",
                 "validatePhase4PhasRegistrationTransactionBody"
               ]
             },
             {
-              "path": "demo/midgard-node/scripts/verify-phase4-pipelined-process-summary.mjs",
+              "path": "demo/midgard-node-tools/scripts/verify-phase4-pipelined-process-summary.mjs",
               "symbols": ["validatePhasRegistrationProof"]
             }
           ],
@@ -17609,7 +17642,7 @@
           "persistence": "summary.json inside the acceptance run directory, written only after the standalone verifier decodes the in-memory evidence",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/commands/e2e-pipelined-commit-process-acceptance.ts",
+              "path": "demo/midgard-node-tools/src/commands/e2e-pipelined-commit-process-acceptance.ts",
               "symbols": [
                 "runPipelinedCommitProcessAcceptance",
                 "decodeProcessSummaryBeforePersistence"
@@ -17618,7 +17651,7 @@
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/scripts/verify-phase4-pipelined-process-summary.mjs",
+              "path": "demo/midgard-node-tools/scripts/verify-phase4-pipelined-process-summary.mjs",
               "symbols": [
                 "decodePhase4PipelinedProcessSummaryV1",
                 "evaluatePhase4PipelinedProcessSummary",
@@ -17636,14 +17669,14 @@
           ]
         },
         {
-          "path": "demo/midgard-node/tests/phase4-genesis-ledger.test.ts",
+          "path": "demo/midgard-node-tools/tests/phase4-genesis-ledger.test.ts",
           "testNames": [
             "accepts only the exact canonical report",
             "accepts only the exact isolated local-devnet identity"
           ]
         },
         {
-          "path": "demo/midgard-node/tests/phase4-t1-recovery.test.ts",
+          "path": "demo/midgard-node-tools/tests/phase4-t1-recovery.test.ts",
           "testNames": [
             "decodes exact probe and canonical-advance V1 artifacts only",
             "accepts exact snapshot-bound, journal-identical, provider-synchronized evidence",
@@ -17657,14 +17690,14 @@
           ]
         },
         {
-          "path": "demo/midgard-node/tests/phase4-process-isolation.test.ts",
+          "path": "demo/midgard-node-tools/tests/phase4-process-isolation.test.ts",
           "testNames": [
             "decodes exact reset, snapshot, and PHAS V1 shapes only",
             "accepts only the exact submitted PHAS registration transaction body"
           ]
         },
         {
-          "path": "demo/midgard-node/tests/phase4-pipelined-process-summary-verifier.test.mjs",
+          "path": "demo/midgard-node-tools/tests/phase4-pipelined-process-summary-verifier.test.mjs",
           "testNames": [
             "accepts a complete internally consistent process-acceptance fixture",
             "file and package-facing CLI verification report a frozen artifact hash"
@@ -17682,11 +17715,11 @@
           ]
         },
         {
-          "path": "demo/midgard-node/tests/phase4-genesis-ledger.test.ts",
+          "path": "demo/midgard-node-tools/tests/phase4-genesis-ledger.test.ts",
           "testNames": ["rejects a missing required key"]
         },
         {
-          "path": "demo/midgard-node/tests/phase4-t1-recovery.test.ts",
+          "path": "demo/midgard-node-tools/tests/phase4-t1-recovery.test.ts",
           "testNames": [
             "decodes exact probe and canonical-advance V1 artifacts only",
             "rejects stale identity, mismatched journal bytes, provider lag, and a 64-hex recovered L2 tip",
@@ -17702,14 +17735,14 @@
           ]
         },
         {
-          "path": "demo/midgard-node/tests/phase4-process-isolation.test.ts",
+          "path": "demo/midgard-node-tools/tests/phase4-process-isolation.test.ts",
           "testNames": [
             "decodes exact reset, snapshot, and PHAS V1 shapes only",
             "rejects witness-bearing CBOR even when its body hash is the submitted transaction"
           ]
         },
         {
-          "path": "demo/midgard-node/tests/phase4-pipelined-process-summary-verifier.test.mjs",
+          "path": "demo/midgard-node-tools/tests/phase4-pipelined-process-summary-verifier.test.mjs",
           "testNames": [
             "fails closed on schema, isolation, crash, T1, and contention mutations",
             "returns reasons instead of throwing for malformed nested evidence"
@@ -17746,7 +17779,7 @@
       "auditStatus": "PASS",
       "sourceEvidence": [
         {
-          "path": "demo/midgard-node/src/commands/stress-wallets.ts",
+          "path": "demo/midgard-node-tools/src/commands/stress-wallets.ts",
           "symbols": [
             "STRESS_WALLET_CONSOLIDATION_JOURNAL_SCHEMA_VERSION",
             "STRESS_WALLET_CONSOLIDATION_RESULT_SCHEMA_VERSION",
@@ -17765,7 +17798,7 @@
           ]
         },
         {
-          "path": "demo/midgard-node/src/index.ts",
+          "path": "demo/midgard-node-tools/src/index.ts",
           "symbols": ["consolidateStressWallets", "writeJson"]
         }
       ],
@@ -17800,7 +17833,7 @@
           "persistence": "<outDir>/consolidation-state.json at mode 0o600, written atomically through writePrivateFileAtomic and fenced by a SHA-256 generation compare-and-set (assertFileGeneration) immediately before and after every write, under an exclusive O_EXCL lock file whose dev/ino/token ownership is re-proved before removal",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/commands/stress-wallets.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-wallets.ts",
               "symbols": [
                 "persistState",
                 "writePrivateFileAtomic",
@@ -17811,7 +17844,7 @@
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/commands/stress-wallets.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-wallets.ts",
               "symbols": [
                 "parseStressWalletConsolidationJournal",
                 "parseStressWalletOperationScope",
@@ -17853,20 +17886,20 @@
           "persistence": "Not persisted as a file; validated in memory and written to process stdout as the consolidate command result (the durable evidence is the separate report and journal artifacts referenced by reportPath)",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/commands/stress-wallets.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-wallets.ts",
               "symbols": [
                 "consolidateStressWallets",
                 "STRESS_WALLET_CONSOLIDATION_RESULT_SCHEMA_VERSION"
               ]
             },
             {
-              "path": "demo/midgard-node/src/index.ts",
+              "path": "demo/midgard-node-tools/src/index.ts",
               "symbols": ["consolidateStressWallets", "writeJson"]
             }
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/commands/stress-wallets.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-wallets.ts",
               "symbols": [
                 "parseStressWalletConsolidationResult",
                 "parseStressWalletConsolidationResultFields",
@@ -17928,7 +17961,7 @@
           "persistence": "<outDir>/consolidation-report-<ISO timestamp with ':' replaced by '-'>.json written with flag \"wx\" and mode 0o600, so an existing report can never be replaced",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/commands/stress-wallets.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-wallets.ts",
               "symbols": [
                 "STRESS_WALLET_CONSOLIDATION_REPORT_SCHEMA_VERSION",
                 "consolidateStressWallets"
@@ -17937,7 +17970,7 @@
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/commands/stress-wallets.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-wallets.ts",
               "symbols": [
                 "parseStressWalletConsolidationReport",
                 "parseStressWalletAccountingArtifact",
@@ -17982,7 +18015,7 @@
           "persistence": "<outDir>/consolidation-readiness.jsonl, opened with flag \"a\" and mode 0o600, one validated line appended per poll before any prepare or submit call",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/commands/stress-wallets.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-wallets.ts",
               "symbols": [
                 "STRESS_WALLET_CONSOLIDATION_READINESS_SCHEMA_VERSION",
                 "isFullConsolidationReadiness"
@@ -17991,7 +18024,7 @@
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/commands/stress-wallets.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-wallets.ts",
               "symbols": [
                 "parseStressWalletConsolidationReadinessEvidence",
                 "parseConsolidationReadiness",
@@ -18003,7 +18036,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-node/tests/stress-wallets.test.ts",
+          "path": "demo/midgard-node-tools/tests/stress-wallets.test.ts",
           "testNames": [
             "consolidates with bounded reads, exact accounting, and a private evidence report",
             "journals signed CBOR before submission and resumes only the exact transaction",
@@ -18013,7 +18046,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-node/tests/stress-wallets.test.ts",
+          "path": "demo/midgard-node-tools/tests/stress-wallets.test.ts",
           "testNames": [
             "consolidates with bounded reads, exact accounting, and a private evidence report",
             "fails closed and journals malformed consolidation readiness before submission",
@@ -18054,7 +18087,7 @@
       "auditStatus": "PASS",
       "sourceEvidence": [
         {
-          "path": "demo/midgard-node/src/commands/stress-wallets.ts",
+          "path": "demo/midgard-node-tools/src/commands/stress-wallets.ts",
           "symbols": [
             "STRESS_WALLET_RECORD_SCHEMA_VERSION",
             "STRESS_WALLET_CREATE_RESULT_SCHEMA_VERSION",
@@ -18081,7 +18114,7 @@
           ]
         },
         {
-          "path": "demo/midgard-node/src/index.ts",
+          "path": "demo/midgard-node-tools/src/index.ts",
           "symbols": [
             "createL2Wallets",
             "prepareStressWallets",
@@ -18137,7 +18170,7 @@
           "persistence": "<outDir>/wallet-<zero-padded index>.json inside a 0o700 directory, mode 0o600, atomic temp+rename via writePrivateFileAtomic; funds-mutating commands hold the shared <outDir>/stress-wallet-funds.lock",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/commands/stress-wallets.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-wallets.ts",
               "symbols": [
                 "writeStressWalletRecord",
                 "writePrivateFileAtomic",
@@ -18148,7 +18181,7 @@
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/commands/stress-wallets.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-wallets.ts",
               "symbols": [
                 "parseStressWalletRecord",
                 "parseLatestFunding",
@@ -18193,13 +18226,13 @@
           "persistence": "Not persisted on its own: embedded inside the create/prepare/fanout stdout results and inside the fanout report file",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/commands/stress-wallets.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-wallets.ts",
               "symbols": ["summaryForRecord", "StressWalletSummary"]
             }
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/commands/stress-wallets.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-wallets.ts",
               "symbols": [
                 "parseStressWalletSummaryArtifact",
                 "parseLatestFunding"
@@ -18228,7 +18261,7 @@
           "persistence": "Not persisted; emitted to stdout. The side artifacts it names are <outDir>/stress-wallets.env (mode 0o600, atomic, secret-bearing) and <outDir>/stress-wallets.args",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/commands/stress-wallets.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-wallets.ts",
               "symbols": [
                 "createL2Wallets",
                 "STRESS_WALLET_CREATE_RESULT_SCHEMA_VERSION",
@@ -18236,13 +18269,13 @@
               ]
             },
             {
-              "path": "demo/midgard-node/src/index.ts",
+              "path": "demo/midgard-node-tools/src/index.ts",
               "symbols": ["createL2Wallets", "writeJson"]
             }
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/commands/stress-wallets.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-wallets.ts",
               "symbols": [
                 "parseStressWalletCreateResult",
                 "parseStressWalletSummaryArtifact",
@@ -18284,20 +18317,20 @@
           "persistence": "Not persisted; emitted to stdout. The durable side effects are the per-wallet midgard-stress-wallet-v1 records updated with their latestFunding snapshots",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/commands/stress-wallets.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-wallets.ts",
               "symbols": [
                 "prepareStressWallets",
                 "STRESS_WALLET_PREPARE_RESULT_SCHEMA_VERSION"
               ]
             },
             {
-              "path": "demo/midgard-node/src/index.ts",
+              "path": "demo/midgard-node-tools/src/index.ts",
               "symbols": ["prepareStressWallets", "writeJson"]
             }
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/commands/stress-wallets.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-wallets.ts",
               "symbols": [
                 "parseStressWalletPrepareResult",
                 "parseStressWalletSummaryArtifact",
@@ -18342,7 +18375,7 @@
           "persistence": "Not persisted; emitted to stdout, with reportPath naming the sibling midgard-stress-wallet-fanout-report-v1 file",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/commands/stress-wallets.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-wallets.ts",
               "symbols": [
                 "fanoutStressWallets",
                 "STRESS_WALLET_FANOUT_RESULT_SCHEMA_VERSION",
@@ -18350,13 +18383,13 @@
               ]
             },
             {
-              "path": "demo/midgard-node/src/index.ts",
+              "path": "demo/midgard-node-tools/src/index.ts",
               "symbols": ["fanoutStressWallets", "writeJson"]
             }
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/commands/stress-wallets.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-wallets.ts",
               "symbols": [
                 "parseStressWalletFanoutResult",
                 "parseStressWalletFanoutArtifact",
@@ -18405,7 +18438,7 @@
           "persistence": "<outDir>/fanout-report.json written with formatJson plus a trailing newline",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/commands/stress-wallets.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-wallets.ts",
               "symbols": [
                 "STRESS_WALLET_FANOUT_REPORT_SCHEMA_VERSION",
                 "fanoutStressWallets"
@@ -18414,7 +18447,7 @@
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/commands/stress-wallets.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-wallets.ts",
               "symbols": [
                 "parseStressWalletFanoutReport",
                 "parseStressWalletFanoutArtifact"
@@ -18460,7 +18493,7 @@
           "persistence": "<outDir>/terminal-drain-state.json at mode 0o600, atomic temp+rename via writePrivateFileAtomic followed by an explicit chmod 0o600, fenced by assertFileGeneration before and after every write",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/commands/stress-wallets.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-wallets.ts",
               "symbols": [
                 "STRESS_WALLET_TERMINAL_DRAIN_JOURNAL_SCHEMA_VERSION",
                 "writePrivateFileAtomic",
@@ -18472,7 +18505,7 @@
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/commands/stress-wallets.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-wallets.ts",
               "symbols": [
                 "parseStressWalletTerminalDrainJournal",
                 "parseStressWalletOperationScope",
@@ -18514,7 +18547,7 @@
           "persistence": "Not persisted; emitted to stdout, with statePath naming the durable journal and reportPath (committed phase only) naming the create-only report",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/commands/stress-wallets.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-wallets.ts",
               "symbols": [
                 "terminalDrainStressWallets",
                 "STRESS_WALLET_TERMINAL_DRAIN_RESULT_SCHEMA_VERSION",
@@ -18522,13 +18555,13 @@
               ]
             },
             {
-              "path": "demo/midgard-node/src/index.ts",
+              "path": "demo/midgard-node-tools/src/index.ts",
               "symbols": ["terminalDrainStressWallets", "writeJson"]
             }
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/commands/stress-wallets.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-wallets.ts",
               "symbols": [
                 "parseStressWalletTerminalDrainResult",
                 "parseExactVersionedArtifact"
@@ -18577,7 +18610,7 @@
           "persistence": "<outDir>/terminal-drain-report-<ISO timestamp with ':' replaced by '-'>.json written through writePrivateFileAtomicNoReplace at mode 0o600, so a published report can never be replaced or rewritten by a later run",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/commands/stress-wallets.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-wallets.ts",
               "symbols": [
                 "STRESS_WALLET_TERMINAL_DRAIN_REPORT_SCHEMA_VERSION",
                 "writePrivateFileAtomicNoReplace"
@@ -18586,7 +18619,7 @@
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/commands/stress-wallets.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-wallets.ts",
               "symbols": [
                 "parseStressWalletTerminalDrainReport",
                 "parseStressWalletOperationScope",
@@ -18598,7 +18631,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-node/tests/stress-wallets.test.ts",
+          "path": "demo/midgard-node-tools/tests/stress-wallets.test.ts",
           "testNames": [
             "creates persisted L2 wallet records and redacted command output",
             "prepares wallets by skipping funded records, depositing missing funds, projecting, and verifying /utxos",
@@ -18615,7 +18648,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-node/tests/stress-wallets.test.ts",
+          "path": "demo/midgard-node-tools/tests/stress-wallets.test.ts",
           "testNames": [
             "creates persisted L2 wallet records and redacted command output",
             "prepares wallets by skipping funded records, depositing missing funds, projecting, and verifying /utxos",
@@ -18663,7 +18696,7 @@
       "auditStatus": "PASS",
       "sourceEvidence": [
         {
-          "path": "demo/midgard-node/src/commands/stress-corpus-generate.ts",
+          "path": "demo/midgard-node-tools/src/commands/stress-corpus-generate.ts",
           "symbols": [
             "midgard-stress-corpus-generation-v1",
             "StressCorpusGenerationArtifactV1",
@@ -18673,7 +18706,7 @@
           ]
         },
         {
-          "path": "demo/midgard-node/src/commands/stress-corpus/verify.ts",
+          "path": "demo/midgard-node-tools/src/commands/stress-corpus/verify.ts",
           "symbols": [
             "STRESS_CORPUS_MANIFEST_SCHEMA_VERSION",
             "STRESS_CORPUS_VERIFICATION_SCHEMA_VERSION",
@@ -18690,7 +18723,7 @@
           ]
         },
         {
-          "path": "demo/midgard-node/src/commands/stress-corpus/assemble.ts",
+          "path": "demo/midgard-node-tools/src/commands/stress-corpus/assemble.ts",
           "symbols": [
             "CorpusIndexEntry",
             "assembleCorpusShards",
@@ -18699,7 +18732,7 @@
           ]
         },
         {
-          "path": "demo/midgard-node/src/commands/stress-corpus/wallet-set-identity.ts",
+          "path": "demo/midgard-node-tools/src/commands/stress-corpus/wallet-set-identity.ts",
           "symbols": [
             "StressCorpusWalletSetIdentity",
             "computeStressCorpusWalletSetIdentity",
@@ -18708,11 +18741,11 @@
           ]
         },
         {
-          "path": "demo/midgard-node/src/commands/stress-corpus/plan.ts",
+          "path": "demo/midgard-node-tools/src/commands/stress-corpus/plan.ts",
           "symbols": ["planStressCorpus", "StressCorpusPlan"]
         },
         {
-          "path": "demo/midgard-node/src/commands/stress-open-loop.ts",
+          "path": "demo/midgard-node/src/open-loop-corpus-format.ts",
           "symbols": [
             "OpenLoopCorpusRow",
             "CORPUS_ROW_KEYS",
@@ -18745,7 +18778,7 @@
           ]
         },
         {
-          "path": "demo/midgard-node/src/index.ts",
+          "path": "demo/midgard-node-tools/src/index.ts",
           "symbols": ["generateStressCorpus", "verifyStressCorpus", "writeJson"]
         }
       ],
@@ -18816,24 +18849,24 @@
           "persistence": "Not persisted as its own file; validated in memory and written to process stdout. Its sibling durable artifacts are the manifest, the index NDJSON, the corpus NDJSON, and the verification artifact, all named and digest-bound by this document",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/commands/stress-corpus-generate.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-corpus-generate.ts",
               "symbols": ["generateStressCorpus", "StressCorpusGenerateResult"]
             },
             {
-              "path": "demo/midgard-node/src/index.ts",
+              "path": "demo/midgard-node-tools/src/index.ts",
               "symbols": ["generateStressCorpus", "writeJson"]
             }
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/commands/stress-corpus-generate.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-corpus-generate.ts",
               "symbols": [
                 "parseStressCorpusGenerationArtifactV1",
                 "exactGenerationObject"
               ]
             },
             {
-              "path": "demo/midgard-node/src/commands/stress-corpus/verify.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-corpus/verify.ts",
               "symbols": [
                 "parseStressCorpusWalletSetIdentityV1",
                 "parseStressCorpusRebuildSampleResultV1",
@@ -18890,13 +18923,13 @@
           "persistence": "<corpusPath>.manifest.json (that is, <outDir>/corpus.ndjson.manifest.json), written once by generateStressCorpus as formatJson output plus a trailing newline",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/commands/stress-corpus-generate.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-corpus-generate.ts",
               "symbols": ["generateStressCorpus", "parseStressCorpusManifest"]
             }
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/commands/stress-corpus/verify.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-corpus/verify.ts",
               "symbols": [
                 "parseStressCorpusManifest",
                 "parseStressCorpusWalletSetIdentityV1",
@@ -18949,7 +18982,7 @@
           "persistence": "<corpusPath>.verify.json (that is, <outDir>/corpus.ndjson.verify.json), written only when a result output path is requested; the file's own SHA-256 is then recorded in the generation artifact",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/commands/stress-corpus/verify.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-corpus/verify.ts",
               "symbols": [
                 "writeVerificationArtifact",
                 "verifyStressCorpus",
@@ -18960,7 +18993,7 @@
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/commands/stress-corpus/verify.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-corpus/verify.ts",
               "symbols": [
                 "parseStressCorpusVerificationArtifactV1",
                 "parseStressCorpusWalletSetIdentityV1",
@@ -19025,13 +19058,13 @@
           "persistence": "<corpusPath>.index.ndjson, written by assembleCorpusShards as one JSON line per chain run and digest-bound by files.index.sha256 in the manifest",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/commands/stress-corpus/assemble.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-corpus/assemble.ts",
               "symbols": ["assembleCorpusShards", "CorpusIndexEntry"]
             }
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/commands/stress-corpus/verify.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-corpus/verify.ts",
               "symbols": ["parseStressCorpusIndexLine", "compareIndexEntries"]
             },
             {
@@ -19064,7 +19097,7 @@
           "persistence": "<outDir>/corpus.ndjson, written as an incremental NDJSON stream with backpressure and digest-bound by files.corpus.sha256 in the manifest",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/commands/stress-corpus/assemble.ts",
+              "path": "demo/midgard-node-tools/src/commands/stress-corpus/assemble.ts",
               "symbols": [
                 "createShardRowWriter",
                 "writeShardRows",
@@ -19074,7 +19107,7 @@
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/commands/stress-open-loop.ts",
+              "path": "demo/midgard-node/src/open-loop-corpus-format.ts",
               "symbols": ["parseOpenLoopCorpusLine", "CORPUS_ROW_KEYS"]
             },
             {
@@ -19090,7 +19123,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-node/tests/stress-corpus.test.ts",
+          "path": "demo/midgard-node-tools/tests/stress-corpus.test.ts",
           "testNames": [
             "generates, assembles, manifests, and verifies a grouped chain corpus",
             "computes stable full-set hashes without seed phrase material",
@@ -19120,7 +19153,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-node/tests/stress-corpus.test.ts",
+          "path": "demo/midgard-node-tools/tests/stress-corpus.test.ts",
           "testNames": [
             "generates, assembles, manifests, and verifies a grouped chain corpus",
             "sizes grouped chains and rejects unsafe wallet counts",
@@ -20866,7 +20899,7 @@
       "family": "A",
       "sourceOwnerAndCurrentIdentity": "Phase-5 DA measurement/distribution/fixture/strict-chain artifacts v1",
       "classification": "artifact",
-      "canonicalResult": "Invalidate/remove; regenerate only after \u00a72.5 follow-up can produce complete V1 bytes within bounded publication",
+      "canonicalResult": "Invalidate/remove; regenerate only after §2.5 follow-up can produce complete V1 bytes within bounded publication",
       "boundaryBindingAndPersistence": "No active reader, writer, package command, or evidence boundary remains; future bounded-publication evidence must use a newly audited canonical format.",
       "requiredEvidence": "Zero active matches for the retired package command, large-envelope/report inputs, and both Phase-5 evidence schema identities.",
       "disposition": "delete",

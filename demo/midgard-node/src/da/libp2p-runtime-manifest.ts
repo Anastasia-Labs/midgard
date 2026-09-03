@@ -8,9 +8,9 @@ import {
 } from "@al-ft/midgard-core/da-transport";
 import { multiaddr } from "@multiformats/multiaddr";
 
-import { readFinalizedDeploymentIdentity } from "@/commands/contract-deployment-info.js";
-import { loadDaLibp2pIdentity } from "@/da/libp2p-identity.js";
-import { writeJsonFileAtomic } from "@/files/atomic-write.js";
+import { readFinalizedDeploymentIdentity } from "../commands/contract-deployment-info.js";
+import { writeJsonFileAtomic } from "../files/atomic-write.js";
+import { loadDaLibp2pIdentity } from "./libp2p-identity.js";
 
 export const DA_LIBP2P_RUNTIME_PROFILES = [
   "host",

@@ -18,16 +18,15 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect } from "vitest";
 
-import { ForcedTransactionsDB } from "@/database/index.js";
-import type { DatabaseError } from "@/database/utils/common.js";
-import { resolveForcedTransactionsRoot } from "@/workers/commit-block-header/event-roots.js";
+import { ForcedTransactionsDB } from "../src/database/index.js";
+import type { DatabaseError } from "../src/database/utils/common.js";
+import { resolveForcedTransactionsRoot } from "../src/workers/commit-block-header/event-roots.js";
 import {
   buildAuthenticatedRootFromEncodedEntries,
   buildRootMembershipProof,
   verifyRootMembershipProof,
-} from "@/workers/commit-block-header/transition-roots.js";
-import { keyValuePhasProof } from "@/workers/utils/mpf.js";
-
+} from "../src/workers/commit-block-header/transition-roots.js";
+import { keyValuePhasProof } from "../src/workers/utils/mpf.js";
 import { deterministicFixtureTxHash } from "./utils.js";
 
 const h32 = (label: string): string =>

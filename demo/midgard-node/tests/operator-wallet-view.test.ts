@@ -7,7 +7,7 @@ import {
   isPotentiallyStaleOperatorWalletViewError,
   makeOperatorWalletView,
   noteConsumedOperatorWalletInputs,
-} from "@/operator-wallet-view.js";
+} from "../src/operator-wallet-view.js";
 
 const TEST_SEED =
   "cupboard digital guitar diesel critic will afford salon game dolphin phrase baby dad urban machine barely rack acoustic blood vote misery enemy salute depart";

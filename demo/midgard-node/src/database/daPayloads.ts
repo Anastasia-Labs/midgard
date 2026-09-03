@@ -2,14 +2,14 @@ import { MIDGARD_CONSENSUS_PROFILE_V1_ID } from "@al-ft/midgard-core/consensus-p
 import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 
-import { admitDaPayloadRetentionReleaseAuthorityV1 } from "@/database/daPayloadTerminalOutcomes.js";
-import { computeChallengeableCutoff } from "@/database/retention-policy.js";
+import { Database } from "../services/database.js";
+import { admitDaPayloadRetentionReleaseAuthorityV1 } from "./daPayloadTerminalOutcomes.js";
+import { computeChallengeableCutoff } from "./retention-policy.js";
 import {
   clearTable,
   DatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { Database } from "@/services/database.js";
+} from "./utils/common.js";
 
 export const tableName = "da_payloads";
 

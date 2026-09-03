@@ -10,14 +10,8 @@ import { Trie } from "@aiken-lang/merkle-patricia-forestry";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Metric } from "effect";
 
-import { fullScanCounter as confirmedLedgerFullScanCounter } from "@/database/confirmedLedger.js";
-import { ProductionNativeMpfOwnerService } from "@/services/mpf-native-owner/index.js";
-import {
-  decodeArchitectureGCorpusFundingV1,
-  decodeArchitectureGFixtureCreationV1,
-  validateArchitectureGRootProbeResultV1,
-} from "@/workers/utils/mpf-commit-candidate-artifacts.js";
-
+import { fullScanCounter as confirmedLedgerFullScanCounter } from "../database/confirmedLedger.js";
+import { ProductionNativeMpfOwnerService } from "../services/mpf-native-owner/index.js";
 import {
   canonicalOutrefCborFromLabel,
   decodeCanonicalProbeRow,
@@ -33,6 +27,11 @@ import {
   setMpfScratchBuild,
   type TransitionTraceSourceEvent,
 } from "./utils/mpf.js";
+import {
+  decodeArchitectureGCorpusFundingV1,
+  decodeArchitectureGFixtureCreationV1,
+  validateArchitectureGRootProbeResultV1,
+} from "./utils/mpf-commit-candidate-artifacts.js";
 import { compileAuthenticatedFlatMpfMultiproof } from "./utils/mpf-flat-multiproof.js";
 import {
   closeMpfRootWorkers,

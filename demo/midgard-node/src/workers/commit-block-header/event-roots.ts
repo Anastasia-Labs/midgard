@@ -8,10 +8,9 @@ import {
   DepositsDB,
   ForcedTransactionsDB,
   WithdrawalsDB,
-} from "@/database/index.js";
-import type { DatabaseError } from "@/database/utils/common.js";
-import type { MpfError } from "@/workers/utils/mpf.js";
-
+} from "../../database/index.js";
+import type { DatabaseError } from "../../database/utils/common.js";
+import type { MpfError } from "../utils/mpf.js";
 import { buildAuthenticatedRootFromEncodedEntries } from "./transition-roots.js";
 
 export const resolveDepositsRoot = (

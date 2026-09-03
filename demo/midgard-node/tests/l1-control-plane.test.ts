@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { Deferred, Duration, Effect, Fiber, Option, Ref } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
-import { runL1ProviderPreflight } from "@/commands/l1-provider-preflight.js";
+import { runL1ProviderPreflight } from "../src/commands/l1-provider-preflight.js";
 import {
   l1ProviderEvidenceIsFresh,
   l1ProviderReadinessEvidenceIsFresh,
@@ -13,15 +13,15 @@ import {
   runBoundedDirectL1ProviderPreflight,
   runBusyL1ProviderReadinessProbe,
   runCombinedL1ReadinessProbe,
-} from "@/commands/listen-router.js";
-import { withScheduledMergeControlPlaneWait } from "@/fibers/merge.js";
-import { makeAwaitedWorkerTerminator } from "@/fibers/worker-lifecycle.js";
+} from "../src/commands/listen-router.js";
+import { withScheduledMergeControlPlaneWait } from "../src/fibers/merge.js";
+import { makeAwaitedWorkerTerminator } from "../src/fibers/worker-lifecycle.js";
 import {
   Globals,
   L1ControlPlaneTimeoutError,
   nextL1ProviderHealthEvidence,
   withL1ControlPlane,
-} from "@/services/globals.js";
+} from "../src/services/globals.js";
 
 describe("L1 control-plane serialization", () => {
   it("makes a commit wait for an in-flight background provider poll", async () => {

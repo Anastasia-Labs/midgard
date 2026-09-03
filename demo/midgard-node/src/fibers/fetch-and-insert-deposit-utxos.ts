@@ -12,8 +12,15 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect, Ref, Schedule } from "effect";
 
-import { DepositsDB, UserEventsUtils } from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
+import { DepositsDB, UserEventsUtils } from "../database/index.js";
+import { DatabaseError } from "../database/utils/common.js";
+import {
+  Database,
+  Globals,
+  Lucid,
+  MidgardContracts,
+  NodeConfig,
+} from "../services/index.js";
 import {
   logReconciledVisibleUserEvents,
   persistVisibleUserEventUTxOs,
@@ -21,14 +28,7 @@ import {
   runCommitTimeUserEventIngestionBarrier,
   type UserEventFetchBounds,
   type UserEventReconcileResult,
-} from "@/fibers/user-event-ingestion.js";
-import {
-  Database,
-  Globals,
-  Lucid,
-  MidgardContracts,
-  NodeConfig,
-} from "@/services/index.js";
+} from "./user-event-ingestion.js";
 
 /**
  * Background ingestion for deposit UTxOs into the authoritative off-chain

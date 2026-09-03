@@ -1,11 +1,14 @@
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { Effect, Option } from "effect";
 
-import { DaPayloadsDB, PendingBlockFinalizationsDB } from "@/database/index.js";
-import { DatabaseError } from "@/database/utils/common.js";
-import { type Database } from "@/services/database.js";
-import { materializeConfirmedLedgerSnapshot } from "@/transactions/state-queue/confirmed-ledger-snapshot.js";
-import { buildDaPayloadInsert } from "@/workers/commit-block-header/da-payload.js";
+import {
+  DaPayloadsDB,
+  PendingBlockFinalizationsDB,
+} from "../../database/index.js";
+import { DatabaseError } from "../../database/utils/common.js";
+import { type Database } from "../../services/database.js";
+import { materializeConfirmedLedgerSnapshot } from "../../transactions/state-queue/confirmed-ledger-snapshot.js";
+import { buildDaPayloadInsert } from "./da-payload.js";
 
 export type DaPayloadBackfillSkipped = {
   readonly headerHash: string;

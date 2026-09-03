@@ -1,12 +1,12 @@
 import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 
+import { Database } from "../services/database.js";
 import {
   clearTable,
   DatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import { Database } from "@/services/database.js";
+} from "./utils/common.js";
 
 export const tableName = "deposit_submission_attempts";
 

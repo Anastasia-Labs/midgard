@@ -11,7 +11,7 @@ import {
   MIN_DA_PAYLOAD_RETENTION_DAYS,
   shouldPruneRetention,
   validateRetentionDays,
-} from "@/database/retention-policy.js";
+} from "../src/database/retention-policy.js";
 
 describe("retention policy", () => {
   it("disables pruning when retentionDays is 0", () => {

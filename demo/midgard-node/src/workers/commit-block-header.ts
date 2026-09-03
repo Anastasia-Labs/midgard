@@ -26,25 +26,25 @@ import {
   TxAdmissionsDB,
   TxRejectionsDB,
   WithdrawalsDB,
-} from "@/database/index.js";
+} from "../database/index.js";
 import {
   DatabaseError,
   sqlErrorToDatabaseError,
-} from "@/database/utils/common.js";
-import * as Ledger from "@/database/utils/ledger.js";
+} from "../database/utils/common.js";
+import * as Ledger from "../database/utils/ledger.js";
 import {
   Columns as TxColumns,
   type EntryWithTimeStamp,
-} from "@/database/utils/tx.js";
-import { reachPipelinedCommitCrashCheckpoint } from "@/e2e/pipelined-commit-crash-checkpoint.js";
-import { fetchAndInsertDepositUTxOsForCommitBarrier } from "@/fibers/fetch-and-insert-deposit-utxos.js";
-import { fetchAndInsertTxOrderUTxOsForCommitBarrier } from "@/fibers/fetch-and-insert-tx-order-utxos.js";
-import { fetchAndInsertWithdrawalUTxOsForCommitBarrier } from "@/fibers/fetch-and-insert-withdrawal-utxos.js";
+} from "../database/utils/tx.js";
+import { reachPipelinedCommitCrashCheckpoint } from "../e2e/pipelined-commit-crash-checkpoint.js";
+import { fetchAndInsertDepositUTxOsForCommitBarrier } from "../fibers/fetch-and-insert-deposit-utxos.js";
+import { fetchAndInsertTxOrderUTxOsForCommitBarrier } from "../fibers/fetch-and-insert-tx-order-utxos.js";
+import { fetchAndInsertWithdrawalUTxOsForCommitBarrier } from "../fibers/fetch-and-insert-withdrawal-utxos.js";
 import {
   minimumBarrierWatermarkMs,
   sameSpeculativeSourceIdSet,
-} from "@/fibers/speculative-commit-state.js";
-import { unixTimeToSlotForConfig } from "@/lucid-time.js";
+} from "../fibers/speculative-commit-state.js";
+import { unixTimeToSlotForConfig } from "../lucid-time.js";
 import {
   ConfigError,
   ContractDeploymentIdentity,
@@ -56,32 +56,32 @@ import {
   MidgardContractServices,
   NativeMpfWorkerPortClient,
   NodeConfig,
-} from "@/services/index.js";
-import { materializeConfirmedLedgerSnapshot } from "@/transactions/state-queue/confirmed-ledger-snapshot.js";
+} from "../services/index.js";
+import { materializeConfirmedLedgerSnapshot } from "../transactions/state-queue/confirmed-ledger-snapshot.js";
 import {
   awaitExactTransactionConfirmation,
   type TxSignError,
   type TxSubmitError,
-} from "@/transactions/utils.js";
-import { outRefLabel } from "@/tx-context.js";
-import { buildUnsignedCommitTx } from "@/workers/commit-block-header/build-unsigned-tx.js";
+} from "../transactions/utils.js";
+import { outRefLabel } from "../tx-context.js";
+import { buildUnsignedCommitTx } from "./commit-block-header/build-unsigned-tx.js";
 import {
   resolveDepositsRoot,
   resolveForcedTransactionsRoot,
   resolveWithdrawalsRoot,
-} from "@/workers/commit-block-header/event-roots.js";
+} from "./commit-block-header/event-roots.js";
 import {
   fetchLatestCommittedBlockLocal,
   getLatestBlockDatumEndTime,
-} from "@/workers/commit-block-header/state-queue.js";
+} from "./commit-block-header/state-queue.js";
 import {
   deferProcessedCommitPayloadUntilConfirmation,
   recoverLocalFinalizationAgainstConfirmedBlock,
   submitDepositOnlyCommit,
   submitTxBackedCommit,
-} from "@/workers/commit-block-header/submission.js";
-import { makeEventCommitments } from "@/workers/commit-block-header/transition-commitments.js";
-import { reconcileOverdueAwaitingEventsAgainstRetainedForeignTips } from "@/workers/t2-foreign-event-reconciliation.js";
+} from "./commit-block-header/submission.js";
+import { makeEventCommitments } from "./commit-block-header/transition-commitments.js";
+import { reconcileOverdueAwaitingEventsAgainstRetainedForeignTips } from "./t2-foreign-event-reconciliation.js";
 import {
   deserializeStateQueueUTxO,
   type RegisteredDueWorkOutput,
@@ -91,7 +91,7 @@ import {
   type SpeculativeCommitWorkerInstruction,
   WorkerInput,
   WorkerOutput,
-} from "@/workers/utils/commit-block-header.js";
+} from "./utils/commit-block-header.js";
 import {
   calibratedCommitBuildMsPerTx,
   type CommitSchedulerStateQueueEvidence,
@@ -105,13 +105,13 @@ import {
   shouldDeferCommitSubmission,
   shouldSkipIdleCommitBehindUnmergedTail,
   updateCommitBuildEwma,
-} from "@/workers/utils/commit-block-planner.js";
+} from "./utils/commit-block-planner.js";
 import {
   COMMIT_MIN_PRE_WITNESS_BUDGET_MS,
   COMMIT_PRODUCTION_MINIMUM_FUTURE_BUFFER_MS,
   resolveCommitEndTimeFit,
   resolveExplicitCommitCandidateEndTimeMs,
-} from "@/workers/utils/commit-end-time.js";
+} from "./utils/commit-end-time.js";
 import {
   computeLedgerMpfRootFromLedgerEntries,
   configureCommitMpfRuntime,
@@ -127,11 +127,11 @@ import {
   utxoToLedgerInsertMaterialV1,
   withMpfBlockOverlays,
   withMpfRootTransactions,
-} from "@/workers/utils/mpf.js";
+} from "./utils/mpf.js";
 import {
   resolveCurrentOperatorSchedulerWindow,
   resolveEarliestCommitSchedulerDueWorkPlan,
-} from "@/workers/utils/scheduler-refresh.js";
+} from "./utils/scheduler-refresh.js";
 
 const EXPLICIT_COMMIT_CONFIRMATION_TIMEOUT_MS = 120_000;
 const EXPLICIT_COMMIT_CONFIRMATION_POLL_INTERVAL_MS = 5_000;
