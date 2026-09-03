@@ -5,7 +5,6 @@ export * from "./cross-block-duplicate-event/index.js";
 export * from "./evidence/index.js";
 export * as executionNativeScriptInvalid from "./execution-native-script-invalid/index.js";
 export * from "./execution-source-script-decoding/index.js";
-export * from "./family-scaffold/index.js";
 export * from "./field-item-width-illegal/index.js";
 export * from "./field-preimage-length-mismatch/index.js";
 export * from "./input-set-uniqueness/index.js";

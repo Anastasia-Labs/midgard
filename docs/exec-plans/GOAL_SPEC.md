@@ -933,7 +933,7 @@ surface, and a precise matrix `N/A`; prose alone is insufficient.
 | --- | ----------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Q00 | Native V1 proof binding       | F20, F02   | Every family binds the exact flat blake2b-256 field commitments over canonical enveloped preimage bytes per `docs/spec/midgard-tx.md`, and the canonical native codec; legacy PlutusData/root paths, witness-encoding splits, and the retired counted `bounded_collection_v1` field-commitment paths are absent.         |
 | Q01 | Common proof-state safety     | Q00        | Computation-thread init/continue/finalize/cancel, duplicate init, token coupling, catalogue immutability, reference inputs, and valid-block rejection are tested. |
-| Q02 | Family scaffold generator     | Q00–Q01    | Shared generator may create boilerplate only; generated families retain explicit schemas/tests and no dynamic “accept any” dispatch.                              |
+| Q02 | Family definition discipline  | Q00–Q01    | Each family declares its step datum and redeemer schemas as concrete typed values in its own module; dispatch is a typed map over a closed category union with no default arm for unknown categories; each family has its own emulator-driven test. |
 | Q03 | Canonical evidence-source API | Q00        | Builders consume verified `DaPayloadV1`/proof bundles and authenticated L1 observations, not operator-private REST/DB/files except labelled diagnostics.          |
 
 ### 9.3 Independently assignable proof-family closures

@@ -1016,8 +1016,7 @@ fn fold_non_membership_root(
     }
     // The witness is Branch-prefixed with a single terminal Leaf by
     // construction; the other step shapes are enumerated rather than
-    // wildcarded so no unenumerated case can be accepted here
-    // (family-scaffold rule).
+    // wildcarded so no unenumerated case can be accepted here.
     [] -> merkling.null_hash
     [mpf.Fork { .. }, ..] -> merkling.null_hash
     [mpf.Leaf { .. }, _, ..] -> merkling.null_hash
@@ -1047,9 +1046,9 @@ fn fold_membership_root(
         ),
       )
     }
-    // The ladder is all- by construction; the other step shapes are
+    // The ladder is all-Branch by construction; the other step shapes are
     // enumerated rather than wildcarded so no unenumerated case can be
-    // accepted here (family-scaffold rule ).
+    // accepted here.
     [mpf.Fork { .. }, ..] -> merkling.null_hash
     [mpf.Leaf { .. }, ..] -> merkling.null_hash
   }

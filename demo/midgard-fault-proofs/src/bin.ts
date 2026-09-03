@@ -20,14 +20,10 @@ import {
   resolveFabricatedWithdrawalCliContracts,
 } from "./fabricated-cli-contracts.js";
 import {
-  generateFraudProofFamilyScaffold,
-  writeFraudProofFamilyScaffold,
-} from "./family-scaffold/generate.js";
-import {
   inspectContractsFromFiles,
   parseNetwork,
 } from "./inspect-contracts.js";
-import { readJsonFile, stringifyJson } from "./json-file.js";
+import { stringifyJson } from "./json-file.js";
 import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary.js";
 import { neSubmitStep01FromFiles } from "./ne-submit-step-01.js";
 import { neSubmitStep02FromFiles } from "./ne-submit-step-02.js";
@@ -163,9 +159,6 @@ export type ParsedArgs = {
   readonly validationCekIncrementalNecessityReceiptSetPath: string | undefined;
   readonly validationCekSinglePublicationOutRef: string | undefined;
   readonly validationCekMinimumMultiOutputOutRefs: readonly string[];
-  readonly scaffoldSpecPath: string | undefined;
-  readonly repoRoot: string | undefined;
-  readonly dryRun: boolean;
   readonly workflowJournalDir: string | undefined;
   readonly workflowRuntimeConfigPath: string | undefined;
   readonly deploymentFingerprint: string | undefined;
@@ -180,7 +173,6 @@ const usage = `Usage:
   midgard-fault-proofs workflow-readiness [--fraud-category <${fraudCategoryUsage}>]
   midgard-fault-proofs run-workflow --fraud-category <${fraudCategoryUsage}> --deployment-fingerprint <32-byte hex> --header-hash <28-byte hex> --workflow-journal-dir <directory> --workflow-runtime-config <versioned-infrastructure-config.json>
   midgard-fault-proofs resume-workflow --fraud-category <${fraudCategoryUsage}> --deployment-fingerprint <32-byte hex> --header-hash <28-byte hex> --workflow-journal-dir <directory> --workflow-runtime-config <versioned-infrastructure-config.json>
-  midgard-fault-proofs scaffold-family --scaffold-spec <familyScaffoldSpecV1.json> [--repo-root <path>] [--dry-run]
   midgard-fault-proofs inspect-contracts --blueprint <path> --deployment-info <path> [--network <Mainnet|Preview|Preprod>]
   midgard-fault-proofs prepare-transition-trace --da-payload-envelope <retained-da-envelope.cbor(.json)> --header-hash <committed 28-byte header hash, hex> [--output-dir <dir>]
   midgard-fault-proofs submit-transition-trace-proof --blueprint <path> --deployment-info <path> --thread-out-ref <txHash#outputIndex> --transition-fault-proof <proof.cbor(.json)> [--reference-input <txHash#outputIndex> ...] [--network <Mainnet|Preview|Preprod>] [--provider <Blockfrost|Kupmios>] [--wallet-seed-phrase <phrase> | --wallet-seed-phrase-env <envVar> | --wallet-private-key <bech32> | --wallet-private-key-env <envVar>]
@@ -329,9 +321,6 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
   let validationCekIncrementalNecessityReceiptSetPath: string | undefined;
   let validationCekSinglePublicationOutRef: string | undefined;
   const validationCekMinimumMultiOutputOutRefs: string[] = [];
-  let scaffoldSpecPath: string | undefined;
-  let repoRoot: string | undefined;
-  let dryRun = false;
   let workflowJournalDir: string | undefined;
   let workflowRuntimeConfigPath: string | undefined;
   let deploymentFingerprint: string | undefined;
@@ -578,15 +567,6 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
       case "--no-await-confirmation":
         awaitConfirmation = false;
         break;
-      case "--scaffold-spec":
-        scaffoldSpecPath = rest[++index];
-        break;
-      case "--repo-root":
-        repoRoot = rest[++index];
-        break;
-      case "--dry-run":
-        dryRun = true;
-        break;
       case "--workflow-journal-dir":
         workflowJournalDir = rest[++index];
         break;
@@ -682,9 +662,6 @@ export const parseArgs = (argv: readonly string[]): ParsedArgs => {
     validationCekIncrementalNecessityReceiptSetPath,
     validationCekSinglePublicationOutRef,
     validationCekMinimumMultiOutputOutRefs,
-    scaffoldSpecPath,
-    repoRoot,
-    dryRun,
     workflowJournalDir,
     workflowRuntimeConfigPath,
     deploymentFingerprint,
@@ -884,33 +861,6 @@ export const main = async (): Promise<void> => {
       journalDirectory: args.workflowJournalDir,
       runtimeConfigPath: args.workflowRuntimeConfigPath,
     });
-    return;
-  }
-
-  // Q02: the family scaffold generator writes source skeletons, so it takes no
-  // network, wallet, or evidence input and is handled before every chain path.
-  if (args.command === "scaffold-family") {
-    if (args.scaffoldSpecPath === undefined) {
-      throw new Error(`Missing required --scaffold-spec <path>.\n${usage}`);
-    }
-    const plan = generateFraudProofFamilyScaffold({
-      spec: await readJsonFile(args.scaffoldSpecPath),
-    });
-    const result = await writeFraudProofFamilyScaffold({
-      plan,
-      repoRoot: args.repoRoot ?? process.cwd(),
-      dryRun: args.dryRun,
-    });
-    console.log(
-      stringifyJson({
-        generator: plan.generator,
-        family: plan.spec.family,
-        taskId: plan.spec.taskId,
-        dryRun: result.dryRun,
-        repoRoot: result.repoRoot,
-        written: result.written,
-      }),
-    );
     return;
   }
 
