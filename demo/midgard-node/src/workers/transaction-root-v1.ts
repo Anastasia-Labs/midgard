@@ -6,6 +6,6 @@
  * CLI when a deterministic fixture is regenerated.
  */
 export { encodeForcedInclusionValueV1 } from "../database/forcedTransactions.js";
+export { keyValuePhasProof } from "../mpf/index.js";
+export { encodeTransactionRootValue } from "../mpf/index.js";
 export { buildAuthenticatedRootFromEncodedEntries } from "./commit-block-header/transition-roots.js";
-export { keyValuePhasProof } from "./utils/mpf.js";
-export { encodeTransactionRootValue } from "./utils/mpf.js";

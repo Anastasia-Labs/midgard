@@ -191,13 +191,13 @@ const phaseOrder = [
   "L2Transaction",
   "Deposit",
 ];
-const mpf = read("demo/midgard-node/src/workers/utils/mpf.ts");
+const mpf = read("demo/midgard-node/src/mpf/transition-cbor.ts");
 let previous = -1;
 for (const phase of phaseOrder) {
   const position = mpf.indexOf(`case \"${phase}\":`, previous + 1);
   if (position <= previous) {
     fail(
-      `demo/midgard-node/src/workers/utils/mpf.ts: canonical phase ${phase} is missing or out of order.`,
+      `demo/midgard-node/src/mpf/transition-cbor.ts: canonical phase ${phase} is missing or out of order.`,
     );
   }
   previous = position;

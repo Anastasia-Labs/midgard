@@ -16,8 +16,8 @@ import {
   sqlErrorToDatabaseError,
 } from "../../database/utils/common.js";
 import * as Ledger from "../../database/utils/ledger.js";
+import { computeLedgerMpfRootFromLedgerEntries } from "../../mpf/index.js";
 import { Database } from "../../services/index.js";
-import { computeLedgerMpfRootFromLedgerEntries } from "../../workers/utils/mpf.js";
 
 export type ConfirmedLedgerSnapshot = {
   readonly entries: readonly Ledger.Entry[];

@@ -341,7 +341,7 @@ export const countedMachineFieldChunkStepsV1 = (
  * **This is why the producer never refuses.** It is not only the dispute path
  * that builds traces: the operator's block-build routine runs this exact
  * producer once per transaction in a block
- * (`demo/midgard-node/src/workers/utils/mpf.ts:1194-1234`, wired at `:4480-4483`),
+ * (`demo/midgard-node/src/mpf/validation-trace.ts`, wired from `process.ts`),
  * where there is no dispute transaction, no published carriage and no
  * reference-input set — and never will be. A producer that refused a preimage
  * above §8.3's tier-1 cap would fail the whole block build for a legal ~14.3 KB

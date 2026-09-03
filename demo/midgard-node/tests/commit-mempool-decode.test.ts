@@ -13,7 +13,7 @@ import {
   COMMIT_REJECT_CODE_DECODE_FAILED,
   commitTxDeltaFallbackDecodedCounter,
   resolveTxDeltaForCommit,
-} from "../src/workers/utils/mpf.js";
+} from "../src/mpf/index.js";
 import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixtures.js";
 
 describe("resolveTxDeltaForCommit", () => {

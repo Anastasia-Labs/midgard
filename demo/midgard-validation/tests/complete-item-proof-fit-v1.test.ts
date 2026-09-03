@@ -387,7 +387,7 @@ describe("complete-item proof fit V1", () => {
     // **The regression pin for #597's unrecorded consequence (#600).** This
     // producer is not only the dispute path's: the operator's block-build
     // routine runs it once per transaction in a block
-    // (`demo/midgard-node/src/workers/utils/mpf.ts:1194-1234`, wired at
+    // (`demo/midgard-node/src/mpf/validation-trace.ts`, wired at
     // `:4480-4483`), where a thrown carriage refusal fails the **whole block**.
     // While the producer named a tier, a single legal ~14.3 KB output — far
     // under `maxLedgerOutputPreimageBytes` — was enough to do that.

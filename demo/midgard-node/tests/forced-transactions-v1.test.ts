@@ -54,7 +54,7 @@ import { publishedProgramMaterialEntries } from "../src/fibers/fetch-and-insert-
 import {
   buildDeterministicValidationTraceMembers,
   classifyForcedTransactionsV1,
-} from "../src/workers/utils/mpf.js";
+} from "../src/mpf/index.js";
 import { makeOutRefCbor } from "./midgard-output-helpers.js";
 
 const canonicalTransaction = (

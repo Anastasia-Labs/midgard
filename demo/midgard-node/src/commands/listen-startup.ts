@@ -12,6 +12,10 @@ import {
   PendingBlockFinalizationsDB,
 } from "../database/index.js";
 import {
+  computeLedgerMpfRootFromLedgerEntries,
+  synchronizeCommitMpfStoresFromLedgerEntries,
+} from "../mpf/index.js";
+import {
   fetchCanonicalCommittedHeaders,
   localJournalHasPayloadMembers,
   reviveEarliestCanonicalPayloadJournal,
@@ -37,10 +41,6 @@ import {
   materializeConfirmedLedgerSnapshot,
 } from "../transactions/state-queue/confirmed-ledger-snapshot.js";
 import { deserializeStateQueueUTxO } from "../workers/utils/commit-block-header.js";
-import {
-  computeLedgerMpfRootFromLedgerEntries,
-  synchronizeCommitMpfStoresFromLedgerEntries,
-} from "../workers/utils/mpf.js";
 import * as ContractDeploymentInfo from "./contract-deployment-info.js";
 import { shouldRunGenesisOnStartup } from "./startup-policy.js";
 

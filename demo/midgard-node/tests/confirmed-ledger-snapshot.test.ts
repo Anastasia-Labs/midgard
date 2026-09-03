@@ -5,11 +5,11 @@ import { describe, expect, it } from "vitest";
 
 import { PendingBlockFinalizationsDB } from "../src/database/index.js";
 import * as Ledger from "../src/database/utils/ledger.js";
+import { computeLedgerMpfRootFromLedgerEntries } from "../src/mpf/index.js";
 import {
   materializeConfirmedLedgerDeltaChainV1,
   pendingUtxoMemberToConfirmedLedgerEntry,
 } from "../src/transactions/state-queue/confirmed-ledger-snapshot.js";
-import { computeLedgerMpfRootFromLedgerEntries } from "../src/workers/utils/mpf.js";
 import {
   makeMidgardTxOutput,
   makeOutRefCbor,

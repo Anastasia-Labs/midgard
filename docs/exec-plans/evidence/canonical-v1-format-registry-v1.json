@@ -14212,12 +14212,20 @@
       "auditStatus": "PASS",
       "sourceEvidence": [
         {
-          "path": "demo/midgard-node/src/workers/utils/mpf.ts",
+          "path": "demo/midgard-node/src/mpf/engine-config.ts",
+          "symbols": ["ParkedMpfOverlayV1"]
+        },
+        {
+          "path": "demo/midgard-node/src/mpf/store-primitives.ts",
+          "symbols": ["parkedOverlayDigest"]
+        },
+        {
+          "path": "demo/midgard-node/src/mpf/root-view-store.ts",
+          "symbols": ["parkCurrentOverlay", "importParkedOverlay"]
+        },
+        {
+          "path": "demo/midgard-node/src/mpf/store.ts",
           "symbols": [
-            "ParkedMpfOverlayV1",
-            "parkedOverlayDigest",
-            "parkCurrentOverlay",
-            "importParkedOverlay",
             "parkBlockOverlay",
             "resumeParkedOverlay",
             "promoteParkedOverlay"
@@ -14257,8 +14265,12 @@
           "persistence": "The artifact itself crosses structured clone; Level remains at baseRoot until authenticated resume followed by one atomic overlay flush advances the durable marker.",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/workers/utils/mpf.ts",
-              "symbols": ["parkCurrentOverlay", "parkBlockOverlay"]
+              "path": "demo/midgard-node/src/mpf/root-view-store.ts",
+              "symbols": ["parkCurrentOverlay"]
+            },
+            {
+              "path": "demo/midgard-node/src/mpf/store.ts",
+              "symbols": ["parkBlockOverlay"]
             },
             {
               "path": "demo/midgard-node/src/workers/commit-block-header.ts",
@@ -14267,12 +14279,12 @@
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/workers/utils/mpf.ts",
-              "symbols": [
-                "importParkedOverlay",
-                "resumeParkedOverlay",
-                "promoteParkedOverlay"
-              ]
+              "path": "demo/midgard-node/src/mpf/root-view-store.ts",
+              "symbols": ["importParkedOverlay"]
+            },
+            {
+              "path": "demo/midgard-node/src/mpf/store.ts",
+              "symbols": ["resumeParkedOverlay", "promoteParkedOverlay"]
             },
             {
               "path": "demo/midgard-node/src/workers/commit-block-header.ts",
@@ -14349,7 +14361,7 @@
           ]
         },
         {
-          "path": "demo/midgard-node/src/workers/utils/mpf.ts",
+          "path": "demo/midgard-node/src/mpf/store.ts",
           "symbols": [
             "parkEventFlatOverlayV1",
             "resumeParkedEventFlatOverlayV1"
@@ -14418,13 +14430,13 @@
           "persistence": "Structured-clone worker transfer; the resumed overlay is staged over the unchanged durable root and promoted only by the later flush.",
           "encoders": [
             {
-              "path": "demo/midgard-node/src/workers/utils/mpf.ts",
+              "path": "demo/midgard-node/src/mpf/store.ts",
               "symbols": ["parkEventFlatOverlayV1"]
             }
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/workers/utils/mpf.ts",
+              "path": "demo/midgard-node/src/mpf/store.ts",
               "symbols": ["resumeParkedEventFlatOverlayV1"]
             },
             {
@@ -14894,7 +14906,7 @@
           "symbols": ["MpfReplaySummary", "ENGINES", "SCRATCH_BUILDS"]
         },
         {
-          "path": "demo/midgard-node/src/workers/utils/mpf.ts",
+          "path": "demo/midgard-node/src/mpf/engine-config.ts",
           "symbols": ["MpfEngine", "configureCommitMpfRuntime"]
         }
       ],

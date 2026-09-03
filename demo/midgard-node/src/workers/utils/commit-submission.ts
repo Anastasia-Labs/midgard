@@ -30,6 +30,7 @@ import {
   sqlErrorToDatabaseError,
 } from "../../database/utils/common.js";
 import { Columns as TxColumns } from "../../database/utils/tx.js";
+import type { MidgardMpf, MpfError } from "../../mpf/index.js";
 import { type Database, Lucid } from "../../services/index.js";
 import { materializeConfirmedLedgerSnapshot } from "../../transactions/state-queue/confirmed-ledger-snapshot.js";
 import type { TxSubmitError } from "../../transactions/utils.js";
@@ -40,7 +41,6 @@ import {
   buildSuccessfulCommitBatches,
   type SuccessfulCommitBatch,
 } from "./commit-block-planner.js";
-import type { MidgardMpf, MpfError } from "./mpf.js";
 
 const BATCH_SIZE = 100;
 const SKIPPED_SUBMISSION_TRANSFER_RETRIES = 2;

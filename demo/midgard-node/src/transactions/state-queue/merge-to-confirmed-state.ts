@@ -53,6 +53,7 @@ import {
   SUBMIT_SLOT_LENGTH_MS,
   type SubmitSlotSnapshot,
 } from "../../local-ledger-slot.js";
+import { synchronizeCommitMpfStoresFromConfirmedLedger } from "../../mpf/index.js";
 import {
   availableOperatorWalletUtxos,
   fetchOperatorWalletView,
@@ -64,7 +65,6 @@ import {
   type NativeMpfOwnerService,
 } from "../../services/mpf-native-owner/index.js";
 import { breakDownTx } from "../../utils.js";
-import { synchronizeCommitMpfStoresFromConfirmedLedger } from "../../workers/utils/mpf.js";
 import {
   fetchReferenceScriptUtxosProgram,
   referenceScriptByName,

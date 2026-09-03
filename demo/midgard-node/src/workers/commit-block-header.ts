@@ -46,6 +46,22 @@ import {
 } from "../fibers/speculative-commit-state.js";
 import { unixTimeToSlotForConfig } from "../lucid-time.js";
 import {
+  computeLedgerMpfRootFromLedgerEntries,
+  configureCommitMpfRuntime,
+  hydrateLedgerMpfFromLedgerEntries,
+  ledgerPayloadAggregateFromEntries,
+  makeMpfs,
+  MidgardMpf,
+  MpfError,
+  type NativeMpfBuildContext,
+  type ParkedEventFlatOverlayV1,
+  type ParkedMpfOverlayV1,
+  processMpfs,
+  utxoToLedgerInsertMaterialV1,
+  withMpfBlockOverlays,
+  withMpfRootTransactions,
+} from "../mpf/index.js";
+import {
   ConfigError,
   ContractDeploymentIdentity,
   type ContractDeploymentIdentityValue,
@@ -112,22 +128,6 @@ import {
   resolveCommitEndTimeFit,
   resolveExplicitCommitCandidateEndTimeMs,
 } from "./utils/commit-end-time.js";
-import {
-  computeLedgerMpfRootFromLedgerEntries,
-  configureCommitMpfRuntime,
-  hydrateLedgerMpfFromLedgerEntries,
-  ledgerPayloadAggregateFromEntries,
-  makeMpfs,
-  MidgardMpf,
-  MpfError,
-  type NativeMpfBuildContext,
-  type ParkedEventFlatOverlayV1,
-  type ParkedMpfOverlayV1,
-  processMpfs,
-  utxoToLedgerInsertMaterialV1,
-  withMpfBlockOverlays,
-  withMpfRootTransactions,
-} from "./utils/mpf.js";
 import {
   resolveCurrentOperatorSchedulerWindow,
   resolveEarliestCommitSchedulerDueWorkPlan,

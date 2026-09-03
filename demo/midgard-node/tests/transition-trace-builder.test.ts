@@ -18,7 +18,7 @@ import {
   type RetainedTransitionTraceMember,
   type TransitionTraceSourceEvent,
   type UtxoPayloadEntry,
-} from "../src/workers/utils/mpf.js";
+} from "../src/mpf/index.js";
 import {
   depositEventKey,
   forcedTransactionEventKey,

@@ -111,6 +111,12 @@ import type {
 } from "../src/fibers/speculative-commit-state.js";
 import { runUserEventBarrierRefresherPass } from "../src/fibers/user-event-barrier-refresher.js";
 import { canonicalSlotConfigForLucid } from "../src/lucid-time.js";
+import {
+  commitTxDeltaCacheHitCounter,
+  commitTxDeltaFallbackDecodedCounter,
+  deleteMpfStore,
+  MidgardMpf,
+} from "../src/mpf/index.js";
 import type { NodeConfigDep } from "../src/services/config.js";
 import {
   ContractDeploymentIdentity,
@@ -170,12 +176,6 @@ import {
   type WorkerInput as ConfirmationWorkerInput,
   type WorkerOutput as ConfirmationWorkerOutput,
 } from "../src/workers/utils/confirm-block-commitments.js";
-import {
-  commitTxDeltaCacheHitCounter,
-  commitTxDeltaFallbackDecodedCounter,
-  deleteMpfStore,
-  MidgardMpf,
-} from "../src/workers/utils/mpf.js";
 import {
   fetchRealStateQueueWitnessContext,
   resolveCurrentOperatorSchedulerWindow,

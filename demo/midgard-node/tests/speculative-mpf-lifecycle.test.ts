@@ -6,15 +6,15 @@ import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  parkSpeculativeMpfsForConfirmationWait,
-  resumeSpeculativeMpfsForSubmission,
-} from "../src/workers/commit-block-header.js";
-import {
   MidgardMpf,
   MpfError,
   type ParkedEventFlatOverlayV1,
   type ParkedMpfOverlayV1,
-} from "../src/workers/utils/mpf.js";
+} from "../src/mpf/index.js";
+import {
+  parkSpeculativeMpfsForConfirmationWait,
+  resumeSpeculativeMpfsForSubmission,
+} from "../src/workers/commit-block-header.js";
 
 const artifact = (trieName: string): ParkedMpfOverlayV1 => ({
   schemaVersion: 1,

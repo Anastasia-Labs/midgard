@@ -20,7 +20,7 @@ Additional context consulted by reviewer:
 - `demo/midgard-node/docs/FAULT_PROOF_DECISION_RECOMMENDATIONS.md`
 - `technical-spec`
 - `demo/midgard-validation/src`
-- `demo/midgard-node/src/workers/utils/mpf.ts`
+- `demo/midgard-node/src/mpf/`
 - `onchain/aiken/lib/midgard`
 
 ## Authoritative L1-Source Clarification

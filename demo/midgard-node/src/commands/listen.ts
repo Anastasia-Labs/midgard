@@ -68,6 +68,7 @@ import {
   userEventBarrierRefresherFiber,
 } from "../fibers/index.js";
 import * as Genesis from "../genesis.js";
+import { MidgardMpf, utxoToLedgerInsertMaterialV1 } from "../mpf/index.js";
 import {
   admissionAsDefaultSqlLayer,
   AdmissionSql,
@@ -88,10 +89,6 @@ import {
   writeBehindFiber,
 } from "../services/index.js";
 import { backfillMissingDaPayloadsFromFinalizedJournals } from "../workers/commit-block-header/da-payload-backfill.js";
-import {
-  MidgardMpf,
-  utxoToLedgerInsertMaterialV1,
-} from "../workers/utils/mpf.js";
 import { buildListenRouter } from "./listen-router.js";
 import {
   ensureProtocolInitializedOnStartup,

@@ -45,7 +45,7 @@ import {
   withMpfBlockOverlays,
   withMpfRootTransaction,
   withMpfRootTransactions,
-} from "../src/workers/utils/mpf.js";
+} from "../src/mpf/index.js";
 import {
   AuthenticatedPackedMpfArena,
   EventFlatMutationArena,

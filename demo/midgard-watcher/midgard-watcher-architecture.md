@@ -502,7 +502,7 @@ A production watcher should:
 - Phase-two validation concept: `technical-spec/7-phase-two-validation`
 - Current L2 validation implementation: `demo/midgard-validation/src`
 - Current node transaction evaluation notes: `demo/midgard-node/docs/L2_TX_EVALUATION_CURRENT.md`
-- Current commit/root construction: `demo/midgard-node/src/workers/utils/mpf.ts`
+- Current commit/root construction: `demo/midgard-node/src/mpf/`
 - Aiken ledger/proof types: `onchain/aiken/lib/midgard`
 - Fault-proof tooling: `demo/midgard-fault-proofs/src`
 - Public readiness and proof gaps: `docs/public_testnet_readiness.md` and `demo/midgard-node/docs/PREPROD_DOUBLE_SPEND_FAULT_PROOF_GAP_REPORT.md`

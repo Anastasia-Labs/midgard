@@ -4,7 +4,11 @@ import { Data as LucidData } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { Effect } from "effect";
 
-import { getMpfScratchBuild, MidgardMpf, MpfError } from "../mpf.js";
+import {
+  getMpfScratchBuild,
+  MidgardMpf,
+  MpfError,
+} from "../../../mpf/index.js";
 
 export type KeyValuePhasEntry = {
   readonly key: Buffer;

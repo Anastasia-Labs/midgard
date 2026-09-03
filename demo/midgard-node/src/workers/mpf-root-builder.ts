@@ -34,7 +34,7 @@ if (parentPort === null) {
 
 const require = createRequire(import.meta.url);
 const rootRuntime = new Promise<{
-  readonly mpf: typeof import("./utils/mpf.js");
+  readonly mpf: typeof import("../mpf/index.js");
   readonly forestry: typeof import("@aiken-lang/merkle-patricia-forestry");
 }>((resolve, reject) => {
   const blake2b = require("blake2b") as {
@@ -54,7 +54,7 @@ const rootRuntime = new Promise<{
     // its ESM default binding cannot capture the pure-JS bootstrap function.
     setImmediate(() => {
       void Promise.all([
-        import("./utils/mpf.js"),
+        import("../mpf/index.js"),
         import("@aiken-lang/merkle-patricia-forestry"),
       ]).then(([mpf, forestry]) => resolve({ mpf, forestry }), reject);
     });

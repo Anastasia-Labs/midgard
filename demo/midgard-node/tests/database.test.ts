@@ -124,6 +124,13 @@ import {
   requestTxQueueProcessorWakeup,
   withAdmissionLeaseRecovery,
 } from "../src/fibers/tx-queue-processor.js";
+import {
+  computeLedgerMpfRootFromLedgerEntries,
+  ledgerPayloadAggregateFromEntries,
+  persistCommitStageRejectedTransactions,
+  resolveIncludedDepositEntriesForWindow,
+  resolveTxDeltaForCommit,
+} from "../src/mpf/index.js";
 import { AdmissionWriter } from "../src/services/admission-writer.js";
 import { NodeConfig } from "../src/services/config.js";
 import { AdmissionSql, BatchSql } from "../src/services/database.js";
@@ -156,13 +163,6 @@ import {
 import { resolvePendingJournalLedgerState } from "../src/workers/commit-block-header/pending-journal.js";
 import { selectCommitTxCandidates } from "../src/workers/utils/commit-block-planner.js";
 import { finalizeCommittedBlockLocally } from "../src/workers/utils/commit-submission.js";
-import {
-  computeLedgerMpfRootFromLedgerEntries,
-  ledgerPayloadAggregateFromEntries,
-  persistCommitStageRejectedTransactions,
-  resolveIncludedDepositEntriesForWindow,
-  resolveTxDeltaForCommit,
-} from "../src/workers/utils/mpf.js";
 import { makeCardanoSignedMapOutputTxBytes } from "./helpers/cardano-native-fixtures.js";
 import {
   makeMidgardTxOutput,

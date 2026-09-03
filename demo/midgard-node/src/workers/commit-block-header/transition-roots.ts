@@ -12,7 +12,7 @@ import {
   MpfError,
   verifyKeyValuePhasMembershipProof,
   verifyKeyValuePhasNonMembershipProof,
-} from "../utils/mpf.js";
+} from "../../mpf/index.js";
 import {
   buildAuthenticatedMpfRootInWorker,
   shouldBuildMpfRootInWorker,

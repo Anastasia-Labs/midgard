@@ -38,6 +38,18 @@ import { fetchAndInsertTxOrderUTxOsForCommitBarrier } from "../../fibers/fetch-a
 import { fetchAndInsertWithdrawalUTxOsForCommitBarrier } from "../../fibers/fetch-and-insert-withdrawal-utxos.js";
 import { sameSpeculativeSourceIdSet } from "../../fibers/speculative-commit-state.js";
 import {
+  emptyRootHexProgram,
+  encodeTransactionRootValue,
+  type LedgerDelta,
+  type MidgardMpf,
+  type NativeMpfReplayBuild,
+  type RetainedEventToStepMember,
+  type RetainedTransitionTraceMember,
+  type RetainedValidationTraceMember,
+  type UtxoPayloadEntry,
+  type UtxoPayloadSizeAggregate,
+} from "../../mpf/index.js";
+import {
   fetchOperatorWalletView,
   isPotentiallyStaleOperatorWalletViewError,
   type OperatorWalletView,
@@ -66,18 +78,6 @@ import {
   skippedSubmissionProgram,
   successfulLocalFinalizationRecoveryProgram,
 } from "../utils/commit-submission.js";
-import {
-  emptyRootHexProgram,
-  encodeTransactionRootValue,
-  type LedgerDelta,
-  type MidgardMpf,
-  type NativeMpfReplayBuild,
-  type RetainedEventToStepMember,
-  type RetainedTransitionTraceMember,
-  type RetainedValidationTraceMember,
-  type UtxoPayloadEntry,
-  type UtxoPayloadSizeAggregate,
-} from "../utils/mpf.js";
 import { buildUnsignedCommitTx } from "./build-unsigned-tx.js";
 import {
   resolveDepositsRoot,

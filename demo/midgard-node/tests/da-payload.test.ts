@@ -19,13 +19,13 @@ import {
   PendingBlockFinalizationsDB,
 } from "../src/database/index.js";
 import { DatabaseError } from "../src/database/utils/common.js";
-import { buildDaPayloadInsert } from "../src/workers/commit-block-header/da-payload.js";
-import { backfillMissingDaPayloadsFromFinalizedJournals } from "../src/workers/commit-block-header/da-payload-backfill.js";
-import { buildAuthenticatedRootFromEncodedEntries } from "../src/workers/commit-block-header/transition-roots.js";
 import {
   keyValuePhasRoot,
   ledgerOutputToInsertBatchOpV1,
-} from "../src/workers/utils/mpf.js";
+} from "../src/mpf/index.js";
+import { buildDaPayloadInsert } from "../src/workers/commit-block-header/da-payload.js";
+import { backfillMissingDaPayloadsFromFinalizedJournals } from "../src/workers/commit-block-header/da-payload-backfill.js";
+import { buildAuthenticatedRootFromEncodedEntries } from "../src/workers/commit-block-header/transition-roots.js";
 import { makeOutRefCbor } from "./midgard-output-helpers.js";
 import { deterministicFixtureBytes } from "./utils.js";
 

@@ -9,8 +9,8 @@ import { describe, expect, it } from "vitest";
 
 import { encodeForcedInclusionValueV1 } from "../src/database/forcedTransactions.js";
 import { ForcedTransactionsDB } from "../src/database/index.js";
+import { encodeTransactionRootValue as encodeProductionTransactionRootValue } from "../src/mpf/index.js";
 import { buildAuthenticatedRootFromEncodedEntries } from "../src/workers/commit-block-header/transition-roots.js";
-import { encodeTransactionRootValue as encodeProductionTransactionRootValue } from "../src/workers/utils/mpf.js";
 
 type GoldenEntry = {
   readonly name: string;

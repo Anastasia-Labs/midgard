@@ -12,6 +12,7 @@ import {
   tryAcquireCommitMutationWorkerPhase,
   tryAcquireCommitSchedulerAlignmentPhase,
 } from "../src/fibers/block-commitment.js";
+import { MidgardMpf, withMpfRootTransactions } from "../src/mpf/index.js";
 import { Globals } from "../src/services/index.js";
 import {
   shouldPreserveCommitMpfRoots,
@@ -22,10 +23,6 @@ import type {
   SerializedStateQueueUTxO,
   WorkerOutput,
 } from "../src/workers/utils/commit-block-header.js";
-import {
-  MidgardMpf,
-  withMpfRootTransactions,
-} from "../src/workers/utils/mpf.js";
 
 const dueWork = {
   kind: "commit_scheduler_refresh",

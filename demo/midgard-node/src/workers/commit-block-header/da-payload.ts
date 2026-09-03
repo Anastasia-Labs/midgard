@@ -20,7 +20,7 @@ import {
   keyValuePhasRoot,
   ledgerOutputToInsertBatchOpV1,
   type MpfError,
-} from "../utils/mpf.js";
+} from "../../mpf/index.js";
 import { buildAuthenticatedRootFromEncodedEntries } from "./transition-roots.js";
 
 type PayloadRootSet = {

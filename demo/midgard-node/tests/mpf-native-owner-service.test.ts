@@ -9,6 +9,13 @@ import { Effect } from "effect";
 import { Level } from "level";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 
+import { MidgardMpf } from "../src/mpf/index.js";
+import {
+  buildNativeProductionRootProbe,
+  buildTransactionsSourceRoot,
+  buildTransitionTraceResult,
+  type NativeMpfBuildContext,
+} from "../src/mpf/index.js";
 import {
   assertNativeOwnerRuntimeMemoryBudget,
   encodeNativeMpfEventLog,
@@ -17,13 +24,6 @@ import {
   parseNativeOwnerCgroupMemoryLimit,
   ProductionNativeMpfOwnerService,
 } from "../src/services/mpf-native-owner/index.js";
-import { MidgardMpf } from "../src/workers/utils/mpf.js";
-import {
-  buildNativeProductionRootProbe,
-  buildTransactionsSourceRoot,
-  buildTransitionTraceResult,
-  type NativeMpfBuildContext,
-} from "../src/workers/utils/mpf.js";
 import {
   createEventFlatDigest,
   prepareEventFlatDigest,

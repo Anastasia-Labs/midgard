@@ -22,6 +22,7 @@ import {
   VERIFICATION_KEY_HEX_LENGTH,
 } from "../da/local-signers.js";
 import { slotToUnixTimeForLucidOrEmulatorFallback } from "../lucid-time.js";
+import { MidgardMpf, MpfBatchOp, MpfError } from "../mpf/index.js";
 import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
 import { NodeConfig } from "../services/config.js";
 import { Lucid } from "../services/lucid.js";
@@ -34,7 +35,6 @@ import {
   type StateQueueTopology,
 } from "../services/state-queue-topology.js";
 import { outRefLabel } from "../tx-context.js";
-import { MidgardMpf, MpfBatchOp, MpfError } from "../workers/utils/mpf.js";
 import { ensurePhasMembershipRewardAccountRegisteredProgram } from "./phas-membership-registration.js";
 import { ensureNodeRuntimeReferenceScriptsProgram } from "./reference-scripts.js";
 import {

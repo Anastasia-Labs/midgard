@@ -6,6 +6,7 @@ import { Effect, Option } from "effect";
 import { describe, expect, it, vi } from "vitest";
 
 import { TxAdmissionsDB, TxUtils as TxTable } from "../src/database/index.js";
+import { processMpfs } from "../src/mpf/index.js";
 import {
   ContractDeploymentIdentity,
   Lucid,
@@ -18,7 +19,6 @@ import {
   submitTxBackedCommit,
 } from "../src/workers/commit-block-header/submission.js";
 import type { WorkerInput } from "../src/workers/utils/commit-block-header.js";
-import { processMpfs } from "../src/workers/utils/mpf.js";
 
 vi.mock("../src/database/index.js", async () => {
   const actual = await vi.importActual<
@@ -177,10 +177,10 @@ vi.mock("../src/workers/commit-block-header/transition-commitments.js", () => ({
   ),
 }));
 
-vi.mock("../src/workers/utils/mpf.js", async () => {
-  const actual = await vi.importActual<
-    typeof import("../src/workers/utils/mpf.js")
-  >("../src/workers/utils/mpf.js");
+vi.mock("../src/mpf/index.js", async () => {
+  const actual = await vi.importActual<typeof import("../src/mpf/index.js")>(
+    "../src/mpf/index.js",
+  );
   const fakeMpf = {
     close: vi.fn(() => Effect.void),
     rootHex: vi.fn(() => Effect.succeed("33".repeat(32))),

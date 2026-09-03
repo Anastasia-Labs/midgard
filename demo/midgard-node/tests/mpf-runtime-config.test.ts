@@ -4,12 +4,12 @@ import { Effect } from "effect";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { shouldRunMpfPayloadAudit } from "../src/fibers/mpf-payload-audit.js";
-import { NodeConfig } from "../src/services/config.js";
 import {
   configureCommitMpfRuntime,
   getMpfScratchBuild,
   setMpfScratchBuild,
-} from "../src/workers/utils/mpf.js";
+} from "../src/mpf/index.js";
+import { NodeConfig } from "../src/services/config.js";
 
 describe("commit MPF runtime configuration", () => {
   afterEach(() => {

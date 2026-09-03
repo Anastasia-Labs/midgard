@@ -5,6 +5,7 @@ import {
   Columns as TxColumns,
   EntryWithTimeStamp,
 } from "../src/database/utils/tx.js";
+import { establishEffectiveEndTimeFromDecodedMempool } from "../src/mpf/index.js";
 import { shouldShortCircuitIdleCommitAttempt } from "../src/workers/commit-block-header.js";
 import {
   buildSuccessfulCommitBatches,
@@ -19,7 +20,6 @@ import {
   selectCommitTxCandidates,
   updateCommitBuildEwma,
 } from "../src/workers/utils/commit-block-planner.js";
-import { establishEffectiveEndTimeFromDecodedMempool } from "../src/workers/utils/mpf.js";
 
 const mkTxEntry = (
   seed: number,

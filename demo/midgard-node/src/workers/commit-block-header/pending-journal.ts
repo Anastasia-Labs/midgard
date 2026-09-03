@@ -9,6 +9,12 @@ import {
 import { DatabaseError } from "../../database/utils/common.js";
 import * as Ledger from "../../database/utils/ledger.js";
 import {
+  computeLedgerMpfRootFromLedgerEntries,
+  computeUtxoPayloadRoot,
+  type LedgerDelta,
+  type UtxoPayloadEntry,
+} from "../../mpf/index.js";
+import {
   type ContractDeploymentIdentityValue,
   type Database,
   Lucid,
@@ -17,12 +23,6 @@ import {
   serializeStateQueueUTxO,
   type WorkerInput,
 } from "../utils/commit-block-header.js";
-import {
-  computeLedgerMpfRootFromLedgerEntries,
-  computeUtxoPayloadRoot,
-  type LedgerDelta,
-  type UtxoPayloadEntry,
-} from "../utils/mpf.js";
 import {
   fetchExpectedStateQueueTailLocal,
   getConfirmedStateFromStateQueueDatumLocal,

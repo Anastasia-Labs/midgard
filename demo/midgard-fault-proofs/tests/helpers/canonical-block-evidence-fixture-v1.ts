@@ -4,7 +4,7 @@
  * By default it builds a `DaPayloadV1` exactly the way the production node
  * does: the header's `transactions_root` is the counted root over
  * `(tx_id -> Data(L2TransactionSourceV1))` leaves, which is what
- * `encodeTransactionRootValue` (demo/midgard-node/src/workers/utils/mpf.ts)
+ * `encodeTransactionRootValue` (demo/midgard-node/src/mpf/ledger-hydration.ts)
  * commits and what `reconstructDaPayloadV1` re-derives.  The native-compact
  * root mode is a test-only fixture for exercising the proof builder against
  * the on-chain inclusion convention; its root is still derived from the
