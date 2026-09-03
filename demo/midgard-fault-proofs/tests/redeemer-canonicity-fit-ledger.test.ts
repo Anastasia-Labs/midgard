@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildVanRossemFitLedger,
   writeVanRossemFitLedger,
-} from "../src/proof-fit/van-rossem-fit-ledger-v1.js";
+} from "../src/proof-fit/van-rossem-fit-ledger.js";
 
 export const redeemerCanonicityFitMeasurements = [
   [

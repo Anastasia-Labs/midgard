@@ -1,4 +1,4 @@
-import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
 import {
   DaPayloadContentEncoding,
   decodeDaPayloadEnvelope,
@@ -8,7 +8,7 @@ import { DA_TRANSPORT_LIMITS } from "@al-ft/midgard-core/da-transport";
 import {
   makeDeploymentMarker,
   MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
-} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";
 import { Effect, Option } from "effect";

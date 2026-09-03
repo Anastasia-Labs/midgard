@@ -12,7 +12,7 @@ import {
   acceptedVerdictSubject,
   AddressData,
   addressDataFromBech32,
-  ForcedInclusionTxSchema,
+  ForcedInclusionTxV1Schema,
   forcedVerdictSubject,
   OutputReference,
   Proof,
@@ -26,24 +26,24 @@ import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/subm
 import {
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
-} from "../src/field-opening-v1.js";
+} from "../src/field-opening.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import {
   applyZeroInputScripts,
   type ZeroInputContracts,
-} from "../src/zero-input/contracts-v1.js";
+} from "../src/zero-input/contracts.js";
 import {
   prepareZeroInputEvidence,
   ZERO_INPUT_CATEGORY_ID,
-} from "../src/zero-input/family-v1.js";
-import { submitZeroInputCancel } from "../src/zero-input/submit-cancel-v1.js";
+} from "../src/zero-input/family.js";
+import { submitZeroInputCancel } from "../src/zero-input/submit-cancel.js";
 import {
   submitZeroInputStep01Accepted,
   submitZeroInputStep01Forced,
-} from "../src/zero-input/submit-step-01-v1.js";
-import { submitZeroInputStep02V1 } from "../src/zero-input/submit-step-02-v1.js";
+} from "../src/zero-input/submit-step-01.js";
+import { submitZeroInputStep02V1 } from "../src/zero-input/submit-step-02.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
@@ -319,7 +319,7 @@ describe("zeroInput wrongful-rejection real lifecycle", () => {
       baseFixture.eventKey.ForcedTransactionEventKey.tx_order_id;
     const keyBytes = Buffer.from(Data.to(sourceKey, OutputReference), "hex");
     const valueBytes = Buffer.from(
-      Data.to(forcedTransaction as never, ForcedInclusionTxSchema as never),
+      Data.to(forcedTransaction as never, ForcedInclusionTxV1Schema as never),
       "hex",
     );
     const root = await buildCountedRoot(ROOT_DOMAINS.forcedTransactionsV1, [

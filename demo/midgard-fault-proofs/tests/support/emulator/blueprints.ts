@@ -149,7 +149,7 @@ export const repoRoot = resolve(moduleDir, "../../../../..");
  * #597 does add one suite to the frozen-blueprint family, and it is **not** part
  * of the seventeen because it is not a handoff row of this set — it is a whole
  * suite that applies the committed validators:
- * `demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts`
+ * `demo/midgard-validation/tests/complete-item-proof-fit-emulator.test.ts`
  * moved from `1 failed | 5 passed (6)` to `5 failed | 1 passed (6)`. Its
  * redeemers are #592's four-field `Verify` while the frozen compiled validator
  * still expects five, so each row fails inside the script with

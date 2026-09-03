@@ -29,7 +29,7 @@ import {
   faultProofFieldCarriage,
   faultProofFieldOpening,
   planFaultProofFieldOpening,
-} from "../src/field-opening-v1.js";
+} from "../src/field-opening.js";
 import {
   requireInputSetUniquenessClaim,
   scanInputSetUniqueness,
@@ -37,7 +37,7 @@ import {
   submitInputSetUniquenessStep01,
   submitInputSetUniquenessStep02,
 } from "../src/input-set-uniqueness/index.js";
-import type { FaultProofWitnessReferenceScripts } from "../src/witness-reference-scripts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../src/witness-reference-scripts.js";
 import {
   buildInputSetUniquenessFixture,
   expectOnchainRefusal,
@@ -49,7 +49,7 @@ import {
   setupInputSetUniquenessScenario,
   submitRawInputSetUniquenessBind,
   submitRawInputSetUniquenessFinalize,
-} from "./support/input-set-uniqueness-emulator-v1.js";
+} from "./support/input-set-uniqueness-emulator.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 
 /** Init + honest step-01 against the harness's committed header. */

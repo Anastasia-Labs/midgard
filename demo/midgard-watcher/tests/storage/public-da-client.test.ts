@@ -23,7 +23,7 @@ import {
   encodeDaProofBundleByHeaderResponseCbor,
   encodeDaTraceStepByIndexResponseCbor,
 } from "@al-ft/midgard-core/da-transport";
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   DA_PAYLOAD_VERSION,
   type DaPayload,

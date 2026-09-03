@@ -6,7 +6,7 @@ import { dirname, resolve as resolvePath } from "node:path";
 import {
   type DeploymentMarker,
   parseDeploymentMarker,
-} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 
 import { exactRecord } from "../artifact-schema.js";
 import { writeJsonFileAtomic } from "../files/atomic-write.js";

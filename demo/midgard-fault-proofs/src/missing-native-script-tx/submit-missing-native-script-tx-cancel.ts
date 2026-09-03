@@ -28,17 +28,17 @@ import {
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
-} from "../witness-reference-scripts-v1.js";
+} from "../witness-reference-scripts.js";
 import {
   MISSING_NATIVE_SCRIPT_TX_CATEGORY_LABEL,
   type MissingNativeScriptTxContracts,
-} from "./contracts-v1.js";
+} from "./contracts.js";
 import {
   type MissingNativeScriptTxStepIndex,
   missingNativeScriptTxStepLabel,
   missingNativeScriptTxSubmitError,
   requireMissingNativeScriptTxReferenceScript,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 const CancelSpendRedeemerSchema = faultProofStepRedeemerSchema(Data.Any());
 type CancelSpendRedeemer = Data.Static<typeof CancelSpendRedeemerSchema>;

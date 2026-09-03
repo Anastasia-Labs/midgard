@@ -51,7 +51,7 @@ import {
   vnpOutput,
   vnpOutRef,
   vnpValue,
-} from "./support/value-not-preserved-emulator-v1.js";
+} from "./support/value-not-preserved-emulator.js";
 
 /**
  * Ten datum-padded outputs: three at 23 chunks and seven at 21 push the

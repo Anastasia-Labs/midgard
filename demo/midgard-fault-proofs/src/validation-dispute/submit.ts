@@ -24,17 +24,17 @@ import {
   timeoutMidgardValidationDispute,
   verifyMidgardNativeTxProofSource,
 } from "@al-ft/midgard-core";
-import type { MidgardFieldCarriagePlan } from "@al-ft/midgard-core/codec/native-tx-carriage-v1";
+import type { MidgardFieldCarriagePlan } from "@al-ft/midgard-core/codec/native-tx-carriage";
 import {
   decodeMidgardFieldPreimage,
   type MidgardFieldCarriage,
   midgardFieldCommitment,
-} from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
+} from "@al-ft/midgard-core/codec/native-tx-field-access";
 import {
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_ENVELOPE_MEASUREMENTS,
-} from "@al-ft/midgard-core/consensus-profile-v1";
-import { midgardTxFieldCommitmentsFromSource } from "@al-ft/midgard-core/consensus-validation-v1";
+} from "@al-ft/midgard-core/consensus-profile";
+import { midgardTxFieldCommitmentsFromSource } from "@al-ft/midgard-core/consensus-validation";
 import {
   AuthenticatedCanonicalDecodeItemDatum,
   buildUnsignedValidationProofItemPublicationProgram,
@@ -144,7 +144,7 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
   witnessSpendingValidatorCarriage,
-} from "../witness-reference-scripts-v1.js";
+} from "../witness-reference-scripts.js";
 
 export const VALIDATION_DISPUTE_VALIDITY_BACKOFF_MS = 60_000;
 export const VALIDATION_DISPUTE_VALIDITY_LEEWAY_MS = 60_000;

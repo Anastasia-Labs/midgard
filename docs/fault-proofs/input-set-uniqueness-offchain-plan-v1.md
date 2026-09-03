@@ -41,7 +41,7 @@ token and mints the permanent fault-proof token.
 
 ## Off-chain surfaces
 
-- SDK schema: `demo/midgard-sdk/src/fraud-proof/input-set-uniqueness-v1.ts`
+- SDK schema: `demo/midgard-sdk/src/fraud-proof/input-set-uniqueness.ts`
 - family implementation:
   `demo/midgard-fault-proofs/src/input-set-uniqueness/`
 - catalogue: `demo/midgard-sdk/src/fraud-proof/catalogue.ts`

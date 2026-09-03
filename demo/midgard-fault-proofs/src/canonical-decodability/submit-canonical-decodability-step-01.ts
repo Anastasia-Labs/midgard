@@ -29,7 +29,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { faultProofRawFieldCarriage } from "../field-opening-v1.js";
+import { faultProofRawFieldCarriage } from "../field-opening.js";
 import {
   chunkedMembershipClaimRedeemer,
   chunkedVerifyWithdrawalScript,
@@ -60,20 +60,20 @@ import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessWithdrawalValidatorCarriage,
-} from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+} from "../witness-reference-scripts.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary-v1.js";
-import type { CanonicalDecodabilityContracts } from "./contracts-v1.js";
-import { prepareCanonicalDecodability } from "./prepare-canonical-decodability-v1.js";
+} from "../workflow/transaction-boundary.js";
+import type { CanonicalDecodabilityContracts } from "./contracts.js";
+import { prepareCanonicalDecodability } from "./prepare-canonical-decodability.js";
 import {
   canonicalDecodabilityStepLabel,
   canonicalDecodabilitySubmitError,
   requireCanonicalDecodabilityReferenceScript,
   requireCanonicalDecodabilityThreadUtxo,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 const STEP_LABEL = canonicalDecodabilityStepLabel(0);
 

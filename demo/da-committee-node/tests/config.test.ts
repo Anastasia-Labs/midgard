@@ -1,14 +1,14 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
-import { computeDeploymentManifestId } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
+import { computeDeploymentManifestId } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@al-ft/midgard-core/consensus-profile-v1", async (importOriginal) => {
+vi.mock("@al-ft/midgard-core/consensus-profile", async (importOriginal) => {
   const original =
     await importOriginal<
-      typeof import("@al-ft/midgard-core/consensus-profile-v1")
+      typeof import("@al-ft/midgard-core/consensus-profile")
     >();
   return {
     ...original,

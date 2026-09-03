@@ -27,10 +27,10 @@ import { parsePositiveInteger, testMaxForks } from "./tests/test-env.js";
  *   tests/migration-locking.test.ts
  *   tests/phase1-admission-acceptance.operator.test.ts (opt-in)
  *   tests/phase1-exact-crash.operator.test.ts          (opt-in)
- *   tests/retention-enforcement-v1.test.ts
+ *   tests/retention-enforcement.test.ts
  *   tests/tx-admissions-claim-load.test.ts
  *   tests/tx-admissions-monotone-timestamps.test.ts
- *   tests/tx-order-carriage-l1-observation-v1.test.ts
+ *   tests/tx-order-carriage-l1-observation.test.ts
  */
 
 // A committed `bail` makes the suite's cost and its result set unreproducible:

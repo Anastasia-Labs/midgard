@@ -327,10 +327,10 @@ Effort: **~4–6 hours** including tests.
   Data (C20-8 shares this ceiling, so this is likely a prerequisite for the
   redeemer-side maximum too).
 - Tests: retain the differential corpus in
-  `demo/midgard-core/tests/plutus-data-wellformed-v1.test.ts` as the
+  `demo/midgard-core/tests/plutus-data-wellformed.test.ts` as the
   semantic-equivalence evidence, together with the depth-1,024 sha256
   equality regression guard.
-- Then extend `plutus-data-unary-depth-boundary-v1.test.ts` to run retained
+- Then extend `plutus-data-unary-depth-boundary.test.ts` to run retained
   reconstruction at depth 4,043 rather than 1,024.
 
 Risk: low. Verdict equivalence is established on 6,048 cases with zero

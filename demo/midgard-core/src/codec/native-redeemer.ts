@@ -8,16 +8,16 @@ import { MidgardTxCodecError, MidgardTxCodecErrorCodes } from "./errors.js";
 import {
   decodeMidgardFieldPreimage,
   encodeMidgardFieldPreimage,
-} from "./native-tx-field-access-v1.js";
+} from "./native-tx-field-access.js";
 import {
   decodeMidgardRedeemerWitnessItem,
   midgardRedeemerPurposeFromTag,
-} from "./native-tx-field-item-decoders-v1.js";
+} from "./native-tx-field-item-decoders.js";
 import {
   encodeMidgardRedeemerWitnessItem,
   MIDGARD_REDEEMER_PURPOSE_TAGS,
   type MidgardRedeemerPurpose,
-} from "./native-tx-field-items-v1.js";
+} from "./native-tx-field-items.js";
 
 export type NormalizedRedeemer = {
   readonly tag: CML.RedeemerTag;

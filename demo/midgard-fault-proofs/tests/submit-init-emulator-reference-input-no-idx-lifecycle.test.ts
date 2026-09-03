@@ -11,7 +11,7 @@
  *   fraudulent-block removal;
  * - an adversary attacking an HONEST commitment is refused at the exact
  *   on-chain check, with the submitters' local guards bypassed by the raw
- *   drivers in `tests/support/reference-input-no-idx-emulator-v1.ts`.
+ *   drivers in `tests/support/reference-input-no-idx-emulator.ts`.
  *
  * The committed evidence is always a **two-transaction block**: step-01 proves
  * the bad transaction's membership and step-03 proves the *producing*
@@ -46,7 +46,7 @@ import {
 import { Data, toUnit } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { planFaultProofFieldOpening } from "../src/field-opening-v1.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.js";
 import {
   submitReferenceInputNoIdxStep01,
   submitReferenceInputNoIdxStep02,
@@ -64,7 +64,7 @@ import {
   REFERENCE_INPUT_NO_IDX_TIER2_REFERENCE_INPUT_COUNT,
   submitRawReferenceInputNoIdxStep02,
   submitRawReferenceInputNoIdxStep04,
-} from "./support/reference-input-no-idx-emulator-v1.js";
+} from "./support/reference-input-no-idx-emulator.js";
 import {
   expectStateQueueHeaderOrder,
   setupFraudulentBlock as setupFraudulentBlock,

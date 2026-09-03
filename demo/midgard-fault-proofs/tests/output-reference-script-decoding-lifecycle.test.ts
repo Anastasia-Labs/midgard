@@ -19,7 +19,7 @@ import {
   encodeDaPayload,
   EventKeySchema,
   EventToStepValueSchema,
-  ForcedInclusionTxSchema,
+  ForcedInclusionTxV1Schema,
   forcedVerdictSubject,
   hashBlockHeader,
   OutputReference,
@@ -135,7 +135,7 @@ const forcedFixture = async (operatorVkey: string, now: number) => {
       key: txOrderId,
       keySchema: OutputReference as never,
       value: transaction,
-      valueSchema: ForcedInclusionTxSchema,
+      valueSchema: ForcedInclusionTxV1Schema,
     }),
   ];
   const transitionEntries = [

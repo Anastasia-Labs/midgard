@@ -1,379 +1,379 @@
 {
- "summary": {
-  "STILL_PRESENT": 48,
-  "ALREADY_FIXED": 5,
-  "INVALID": 1
- },
- "byVerdict": {
-  "STILL_PRESENT": [
-   {
-    "id": "RF-001",
-    "priority": "P1",
-    "verdict": "STILL_PRESENT",
-    "evidence": "onchain/aiken/validators/user-events/tx-order-v1.ak:149 still reads `expect _verified = verify_order_receipts(` ... `)` and the mint handler unconditionally returns `True` at :158. The binding pattern is irrefutable, so the Boolean is discarded. `verify_order_receipts` (lib/midgard/user-events/tx-order-v1.ak:357-414) can return False without aborting: the `None` branch returns `next_non_empty_field(commitments, lengths, 0) == 9`, and the terminal branch returns `and { quantity_of(...) == 1, terminal_receipt_is_valid(...) }`. Only the formatter commit 681ca0b4 touched these files since d145d19d; no semantic fix landed. Worktree and HEAD agree (file not dirty).",
-    "fixSketch": "Change to `expect True = verify_order_receipts(...)` (or make it the returned conjunct) and add negative mint tests for missing, malformed, and mismatched receipts."
-   },
-   {
-    "id": "RF-002",
-    "priority": "P1",
-    "verdict": "STILL_PRESENT",
-    "evidence": "onchain/aiken/lib/midgard/mpf-proof-v1.ak: in `non_membership_proof_is_well_formed`, the terminal Fork arm (:120-123) checks only `common_step_is_well_formed` + `neighbor_is_well_formed`, and the terminal Leaf arm (:138-142) checks only key/value lengths \u2014 neither requires divergence from the queried path, unlike the non-terminal arms (:129, :149). `do_excluding` terminal Leaf (:220) is `combine(suffix(key, cursor), value)`, so for a singleton trie containing the queried key, a proof `[Leaf{key: blake2b_256(query), value}]` reproduces the root and `does_not_have` (:255-271) returns True for a present key. Consumed at validation-machine-v1.ak:6330 with `reject_input_not_found` (:6334). No fixing commit since d145d19d; worktree and HEAD agree.",
-    "fixSketch": "In the terminal Fork arm require `nibble(path, next_cursor - 1) != neighbor.nibble`, and in the terminal Leaf arm require the leaf key to diverge from the queried path (e.g. `key != path` or the nibble check); add singleton-presence regression tests."
-   },
-   {
-    "id": "RF-003",
-    "priority": "P1",
-    "verdict": "STILL_PRESENT",
-    "evidence": "demo/midgard-node/src/transactions/state-queue/merge-to-confirmed-state.ts:1244 still calls `yield* applyConfirmedLedgerDelta(confirmedLedgerSnapshot.delta);` \u2014 the child delta only \u2014 while confirmed-ledger-snapshot.ts:250 materializes `deltaChain: [...baseDeltaChain, delta]` for pipelined journals (base recursion :210-229). The chain applier `applyConfirmedLedgerDeltaChainTransaction` (confirmed-ledger-snapshot.ts:322-361, with base/final root assertions) exists but is called only from commands/listen-startup.ts:337, not from the merge path. `applyConfirmedLedgerDelta`'s DELETE silently no-ops on absent outrefs and there is no post-apply root recheck at the merge site. No commit since d145d19d touched either file.",
-    "fixSketch": "At merge-to-confirmed-state.ts:1244, apply the whole chain via `applyConfirmedLedgerDeltaChainTransaction(confirmedLedgerSnapshot)` (as listen-startup.ts:337 already does), keeping the base-root and final-root assertions before journal state is cleared."
-   },
-   {
-    "id": "RF-006",
-    "priority": "P1",
-    "verdict": "STILL_PRESENT",
-    "evidence": "onchain/aiken/lib/midgard/ledger-state.ak:282-292 `header_v1_is_valid` still checks only `protocol_version`, three `root_matches_count_v1` pairs, and `header_transition_commitments_v1_are_valid` \u2014 it never references `block_slot`, `expected_network_id`, `min_fee_a`, `min_fee_b` (declared :79-82). Commit/merge trust it (validators/state-queue.ak:40 via `commit_block_header_output_is_valid_v1`, and :213). Claim logic validation-claim-v1.ak:81-88 requires `expected_network_id == header.expected_network_id`, `expected_network_id == 0 || == 1`, `min_fee_a/b >= 0`, `block_slot >= 0` with exact header equality, so a header committed with out-of-range scalars makes `validation_context_is_exact` unsatisfiable and the block undisputable. Only formatter commit 681ca0b4 touched ledger-state.ak since review; worktree and HEAD agree.",
-    "fixSketch": "Add to `header_v1_is_valid`: `header.expected_network_id == 0 || == 1` (or exact deployment network), `header.min_fee_a >= 0`, `header.min_fee_b >= 0`, and the block-slot invariant (e.g. `header.block_slot >= 0`), mirroring validation-claim-v1.ak:81-88."
-   },
-   {
-    "id": "RF-007",
-    "priority": "P1",
-    "verdict": "STILL_PRESENT",
-    "evidence": "onchain/aiken/lib/midgard/ledger-state.ak:216-222 (clean working tree = HEAD): `fn root_matches_count_v1(root: ByteArray, count: Int) -> Bool { if count == 0 { root == env.empty_merkle_tree_root } else { root != env.empty_merkle_tree_root } }`. No `bytearray.length(root) == 32` check anywhere in the file (only `length` hit is field_preimage_lengths_cbor at :382). `header_v1_is_valid` (:282-291) and `header_transition_commitments_v1_are_valid` (:263-278) use only this predicate; state-queue.ak admits headers through it, so a 1-byte positive-count root still passes. Only commit touching the file since d145d19d is 681ca0b4 (format-only).",
-    "fixSketch": "In root_matches_count_v1's nonzero branch, additionally require `bytearray.length(root) == 32` (and apply the same to the empty branch if desired via the constant's known length)."
-   },
-   {
-    "id": "RF-008",
-    "priority": "P1",
-    "verdict": "STILL_PRESENT",
-    "evidence": "On-chain: ScheduledLedgerNonMembershipWitness is the 7th constructor (index 6, 4 fields) of ValidationAuxiliaryWitnessV1 (validation-machine-v1.ak:116-121, committed, now clean) and is emitted by resolve-inputs-non-membership-semantic-v1.ak:57-70. Off-chain: demo/midgard-fault-proofs/src/validation-dispute/submit.ts VALIDATION_AUXILIARY_SHAPES_V1 (:577-601) has no index-6 shape; resolver-7 routing at :666-684 maps semantics 0/1\u2192none, 2\u2192[5,6], 3\u2192[32,1], 4\u2192[33,2], else\u2192resolvedInputReplay [7,4], and redeemer construction at :2748-2784 repeats the same mapping \u2014 semantic 5 demands constructor 7, so the constructor-6 non-membership witness is rejected everywhere. grep for 'onMembership' in submit.ts returns nothing. No commits touched either file since d145d19d.",
-    "fixSketch": "Add `scheduledLedgerNonMembership: [6, 4]` to VALIDATION_AUXILIARY_SHAPES_V1, route the non-membership semantic index to it in both auxiliaryShapeV1 and the redeemer-field construction, and add a submit-to-validator integration test."
-   },
-   {
-    "id": "RF-009",
-    "priority": "P1",
-    "verdict": "STILL_PRESENT",
-    "evidence": "cek-constant-v1.ak:11 `pub const max_direct_payload_bytes = 9215`; :93 `expect bytearray.length(payload_cbor) <= max_direct_payload_bytes` admits direct payloads to 9,215 bytes. constant_root_v1 (cek-constant-v1.ak:196-209) commits the payload via cek_data_v1.semantic_data_summary_v1, whose BytesData/IntegerData leaves call `cek_proof_v1.hash_blob_chunk_v1(bytes)` (cek-data-v1.ak:883,891), and hash_blob_chunk_v1 aborts above 4,095: cek-proof-v1.ak:484-485 `expect bytearray.length(chunk) <= max_blob_chunk_bytes` with max_blob_chunk_bytes = 4095 (:33). Machine consumes it at cek-machine-v1.ak:717-718 (ComputeConstant \u2192 constant_root_v1). So a valid direct ByteString/large-integer constant of 4,096-9,214 bytes decodes but aborts. Only format commit 681ca0b4 since review.",
-    "fixSketch": "Give semantic_data_summary_v1's byte/integer leaves a shared bounded blob-root helper that chunks payloads over 4,095 bytes via hash_blob_branch_v1 (same commitment as the streamed path), and use it from both direct and streamed witnesses."
-   },
-   {
-    "id": "RF-010",
-    "priority": "P1",
-    "verdict": "STILL_PRESENT",
-    "evidence": "demo/midgard-validation/src/cek-data-tree.ts:235 `const addData = (data: Data): DataSummary =>` recurses through addList (:158) / addPairs (:193) with no explicit stack; per node it re-serializes the entire subtree: :323-325 `const canonicalLength = BigInt(encodeMidgardCekPlutusDataV1(data).length);` plus `midgardCekDataMemorySizeV1(data)` (:326), giving repeated subtree recomputation (quadratic on unary chains). The boundary test still admits depth 4,043: demo/midgard-validation/tests/plutus-data-unary-depth-boundary-v1.test.ts:39 `acceptedDepth: 4_043`. git log d145d19d..HEAD shows no commits to either file.",
-    "fixSketch": "Replace addData/addList/addPairs recursion with one explicit post-order work stack and derive cborLength/memory incrementally from child summaries instead of re-serializing each subtree."
-   },
-   {
-    "id": "RF-011",
-    "priority": "P1",
-    "verdict": "STILL_PRESENT",
-    "evidence": "demo/midgard-core/src/cek-proof.ts:2140 (inside decodeSemanticConstantTypeV1, :2133-2181): `const decoded = LucidData.from(Buffer.from(typeCbor).toString(\"hex\"));` \u2014 no re-encode/byte-equality check follows; the function only validates it is an integer list and tag structure. Aiken's decoder requires round-trip canonical (indefinite) encoding: cek-constant-v1.ak:68-69 `expect Some(type_data) = cbor.deserialise(type_cbor); expect cbor.serialise(type_data) == type_cbor` \u2014 `[0]` serializes as `9f00ff`, so definite `8100` is rejected on L1 but accepted by the TS decoder (used at :3425). No commits touched cek-proof.ts since d145d19d; file is clean.",
-    "fixSketch": "After LucidData.from, re-encode with the canonical Plutus-Data (indefinite-list) encoder and require byte-for-byte equality with typeCbor before accepting."
-   },
-   {
-    "id": "RF-012",
-    "priority": "P1",
-    "verdict": "STILL_PRESENT",
-    "evidence": "demo/midgard-core/src/cek-proof.ts semanticConstantMemoryV1 (:2484-2527): :2500 `if (type.kind === \"unit\" || type.kind === \"boolean\") return 1n;` \u2014 accepts any payload shape; :2494-2498 treats string identically to bytes with no UTF-8 round-trip; :2524-2526 blsG1/blsG2/millerLoop return 48n/96n/192n with no payload-length check and millerLoop is accepted although Aiken's payload_matches_type returns False for it (cek-constant-v1.ak:123-190 enforces constr-0/1 empty-fields for unit/bool, decode_utf8 round-trip for strings, 48/96-byte BLS, and rejects miller-loop). Result consumed at :3426 (`const memory = semanticConstantMemoryV1(constantType, decodedPayload);`) with no separate type/payload predicate. File unchanged since d145d19d.",
-    "fixSketch": "Add a TS payloadMatchesTypeV1 mirroring Aiken's payload_matches_type (constr shape for unit/bool, UTF-8 round-trip for strings, 48/96-byte BLS bytes, reject miller-loop) and invoke it in the :3425-3427 validation path; share cross-language fixtures per constant kind."
-   },
-   {
-    "id": "RF-027",
-    "priority": "P1",
-    "verdict": "STILL_PRESENT",
-    "evidence": "Verifier is at demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs (finding cited a slightly different filename). Its expectedByFile map (lines 16-63) still hardcodes exactly 13 test files and requires `expectedByFile.size !== 13` to fail; the dependency map's requiredWatcherPackage has no publicDaClient focused class. tests/public-da-client.test.ts exists, is ungated (plain describe/it), and is collected by the vitest glob `./tests/**/*.test.ts`. Ran the verifier on the current tree: it fails with \"Watcher focused-test verification failed: Vitest collected counts do not match the dependency map\" (fail() at line 66, thrown from line 169). It is invoked by .github/workflows/evidence-integrity-ci.yml:36 \u2014 deterministic required-gate failure. Unchanged since d145d19d.",
-    "fixSketch": "Add a publicDaClient class with its expectedFocusedTestCount to canonical-v1-watcher-dependency-map-v1.json and a 14th expectedByFile entry (bumping the size check 13\u219214) in verify-canonical-v1-watcher-focused-tests.mjs, then rebind the map hashes."
-   },
-   {
-    "id": "RF-028",
-    "priority": "P1",
-    "verdict": "STILL_PRESENT",
-    "evidence": "demo/midgard-validation/scripts/verify-goal-cardano-capability-p2-data-breadth.mjs:7 still has `const EXPECTED_TEST_COUNT = 2;` enforced exactly (numTotalTests === EXPECTED_TEST_COUNT, assertionResults.length === EXPECTED_TEST_COUNT, lines ~75-94). The suite demo/midgard-validation/tests/data-breadth-boundary-v1.test.ts now declares 4 tests: `it.each([\"constructor\", \"list\", \"map\"] as const)` at line 624 (3 tests) plus `it(\"retains maximum constructor/list/map breadth through genuine Cardano redeemers...\")` at line 803. The retained-DA verifier demo/midgard-fault-proofs/tests/fixtures/verify-cardano-capability-p2-retained-da-v1.mjs:191 independently hardcodes `\"tests/data-breadth-boundary-v1.test.ts\": 2`. git log d145d19d..HEAD shows no commits to either gate or the suite.",
-    "fixSketch": "Update EXPECTED_TEST_COUNT to 4 in verify-goal-cardano-capability-p2-data-breadth.mjs and the per-suite count to 4 at verify-cardano-capability-p2-retained-da-v1.mjs:191, or derive both from a single manifest."
-   },
-   {
-    "id": "RF-029",
-    "priority": "P1",
-    "verdict": "STILL_PRESENT",
-    "evidence": "onchain/aiken/lib/midgard/validation-controls-v1-abi.test.ak:167 still maps `30 -> 1` in auxiliary_arity (fixture corpus self-consistently pins tag 30 at arity one via blake2b hash 255f8027...). But demo/midgard-validation/src/validation-machine-data.ts:1356-1360 emits `new Constr(30, [collectionProofData(auxiliary.collectionProof), bytes(auxiliary.itemCbor)])` (arity two); the SDK schema at demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness-v1.ts:1140-1143 declares TransactionFieldItemWitness with collection_proof + item_cbor; and the Aiken type in validation-machine-v1.ak (31st constructor, index 30) has both fields at lines ~272-275. validation-machine-v1.ak is now CLEAN at HEAD (no longer dirty), so committed and working states are identical here; the still-dirty protected files (cek-data-traverse-v1.ak, redeemer-item-proof-v1.ak) are not implicated. Option A (b7cacd85) moved stage-4 to the tag-29 witness but did not reconcile the tag-30 fixtures.",
-    "fixSketch": "Regenerate the auxiliary_corpus_cbor fixture and auxiliary_arity map (30 -> 2) from the canonical ValidationAuxiliaryWitnessV1 schema and repin the blake2b hash, ideally emitting one shared fixture consumed by the Aiken, TS, and SDK suites."
-   },
-   {
-    "id": "RF-030",
-    "priority": "P1",
-    "verdict": "STILL_PRESENT",
-    "evidence": "technical-spec/1-ledger-state/1-block.tex:139-159 still defines Header with 8 roots (prev_utxos, utxos, withdrawals, forced_transactions, transactions, deposits, transition_trace, event_to_step) and 6 counts (withdrawal, forced_transaction, l2_transaction, deposit, total_event, transition_step) \u2014 no validation_traces_root, validation_trace_count, block_slot, expected_network_id, min_fee_a, or min_fee_b. onchain/aiken/lib/midgard/ledger-state.ak:60-86 HeaderV1 has 9 roots (adds validation_traces_root), 7 counts (adds validation_trace_count), plus block_slot, expected_network_id, min_fee_a, min_fee_b. Only formatter commit 681ca0b4 touched ledger-state.ak since the reviewed head; the spec file is unchanged.",
-    "fixSketch": "Update the Header record in 1-block.tex to the nine-root/seven-count HeaderV1 including slot, network, and fee fields (or generate/mechanically verify the spec table from the canonical Aiken schema), then align the architecture-doc projection."
-   },
-   {
-    "id": "RF-031",
-    "priority": "P1",
-    "verdict": "STILL_PRESENT",
-    "evidence": "All four sources unchanged since d145d19d. Legacy spec technical-spec/1-ledger-state/6-transaction.tex:12 defines `TxSet \u2254 Map(TxId, MidgardTxCompact)` (compact = body_hash/wits_hash/validity). technical-spec/6-offchain-data-architecture/1-da-layer.tex:48-49 instead maps `forced_transactions : [(TxOrderId, ForcedInclusionTx)]`, `transactions : [(TxId, L2TransactionSourceV1)]`. docs/consensus-profile-v1.md:100-109 declares `ForcedInclusionTxV1 { tx_id, compact_tx, field_preimage_hashes, operator_verdict }`. The SDK demo/midgard-sdk/src/ledger-state.ts:692-700 declares `ForcedInclusionTxV1Schema { tx_id, transaction_commitment, source, operator_validity }` with source = NativeTxProofSourceV1 { compact_cbor, witness_set_compact_cbor, field_preimage_lengths_cbor } (lines 558-562) \u2014 different fields than the profile. Implementation commits the SDK shapes: demo/da-committee-node/src/da/payload.ts:243-252 roots body.transactions/body.forced_transactions directly. Disagreement stands.",
-    "fixSketch": "Declare the SDK schemas normative; rewrite the TxSet equation in 6-transaction.tex and the ForcedInclusionTxV1 field list in consensus-profile-v1.md to match, and bind a cross-language fixture to the exact leaf CBOR encodings."
-   },
-   {
-    "id": "RF-033",
-    "priority": "P1",
-    "verdict": "STILL_PRESENT",
-    "evidence": "demo/da-committee-node/tests/conflict-evidence.test.ts:31 opens `const store = await JsonFileWatcherStore.open(directory);` and line 44 opens `const reopened = await JsonFileWatcherStore.open(directory);` with no `close()` anywhere in the file. JsonFileWatcherStore.open (src/store.ts:208-223) creates `${filePath}.lock` with flag \"wx\" and throws on EEXIST. Ran `npx vitest run tests/conflict-evidence.test.ts`: test \"persists authenticated conflicting signatures once and survives restart\" fails deterministically with `watcher file store is already exclusively leased: /tmp/.../watcher.json.lock` at tests/conflict-evidence.test.ts:44. 1 failed / 1 passed.",
-    "fixSketch": "Insert `await store.close();` before the reopen at line 44 (and close `reopened` at test end); keep a separate assertion that a second concurrent exclusive open rejects."
-   },
-   {
-    "id": "RF-034",
-    "priority": "P2",
-    "verdict": "STILL_PRESENT",
-    "evidence": "demo/da-committee-node/src/store/postgres.ts:530 \u2014 `saveDaSignature` calls `const sourceState = await lockL1SourceState(client);`. `lockL1SourceState` (postgres.ts:956-966) runs `SELECT record FROM watcher_l1_source_state WHERE id = 1 FOR UPDATE` and throws `\"decision outbox lacks durable L1 source state\"` when no row exists. The row is seeded only by `ensureL1SourceStateRow` via `mergeLockedL1SourceState` (lines 969-983), reached from `saveL1SourceState` (line 184, watcher tick) or decision-outbox begin (line 237); schema creation (line 794) inserts nothing. So on a fresh PostgreSQL deployment every DA signature arriving before the first watcher tick is rejected. File unchanged since d145d19d.",
-    "fixSketch": "In saveDaSignature, treat an absent watcher_l1_source_state row as non-quarantined under the same row lock (e.g., call ensureL1SourceStateRow with a default state before lockL1SourceState, or use a lock variant returning undefined on zero rows)."
-   },
-   {
-    "id": "RF-035",
-    "priority": "P2",
-    "verdict": "STILL_PRESENT",
-    "evidence": "File actually lives at demo/da-committee-node/src/da/proof-artifacts.ts (the finding's demo/midgard-node path never existed at either head); unchanged since d145d19d. Line 417 computes `roots = await computeDaPayloadV1Roots(payload)` which returns DaPayloadRootSetV1 including `validationTracesRoot` (payload.ts:268-279), but comparisons at lines 424-427 use `rootMismatches` (lines 928-960) covering only the 7 legacy roots \u2014 `validationTracesRoot` is dropped; `countMismatches` (962-982) and `headerRoots`/`headerCounts` (984-1002) likewise omit validationTraceCount/validationTracesRoot even though HeaderV1 commits both (ledger-state.ts:43,50). The proof-bundle hash `rootSummaryValues` (566-578) also excludes it. An artifact whose validation_traces mismatch the committed header still passes and is served.",
-    "fixSketch": "Widen proof-artifacts comparisons to DaPayloadRootSetV1/DaPayloadCountSetV1: add validationTracesRoot to rootMismatches, headerRoots, and rootSummaryValues, and validationTraceCount to countMismatches and headerCounts."
-   },
-   {
-    "id": "RF-036",
-    "priority": "P2",
-    "verdict": "STILL_PRESENT",
-    "evidence": "demo/midgard-sdk/src/ledger-state.ts:199-203 \u2014 `validateHeaderTransitionCommitmentsV1Program` calls `validateSourceRootCountV1(\"forced_transactions\", commitments.forcedTransactionsRoot, commitments.forcedTransactionCount)` and later only `validation_traces` (lines 267-271). The commitments type includes withdrawalsRoot, transactionsRoot, depositsRoot (lines 98-105), but no empty-root-vs-count consistency check exists for withdrawals/transactions/deposits \u2014 counts get only bound checks (144-198). A header with e.g. depositCount=5 and depositsRoot=EMPTY_MERKLE_TREE_ROOT passes. state-queue.ts:1125 consumes this validation. File unchanged since d145d19d.",
-    "fixSketch": "Apply validateSourceRootCountV1 to the withdrawals, transactions (l2TransactionCount), and deposits root/count pairs alongside the existing forced_transactions and validation_traces checks."
-   },
-   {
-    "id": "RF-037",
-    "priority": "P2",
-    "verdict": "STILL_PRESENT",
-    "evidence": "Assessed committed HEAD ba701b2e; file unchanged since d145d19d. In demo/midgard-sdk/src/fraud-proof/evidence-source-v1.ts:268-308 (file moved to fraud-proof/), admitAuthenticatedL1ObservationV1 defaults minimumConfirmationDepth to 1 but never validates the caller-supplied value. The only check is `!Number.isSafeInteger(observation.confirmationDepth) || observation.confirmationDepth < minimumConfirmationDepth` (lines 298-301). With minimumConfirmationDepth = NaN, `depth < NaN` is always false, so any safe-integer depth (including negative) is admitted; with -1, depth 0 and -1 pass. demo/midgard-fault-proofs/src/evidence/canonical-block-evidence-v1.ts:148-160 forwards the option unvalidated. Fails open exactly as claimed.",
-    "fixSketch": "At the top of admitAuthenticatedL1ObservationV1, reject unless Number.isSafeInteger(minimumConfirmationDepth) && minimumConfirmationDepth >= 1 (reusing the insufficient_confirmation_depth or a new rejection code)."
-   },
-   {
-    "id": "RF-038",
-    "priority": "P2",
-    "verdict": "STILL_PRESENT",
-    "evidence": "Assessed committed HEAD; file unchanged since d145d19d. deriveValidationProofItemPublicationV1 (demo/midgard-sdk/src/fraud-proof/validation-proof-item-v1.ts:81-109) only regex-checks itemCbor hex and 32-byte ids, then sets `collection_proof: collectionProof, item_cbor: itemCbor` with no check that itemCbor's byte length equals collectionProof.item_length or that its hash equals collectionProof.item_commitment. The cited test still exists: demo/midgard-sdk/tests/validation-proof-item-v1.test.ts:119-135 passes `\"a5\".repeat(14_396)` (14,396 bytes) with the shared collectionProof whose item_length is 2n (line 16) and the derivation succeeds.",
-    "fixSketch": "In deriveValidationProofItemPublicationV1, require BigInt(itemCbor.length / 2) === collectionProof.item_length and that the canonical item hash equals collectionProof.item_commitment before building the datum."
-   },
-   {
-    "id": "RF-039",
-    "priority": "P2",
-    "verdict": "STILL_PRESENT",
-    "evidence": "Assessed committed HEAD; files unchanged since d145d19d. spec-v1.ts parses and shape-checks outputState (demo/midgard-fault-proofs/src/family-scaffold/spec-v1.ts:207, 225-230) but grep over the family-scaffold package shows `outputState` appears only in spec-v1.ts \u2014 emit-v1.ts never reads it. No check that steps[N].outputState equals steps[N+1].inputState exists in parseFraudProofFamilyScaffoldSpecV1 (spec-v1.ts:280-335). Emitted validators (emit-v1.ts:165-256) leave the output-state binding as `todo`/TODO comments (e.g. lines 196-201, 251-254), and emitSdkFamilyModuleV1 (emit-v1.ts:558-609) derives schemas only from inputState/argsFields. outputState is carried and dropped exactly as claimed.",
-    "fixSketch": "In parseFraudProofFamilyScaffoldSpecV1, after mapping steps, reject unless steps[i].outputState deep-equals steps[i+1].inputState (field names and types), and derive the emitted next-state types from it."
-   },
-   {
-    "id": "RF-040",
-    "priority": "P2",
-    "verdict": "STILL_PRESENT",
-    "evidence": "Assessed committed HEAD; files unchanged since d145d19d. spec-v1.ts:319-321 rejects only `!Array.isArray(rawSteps) || rawSteps.length === 0`, so a one-step spec parses: position 0 is simultaneously first and terminal, and parseStep (lines 204-230) then accepts all-null inputState/outputState/argsFields. emitAikenStepValidatorV1 (emit-v1.ts:447-506) tests `isFirst` before `isTerminal` (line 472), so the single step emits the first-step body whose validator is parameterized on `step_02_validator_script_hash` (line 480) and expects continuation to a step-02 that is never generated; the finalize/mint terminal path is never emitted. Accepted spec, incoherent/unusable emission \u2014 as claimed.",
-    "fixSketch": "In parseFraudProofFamilyScaffoldSpecV1, reject specs with rawSteps.length < 2 using the existing invalid_step_sequence code."
-   },
-   {
-    "id": "RF-041",
-    "priority": "P2",
-    "verdict": "STILL_PRESENT",
-    "evidence": "Assessed committed HEAD; files unchanged since d145d19d. The density half holds: nothing requires transition_trace keys to be 0..N-1. reconstruct.ts decodes keys as bare integers (demo/midgard-fault-proofs/src/transition-trace/reconstruct.ts:887-892) and builds traceByStepIndex from them (:905-907); `step_index` never appears in reconstruct.ts, and validateDeclaredCounts (:292-335) checks only array lengths. Downstream, detect.ts:291-314 guards boundary checks with `first !== undefined` / `last !== undefined`, silently skipping a sparse trace missing step 0 or the last index, and detectTraceLinkFaults (:340-358) links sorted neighbors without requiring consecutive indexes. The duplicate half was wrong at the reviewed head too: validatePayloadEntryArray (:276-288) rejects unsorted/duplicate hex keys and decodeData (:170-174) enforces canonical re-encoding, precluding duplicate decoded keys.",
-    "fixSketch": "After decoding transition_trace, assert the decoded key set is exactly 0..counts.transitionStepCount-1 (and matches each value's step_index), raising a malformedPayload error or a dedicated detection otherwise."
-   },
-   {
-    "id": "RF-043",
-    "priority": "P2",
-    "verdict": "STILL_PRESENT",
-    "evidence": "bin.ts unchanged since d145d19d. The Q03 provenance is stderr-only: bin.ts:680-690 `process.stderr.write(diagnosticEvidenceBannerV1(...))` when `--midgard-node-url`/`--transactions-file` drive a prepare-* run; the same run then calls prepareDoubleSpendFromNode/FromFile and writeJson with no provenance embedded in the artifact (prepare-double-spend.ts has zero provenance references). Submission never checks grade: submit-step-01.ts:613-624 `readJsonFile(config.txInclusionPath)` then `parseSubmitStep01TxInclusion(txInclusionJson)` \u2014 no assertSecurityGradeEvidenceV1 call anywhere in bin.ts or submit-step-01.ts (grep: only src/evidence/** uses it). So diagnostic-sourced evidence remains prepare-able and submit-capable to L1.",
-    "fixSketch": "Embed the EvidenceProvenanceV1 record in every prepared artifact and make each submit*FromFiles path run assertSecurityGradeEvidenceV1 on it before building the transaction (or remove --midgard-node-url/--transactions-file from prepare entirely)."
-   },
-   {
-    "id": "RF-044",
-    "priority": "P2",
-    "verdict": "STILL_PRESENT",
-    "evidence": "File is demo/midgard-node/src/fibers/fetch-and-insert-tx-order-utxos.ts (finding said src/workers/, wrong at the reviewed head too; the cited line range matches the fibers file). Lines 588-593: try/catch swallows collectMidgardV1AttachedProgramEnvelopes errors, returning []. Lines 596-606: `CekProgramMaterialDB.persistVerifiedBundles(...).pipe(Effect.catchAll((cause) => Effect.logWarning(\\\"V1 tx-order ... is visible before its complete L1 CEK material bundle...\\\")))` \u2014 persistVerifiedBundles (database/cekProgramMaterial.ts:77+) fails with a single DatabaseError type for both verifyMidgardCekProgramMaterialBundleV1 failures and DB failures, so all are converted to a warning. Then lines 621-623 encode an empty sidecar and line 655 commits STATUS = ForcedTransactionsDB.Status.Awaiting.",
-    "fixSketch": "Give persistVerifiedBundles a typed material-not-yet-published error distinct from verification/infrastructure failures; in the fiber, catch only that typed condition and propagate everything else instead of Effect.catchAll -> logWarning."
-   },
-   {
-    "id": "RF-045",
-    "priority": "P2",
-    "verdict": "STILL_PRESENT",
-    "evidence": "Assessed committed state; file is clean (not in the dirty PROTECTED set). validation-claim-v1.ak: the only phase checks are line 329 `transition_step.phase == event_to_step.phase`, line 376 `initial.phase == validation_trace_v1.CanonicalDecode`, line 391 `terminal.phase == validation_trace_v1.Terminal`. No function derives TransitionPhase from the EventKey constructor (grep for any family-to-phase mapping across onchain/aiken/lib/midgard returns nothing). verify_source_authentication (lines 215-276) binds key family only to the source root domain, never to transition_step.phase. So committed roots containing a ForcedTransactionEventKey step whose phase is L2Transaction (ledger-state.ak:494-506 defines both enums independently) pass committed_claim_structure_is_valid.",
-    "fixSketch": "Add a phase_for_event_key(EventKey) -> TransitionPhase helper and require transition_step.phase == phase_for_event_key(event_key) in committed_claim_structure_is_valid."
-   },
-   {
-    "id": "RF-046",
-    "priority": "P2",
-    "verdict": "STILL_PRESENT",
-    "evidence": "builder.ts unchanged since d145d19d. fromTx (lines 3126-3153) builds a CompleteTx from imported CBOR: line 3134 `mergeCanonicalProofProgramMaterial(input instanceof CompleteTx ? input.programMaterial : [], options.programMaterial ?? [])` \u2014 that helper (builder/script-materialization.ts:324) only revalidates encoding and dedups; it never collects the tx's script envelopes or calls verifyMidgardCekProgramMaterialBundleV1. submit() (lines 774-786) asserts size and addr witnesses, then `provider.submitTx(this.txHex, this.programMaterial)` with no completeness assertion. Completeness IS enforced on the complete()/chain() paths via prepareProofBuilderState -> verifyMidgardCekProgramMaterialBundleV1 (script-materialization.ts:487-494), but the reviewer-cited import/submit path still allows a CompleteTx whose referenced scripts lack canonical material.",
-    "fixSketch": "In fromTx (or in submit before provider.submitTx), decode the tx's inline/reference script envelopes and run verifyMidgardCekProgramMaterialBundleV1(envelopes, programMaterial), throwing on incomplete material \u2014 mirroring prepareProofBuilderState's final check."
-   },
-   {
-    "id": "RF-047",
-    "priority": "P2",
-    "verdict": "STILL_PRESENT",
-    "evidence": "Assessed committed state; file clean. preimages.ak verify_canonical_mint_preimage_cbor (lines 541-561): hash gate `bounded_collection_v1.from_items(5, mint_policy_items(expect_deserialise(preimage_cbor))) == expected_hash` \u2014 for `a0`, mint_policy_items (line 358) hits the un_map_data branch (Map [] != List []) and returns [], the same item list as `80`, so the same commitment. Then line 550 `if preimage_cbor == #\\\"80\\\" { True } else { ... }`: `a0` takes the else branch, decode_canonical_map_header_at (line 415) returns Pair(1, 0) for tag 160, verify_canonical_mint_policies_at with remaining 0 returns offset 1 == bytearray.length(#\\\"a0\\\") -> True. No `policy_count > 0` expect exists, so both `80` and `a0` verify against the same expected_hash while the off-chain canonical encoder (encode_mint_preimage, line 368) emits only `80`.",
-    "fixSketch": "Add `expect policy_count > 0` after the map-header decode in the else branch, making `80` the unique empty-mint preimage encoding."
-   },
-   {
-    "id": "RF-048",
-    "priority": "P2",
-    "verdict": "STILL_PRESENT",
-    "evidence": "Config parsing accepts the full range: services/config.ts:563-579 rejects only `value <= 0 || value > MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes`, so any MAX_SUBMIT_TX_CBOR_BYTES in [1, max] boots the node. protocol-info.ts:96-104 then requires equality: `if (configuredMax !== MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes) { throw new Error(\\\"MAX_SUBMIT_TX_CBOR_BYTES must equal the canonical V1 transaction bound\\\") }`. The GET /protocol-info handler (listen-router.ts:2159-2174) wraps encodeProtocolInfo in Effect.try and pipes `Effect.catchAll((e) => failWith500(...))`, so a node validly configured below the max serves HTTP 500 on that endpoint. Neither file changed since d145d19d.",
-    "fixSketch": "Make the two sites agree: either have encodeProtocolInfo report the configured submissionLimits value without demanding equality, or tighten config parsing to require equality so the node fails at startup rather than serving a 500."
-   },
-   {
-    "id": "RF-073",
-    "priority": "P2",
-    "verdict": "STILL_PRESENT",
-    "evidence": "All four source-text tests persist unchanged (git log d145d19d..HEAD on these paths is empty). demo/midgard-node/tests/canonical-v1-commit-profile.test.ts:10-158 reads worker/submission source via readFile and applies regexes, e.g. line 79 `!/^const proofValidationSlotConfig =\\s*workerInput\\.data\\.forcedValidationSlotConfig;/.test(...)`. commit-source-completeness.test.ts:47-70 matchAll's regexes over submission.ts and compares string indexes for ordering. pipeline-status-route.test.ts:31-45 slices listen-router.ts source and asserts `expect(handler).toContain(\"PIPELINE_STATUS_ACTIVE_PENDING_FINALIZATION_STATUSES\")`. reconcile-da-attested.test.ts:133-141 asserts `expect(source).not.toContain(\"/v1/deployments/\")` and `not.toMatch(/\\bfetch\\s*\\(/u)` over reconcile.ts source. These can pass while runtime semantics are broken.",
-    "fixSketch": "Replace the regex/source-layout assertions with runtime tests that invoke the worker, submission, route handler, and reconcile functions through injected fakes and assert observable behavior (recorded call ordering, handler output), keeping at most a thin export-presence guard."
-   },
-   {
-    "id": "RF-075",
-    "priority": "P2",
-    "verdict": "STILL_PRESENT",
-    "evidence": "demo/lucid-midgard/tests/script-builders.test.ts is 74 lines with a single test (lines 53-73) that builds attach.Script/mintAssets/observe/receiveRedeemer state and asserts `builder.config().midgardNativeTxVersion` plus a `builder.snapshot().scripts` toMatchObject \u2014 no `.complete()` call anywhere in the file (the base-revision 8bae9403 version had 21 `.complete()` calls with hash/pointer/reference-script/rejection assertions). git log d145d19d..HEAD on demo/lucid-midgard/tests/ is empty; commit 5bf18902 ('removal reference-script completion') touched only midgard-fault-proofs/tests/submit-init-emulator.test.ts. Adjacent finalization/balancing tests call .complete() but do not restore the script-builder completion matrix.",
-    "fixSketch": "Reinstate a compact end-to-end matrix in script-builders.test.ts: complete() transactions with inline scripts, reference scripts via readFrom, and deliberately missing script material, asserting witness pointers/hashes, reference-script materialization, and rejection errors."
-   },
-   {
-    "id": "RF-062",
-    "priority": "P3",
-    "verdict": "STILL_PRESENT",
-    "evidence": "demo/midgard-core/src/blake2b-224-trace-v1.ts (468 lines) and blake2b-256-trace-v1.ts (467 lines) both still exist; a diff normalizing digest-size tokens (224/256, 28/32, rotation constant) shows only constant renames (e.g. MIDGARD_BLAKE2B_BLOCK_BYTES vs MIDGARD_BLAKE2B_256_BLOCK_BYTES, PARAMETER_BLOCK_V1 0x0101_001c vs 0x0101_0020) and one comment \u2014 the ~460-line state-machine logic is duplicated verbatim. No shared engine module exists in demo/midgard-core/src (only the two trace files match 'blake'), and no commit since d145d19d touched them."
-   },
-   {
-    "id": "RF-063",
-    "priority": "P3",
-    "verdict": "STILL_PRESENT",
-    "evidence": "The same constructor fixture hex literal (prefix \"9fd87980d87a9fd8799f0100010001...\", containing the distinctive hash bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2) is inlined independently in all three suites: onchain/aiken/lib/midgard/validation-controls-v1-abi.test.ak:9, demo/midgard-validation/tests/validation-controls-v1-abi.test.ts:650, and demo/midgard-sdk/tests/validation-auxiliary-witness-v1.test.ts:10. The SDK test's readFileSync reads its own source module for source-text assertions, not a shared fixture; no generated fixture/manifest consumed by all three languages exists."
-   },
-   {
-    "id": "RF-064",
-    "priority": "P3",
-    "verdict": "STILL_PRESENT",
-    "evidence": "onchain/aiken/validators/fraud-proofs/validation-trace/compact-binding-semantic-v1.ak (committed, clean) still inlines the flow at lines 49-89: it calls common.continue at line 56 with a hand-written callback repeating prepared_resolution_is_well_formed, phase check (CompactBinding), hash_one_step_evidence == state.evidence_hash, output_script_hash == award_script_hash, and output_state == winning_resolution() \u2014 exactly the body of the shared combinator `pub fn continue_winning` in lib/midgard/validation-semantic-v1.ak:13 that sibling semantic validators (e.g. script-sources-stage-ten-mismatch-semantic-v1.ak:52) use. Its Datum type is identical to validation_semantic_v1.Datum, so the combinator is applicable."
-   },
-   {
-    "id": "RF-065",
-    "priority": "P3",
-    "verdict": "STILL_PRESENT",
-    "evidence": "fn proof_item_from_reference is duplicated verbatim in canonical-decode-item-observe-v1.ak:158-185 and canonical-decode-item-semantic-v1.ak:154-181 (onchain/aiken/validators/fraud-proofs/validation-trace/): identical 28-line bodies resolving the reference input, expecting InlineDatum with reference_script: None, checking Script payment credential == proof_item_script_hash, version == 1, transaction_id and transaction_commitment against pre-state, then building TransactionFieldItemWitness. Both files are committed clean (not among the dirty protected files). Locations match the finding's cited lines 154/158."
-   },
-   {
-    "id": "RF-066",
-    "priority": "P3",
-    "verdict": "STILL_PRESENT",
-    "evidence": "Assessed BOTH states: onchain/aiken/lib/midgard/validation-machine-v1.ak is dirty, but the uncommitted diff does not touch this region, so committed HEAD and working tree are identical here. `pub fn verify_prepared_script_sources_stage_three_replay_transition_v1` still exists at line 12199 (moved from 12204 at the reviewed head) with its speculative-seam doc comment (\"used only after a prepare validator...\"). A repo-wide grep over all .ak and .ts in onchain/ and demo/ (including untracked overlay files) finds only the definition \u2014 no caller and no test reference."
-   },
-   {
-    "id": "RF-067",
-    "priority": "P3",
-    "verdict": "STILL_PRESENT",
-    "evidence": "demo/midgard-node/src/da/libp2p-producer.ts:329-342: loadDaProducerPublicationManifestFromEnv is typed Promise<DaProducerPublicationManifest> and either throws (\"MANIFEST_PATH_ENV is required...\") or returns parseDaProducerPublicationManifest(...), which is typed to return the manifest \u2014 null is unreachable. Dead `if (manifest === null)` branches remain at lines 550, 907, 936, 1062, 1140, and 1165 (matching the cited ranges), each fabricating an unreachable \"no libp2p DA manifest configured\" outcome. The reconciler repeats it at demo/midgard-node/src/fibers/da-publication-reconciler.ts:59."
-   },
-   {
-    "id": "RF-068",
-    "priority": "P3",
-    "verdict": "STILL_PRESENT",
-    "evidence": "demo/midgard-sdk/src/state-queue-production.ts:576-584 still reads: `data: (\"validationTracesRoot\" in newHeader ? castStateQueueNodeV1ToData({ header: newHeader, da_attestation: NO_DA_ATTESTATION }) : castStateQueueNodeV1ToData({ header: newHeader, da_attestation: NO_DA_ATTESTATION })) as LinkedListNodeView[\"data\"]` \u2014 both ternary branches construct the identical argument object and call the same function, so the compatibility discriminator has no effect."
-   },
-   {
-    "id": "RF-069",
-    "priority": "P3",
-    "verdict": "STILL_PRESENT",
-    "evidence": "demo/midgard-node/src/commands/reconcile.ts:971-975: reconcileDaAttestedProgram's options type declares `readonly watcherUrl?: string;` (line 973) and `readonly deploymentFingerprint?: string;` (line 974), but line 982 destructures only `const { headerHash, repair } = options;` \u2014 grep of the whole file shows the two names appear nowhere else. The CLI still passes both at demo/midgard-node/src/index.ts:2105-2106 (`watcherUrl: options.watcherUrl, deploymentFingerprint,`), including computing deploymentFingerprint via readFinalizedDeploymentIdentity at lines 2092-2097, all of which is discarded."
-   },
-   {
-    "id": "RF-070",
-    "priority": "P3",
-    "verdict": "STILL_PRESENT",
-    "evidence": "The 19 dated checkpoint plans still exist: `ls docs/exec-plans/*checkpoint-2026*.md | wc -l` = 19, totaling exactly 2,859 lines (matches the finding). GOAL_PROGRESS.md is now 2,916 lines and remains an append-only diary: it contains ~25 'Superseding ...' section headers (lines 1584-2685+), three separate 'Current next action' sections (lines 1126, 1666, 2364), and duplicated criterion/validation ledger blocks from two 'Remote-session ledger entries' merges (lines 1172, 2227). Post-review commits (3a6d9b1d 'repair damaged sections', 54a0d496, ba701b2e) appended further superseding checkpoints rather than consolidating to a concise current-state ledger.",
-    "fixSketch": ""
-   },
-   {
-    "id": "RF-071",
-    "priority": "P3",
-    "verdict": "STILL_PRESENT",
-    "evidence": "All three bullets persist. (1) demo/midgard-sdk/package.json declares \"@al-ft/midgard-core\": \"workspace:*\" in both devDependencies (line 29) and dependencies (line 50). (2) demo/.prettierignore lists **/coverage/, **/dist/, **/.architecture-f-wasm/, **/deploymentInfo/, **/logs/, **/node_modules/, and demo/package.json's format-check script inlines the same six exclusions again as negated globs. (3) pnpm is not pinned to one exact version across surfaces: demo root and midgard-node/da-committee-node pin pnpm@9.15.4+sha512, but demo/midgard-manager/package.json:6 declares \"pnpm@9.15.4\" without the integrity hash, docs-site/package.json:5 declares pnpm@10.11.0, and CI workflows (midgard-node-ci.yml, evidence-integrity-ci.yml) use pnpm/action-setup@v4 with floating `version: 9`.",
-    "fixSketch": ""
-   },
-   {
-    "id": "RF-072",
-    "priority": "P3",
-    "verdict": "STILL_PRESENT",
-    "evidence": "Both files remain in demo/midgard-validation/tests/: c26-investigation-cml-depth-limits.test.ts and c26-investigation-iterative-gate.test.ts (the finding's second filename was slightly off; this name also existed at reviewed head d145d19d). Both headers still read 'C26 INVESTIGATION SCAFFOLDING \u2014 throwaway, not evidence' and gate every case behind `process.env.MIDGARD_C26_INVESTIGATION === \"1\"` via describe.skip. demo/midgard-validation/vitest.config.ts includes them in the default suite (include: [\"./tests/**/*.test.{ts,tsx}\"]). No commits since d145d19d touched either file.",
-    "fixSketch": ""
-   },
-   {
-    "id": "RF-074",
-    "priority": "P3",
-    "verdict": "STILL_PRESENT",
-    "evidence": "demo/midgard-node/tests/commit-block-header-worker-output.test.ts:88-97 is unchanged: it defines type-level `CommitBlockHasLowerValidityBound = \"validFrom\" extends keyof ProductionCommitBlockHeaderParams ? true : false`, assigns the constant `true`, and asserts `expect(commitBlockHasLowerValidityBound).toBe(true)` \u2014 the runtime assertion is tautological; any value it has is delivered at typecheck, not by the test run. The rest of the file contains genuine behavior tests, but the flagged test remains as reviewed.",
-    "fixSketch": ""
-   },
-   {
-    "id": "RF-082",
-    "priority": "P3",
-    "verdict": "STILL_PRESENT",
-    "evidence": "File unchanged since reviewed head (git log d145d19d..HEAD empty for it). Current tests are all direct-admission calls (e.g. handlers.handlePayloadSubmit(Buffer.from([0xff])) at tests/libp2p-payload-protocols.test.ts:239); the stream-level tests removed at 1cf60653 ('cancels a queued admission when its absolute request deadline expires', 'aborts a stalled inbound submit and releases process-wide admission', visible at c4e0ac9a) were not restored. The inbound handler wrapper createDaLibp2pPayloadRequestHandlers (demo/da-committee-node/src/da/libp2p/payload-source.ts:263-340), which wires deadline+admission+stream.abort, has no test anywhere (only use: src/index.ts:85). No test proves a healthy request after a malformed frame. Partial mitigation existed at review time too: midgard-core/tests/da-request-deadline.test.ts covers the generic helper; libp2p-runtime.test.ts:311 covers only the outbound request deadline.",
-    "fixSketch": ""
-   },
-   {
-    "id": "RF-083",
-    "priority": "P3",
-    "verdict": "STILL_PRESENT",
-    "evidence": "demo/da-committee-node/tests/helpers/deployment-fixture.ts:130 'const templateContract = fixtureContracts.stateQueueSpend!;' and :157-158 'const existing = fixtureContracts[contractName]; const source = existing ?? templateContract;' still fill missing slots with stateQueueSpend material. Not dead code: the fixture JSON (tests/fixtures/da-contract-deployment-info.json) supplies only 6 contracts while DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES (demo/midgard-core/src/deployment-manifest-identity-v1.ts:24-76) lists 52, so ~45 slots \u2014 including all fraud-proof validators whose script hashes seed the catalogue trie at :178-190 \u2014 are fabricated copies of stateQueueSpend. No commit in d145d19d..HEAD touched the file.",
-    "fixSketch": ""
-   },
-   {
-    "id": "RF-084",
-    "priority": "P3",
-    "verdict": "STILL_PRESENT",
-    "evidence": "The recomputation test demo/lucid-midgard/tests/native-high-cardinality-fixture.test.ts (present at d64865ed, rebuilt the fixture via buildHighCardinalityNativeTxFixture and compared it to the stored JSON and generated Aiken files) is gone and has no replacement. Currently the only consumer of tests/fixtures/native-high-cardinality.json is scripts/generate-native-compact-aiken-goldens.mjs:126, a mutation script exposed solely as the manual package script 'fixtures:native-compact' (demo/lucid-midgard/package.json:23). Grep over demo/lucid-midgard/tests, .github/workflows, and demo/scripts finds no test or CI step recomputing the fixture; onchain native-tx.high-cardinality.test.ak still exists but only proves Aiken matches the frozen constants, not that the fixture matches current TS encoder behavior.",
-    "fixSketch": ""
-   },
-   {
-    "id": "RF-085",
-    "priority": "P3",
-    "verdict": "STILL_PRESENT",
-    "evidence": "onchain/aiken/validators/user-events/deposit.ak:376-378 'test deposit_mint_accepts_exactly_ten_non_nft_assets_across_ada_and_multiple_policies() { test_deposit_mint(test_valid_to + env.event_wait_duration, False) }' is behaviorally identical to :384-386 'test deposit_mint_accepts_exact_inclusion_time() { test_deposit_mint(test_valid_to + env.event_wait_duration, False) }' \u2014 same inclusion time, same include_eleventh flag, no distinct boundary. Assessed the committed state, which equals the working tree: deposit.ak is not among the dirty protected files and no commit in d145d19d..HEAD touched it.",
-    "fixSketch": ""
-   }
-  ],
- "ALREADY_FIXED": [
-   {
-    "id": "RF-032",
-    "priority": "P1",
-    "verdict": "ALREADY_FIXED",
-    "evidence": "The published state-changing route is retired: demo/package.json no longer exposes goal:accept:testnet, the verification plan has no accept-testnet phase or state-changing phase, the old wrapper is removed, and the runner rejects direct accept-testnet requests with an explicit C79-OPEN error. C79 remains OPEN because its complete orchestrator and prerequisite live acceptance primitives are not present. This removes the misleading production route without claiming C80-C87/Q57/QG3/W45-W46/WG2 completion."
-   },
-   {
-    "id": "RF-004",
-    "priority": "P1",
-    "verdict": "ALREADY_FIXED",
-    "evidence": "Fixed by commit 0f3b8538 (VM-DEFECT-7): in `script_sources_replay_item`, the source-total-count argument to `encode_script_sources_witness` changed from `control.source_total_count` to `next_sources.count`. Current code at onchain/aiken/lib/midgard/validation-machine-v1.ak:8832 reads `next_sources.count,` (after `control.receive_scan,` at :8831), so the replay successor carries the grown source count and the encoder completion condition is satisfiable. Verified in BOTH states: `git show HEAD:...` and the working-tree file are identical here (git diff HEAD for this file is empty). Commit evidence cites the previously failing witness `script_sources_replay_appends_reference_scripts` now passing 1/1, matching the TS reference model (validation-machine.ts:2090)."
-   },
-   {
-    "id": "RF-005",
-    "priority": "P1",
-    "verdict": "ALREADY_FIXED",
-    "evidence": "Fixed by commit b7cacd85 (C21-STAGE4 Option A) plus TS pins in 75736e4c. `script_sources_stage_four` no longer reveals item bytes: current onchain/aiken/lib/midgard/validation-machine-v1.ak:8973 reads `expect TransactionRedeemerItemBeginWitness { collection_proof } = auxiliary` (proof-only tag-29); the fold verifies only the authenticated tuple via `bounded_collection_v1.verify_item` (:8988) with the 16,384 `item_length` cap retained (:8987, const :2064). Stage-4 one-step evidence is now O(1) in output size, so admitted 16,384-byte outputs are challengeable \u2014 TS test complete-item-proof-fit-v1.test.ts was rewritten to prove the maximum output builds a stage-4 argument (evidence < 2,048 bytes). Verified in BOTH states: committed HEAD and working tree are identical at this site."
-   },
-   {
-    "id": "RF-025",
-    "priority": "P1",
-    "verdict": "ALREADY_FIXED",
-    "evidence": "Fixed by commit 25f15014 (goal(ci): fix the three deeper failures unmasked by the lockfile repair). docs-site/content/docs/fault-proofs/overview.mdx now reads \"The 31 commands are declared in the canonical usage template in bin.ts\" and \"The commands fall into five groups\", with a new Scaffold table row: \"| **Scaffold** | `scaffold-family` | family-scaffold/ (generate-v1.ts et al.) | ...\". Ran the required verifier on the current tree: `node docs-site/scripts/check-docs-facts.mjs` outputs \"Docs facts check passed: 10 fact groups.\""
-   },
-   {
-    "id": "RF-026",
-    "priority": "P1",
-    "verdict": "ALREADY_FIXED",
-    "evidence": "Fixed by commit 25f15014, which rebound 14 per-class source hashes, the watcher package inventory, and evidence hashes. docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json now lists \"demo/midgard-watcher/src/public-da-client.ts\" (line 38) and \"demo/midgard-watcher/tests/public-da-client.test.ts\" (line 53). Ran the exact CI verifier on the current tree: `node demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs` outputs \"Canonical V1 watcher dependency map verified: 8 dependency classes.\""
-   }
-  ],
-  "INVALID": [
-   {
-    "id": "RF-042",
-    "priority": "P2",
-    "verdict": "INVALID",
-    "evidence": "The claim was wrong at the reviewed head: demo/midgard-fault-proofs/src/validation-dispute/submit.ts is byte-identical between d145d19d and HEAD (empty git diff), and the guard already existed. `MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES = 16 * 1024` (submit.ts:120) and `requireL1ProofEnvelope` (:295-309) verify the complete signed transaction CBOR is <= 16,384 bytes, and the guard is invoked immediately before every one of the module's twelve `.submit()` calls (guard/submit pairs at 1383/1384, 1541/1545, 1826/1827, 1954/1955, 2114/2115, 2298/2302, 2510/2514, 3551/3552, 3715/3716, 4111/4121, 4324/4325, 4512/4513). Individual datum/redeemer payloads are additionally bounded by exactPlutusDataFromCbor (:509-515). The submission path therefore does prove the canonical 16 KiB fit before submitting."
-   }
-  ]
- }
+  "summary": {
+    "STILL_PRESENT": 48,
+    "ALREADY_FIXED": 5,
+    "INVALID": 1
+  },
+  "byVerdict": {
+    "STILL_PRESENT": [
+      {
+        "id": "RF-001",
+        "priority": "P1",
+        "verdict": "STILL_PRESENT",
+        "evidence": "onchain/aiken/validators/user-events/tx-order-v1.ak:149 still reads `expect _verified = verify_order_receipts(` ... `)` and the mint handler unconditionally returns `True` at :158. The binding pattern is irrefutable, so the Boolean is discarded. `verify_order_receipts` (lib/midgard/user-events/tx-order-v1.ak:357-414) can return False without aborting: the `None` branch returns `next_non_empty_field(commitments, lengths, 0) == 9`, and the terminal branch returns `and { quantity_of(...) == 1, terminal_receipt_is_valid(...) }`. Only the formatter commit 681ca0b4 touched these files since d145d19d; no semantic fix landed. Worktree and HEAD agree (file not dirty).",
+        "fixSketch": "Change to `expect True = verify_order_receipts(...)` (or make it the returned conjunct) and add negative mint tests for missing, malformed, and mismatched receipts."
+      },
+      {
+        "id": "RF-002",
+        "priority": "P1",
+        "verdict": "STILL_PRESENT",
+        "evidence": "onchain/aiken/lib/midgard/mpf-proof-v1.ak: in `non_membership_proof_is_well_formed`, the terminal Fork arm (:120-123) checks only `common_step_is_well_formed` + `neighbor_is_well_formed`, and the terminal Leaf arm (:138-142) checks only key/value lengths \u2014 neither requires divergence from the queried path, unlike the non-terminal arms (:129, :149). `do_excluding` terminal Leaf (:220) is `combine(suffix(key, cursor), value)`, so for a singleton trie containing the queried key, a proof `[Leaf{key: blake2b_256(query), value}]` reproduces the root and `does_not_have` (:255-271) returns True for a present key. Consumed at validation-machine-v1.ak:6330 with `reject_input_not_found` (:6334). No fixing commit since d145d19d; worktree and HEAD agree.",
+        "fixSketch": "In the terminal Fork arm require `nibble(path, next_cursor - 1) != neighbor.nibble`, and in the terminal Leaf arm require the leaf key to diverge from the queried path (e.g. `key != path` or the nibble check); add singleton-presence regression tests."
+      },
+      {
+        "id": "RF-003",
+        "priority": "P1",
+        "verdict": "STILL_PRESENT",
+        "evidence": "demo/midgard-node/src/transactions/state-queue/merge-to-confirmed-state.ts:1244 still calls `yield* applyConfirmedLedgerDelta(confirmedLedgerSnapshot.delta);` \u2014 the child delta only \u2014 while confirmed-ledger-snapshot.ts:250 materializes `deltaChain: [...baseDeltaChain, delta]` for pipelined journals (base recursion :210-229). The chain applier `applyConfirmedLedgerDeltaChainTransaction` (confirmed-ledger-snapshot.ts:322-361, with base/final root assertions) exists but is called only from commands/listen-startup.ts:337, not from the merge path. `applyConfirmedLedgerDelta`'s DELETE silently no-ops on absent outrefs and there is no post-apply root recheck at the merge site. No commit since d145d19d touched either file.",
+        "fixSketch": "At merge-to-confirmed-state.ts:1244, apply the whole chain via `applyConfirmedLedgerDeltaChainTransaction(confirmedLedgerSnapshot)` (as listen-startup.ts:337 already does), keeping the base-root and final-root assertions before journal state is cleared."
+      },
+      {
+        "id": "RF-006",
+        "priority": "P1",
+        "verdict": "STILL_PRESENT",
+        "evidence": "onchain/aiken/lib/midgard/ledger-state.ak:282-292 `header_v1_is_valid` still checks only `protocol_version`, three `root_matches_count_v1` pairs, and `header_transition_commitments_v1_are_valid` \u2014 it never references `block_slot`, `expected_network_id`, `min_fee_a`, `min_fee_b` (declared :79-82). Commit/merge trust it (validators/state-queue.ak:40 via `commit_block_header_output_is_valid_v1`, and :213). Claim logic validation-claim-v1.ak:81-88 requires `expected_network_id == header.expected_network_id`, `expected_network_id == 0 || == 1`, `min_fee_a/b >= 0`, `block_slot >= 0` with exact header equality, so a header committed with out-of-range scalars makes `validation_context_is_exact` unsatisfiable and the block undisputable. Only formatter commit 681ca0b4 touched ledger-state.ak since review; worktree and HEAD agree.",
+        "fixSketch": "Add to `header_v1_is_valid`: `header.expected_network_id == 0 || == 1` (or exact deployment network), `header.min_fee_a >= 0`, `header.min_fee_b >= 0`, and the block-slot invariant (e.g. `header.block_slot >= 0`), mirroring validation-claim-v1.ak:81-88."
+      },
+      {
+        "id": "RF-007",
+        "priority": "P1",
+        "verdict": "STILL_PRESENT",
+        "evidence": "onchain/aiken/lib/midgard/ledger-state.ak:216-222 (clean working tree = HEAD): `fn root_matches_count_v1(root: ByteArray, count: Int) -> Bool { if count == 0 { root == env.empty_merkle_tree_root } else { root != env.empty_merkle_tree_root } }`. No `bytearray.length(root) == 32` check anywhere in the file (only `length` hit is field_preimage_lengths_cbor at :382). `header_v1_is_valid` (:282-291) and `header_transition_commitments_v1_are_valid` (:263-278) use only this predicate; state-queue.ak admits headers through it, so a 1-byte positive-count root still passes. Only commit touching the file since d145d19d is 681ca0b4 (format-only).",
+        "fixSketch": "In root_matches_count_v1's nonzero branch, additionally require `bytearray.length(root) == 32` (and apply the same to the empty branch if desired via the constant's known length)."
+      },
+      {
+        "id": "RF-008",
+        "priority": "P1",
+        "verdict": "STILL_PRESENT",
+        "evidence": "On-chain: ScheduledLedgerNonMembershipWitness is the 7th constructor (index 6, 4 fields) of ValidationAuxiliaryWitnessV1 (validation-machine-v1.ak:116-121, committed, now clean) and is emitted by resolve-inputs-non-membership-semantic-v1.ak:57-70. Off-chain: demo/midgard-fault-proofs/src/validation-dispute/submit.ts VALIDATION_AUXILIARY_SHAPES_V1 (:577-601) has no index-6 shape; resolver-7 routing at :666-684 maps semantics 0/1\u2192none, 2\u2192[5,6], 3\u2192[32,1], 4\u2192[33,2], else\u2192resolvedInputReplay [7,4], and redeemer construction at :2748-2784 repeats the same mapping \u2014 semantic 5 demands constructor 7, so the constructor-6 non-membership witness is rejected everywhere. grep for 'onMembership' in submit.ts returns nothing. No commits touched either file since d145d19d.",
+        "fixSketch": "Add `scheduledLedgerNonMembership: [6, 4]` to VALIDATION_AUXILIARY_SHAPES_V1, route the non-membership semantic index to it in both auxiliaryShapeV1 and the redeemer-field construction, and add a submit-to-validator integration test."
+      },
+      {
+        "id": "RF-009",
+        "priority": "P1",
+        "verdict": "STILL_PRESENT",
+        "evidence": "cek-constant-v1.ak:11 `pub const max_direct_payload_bytes = 9215`; :93 `expect bytearray.length(payload_cbor) <= max_direct_payload_bytes` admits direct payloads to 9,215 bytes. constant_root_v1 (cek-constant-v1.ak:196-209) commits the payload via cek_data_v1.semantic_data_summary_v1, whose BytesData/IntegerData leaves call `cek_proof_v1.hash_blob_chunk_v1(bytes)` (cek-data-v1.ak:883,891), and hash_blob_chunk_v1 aborts above 4,095: cek-proof-v1.ak:484-485 `expect bytearray.length(chunk) <= max_blob_chunk_bytes` with max_blob_chunk_bytes = 4095 (:33). Machine consumes it at cek-machine-v1.ak:717-718 (ComputeConstant \u2192 constant_root_v1). So a valid direct ByteString/large-integer constant of 4,096-9,214 bytes decodes but aborts. Only format commit 681ca0b4 since review.",
+        "fixSketch": "Give semantic_data_summary_v1's byte/integer leaves a shared bounded blob-root helper that chunks payloads over 4,095 bytes via hash_blob_branch_v1 (same commitment as the streamed path), and use it from both direct and streamed witnesses."
+      },
+      {
+        "id": "RF-010",
+        "priority": "P1",
+        "verdict": "STILL_PRESENT",
+        "evidence": "demo/midgard-validation/src/cek-data-tree.ts:235 `const addData = (data: Data): DataSummary =>` recurses through addList (:158) / addPairs (:193) with no explicit stack; per node it re-serializes the entire subtree: :323-325 `const canonicalLength = BigInt(encodeMidgardCekPlutusDataV1(data).length);` plus `midgardCekDataMemorySizeV1(data)` (:326), giving repeated subtree recomputation (quadratic on unary chains). The boundary test still admits depth 4,043: demo/midgard-validation/tests/plutus-data-unary-depth-boundary.test.ts:39 `acceptedDepth: 4_043`. git log d145d19d..HEAD shows no commits to either file.",
+        "fixSketch": "Replace addData/addList/addPairs recursion with one explicit post-order work stack and derive cborLength/memory incrementally from child summaries instead of re-serializing each subtree."
+      },
+      {
+        "id": "RF-011",
+        "priority": "P1",
+        "verdict": "STILL_PRESENT",
+        "evidence": "demo/midgard-core/src/cek-proof.ts:2140 (inside decodeSemanticConstantTypeV1, :2133-2181): `const decoded = LucidData.from(Buffer.from(typeCbor).toString(\"hex\"));` \u2014 no re-encode/byte-equality check follows; the function only validates it is an integer list and tag structure. Aiken's decoder requires round-trip canonical (indefinite) encoding: cek-constant-v1.ak:68-69 `expect Some(type_data) = cbor.deserialise(type_cbor); expect cbor.serialise(type_data) == type_cbor` \u2014 `[0]` serializes as `9f00ff`, so definite `8100` is rejected on L1 but accepted by the TS decoder (used at :3425). No commits touched cek-proof.ts since d145d19d; file is clean.",
+        "fixSketch": "After LucidData.from, re-encode with the canonical Plutus-Data (indefinite-list) encoder and require byte-for-byte equality with typeCbor before accepting."
+      },
+      {
+        "id": "RF-012",
+        "priority": "P1",
+        "verdict": "STILL_PRESENT",
+        "evidence": "demo/midgard-core/src/cek-proof.ts semanticConstantMemoryV1 (:2484-2527): :2500 `if (type.kind === \"unit\" || type.kind === \"boolean\") return 1n;` \u2014 accepts any payload shape; :2494-2498 treats string identically to bytes with no UTF-8 round-trip; :2524-2526 blsG1/blsG2/millerLoop return 48n/96n/192n with no payload-length check and millerLoop is accepted although Aiken's payload_matches_type returns False for it (cek-constant-v1.ak:123-190 enforces constr-0/1 empty-fields for unit/bool, decode_utf8 round-trip for strings, 48/96-byte BLS, and rejects miller-loop). Result consumed at :3426 (`const memory = semanticConstantMemoryV1(constantType, decodedPayload);`) with no separate type/payload predicate. File unchanged since d145d19d.",
+        "fixSketch": "Add a TS payloadMatchesTypeV1 mirroring Aiken's payload_matches_type (constr shape for unit/bool, UTF-8 round-trip for strings, 48/96-byte BLS bytes, reject miller-loop) and invoke it in the :3425-3427 validation path; share cross-language fixtures per constant kind."
+      },
+      {
+        "id": "RF-027",
+        "priority": "P1",
+        "verdict": "STILL_PRESENT",
+        "evidence": "Verifier is at demo/scripts/verify-canonical-v1-watcher-focused-tests.mjs (finding cited a slightly different filename). Its expectedByFile map (lines 16-63) still hardcodes exactly 13 test files and requires `expectedByFile.size !== 13` to fail; the dependency map's requiredWatcherPackage has no publicDaClient focused class. tests/public-da-client.test.ts exists, is ungated (plain describe/it), and is collected by the vitest glob `./tests/**/*.test.ts`. Ran the verifier on the current tree: it fails with \"Watcher focused-test verification failed: Vitest collected counts do not match the dependency map\" (fail() at line 66, thrown from line 169). It is invoked by .github/workflows/evidence-integrity-ci.yml:36 \u2014 deterministic required-gate failure. Unchanged since d145d19d.",
+        "fixSketch": "Add a publicDaClient class with its expectedFocusedTestCount to canonical-v1-watcher-dependency-map-v1.json and a 14th expectedByFile entry (bumping the size check 13\u219214) in verify-canonical-v1-watcher-focused-tests.mjs, then rebind the map hashes."
+      },
+      {
+        "id": "RF-028",
+        "priority": "P1",
+        "verdict": "STILL_PRESENT",
+        "evidence": "demo/midgard-validation/scripts/verify-goal-cardano-capability-p2-data-breadth.mjs:7 still has `const EXPECTED_TEST_COUNT = 2;` enforced exactly (numTotalTests === EXPECTED_TEST_COUNT, assertionResults.length === EXPECTED_TEST_COUNT, lines ~75-94). The suite demo/midgard-validation/tests/data-breadth-boundary.test.ts now declares 4 tests: `it.each([\"constructor\", \"list\", \"map\"] as const)` at line 624 (3 tests) plus `it(\"retains maximum constructor/list/map breadth through genuine Cardano redeemers...\")` at line 803. The retained-DA verifier demo/midgard-fault-proofs/tests/fixtures/verify-cardano-capability-p2-retained-da-v1.mjs:191 independently hardcodes `\"tests/data-breadth-boundary-v1.test.ts\": 2`. git log d145d19d..HEAD shows no commits to either gate or the suite.",
+        "fixSketch": "Update EXPECTED_TEST_COUNT to 4 in verify-goal-cardano-capability-p2-data-breadth.mjs and the per-suite count to 4 at verify-cardano-capability-p2-retained-da-v1.mjs:191, or derive both from a single manifest."
+      },
+      {
+        "id": "RF-029",
+        "priority": "P1",
+        "verdict": "STILL_PRESENT",
+        "evidence": "onchain/aiken/lib/midgard/validation-controls-v1-abi.test.ak:167 still maps `30 -> 1` in auxiliary_arity (fixture corpus self-consistently pins tag 30 at arity one via blake2b hash 255f8027...). But demo/midgard-validation/src/validation-machine-data.ts:1356-1360 emits `new Constr(30, [collectionProofData(auxiliary.collectionProof), bytes(auxiliary.itemCbor)])` (arity two); the SDK schema at demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness.ts:1140-1143 declares TransactionFieldItemWitness with collection_proof + item_cbor; and the Aiken type in validation-machine-v1.ak (31st constructor, index 30) has both fields at lines ~272-275. validation-machine-v1.ak is now CLEAN at HEAD (no longer dirty), so committed and working states are identical here; the still-dirty protected files (cek-data-traverse-v1.ak, redeemer-item-proof-v1.ak) are not implicated. Option A (b7cacd85) moved stage-4 to the tag-29 witness but did not reconcile the tag-30 fixtures.",
+        "fixSketch": "Regenerate the auxiliary_corpus_cbor fixture and auxiliary_arity map (30 -> 2) from the canonical ValidationAuxiliaryWitnessV1 schema and repin the blake2b hash, ideally emitting one shared fixture consumed by the Aiken, TS, and SDK suites."
+      },
+      {
+        "id": "RF-030",
+        "priority": "P1",
+        "verdict": "STILL_PRESENT",
+        "evidence": "technical-spec/1-ledger-state/1-block.tex:139-159 still defines Header with 8 roots (prev_utxos, utxos, withdrawals, forced_transactions, transactions, deposits, transition_trace, event_to_step) and 6 counts (withdrawal, forced_transaction, l2_transaction, deposit, total_event, transition_step) \u2014 no validation_traces_root, validation_trace_count, block_slot, expected_network_id, min_fee_a, or min_fee_b. onchain/aiken/lib/midgard/ledger-state.ak:60-86 HeaderV1 has 9 roots (adds validation_traces_root), 7 counts (adds validation_trace_count), plus block_slot, expected_network_id, min_fee_a, min_fee_b. Only formatter commit 681ca0b4 touched ledger-state.ak since the reviewed head; the spec file is unchanged.",
+        "fixSketch": "Update the Header record in 1-block.tex to the nine-root/seven-count HeaderV1 including slot, network, and fee fields (or generate/mechanically verify the spec table from the canonical Aiken schema), then align the architecture-doc projection."
+      },
+      {
+        "id": "RF-031",
+        "priority": "P1",
+        "verdict": "STILL_PRESENT",
+        "evidence": "All four sources unchanged since d145d19d. Legacy spec technical-spec/1-ledger-state/6-transaction.tex:12 defines `TxSet \u2254 Map(TxId, MidgardTxCompact)` (compact = body_hash/wits_hash/validity). technical-spec/6-offchain-data-architecture/1-da-layer.tex:48-49 instead maps `forced_transactions : [(TxOrderId, ForcedInclusionTx)]`, `transactions : [(TxId, L2TransactionSourceV1)]`. docs/consensus-profile-v1.md:100-109 declares `ForcedInclusionTxV1 { tx_id, compact_tx, field_preimage_hashes, operator_verdict }`. The SDK demo/midgard-sdk/src/ledger-state.ts:692-700 declares `ForcedInclusionTxV1Schema { tx_id, transaction_commitment, source, operator_validity }` with source = NativeTxProofSourceV1 { compact_cbor, witness_set_compact_cbor, field_preimage_lengths_cbor } (lines 558-562) \u2014 different fields than the profile. Implementation commits the SDK shapes: demo/da-committee-node/src/da/payload.ts:243-252 roots body.transactions/body.forced_transactions directly. Disagreement stands.",
+        "fixSketch": "Declare the SDK schemas normative; rewrite the TxSet equation in 6-transaction.tex and the ForcedInclusionTxV1 field list in consensus-profile-v1.md to match, and bind a cross-language fixture to the exact leaf CBOR encodings."
+      },
+      {
+        "id": "RF-033",
+        "priority": "P1",
+        "verdict": "STILL_PRESENT",
+        "evidence": "demo/da-committee-node/tests/conflict-evidence.test.ts:31 opens `const store = await JsonFileWatcherStore.open(directory);` and line 44 opens `const reopened = await JsonFileWatcherStore.open(directory);` with no `close()` anywhere in the file. JsonFileWatcherStore.open (src/store.ts:208-223) creates `${filePath}.lock` with flag \"wx\" and throws on EEXIST. Ran `npx vitest run tests/conflict-evidence.test.ts`: test \"persists authenticated conflicting signatures once and survives restart\" fails deterministically with `watcher file store is already exclusively leased: /tmp/.../watcher.json.lock` at tests/conflict-evidence.test.ts:44. 1 failed / 1 passed.",
+        "fixSketch": "Insert `await store.close();` before the reopen at line 44 (and close `reopened` at test end); keep a separate assertion that a second concurrent exclusive open rejects."
+      },
+      {
+        "id": "RF-034",
+        "priority": "P2",
+        "verdict": "STILL_PRESENT",
+        "evidence": "demo/da-committee-node/src/store/postgres.ts:530 \u2014 `saveDaSignature` calls `const sourceState = await lockL1SourceState(client);`. `lockL1SourceState` (postgres.ts:956-966) runs `SELECT record FROM watcher_l1_source_state WHERE id = 1 FOR UPDATE` and throws `\"decision outbox lacks durable L1 source state\"` when no row exists. The row is seeded only by `ensureL1SourceStateRow` via `mergeLockedL1SourceState` (lines 969-983), reached from `saveL1SourceState` (line 184, watcher tick) or decision-outbox begin (line 237); schema creation (line 794) inserts nothing. So on a fresh PostgreSQL deployment every DA signature arriving before the first watcher tick is rejected. File unchanged since d145d19d.",
+        "fixSketch": "In saveDaSignature, treat an absent watcher_l1_source_state row as non-quarantined under the same row lock (e.g., call ensureL1SourceStateRow with a default state before lockL1SourceState, or use a lock variant returning undefined on zero rows)."
+      },
+      {
+        "id": "RF-035",
+        "priority": "P2",
+        "verdict": "STILL_PRESENT",
+        "evidence": "File actually lives at demo/da-committee-node/src/da/proof-artifacts.ts (the finding's demo/midgard-node path never existed at either head); unchanged since d145d19d. Line 417 computes `roots = await computeDaPayloadV1Roots(payload)` which returns DaPayloadRootSetV1 including `validationTracesRoot` (payload.ts:268-279), but comparisons at lines 424-427 use `rootMismatches` (lines 928-960) covering only the 7 legacy roots \u2014 `validationTracesRoot` is dropped; `countMismatches` (962-982) and `headerRoots`/`headerCounts` (984-1002) likewise omit validationTraceCount/validationTracesRoot even though HeaderV1 commits both (ledger-state.ts:43,50). The proof-bundle hash `rootSummaryValues` (566-578) also excludes it. An artifact whose validation_traces mismatch the committed header still passes and is served.",
+        "fixSketch": "Widen proof-artifacts comparisons to DaPayloadRootSetV1/DaPayloadCountSetV1: add validationTracesRoot to rootMismatches, headerRoots, and rootSummaryValues, and validationTraceCount to countMismatches and headerCounts."
+      },
+      {
+        "id": "RF-036",
+        "priority": "P2",
+        "verdict": "STILL_PRESENT",
+        "evidence": "demo/midgard-sdk/src/ledger-state.ts:199-203 \u2014 `validateHeaderTransitionCommitmentsV1Program` calls `validateSourceRootCountV1(\"forced_transactions\", commitments.forcedTransactionsRoot, commitments.forcedTransactionCount)` and later only `validation_traces` (lines 267-271). The commitments type includes withdrawalsRoot, transactionsRoot, depositsRoot (lines 98-105), but no empty-root-vs-count consistency check exists for withdrawals/transactions/deposits \u2014 counts get only bound checks (144-198). A header with e.g. depositCount=5 and depositsRoot=EMPTY_MERKLE_TREE_ROOT passes. state-queue.ts:1125 consumes this validation. File unchanged since d145d19d.",
+        "fixSketch": "Apply validateSourceRootCountV1 to the withdrawals, transactions (l2TransactionCount), and deposits root/count pairs alongside the existing forced_transactions and validation_traces checks."
+      },
+      {
+        "id": "RF-037",
+        "priority": "P2",
+        "verdict": "STILL_PRESENT",
+        "evidence": "Assessed committed HEAD ba701b2e; file unchanged since d145d19d. In demo/midgard-sdk/src/fraud-proof/evidence-source.ts:268-308 (file moved to fraud-proof/), admitAuthenticatedL1ObservationV1 defaults minimumConfirmationDepth to 1 but never validates the caller-supplied value. The only check is `!Number.isSafeInteger(observation.confirmationDepth) || observation.confirmationDepth < minimumConfirmationDepth` (lines 298-301). With minimumConfirmationDepth = NaN, `depth < NaN` is always false, so any safe-integer depth (including negative) is admitted; with -1, depth 0 and -1 pass. demo/midgard-fault-proofs/src/evidence/canonical-block-evidence.ts:148-160 forwards the option unvalidated. Fails open exactly as claimed.",
+        "fixSketch": "At the top of admitAuthenticatedL1ObservationV1, reject unless Number.isSafeInteger(minimumConfirmationDepth) && minimumConfirmationDepth >= 1 (reusing the insufficient_confirmation_depth or a new rejection code)."
+      },
+      {
+        "id": "RF-038",
+        "priority": "P2",
+        "verdict": "STILL_PRESENT",
+        "evidence": "Assessed committed HEAD; file unchanged since d145d19d. deriveValidationProofItemPublicationV1 (demo/midgard-sdk/src/fraud-proof/validation-proof-item.ts:81-109) only regex-checks itemCbor hex and 32-byte ids, then sets `collection_proof: collectionProof, item_cbor: itemCbor` with no check that itemCbor's byte length equals collectionProof.item_length or that its hash equals collectionProof.item_commitment. The cited test still exists: demo/midgard-sdk/tests/validation-proof-item.test.ts:119-135 passes `\"a5\".repeat(14_396)` (14,396 bytes) with the shared collectionProof whose item_length is 2n (line 16) and the derivation succeeds.",
+        "fixSketch": "In deriveValidationProofItemPublicationV1, require BigInt(itemCbor.length / 2) === collectionProof.item_length and that the canonical item hash equals collectionProof.item_commitment before building the datum."
+      },
+      {
+        "id": "RF-039",
+        "priority": "P2",
+        "verdict": "STILL_PRESENT",
+        "evidence": "Assessed committed HEAD; files unchanged since d145d19d. spec-v1.ts parses and shape-checks outputState (demo/midgard-fault-proofs/src/family-scaffold/spec.ts:207, 225-230) but grep over the family-scaffold package shows `outputState` appears only in spec-v1.ts \u2014 emit-v1.ts never reads it. No check that steps[N].outputState equals steps[N+1].inputState exists in parseFraudProofFamilyScaffoldSpecV1 (spec-v1.ts:280-335). Emitted validators (emit-v1.ts:165-256) leave the output-state binding as `todo`/TODO comments (e.g. lines 196-201, 251-254), and emitSdkFamilyModuleV1 (emit-v1.ts:558-609) derives schemas only from inputState/argsFields. outputState is carried and dropped exactly as claimed.",
+        "fixSketch": "In parseFraudProofFamilyScaffoldSpecV1, after mapping steps, reject unless steps[i].outputState deep-equals steps[i+1].inputState (field names and types), and derive the emitted next-state types from it."
+      },
+      {
+        "id": "RF-040",
+        "priority": "P2",
+        "verdict": "STILL_PRESENT",
+        "evidence": "Assessed committed HEAD; files unchanged since d145d19d. spec-v1.ts:319-321 rejects only `!Array.isArray(rawSteps) || rawSteps.length === 0`, so a one-step spec parses: position 0 is simultaneously first and terminal, and parseStep (lines 204-230) then accepts all-null inputState/outputState/argsFields. emitAikenStepValidatorV1 (emit-v1.ts:447-506) tests `isFirst` before `isTerminal` (line 472), so the single step emits the first-step body whose validator is parameterized on `step_02_validator_script_hash` (line 480) and expects continuation to a step-02 that is never generated; the finalize/mint terminal path is never emitted. Accepted spec, incoherent/unusable emission \u2014 as claimed.",
+        "fixSketch": "In parseFraudProofFamilyScaffoldSpecV1, reject specs with rawSteps.length < 2 using the existing invalid_step_sequence code."
+      },
+      {
+        "id": "RF-041",
+        "priority": "P2",
+        "verdict": "STILL_PRESENT",
+        "evidence": "Assessed committed HEAD; files unchanged since d145d19d. The density half holds: nothing requires transition_trace keys to be 0..N-1. reconstruct.ts decodes keys as bare integers (demo/midgard-fault-proofs/src/transition-trace/reconstruct.ts:887-892) and builds traceByStepIndex from them (:905-907); `step_index` never appears in reconstruct.ts, and validateDeclaredCounts (:292-335) checks only array lengths. Downstream, detect.ts:291-314 guards boundary checks with `first !== undefined` / `last !== undefined`, silently skipping a sparse trace missing step 0 or the last index, and detectTraceLinkFaults (:340-358) links sorted neighbors without requiring consecutive indexes. The duplicate half was wrong at the reviewed head too: validatePayloadEntryArray (:276-288) rejects unsorted/duplicate hex keys and decodeData (:170-174) enforces canonical re-encoding, precluding duplicate decoded keys.",
+        "fixSketch": "After decoding transition_trace, assert the decoded key set is exactly 0..counts.transitionStepCount-1 (and matches each value's step_index), raising a malformedPayload error or a dedicated detection otherwise."
+      },
+      {
+        "id": "RF-043",
+        "priority": "P2",
+        "verdict": "STILL_PRESENT",
+        "evidence": "bin.ts unchanged since d145d19d. The Q03 provenance is stderr-only: bin.ts:680-690 `process.stderr.write(diagnosticEvidenceBannerV1(...))` when `--midgard-node-url`/`--transactions-file` drive a prepare-* run; the same run then calls prepareDoubleSpendFromNode/FromFile and writeJson with no provenance embedded in the artifact (prepare-double-spend.ts has zero provenance references). Submission never checks grade: submit-step-01.ts:613-624 `readJsonFile(config.txInclusionPath)` then `parseSubmitStep01TxInclusion(txInclusionJson)` \u2014 no assertSecurityGradeEvidenceV1 call anywhere in bin.ts or submit-step-01.ts (grep: only src/evidence/** uses it). So diagnostic-sourced evidence remains prepare-able and submit-capable to L1.",
+        "fixSketch": "Embed the EvidenceProvenanceV1 record in every prepared artifact and make each submit*FromFiles path run assertSecurityGradeEvidenceV1 on it before building the transaction (or remove --midgard-node-url/--transactions-file from prepare entirely)."
+      },
+      {
+        "id": "RF-044",
+        "priority": "P2",
+        "verdict": "STILL_PRESENT",
+        "evidence": "File is demo/midgard-node/src/fibers/fetch-and-insert-tx-order-utxos.ts (finding said src/workers/, wrong at the reviewed head too; the cited line range matches the fibers file). Lines 588-593: try/catch swallows collectMidgardV1AttachedProgramEnvelopes errors, returning []. Lines 596-606: `CekProgramMaterialDB.persistVerifiedBundles(...).pipe(Effect.catchAll((cause) => Effect.logWarning(\\\"V1 tx-order ... is visible before its complete L1 CEK material bundle...\\\")))` \u2014 persistVerifiedBundles (database/cekProgramMaterial.ts:77+) fails with a single DatabaseError type for both verifyMidgardCekProgramMaterialBundleV1 failures and DB failures, so all are converted to a warning. Then lines 621-623 encode an empty sidecar and line 655 commits STATUS = ForcedTransactionsDB.Status.Awaiting.",
+        "fixSketch": "Give persistVerifiedBundles a typed material-not-yet-published error distinct from verification/infrastructure failures; in the fiber, catch only that typed condition and propagate everything else instead of Effect.catchAll -> logWarning."
+      },
+      {
+        "id": "RF-045",
+        "priority": "P2",
+        "verdict": "STILL_PRESENT",
+        "evidence": "Assessed committed state; file is clean (not in the dirty PROTECTED set). validation-claim-v1.ak: the only phase checks are line 329 `transition_step.phase == event_to_step.phase`, line 376 `initial.phase == validation_trace_v1.CanonicalDecode`, line 391 `terminal.phase == validation_trace_v1.Terminal`. No function derives TransitionPhase from the EventKey constructor (grep for any family-to-phase mapping across onchain/aiken/lib/midgard returns nothing). verify_source_authentication (lines 215-276) binds key family only to the source root domain, never to transition_step.phase. So committed roots containing a ForcedTransactionEventKey step whose phase is L2Transaction (ledger-state.ak:494-506 defines both enums independently) pass committed_claim_structure_is_valid.",
+        "fixSketch": "Add a phase_for_event_key(EventKey) -> TransitionPhase helper and require transition_step.phase == phase_for_event_key(event_key) in committed_claim_structure_is_valid."
+      },
+      {
+        "id": "RF-046",
+        "priority": "P2",
+        "verdict": "STILL_PRESENT",
+        "evidence": "builder.ts unchanged since d145d19d. fromTx (lines 3126-3153) builds a CompleteTx from imported CBOR: line 3134 `mergeCanonicalProofProgramMaterial(input instanceof CompleteTx ? input.programMaterial : [], options.programMaterial ?? [])` \u2014 that helper (builder/script-materialization.ts:324) only revalidates encoding and dedups; it never collects the tx's script envelopes or calls verifyMidgardCekProgramMaterialBundleV1. submit() (lines 774-786) asserts size and addr witnesses, then `provider.submitTx(this.txHex, this.programMaterial)` with no completeness assertion. Completeness IS enforced on the complete()/chain() paths via prepareProofBuilderState -> verifyMidgardCekProgramMaterialBundleV1 (script-materialization.ts:487-494), but the reviewer-cited import/submit path still allows a CompleteTx whose referenced scripts lack canonical material.",
+        "fixSketch": "In fromTx (or in submit before provider.submitTx), decode the tx's inline/reference script envelopes and run verifyMidgardCekProgramMaterialBundleV1(envelopes, programMaterial), throwing on incomplete material \u2014 mirroring prepareProofBuilderState's final check."
+      },
+      {
+        "id": "RF-047",
+        "priority": "P2",
+        "verdict": "STILL_PRESENT",
+        "evidence": "Assessed committed state; file clean. preimages.ak verify_canonical_mint_preimage_cbor (lines 541-561): hash gate `bounded_collection_v1.from_items(5, mint_policy_items(expect_deserialise(preimage_cbor))) == expected_hash` \u2014 for `a0`, mint_policy_items (line 358) hits the un_map_data branch (Map [] != List []) and returns [], the same item list as `80`, so the same commitment. Then line 550 `if preimage_cbor == #\\\"80\\\" { True } else { ... }`: `a0` takes the else branch, decode_canonical_map_header_at (line 415) returns Pair(1, 0) for tag 160, verify_canonical_mint_policies_at with remaining 0 returns offset 1 == bytearray.length(#\\\"a0\\\") -> True. No `policy_count > 0` expect exists, so both `80` and `a0` verify against the same expected_hash while the off-chain canonical encoder (encode_mint_preimage, line 368) emits only `80`.",
+        "fixSketch": "Add `expect policy_count > 0` after the map-header decode in the else branch, making `80` the unique empty-mint preimage encoding."
+      },
+      {
+        "id": "RF-048",
+        "priority": "P2",
+        "verdict": "STILL_PRESENT",
+        "evidence": "Config parsing accepts the full range: services/config.ts:563-579 rejects only `value <= 0 || value > MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes`, so any MAX_SUBMIT_TX_CBOR_BYTES in [1, max] boots the node. protocol-info.ts:96-104 then requires equality: `if (configuredMax !== MIDGARD_CONSENSUS_LIMITS_V1.maxTxCanonicalCborBytes) { throw new Error(\\\"MAX_SUBMIT_TX_CBOR_BYTES must equal the canonical V1 transaction bound\\\") }`. The GET /protocol-info handler (listen-router.ts:2159-2174) wraps encodeProtocolInfo in Effect.try and pipes `Effect.catchAll((e) => failWith500(...))`, so a node validly configured below the max serves HTTP 500 on that endpoint. Neither file changed since d145d19d.",
+        "fixSketch": "Make the two sites agree: either have encodeProtocolInfo report the configured submissionLimits value without demanding equality, or tighten config parsing to require equality so the node fails at startup rather than serving a 500."
+      },
+      {
+        "id": "RF-073",
+        "priority": "P2",
+        "verdict": "STILL_PRESENT",
+        "evidence": "All four source-text tests persist unchanged (git log d145d19d..HEAD on these paths is empty). demo/midgard-node/tests/canonical-commit-profile.test.ts:10-158 reads worker/submission source via readFile and applies regexes, e.g. line 79 `!/^const proofValidationSlotConfig =\\s*workerInput\\.data\\.forcedValidationSlotConfig;/.test(...)`. commit-source-completeness.test.ts:47-70 matchAll's regexes over submission.ts and compares string indexes for ordering. pipeline-status-route.test.ts:31-45 slices listen-router.ts source and asserts `expect(handler).toContain(\"PIPELINE_STATUS_ACTIVE_PENDING_FINALIZATION_STATUSES\")`. reconcile-da-attested.test.ts:133-141 asserts `expect(source).not.toContain(\"/v1/deployments/\")` and `not.toMatch(/\\bfetch\\s*\\(/u)` over reconcile.ts source. These can pass while runtime semantics are broken.",
+        "fixSketch": "Replace the regex/source-layout assertions with runtime tests that invoke the worker, submission, route handler, and reconcile functions through injected fakes and assert observable behavior (recorded call ordering, handler output), keeping at most a thin export-presence guard."
+      },
+      {
+        "id": "RF-075",
+        "priority": "P2",
+        "verdict": "STILL_PRESENT",
+        "evidence": "demo/lucid-midgard/tests/script-builders.test.ts is 74 lines with a single test (lines 53-73) that builds attach.Script/mintAssets/observe/receiveRedeemer state and asserts `builder.config().midgardNativeTxVersion` plus a `builder.snapshot().scripts` toMatchObject \u2014 no `.complete()` call anywhere in the file (the base-revision 8bae9403 version had 21 `.complete()` calls with hash/pointer/reference-script/rejection assertions). git log d145d19d..HEAD on demo/lucid-midgard/tests/ is empty; commit 5bf18902 ('removal reference-script completion') touched only midgard-fault-proofs/tests/submit-init-emulator.test.ts. Adjacent finalization/balancing tests call .complete() but do not restore the script-builder completion matrix.",
+        "fixSketch": "Reinstate a compact end-to-end matrix in script-builders.test.ts: complete() transactions with inline scripts, reference scripts via readFrom, and deliberately missing script material, asserting witness pointers/hashes, reference-script materialization, and rejection errors."
+      },
+      {
+        "id": "RF-062",
+        "priority": "P3",
+        "verdict": "STILL_PRESENT",
+        "evidence": "demo/midgard-core/src/blake2b-224-trace.ts (468 lines) and blake2b-256-trace-v1.ts (467 lines) both still exist; a diff normalizing digest-size tokens (224/256, 28/32, rotation constant) shows only constant renames (e.g. MIDGARD_BLAKE2B_BLOCK_BYTES vs MIDGARD_BLAKE2B_256_BLOCK_BYTES, PARAMETER_BLOCK_V1 0x0101_001c vs 0x0101_0020) and one comment \u2014 the ~460-line state-machine logic is duplicated verbatim. No shared engine module exists in demo/midgard-core/src (only the two trace files match 'blake'), and no commit since d145d19d touched them."
+      },
+      {
+        "id": "RF-063",
+        "priority": "P3",
+        "verdict": "STILL_PRESENT",
+        "evidence": "The same constructor fixture hex literal (prefix \"9fd87980d87a9fd8799f0100010001...\", containing the distinctive hash bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2) is inlined independently in all three suites: onchain/aiken/lib/midgard/validation-controls-v1-abi.test.ak:9, demo/midgard-validation/tests/validation-controls-abi.test.ts:650, and demo/midgard-sdk/tests/validation-auxiliary-witness.test.ts:10. The SDK test's readFileSync reads its own source module for source-text assertions, not a shared fixture; no generated fixture/manifest consumed by all three languages exists."
+      },
+      {
+        "id": "RF-064",
+        "priority": "P3",
+        "verdict": "STILL_PRESENT",
+        "evidence": "onchain/aiken/validators/fraud-proofs/validation-trace/compact-binding-semantic-v1.ak (committed, clean) still inlines the flow at lines 49-89: it calls common.continue at line 56 with a hand-written callback repeating prepared_resolution_is_well_formed, phase check (CompactBinding), hash_one_step_evidence == state.evidence_hash, output_script_hash == award_script_hash, and output_state == winning_resolution() \u2014 exactly the body of the shared combinator `pub fn continue_winning` in lib/midgard/validation-semantic-v1.ak:13 that sibling semantic validators (e.g. script-sources-stage-ten-mismatch-semantic-v1.ak:52) use. Its Datum type is identical to validation_semantic_v1.Datum, so the combinator is applicable."
+      },
+      {
+        "id": "RF-065",
+        "priority": "P3",
+        "verdict": "STILL_PRESENT",
+        "evidence": "fn proof_item_from_reference is duplicated verbatim in canonical-decode-item-observe-v1.ak:158-185 and canonical-decode-item-semantic-v1.ak:154-181 (onchain/aiken/validators/fraud-proofs/validation-trace/): identical 28-line bodies resolving the reference input, expecting InlineDatum with reference_script: None, checking Script payment credential == proof_item_script_hash, version == 1, transaction_id and transaction_commitment against pre-state, then building TransactionFieldItemWitness. Both files are committed clean (not among the dirty protected files). Locations match the finding's cited lines 154/158."
+      },
+      {
+        "id": "RF-066",
+        "priority": "P3",
+        "verdict": "STILL_PRESENT",
+        "evidence": "Assessed BOTH states: onchain/aiken/lib/midgard/validation-machine-v1.ak is dirty, but the uncommitted diff does not touch this region, so committed HEAD and working tree are identical here. `pub fn verify_prepared_script_sources_stage_three_replay_transition_v1` still exists at line 12199 (moved from 12204 at the reviewed head) with its speculative-seam doc comment (\"used only after a prepare validator...\"). A repo-wide grep over all .ak and .ts in onchain/ and demo/ (including untracked overlay files) finds only the definition \u2014 no caller and no test reference."
+      },
+      {
+        "id": "RF-067",
+        "priority": "P3",
+        "verdict": "STILL_PRESENT",
+        "evidence": "demo/midgard-node/src/da/libp2p-producer.ts:329-342: loadDaProducerPublicationManifestFromEnv is typed Promise<DaProducerPublicationManifest> and either throws (\"MANIFEST_PATH_ENV is required...\") or returns parseDaProducerPublicationManifest(...), which is typed to return the manifest \u2014 null is unreachable. Dead `if (manifest === null)` branches remain at lines 550, 907, 936, 1062, 1140, and 1165 (matching the cited ranges), each fabricating an unreachable \"no libp2p DA manifest configured\" outcome. The reconciler repeats it at demo/midgard-node/src/fibers/da-publication-reconciler.ts:59."
+      },
+      {
+        "id": "RF-068",
+        "priority": "P3",
+        "verdict": "STILL_PRESENT",
+        "evidence": "demo/midgard-sdk/src/state-queue-transactions.ts:576-584 still reads: `data: (\"validationTracesRoot\" in newHeader ? castStateQueueNodeV1ToData({ header: newHeader, da_attestation: NO_DA_ATTESTATION }) : castStateQueueNodeV1ToData({ header: newHeader, da_attestation: NO_DA_ATTESTATION })) as LinkedListNodeView[\"data\"]` \u2014 both ternary branches construct the identical argument object and call the same function, so the compatibility discriminator has no effect."
+      },
+      {
+        "id": "RF-069",
+        "priority": "P3",
+        "verdict": "STILL_PRESENT",
+        "evidence": "demo/midgard-node/src/commands/reconcile.ts:971-975: reconcileDaAttestedProgram's options type declares `readonly watcherUrl?: string;` (line 973) and `readonly deploymentFingerprint?: string;` (line 974), but line 982 destructures only `const { headerHash, repair } = options;` \u2014 grep of the whole file shows the two names appear nowhere else. The CLI still passes both at demo/midgard-node/src/index.ts:2105-2106 (`watcherUrl: options.watcherUrl, deploymentFingerprint,`), including computing deploymentFingerprint via readFinalizedDeploymentIdentity at lines 2092-2097, all of which is discarded."
+      },
+      {
+        "id": "RF-070",
+        "priority": "P3",
+        "verdict": "STILL_PRESENT",
+        "evidence": "The 19 dated checkpoint plans still exist: `ls docs/exec-plans/*checkpoint-2026*.md | wc -l` = 19, totaling exactly 2,859 lines (matches the finding). GOAL_PROGRESS.md is now 2,916 lines and remains an append-only diary: it contains ~25 'Superseding ...' section headers (lines 1584-2685+), three separate 'Current next action' sections (lines 1126, 1666, 2364), and duplicated criterion/validation ledger blocks from two 'Remote-session ledger entries' merges (lines 1172, 2227). Post-review commits (3a6d9b1d 'repair damaged sections', 54a0d496, ba701b2e) appended further superseding checkpoints rather than consolidating to a concise current-state ledger.",
+        "fixSketch": ""
+      },
+      {
+        "id": "RF-071",
+        "priority": "P3",
+        "verdict": "STILL_PRESENT",
+        "evidence": "All three bullets persist. (1) demo/midgard-sdk/package.json declares \"@al-ft/midgard-core\": \"workspace:*\" in both devDependencies (line 29) and dependencies (line 50). (2) demo/.prettierignore lists **/coverage/, **/dist/, **/.architecture-f-wasm/, **/deploymentInfo/, **/logs/, **/node_modules/, and demo/package.json's format-check script inlines the same six exclusions again as negated globs. (3) pnpm is not pinned to one exact version across surfaces: demo root and midgard-node/da-committee-node pin pnpm@9.15.4+sha512, but demo/midgard-manager/package.json:6 declares \"pnpm@9.15.4\" without the integrity hash, docs-site/package.json:5 declares pnpm@10.11.0, and CI workflows (midgard-node-ci.yml, evidence-integrity-ci.yml) use pnpm/action-setup@v4 with floating `version: 9`.",
+        "fixSketch": ""
+      },
+      {
+        "id": "RF-072",
+        "priority": "P3",
+        "verdict": "STILL_PRESENT",
+        "evidence": "Both files remain in demo/midgard-validation/tests/: c26-investigation-cml-depth-limits.test.ts and c26-investigation-iterative-gate.test.ts (the finding's second filename was slightly off; this name also existed at reviewed head d145d19d). Both headers still read 'C26 INVESTIGATION SCAFFOLDING \u2014 throwaway, not evidence' and gate every case behind `process.env.MIDGARD_C26_INVESTIGATION === \"1\"` via describe.skip. demo/midgard-validation/vitest.config.ts includes them in the default suite (include: [\"./tests/**/*.test.{ts,tsx}\"]). No commits since d145d19d touched either file.",
+        "fixSketch": ""
+      },
+      {
+        "id": "RF-074",
+        "priority": "P3",
+        "verdict": "STILL_PRESENT",
+        "evidence": "demo/midgard-node/tests/commit-block-header-worker-output.test.ts:88-97 is unchanged: it defines type-level `CommitBlockHasLowerValidityBound = \"validFrom\" extends keyof ProductionCommitBlockHeaderParams ? true : false`, assigns the constant `true`, and asserts `expect(commitBlockHasLowerValidityBound).toBe(true)` \u2014 the runtime assertion is tautological; any value it has is delivered at typecheck, not by the test run. The rest of the file contains genuine behavior tests, but the flagged test remains as reviewed.",
+        "fixSketch": ""
+      },
+      {
+        "id": "RF-082",
+        "priority": "P3",
+        "verdict": "STILL_PRESENT",
+        "evidence": "File unchanged since reviewed head (git log d145d19d..HEAD empty for it). Current tests are all direct-admission calls (e.g. handlers.handlePayloadSubmit(Buffer.from([0xff])) at tests/libp2p-payload-protocols.test.ts:239); the stream-level tests removed at 1cf60653 ('cancels a queued admission when its absolute request deadline expires', 'aborts a stalled inbound submit and releases process-wide admission', visible at c4e0ac9a) were not restored. The inbound handler wrapper createDaLibp2pPayloadRequestHandlers (demo/da-committee-node/src/da/libp2p/payload-source.ts:263-340), which wires deadline+admission+stream.abort, has no test anywhere (only use: src/index.ts:85). No test proves a healthy request after a malformed frame. Partial mitigation existed at review time too: midgard-core/tests/da-request-deadline.test.ts covers the generic helper; libp2p-runtime.test.ts:311 covers only the outbound request deadline.",
+        "fixSketch": ""
+      },
+      {
+        "id": "RF-083",
+        "priority": "P3",
+        "verdict": "STILL_PRESENT",
+        "evidence": "demo/da-committee-node/tests/helpers/deployment-fixture.ts:130 'const templateContract = fixtureContracts.stateQueueSpend!;' and :157-158 'const existing = fixtureContracts[contractName]; const source = existing ?? templateContract;' still fill missing slots with stateQueueSpend material. Not dead code: the fixture JSON (tests/fixtures/da-contract-deployment-info.json) supplies only 6 contracts while DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES (demo/midgard-core/src/deployment-manifest-identity.ts:24-76) lists 52, so ~45 slots \u2014 including all fraud-proof validators whose script hashes seed the catalogue trie at :178-190 \u2014 are fabricated copies of stateQueueSpend. No commit in d145d19d..HEAD touched the file.",
+        "fixSketch": ""
+      },
+      {
+        "id": "RF-084",
+        "priority": "P3",
+        "verdict": "STILL_PRESENT",
+        "evidence": "The recomputation test demo/lucid-midgard/tests/native-high-cardinality-fixture.test.ts (present at d64865ed, rebuilt the fixture via buildHighCardinalityNativeTxFixture and compared it to the stored JSON and generated Aiken files) is gone and has no replacement. Currently the only consumer of tests/fixtures/native-high-cardinality.json is scripts/generate-native-compact-aiken-goldens.mjs:126, a mutation script exposed solely as the manual package script 'fixtures:native-compact' (demo/lucid-midgard/package.json:23). Grep over demo/lucid-midgard/tests, .github/workflows, and demo/scripts finds no test or CI step recomputing the fixture; onchain native-tx.high-cardinality.test.ak still exists but only proves Aiken matches the frozen constants, not that the fixture matches current TS encoder behavior.",
+        "fixSketch": ""
+      },
+      {
+        "id": "RF-085",
+        "priority": "P3",
+        "verdict": "STILL_PRESENT",
+        "evidence": "onchain/aiken/validators/user-events/deposit.ak:376-378 'test deposit_mint_accepts_exactly_ten_non_nft_assets_across_ada_and_multiple_policies() { test_deposit_mint(test_valid_to + env.event_wait_duration, False) }' is behaviorally identical to :384-386 'test deposit_mint_accepts_exact_inclusion_time() { test_deposit_mint(test_valid_to + env.event_wait_duration, False) }' \u2014 same inclusion time, same include_eleventh flag, no distinct boundary. Assessed the committed state, which equals the working tree: deposit.ak is not among the dirty protected files and no commit in d145d19d..HEAD touched it.",
+        "fixSketch": ""
+      }
+    ],
+    "ALREADY_FIXED": [
+      {
+        "id": "RF-032",
+        "priority": "P1",
+        "verdict": "ALREADY_FIXED",
+        "evidence": "The published state-changing route is retired: demo/package.json no longer exposes goal:accept:testnet, the verification plan has no accept-testnet phase or state-changing phase, the old wrapper is removed, and the runner rejects direct accept-testnet requests with an explicit C79-OPEN error. C79 remains OPEN because its complete orchestrator and prerequisite live acceptance primitives are not present. This removes the misleading production route without claiming C80-C87/Q57/QG3/W45-W46/WG2 completion."
+      },
+      {
+        "id": "RF-004",
+        "priority": "P1",
+        "verdict": "ALREADY_FIXED",
+        "evidence": "Fixed by commit 0f3b8538 (VM-DEFECT-7): in `script_sources_replay_item`, the source-total-count argument to `encode_script_sources_witness` changed from `control.source_total_count` to `next_sources.count`. Current code at onchain/aiken/lib/midgard/validation-machine-v1.ak:8832 reads `next_sources.count,` (after `control.receive_scan,` at :8831), so the replay successor carries the grown source count and the encoder completion condition is satisfiable. Verified in BOTH states: `git show HEAD:...` and the working-tree file are identical here (git diff HEAD for this file is empty). Commit evidence cites the previously failing witness `script_sources_replay_appends_reference_scripts` now passing 1/1, matching the TS reference model (validation-machine.ts:2090)."
+      },
+      {
+        "id": "RF-005",
+        "priority": "P1",
+        "verdict": "ALREADY_FIXED",
+        "evidence": "Fixed by commit b7cacd85 (C21-STAGE4 Option A) plus TS pins in 75736e4c. `script_sources_stage_four` no longer reveals item bytes: current onchain/aiken/lib/midgard/validation-machine-v1.ak:8973 reads `expect TransactionRedeemerItemBeginWitness { collection_proof } = auxiliary` (proof-only tag-29); the fold verifies only the authenticated tuple via `bounded_collection_v1.verify_item` (:8988) with the 16,384 `item_length` cap retained (:8987, const :2064). Stage-4 one-step evidence is now O(1) in output size, so admitted 16,384-byte outputs are challengeable \u2014 TS test complete-item-proof-fit-v1.test.ts was rewritten to prove the maximum output builds a stage-4 argument (evidence < 2,048 bytes). Verified in BOTH states: committed HEAD and working tree are identical at this site."
+      },
+      {
+        "id": "RF-025",
+        "priority": "P1",
+        "verdict": "ALREADY_FIXED",
+        "evidence": "Fixed by commit 25f15014 (goal(ci): fix the three deeper failures unmasked by the lockfile repair). docs-site/content/docs/fault-proofs/overview.mdx now reads \"The 31 commands are declared in the canonical usage template in bin.ts\" and \"The commands fall into five groups\", with a new Scaffold table row: \"| **Scaffold** | `scaffold-family` | family-scaffold/ (generate-v1.ts et al.) | ...\". Ran the required verifier on the current tree: `node docs-site/scripts/check-docs-facts.mjs` outputs \"Docs facts check passed: 10 fact groups.\""
+      },
+      {
+        "id": "RF-026",
+        "priority": "P1",
+        "verdict": "ALREADY_FIXED",
+        "evidence": "Fixed by commit 25f15014, which rebound 14 per-class source hashes, the watcher package inventory, and evidence hashes. docs/exec-plans/evidence/canonical-v1-watcher-dependency-map-v1.json now lists \"demo/midgard-watcher/src/public-da-client.ts\" (line 38) and \"demo/midgard-watcher/tests/public-da-client.test.ts\" (line 53). Ran the exact CI verifier on the current tree: `node demo/scripts/verify-canonical-v1-watcher-dependency-map.mjs` outputs \"Canonical V1 watcher dependency map verified: 8 dependency classes.\""
+      }
+    ],
+    "INVALID": [
+      {
+        "id": "RF-042",
+        "priority": "P2",
+        "verdict": "INVALID",
+        "evidence": "The claim was wrong at the reviewed head: demo/midgard-fault-proofs/src/validation-dispute/submit.ts is byte-identical between d145d19d and HEAD (empty git diff), and the guard already existed. `MAX_L1_VALIDATION_PROOF_TRANSACTION_BYTES = 16 * 1024` (submit.ts:120) and `requireL1ProofEnvelope` (:295-309) verify the complete signed transaction CBOR is <= 16,384 bytes, and the guard is invoked immediately before every one of the module's twelve `.submit()` calls (guard/submit pairs at 1383/1384, 1541/1545, 1826/1827, 1954/1955, 2114/2115, 2298/2302, 2510/2514, 3551/3552, 3715/3716, 4111/4121, 4324/4325, 4512/4513). Individual datum/redeemer payloads are additionally bounded by exactPlutusDataFromCbor (:509-515). The submission path therefore does prove the canonical 16 KiB fit before submitting."
+      }
+    ]
+  }
 }

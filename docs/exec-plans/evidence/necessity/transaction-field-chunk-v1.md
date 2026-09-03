@@ -50,7 +50,7 @@
   the measurement deployment (`hub_oracle=11…11`, `catalogue=22…22`, semantic
   resolver 1 of 76). Producing run: `pins the applied §3.2 necessity
   identities on the measurement deployment` in
-  `demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts`,
+  `demo/midgard-validation/tests/complete-item-proof-fit-emulator.test.ts`,
   which now gates both identities instead of arguing them. Every hash pinned
   above is therefore current under `605c8b8d…` and the measurement tables
   below stay bound; the C21-AUDIT "fresh applied re-measurement owed before
@@ -90,7 +90,7 @@
   gain #592's `field_preimage_certificate_policy_id`. The gate named in the
   bullet above — `pins the applied §3.2 necessity identities on the measurement
   deployment` in
-  `demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts` —
+  `demo/midgard-validation/tests/complete-item-proof-fit-emulator.test.ts` —
   re-derives both identities at runtime rather than hardcoding them, and is
   **green against this blueprint** (suite 5/5, 2026-08-15), so it gates the new
   values as it gated the old. Full record, commands and the
@@ -152,8 +152,8 @@
   file exists yet; this artifact binds the decision record plus the profile
   digest above.
 - Fixture: deterministic generators in
-  `demo/midgard-validation/tests/complete-item-proof-fit-v1.test.ts` and
-  `demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts`
+  `demo/midgard-validation/tests/complete-item-proof-fit.test.ts` and
+  `demo/midgard-validation/tests/complete-item-proof-fit-emulator.test.ts`
   (exact-size canonical output items; regenerable by running the suites).
 
 ## Measurements — flat `FieldCarriageV1` scheme (current; §3.2 order — stop at the first tier that fits)
@@ -184,7 +184,7 @@ issue #606 welded `field_hash` into the certificate datum (`docs/spec/midgard-tx
 `supersededInPartBy606` note names only §12.7/§12.8/§8.11 and the K/tier-1/
 publication-frontier/64-byte-overhang figures as unmoved by #606 — it does not
 mention these two, and a fresh run of
-`field-preimage-carriage-fit-emulator-v1.test.ts` this pass reproduces the
+`field-preimage-carriage-fit-emulator.test.ts` this pass reproduces the
 post-#606 values, not the P7-pinned ones (below). The tier-1 row below carries
 a second, larger movement: `docs/spec/midgard-tx.md` §8.3 records the #611
 finding (2026-08-17, landed at commit `bf5cb8ed`) that the complete **signed**
@@ -203,10 +203,10 @@ measurement's basis went away.
 
 | Tier / representation | Preimage (item) bound | Signed tx bytes vs `maxTxSize` (16,384) | Fits one tx? | Measured (selector) or structural |
 | --- | --- | --- | --- | --- |
-| 1. Tier 1 — `Inline` (redeemer carriage) | nominal cap `MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1` = 14,336 (item ≤ 14,332) | evidence layer: 15,848 B one-step evidence at the cap inside a 16,383-B envelope, 536 B of the 2,048-B allowance unspent (NOT falsified). Complete **signed** step transaction at the cap, re-derived 2026-08-23 against the regenerated blueprint: since Option B (#620) the item rides the **observe** door, not the authenticate redeemer, and the door's contiguous fit ends at a **14,004-byte item — 16,369 B signed, margin 15**; item 14,005 is refused PRE-SIGN at a projected 16,385 B and auto-demotes to the publication route, which stages the full 14,336-byte cap (publication 15,135 B, by-reference observe 1,959 B) and refuses 14,337 as tier-2. *Superseded (pre-Option-B, retained as the record of what moved):* 17,389 B by-reference / 20,518 B embedded-resolver at the cap on the authenticate route, bisected frontier item 13,357 B / preimage 13,361 B.* | evidence-layer YES to 14,336; signed-transaction basis YES to a 14,004-byte item inline and to the full 14,336 cap by reference — **the #611 falsification is resolved by the owner-signed R6 split (2026-08-22, #622 question (a)), not by repricing** | measured: `keeps stage-4 one-step evidence O(1)…` (`complete-item-proof-fit-v1.test.ts`) and `measures the complete signed tier-1 step transaction at the 14,336-byte preimage cap` (`complete-item-proof-fit-emulator-v1.test.ts`, flipped onto the observe door this pass), with the frontier ledger from the three `submit-init-emulator-option-b-*-v1.test.ts` suites (#622) |
-| 2. Tier 2 — `RawUtxo` (single raw-UTxO publication + input/reference consumption) | `K` = `MIDGARD_CHUNK_BYTES_K_V1` = 15,148 reliable (512-B reserve) / 15,644 exact (zero margin) | reliable: 15,872 B (margin 512); exact: 16,384 B (margin 0); 15,645 B preimage → 16,385 B, first unpublishable byte. Framing at the exact frontier: 740 B (248 B fixed + datum-head, 492 B payload-proportional Plutus-Data chunking). | YES to 15,148 reliable / 15,644 exact | measured: `measures the largest publishable preimage and re-pins K against it` (`field-preimage-carriage-fit-emulator-v1.test.ts`) — re-run this pass, reproduces the P7 pin unmoved |
-| 2a. (64-byte overhang, not a fifth tier) | counted-era publication cap 14,396 sits 64 B above tier-1's admissible 14,332 | an item in (14,332, 14,396] carries a preimage in (14,336, 14,400], which selects tier 2, not a stranded band | YES — measured green at exactly 14,396 | measured: `carries one complete item at the applied publication maximum through the tier-2 door` (`complete-item-carriage-tiers-emulator-v1.test.ts`) — re-run this pass, 5/5 green; disposition ratified in `canonical-v1-p7-remeasurement-v1.json`'s `sixtyFourByteOverhang` ("REAL, CORRECT, AND NOT A CAPABILITY GAP") |
-| 3. Tier 3 — `Certified` (chunked raw carriage + one certificate; ≤ 3 `K`-byte chunks by reference) | `preimage_len` > 15,148 up to the §5.4 aggregate cap 32,768; chunk `j` = `[j·K, (j+1)·K)`, last ragged; max chunk count `⌈32,768/15,148⌉` = 3 | structural: a certifying transaction can never reference a chunk its own transaction publishes (reference inputs resolve against the pre-transaction UTxO set), at any size. Independently over budget by bytes alone even for the cheapest two-transaction case: full-chunk publication 15,872 B + certify redeemer 531 B + certificate datum 210 B = **combined lower bound 16,613 B > 16,384**. | structurally NO for one-transaction carriage at any size above `K`; YES as an `n + 1`-transaction plan (`n` = chunk count, 1–3) | measured: `shows last-chunk publication and certification cannot share a transaction` and `reports min-Ada at the sizes the ladder really uses` (`field-preimage-carriage-fit-emulator-v1.test.ts`) — re-run this pass; combined lower bound is **16,613, not the P7-pinned 16,579** (see the movement note above); min-Ada: certificate manifest 2,064,490 lovelace (210-B datum, not the P7-pinned 176-B/1,939,500), full chunk 68,231,610, ragged tail 11,869,740, at `coinsPerUtxoByte` 4,310 |
+| 1. Tier 1 — `Inline` (redeemer carriage) | nominal cap `MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1` = 14,336 (item ≤ 14,332) | evidence layer: 15,848 B one-step evidence at the cap inside a 16,383-B envelope, 536 B of the 2,048-B allowance unspent (NOT falsified). Complete **signed** step transaction at the cap, re-derived 2026-08-23 against the regenerated blueprint: since Option B (#620) the item rides the **observe** door, not the authenticate redeemer, and the door's contiguous fit ends at a **14,004-byte item — 16,369 B signed, margin 15**; item 14,005 is refused PRE-SIGN at a projected 16,385 B and auto-demotes to the publication route, which stages the full 14,336-byte cap (publication 15,135 B, by-reference observe 1,959 B) and refuses 14,337 as tier-2. *Superseded (pre-Option-B, retained as the record of what moved):* 17,389 B by-reference / 20,518 B embedded-resolver at the cap on the authenticate route, bisected frontier item 13,357 B / preimage 13,361 B.* | evidence-layer YES to 14,336; signed-transaction basis YES to a 14,004-byte item inline and to the full 14,336 cap by reference — **the #611 falsification is resolved by the owner-signed R6 split (2026-08-22, #622 question (a)), not by repricing** | measured: `keeps stage-4 one-step evidence O(1)…` (`complete-item-proof-fit.test.ts`) and `measures the complete signed tier-1 step transaction at the 14,336-byte preimage cap` (`complete-item-proof-fit-emulator.test.ts`, flipped onto the observe door this pass), with the frontier ledger from the three `submit-init-emulator-option-b-*-v1.test.ts` suites (#622) |
+| 2. Tier 2 — `RawUtxo` (single raw-UTxO publication + input/reference consumption) | `K` = `MIDGARD_CHUNK_BYTES_K_V1` = 15,148 reliable (512-B reserve) / 15,644 exact (zero margin) | reliable: 15,872 B (margin 512); exact: 16,384 B (margin 0); 15,645 B preimage → 16,385 B, first unpublishable byte. Framing at the exact frontier: 740 B (248 B fixed + datum-head, 492 B payload-proportional Plutus-Data chunking). | YES to 15,148 reliable / 15,644 exact | measured: `measures the largest publishable preimage and re-pins K against it` (`field-preimage-carriage-fit-emulator.test.ts`) — re-run this pass, reproduces the P7 pin unmoved |
+| 2a. (64-byte overhang, not a fifth tier) | counted-era publication cap 14,396 sits 64 B above tier-1's admissible 14,332 | an item in (14,332, 14,396] carries a preimage in (14,336, 14,400], which selects tier 2, not a stranded band | YES — measured green at exactly 14,396 | measured: `carries one complete item at the applied publication maximum through the tier-2 door` (`complete-item-carriage-tiers-emulator.test.ts`) — re-run this pass, 5/5 green; disposition ratified in `canonical-v1-p7-remeasurement-v1.json`'s `sixtyFourByteOverhang` ("REAL, CORRECT, AND NOT A CAPABILITY GAP") |
+| 3. Tier 3 — `Certified` (chunked raw carriage + one certificate; ≤ 3 `K`-byte chunks by reference) | `preimage_len` > 15,148 up to the §5.4 aggregate cap 32,768; chunk `j` = `[j·K, (j+1)·K)`, last ragged; max chunk count `⌈32,768/15,148⌉` = 3 | structural: a certifying transaction can never reference a chunk its own transaction publishes (reference inputs resolve against the pre-transaction UTxO set), at any size. Independently over budget by bytes alone even for the cheapest two-transaction case: full-chunk publication 15,872 B + certify redeemer 531 B + certificate datum 210 B = **combined lower bound 16,613 B > 16,384**. | structurally NO for one-transaction carriage at any size above `K`; YES as an `n + 1`-transaction plan (`n` = chunk count, 1–3) | measured: `shows last-chunk publication and certification cannot share a transaction` and `reports min-Ada at the sizes the ladder really uses` (`field-preimage-carriage-fit-emulator.test.ts`) — re-run this pass; combined lower bound is **16,613, not the P7-pinned 16,579** (see the movement note above); min-Ada: certificate manifest 2,064,490 lovelace (210-B datum, not the P7-pinned 176-B/1,939,500), full chunk 68,231,610, ragged tail 11,869,740, at `coinsPerUtxoByte` 4,310 |
 | 4. Surviving internal bounded chunk walk (not a §3.2 carriage alternative) | applies inside tier 3's `Chunked` field view (§8.8) on-chain, and inside the off-chain validation machine's own trace at every tier | on-chain: reading an item re-verifies the chunk(s) it lands in — one `blake2b_256` per chunk touched (two on a straddling item), linear, no amortization. Off-chain: `countedMachineFieldTraceV1` / `countedMachineFieldChunkStepsV1` (`demo/midgard-validation/src/validation-machine.ts:206-263`) build the machine's own item-major/chunk-major trace for step-counting and size measurement, independent of which tier supplied the bytes, and are never compared against a §4 field commitment (that comparison is `verifyMidgardV1TxFieldPreimage`, run once over the whole flat preimage) | N/A — not a representation choice; it is what tier 3 costs once selected, and what the machine's own accounting looks like at every tier | structural / cited, not re-run this pass: the three-chunk corner (32,763-B field-1 preimage, split `[15,148, 15,148, 2,467]`) costs 238,738 mem / 72.13M CPU to open plus 155,142 mem / 94.06M CPU per item read (≈ 83-item per-step budget, memory-bound), per `docs/spec/midgard-tx.md` §8.10's own pinned exec-ledger (`onchain/aiken/scripts/native-tx-carriage-exec-ledger-v1.json`) — outside the four suites this pass reproduces, and not independently re-run here |
 
 ### Exact limiting constraint — flat scheme
@@ -275,8 +275,8 @@ identical flat §4 field commitment through one access door
 (`authenticated_field_view`, §8.8's frozen `FieldCarriageV1`/`FieldViewV1`
 sum types); tier-invisible reads through that one door are exercised
 end to end by `carries a preimage of every tier to a dispute read with no
-tier branch` (`field-preimage-carriage-fit-emulator-v1.test.ts`) and by the
-four applied-door journeys in `complete-item-carriage-tiers-emulator-v1.test.ts`
+tier branch` (`field-preimage-carriage-fit-emulator.test.ts`) and by the
+four applied-door journeys in `complete-item-carriage-tiers-emulator.test.ts`
 (tier-2 `RawUtxo`, tier-2-at-the-publication-maximum, tier-3 `Certified`, and
 rejection of a reference-input set moved under the committed indices) — both
 suites re-run this pass, all cases green. Omission/duplication/reorder/
@@ -336,7 +336,7 @@ Execution reserve applied: 20% below the 16,500,000-memory /
 | 1. Complete item direct in proof tx | measured frontier: a 13,282-byte item yields exactly 16,384/16,384 (margin 0); 13,283 bytes → 16,385 (over by 1); a 16,384-byte item's `Verify` redeemer alone exceeds the envelope | 205,594 / 13,200,000 | 500,275,649 / 8,000,000,000 | 974,576 | NO above 13,282 bytes |
 | 2. Complete item as inline-datum publication + reference consumption | pub fits through 14,396 bytes: 15,256/16,384 (margin 1,128; min-Ada 65,576,650); a 16,384-byte item's complete signed publication measures 18,290/16,384 (over by 1,906); 32,768 bytes → 35,186/16,384 (over by 18,802) | consuming tx 264,106 / 13,200,000 | 552,114,352 / 8,000,000,000 | pub 826,821; consume 376,690 | NO above 14,396 bytes |
 | 3. Minimum multi-output publication + complete logical reconstruction | not deployed for this family; the bounded-chunk stream below already reconstructs the complete item from ≤4,095-byte authenticated chunks bound to one item commitment | — | — | — | superseded by 4 |
-| 4. Bounded chunk consumption (`TransactionFieldChunkWitness`, ≤4,095-byte chunks) | every chunk reveal ≤ 4,675-byte publication (`MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxFieldPublicationUnsignedTransactionBytes`, pinned by `demo/midgard-sdk/tests/tx-order-v1.test.ts`) | 3,398,228 / 13,200,000 | 1,209,745,039 / 8,000,000,000 | per pinned receipt measurements | YES |
+| 4. Bounded chunk consumption (`TransactionFieldChunkWitness`, ≤4,095-byte chunks) | every chunk reveal ≤ 4,675-byte publication (`MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxFieldPublicationUnsignedTransactionBytes`, pinned by `demo/midgard-sdk/tests/tx-order.test.ts`) | 3,398,228 / 13,200,000 | 1,209,745,039 / 8,000,000,000 | per pinned receipt measurements | YES |
 
 ### Exact limiting constraint — SUPERSEDED (counted era)
 
@@ -369,12 +369,12 @@ plus `VerifyReference`); the producer keeps the complete-item witness for
 every item at or below `maxSinglePublicationCompleteItemBytes` and emits
 chunks only above it
 (`demo/midgard-validation/src/validation-machine/`, single guarded site,
-pinned by `demo/midgard-validation/tests/complete-item-carriage-policy-v1.test.ts`).
+pinned by `demo/midgard-validation/tests/complete-item-carriage-policy.test.ts`).
 Both representations authenticate the same bounded-item commitment and the
 equivalence and rejection tests live at
-`demo/midgard-validation/tests/complete-item-equivalence-v1.test.ts`
+`demo/midgard-validation/tests/complete-item-equivalence.test.ts`
 (omission, duplication, reorder, substitution, trailing data reject in both)
-and `demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts`
+and `demo/midgard-validation/tests/complete-item-proof-fit-emulator.test.ts`
 (identical terminal state through direct and reference carriage; deployed
 validator rejects substituted and trailing-byte published items).
 
@@ -398,7 +398,7 @@ which is recorded as a soundness regression rather than a fix. The frontier
 is now pinned in both directions (8,273 direct / 8,274 reference, and
 `carriage(13_282)` and `carriage(13_998)` both "reference") by the "pins the
 direct complete-item carriage frontier in both directions" case in
-`demo/midgard-core/tests/consensus-profile-v1.test.ts`, whose comment
+`demo/midgard-core/tests/consensus-profile.test.ts`, whose comment
 retains 13,282 as this artifact's by-reference frontier and forbids binding
 it to the direct constant. Consequence for the "Preserved complete-item
 path" paragraph above: items at or below 13,282 bytes fit representation 1
@@ -510,7 +510,7 @@ values sit a uniform 368 bytes above the fresh ones (16,384 → recorded
 consistent with a different collection proof shape. But at the publication
 cap the recorded value is 616 bytes BELOW the fresh one (14,396 → recorded
 15,256 vs fresh 15,872), so the recorded row cannot share a basis with the
-two above it. `demo/midgard-core/src/consensus-profile-v1.ts` attributes the
+two above it. `demo/midgard-core/src/consensus-profile.ts` attributes the
 15,256 figure to "the applied SDK publisher", which is a third construction
 again. None of this changes a conclusion — every value on every basis still
 overshoots the envelope at the family maxima — but the tables should be
@@ -523,9 +523,9 @@ reproducible from the measurement script: 15,256, 18,290, 35,186, 16,900,
 205,594, 500,275,649, 974,576, 264,106, 552,114,352, 826,821, 376,690,
 65,576,650, and the CEK one-shot pair 45,154,331 / 14,905,078,582.
 Regenerating them requires re-running
-`demo/midgard-validation/tests/complete-item-proof-fit-v1.test.ts`,
-`complete-item-proof-fit-emulator-v1.test.ts`, and
-`demo/midgard-sdk/tests/tx-order-v1.test.ts`. They are left as recorded
+`demo/midgard-validation/tests/complete-item-proof-fit.test.ts`,
+`complete-item-proof-fit-emulator.test.ts`, and
+`demo/midgard-sdk/tests/tx-order.test.ts`. They are left as recorded
 rather than replaced with numbers from a different construction.
 
 ## Disposition of the thirteen, and the declared construction (#580, 2026-08-15)
@@ -565,7 +565,7 @@ evidence rule forbids. What replaces each:
 | 15,256 / 18,290 / 35,186 (publication and proof transaction bytes) | the declared construction's boundary table above |
 | 974,576 / 826,821 / 376,690 (fees) | the same table's `fee` columns |
 | 65,576,650 (min-Ada at the publication cap) | 68,205,750 at 14,396 item bytes, same table |
-| 16,900 (counted proof transaction at the 16,384-byte item) | 17,220, `maxLedgerOutputPublicationTransactionBytes`, measured by `complete-item-proof-fit-v1.test.ts` |
+| 16,900 (counted proof transaction at the 16,384-byte item) | 17,220, `maxLedgerOutputPublicationTransactionBytes`, measured by `complete-item-proof-fit.test.ts` |
 | 205,594 / 500,275,649 and 264,106 / 552,114,352 (execution pairs) | the applied direct-authentication row: 181,260 mem / 342,607,667 cpu at 8,273 reliable direct item bytes, 14,270 complete signed bytes, margin 2,114, judged at the 13,200,000 / 8,000,000,000 basis |
 | the CEK one-shot pair 45,154,331 / 14,905,078,582 | **not regenerated.** It belongs to `cek-program-material-v1.md`, which #560 ruled STAND (re-pin only); the owed work there is a #546-style identity re-pin against the Phase-6 blueprint, not a re-measurement. Carried forward, flagged, and recorded as a residual on #580. |
 

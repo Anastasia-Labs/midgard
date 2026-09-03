@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import {
   type DeploymentMarker,
   MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
-} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   ActiveOperatorMintRedeemer,
   ActiveOperatorSpendRedeemer,

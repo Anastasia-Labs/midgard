@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   createReferenceScriptAuthPolicy,
   referenceScriptAuthPolicyDeploymentInfo,

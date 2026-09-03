@@ -11,7 +11,7 @@ import { getAddressDetails, type UTxO } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
-import type { FieldItemWidthIllegalContracts } from "../src/field-item-width-illegal/contracts-v1.js";
+import type { FieldItemWidthIllegalContracts } from "../src/field-item-width-illegal/contracts.js";
 import {
   prepareFieldItemWidthEvidence,
   submitFieldItemWidthIllegalCancel,
@@ -25,7 +25,7 @@ import { buildForcedTransactionLeafMembershipProof } from "../src/transition-tra
 import {
   type CommittedFieldShapeEmulatorHarness,
   setupCommittedFieldShapeScenario,
-} from "./support/committed-field-shape-emulator-v1.js";
+} from "./support/committed-field-shape-emulator.js";
 import { network } from "./support/emulator/blueprints.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";

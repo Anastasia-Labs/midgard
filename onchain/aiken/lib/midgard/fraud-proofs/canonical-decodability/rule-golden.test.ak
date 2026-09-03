@@ -7,7 +7,7 @@
 ////
 //// **The verdict set** is the one that matters. §12.7's verdict is a total
 //// decision procedure implemented twice — here and in
-//// `demo/midgard-sdk/src/fraud-proof/canonical-decodability-v1.ts` — and the
+//// `demo/midgard-sdk/src/fraud-proof/canonical-decodability.ts` — and the
 //// two must agree on every byte string. A disagreement is silent in both
 //// directions: a twin that calls a committed non-envelope grammatical leaves
 //// a genuine fault unfiled, and one that calls an envelope ungrammatical has

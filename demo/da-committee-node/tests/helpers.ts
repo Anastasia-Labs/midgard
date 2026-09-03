@@ -19,7 +19,7 @@ import {
   MIDGARD_PROTOCOL_VERSION,
   MIDGARD_VALIDATION_MACHINE_VERSION,
   MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
-} from "@al-ft/midgard-core/consensus-profile-v1";
+} from "@al-ft/midgard-core/consensus-profile";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { encodeMidgardValidationTraceDescriptor } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";

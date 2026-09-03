@@ -30,7 +30,7 @@ import { submitWithdrawnInputStep03 } from "../src/index.js";
 import {
   advanceWithdrawnInputToStep03,
   makeWithdrawnInputEmulatorScenario,
-} from "./support/withdrawn-input-emulator-v1.js";
+} from "./support/withdrawn-input-emulator.js";
 
 /**
  * 364 decoys plus the withdrawn input (constant §5.3 stride of 40 bytes

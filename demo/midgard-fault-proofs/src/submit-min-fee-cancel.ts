@@ -18,12 +18,12 @@ import {
 import {
   MIN_FEE_CATEGORY_LABEL,
   type MinFeeContracts,
-} from "./min-fee-contracts-v1.js";
+} from "./min-fee-contracts.js";
 import {
   minFeeStepLabel,
   minFeeSubmitError,
   requireMinFeeReferenceScript,
-} from "./min-fee-submit-common-v1.js";
+} from "./min-fee-submit-common.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -38,7 +38,7 @@ import {
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
-} from "./witness-reference-scripts-v1.js";
+} from "./witness-reference-scripts.js";
 
 const CancelRedeemerSchema = faultProofStepRedeemerSchema(Data.Any());
 type CancelRedeemer = Data.Static<typeof CancelRedeemerSchema>;

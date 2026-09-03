@@ -52,8 +52,8 @@ const productionDependencies: WatcherCommandDependencies = Object.freeze({
       { loadWatcherTrustedHeadAuthorityProcessConfigFile },
       { startWatcherTrustedHeadAuthorityProcess },
     ] = await Promise.all([
-      import("./production-process-config-v1.js"),
-      import("./production-trusted-head-runtime-v1.js"),
+      import("./process-config.js"),
+      import("./trusted-head-runtime.js"),
     ]);
     return await startWatcherTrustedHeadAuthorityProcess({
       config:
@@ -63,8 +63,8 @@ const productionDependencies: WatcherCommandDependencies = Object.freeze({
   runWatcher: async (configPath) => {
     const [{ loadWatcherProcessConfigFile }, { createWatcherRuntime }] =
       await Promise.all([
-        import("./production-process-config-v1.js"),
-        import("./production-watcher-runtime-v1.js"),
+        import("./process-config.js"),
+        import("./watcher-runtime.js"),
       ]);
     return await createWatcherRuntime({
       config: await loadWatcherProcessConfigFile(configPath),

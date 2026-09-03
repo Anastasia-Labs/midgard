@@ -12,7 +12,7 @@ import { MIDGARD_NATIVE_TX_VERSION } from "./native-constants.js";
  * Plutus-data forms are `d87980`/`d87a80`. The reason a transaction is invalid
  * is *not* carried here — it belongs to `RejectionReasonV1`
  * (`onchain/aiken/lib/midgard/rejection-reason-v1.ak`, mirrored by
- * `demo/midgard-sdk/src/rejection-reason-v1.ts`), which the operator verdict
+ * `demo/midgard-sdk/src/rejection-reason.ts`), which the operator verdict
  * carries instead.
  */
 export const MidgardTxValidityCodes = {

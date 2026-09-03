@@ -16,7 +16,7 @@ import {
 } from "@al-ft/midgard-fault-proofs";
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("midgard-node/deployment-manifest-v1", () => ({
+vi.mock("midgard-node/deployment-manifest", () => ({
   parseDeploymentManifestValue: (value: unknown) => value,
 }));
 

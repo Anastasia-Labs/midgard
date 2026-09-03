@@ -3,12 +3,12 @@ import { readFile } from "node:fs/promises";
 import {
   assertMidgardConsensusReleaseReady,
   isMidgardConsensusProfile,
-} from "@al-ft/midgard-core/consensus-profile-v1";
+} from "@al-ft/midgard-core/consensus-profile";
 import {
   normalizeDaDeploymentFingerprintHex,
   parseDaLibp2pRuntimeManifest,
 } from "@al-ft/midgard-core/da-transport";
-import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { verifyFinalizedDeploymentManifest } from "@al-ft/midgard-core/deployment-manifest-identity";
 
 import type { PublicRetainedDaRuntimeConfig } from "./config.js";
 import { normalizeHex } from "./utils/hex.js";

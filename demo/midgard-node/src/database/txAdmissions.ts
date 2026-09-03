@@ -3,7 +3,7 @@ import {
   type MidgardCekProgramEnvelope,
 } from "@al-ft/midgard-core/cek-proof";
 import { computeMidgardNativeTxFullHashFromCanonicalCbor } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { RejectedTx } from "@al-ft/midgard-validation/types";
 import { SqlClient } from "@effect/sql";
 import type { PgClient } from "@effect/sql-pg/PgClient";

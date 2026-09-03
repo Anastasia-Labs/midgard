@@ -34,15 +34,15 @@ import {
   type FaultProofFieldOpeningPlan,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
-} from "./field-opening-v1.js";
-import type { MinFeeContracts } from "./min-fee-contracts-v1.js";
+} from "./field-opening.js";
+import type { MinFeeContracts } from "./min-fee-contracts.js";
 import {
   minFeeStepLabel,
   minFeeSubmitError,
   requireMinFeeReferenceScript,
   requireMinFeeStepState,
   requireMinFeeThreadUtxo,
-} from "./min-fee-submit-common-v1.js";
+} from "./min-fee-submit-common.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   type ResolvedProverSigner,
@@ -53,12 +53,12 @@ import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
-} from "./witness-reference-scripts-v1.js";
+} from "./witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "./workflow/transaction-boundary-v1.js";
+} from "./workflow/transaction-boundary.js";
 
 const STEP_LABEL = minFeeStepLabel(1);
 const FIELD_COUNT = 9;

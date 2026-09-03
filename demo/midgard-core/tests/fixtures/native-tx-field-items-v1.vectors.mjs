@@ -5,7 +5,7 @@
  * The generator
  * (`scripts/generate-native-tx-field-items-v1-goldens.mjs`) drives these through
  * the built `dist/` twin to emit the JSON fixture and the Aiken module; the
- * vitest suite (`tests/native-tx-field-items-v1-goldens.test.ts`) drives the
+ * vitest suite (`tests/native-tx-field-items-goldens.test.ts`) drives the
  * same values through `src/` and checks the result against the checked-in
  * fixture. Because both start from these definitions rather than from the
  * fixture's own bytes, an item encoder that drifts is caught on the TypeScript
@@ -369,7 +369,10 @@ export const FIELD_VECTORS = [
         // Policy groups are ordered by the same comparator; both ids are 28
         // bytes, so between them the order is byte-lexicographic.
         label: "multi_policy",
-        items: [mintPolicy(5, [asset("41", 1)]), mintPolicy(6, [asset("42", 2)])]
+        items: [
+          mintPolicy(5, [asset("41", 1)]),
+          mintPolicy(6, [asset("42", 2)]),
+        ]
           .slice()
           .sort((left, right) =>
             Buffer.compare(

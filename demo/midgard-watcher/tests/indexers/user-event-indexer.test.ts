@@ -21,7 +21,7 @@ import {
 import {
   DepositDatum,
   DepositSpendRedeemer,
-  ForcedInclusionTx,
+  ForcedInclusionTxV1,
   HubOracleDatum,
   MerkleRoot,
   outputReferenceToPlutusDataCbor,
@@ -1659,7 +1659,7 @@ const nonDepositSpendBundle = (
             source: datum.event.tx!.source,
             verdict: validity,
           },
-          ForcedInclusionTx,
+          ForcedInclusionTxV1,
         );
   const domain =
     event.kind === "withdrawal"
@@ -2883,7 +2883,7 @@ describe("canonical authenticated user-event indexer", () => {
     // watcher's forced-inclusion verification — `event-classification-verifier`'s
     // `OperatorVerdictV1` classification and `block-replay`'s `ForcedTransaction`
     // replay, both of which drive this same gate through
-    // `tests/support/w15-authority-scenarios.ts` — with no reachable subject.
+    // `tests/support/user-event-authority-scenarios.ts` — with no reachable subject.
     const fixture = makeEventFixture(
       "forced_order",
       "b6",

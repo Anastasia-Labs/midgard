@@ -12,7 +12,7 @@ import {
 import {
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_ENVELOPE_MEASUREMENTS,
-} from "@al-ft/midgard-core/consensus-profile-v1";
+} from "@al-ft/midgard-core/consensus-profile";
 import {
   Proof,
   VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES,

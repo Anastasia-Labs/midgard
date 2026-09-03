@@ -45,21 +45,21 @@ import {
   outRefFromByte,
   outRefFromTxId,
 } from "../../midgard-validation/tests/validation-fixtures.js";
-import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence-v1.js";
-import { applyExecutionSourceScriptDecodingScripts } from "../src/execution-source-script-decoding/contracts-v1.js";
-import { prepareExecutionSourceScriptDecodingEvidence } from "../src/execution-source-script-decoding/family-v1.js";
-import { buildExecutionSourceMachineAuthentication } from "../src/execution-source-script-decoding/machine-authentication-v1.js";
-import { prepareExecutionSourceScriptDecodingArtifact } from "../src/execution-source-script-decoding/production-replay-v1.js";
-import { submitExecutionSourceScriptDecodingCancel } from "../src/execution-source-script-decoding/submit-cancel-v1.js";
-import { submitExecutionSourceScriptDecodingInit } from "../src/execution-source-script-decoding/submit-init-v1.js";
+import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
+import { prepareExecutionSourceScriptDecodingArtifact } from "../src/execution-source-script-decoding/authenticated-replay.js";
+import { applyExecutionSourceScriptDecodingScripts } from "../src/execution-source-script-decoding/contracts.js";
+import { prepareExecutionSourceScriptDecodingEvidence } from "../src/execution-source-script-decoding/family.js";
+import { buildExecutionSourceMachineAuthentication } from "../src/execution-source-script-decoding/machine-authentication.js";
+import { submitExecutionSourceScriptDecodingCancel } from "../src/execution-source-script-decoding/submit-cancel.js";
+import { submitExecutionSourceScriptDecodingInit } from "../src/execution-source-script-decoding/submit-init.js";
 import {
   submitExecutionSourceScriptDecodingStep01Accepted,
   submitExecutionSourceScriptDecodingStep01Forced,
-} from "../src/execution-source-script-decoding/submit-step-01-v1.js";
-import { submitExecutionSourceScriptDecodingStep02 } from "../src/execution-source-script-decoding/submit-step-02-v1.js";
-import { submitExecutionSourceScriptDecodingStep03 } from "../src/execution-source-script-decoding/submit-step-03-v1.js";
-import { submitExecutionSourceScriptDecodingStep04 } from "../src/execution-source-script-decoding/submit-step-04-v1.js";
-import { submitExecutionSourceScriptDecodingStep05 } from "../src/execution-source-script-decoding/submit-step-05-v1.js";
+} from "../src/execution-source-script-decoding/submit-step-01.js";
+import { submitExecutionSourceScriptDecodingStep02 } from "../src/execution-source-script-decoding/submit-step-02.js";
+import { submitExecutionSourceScriptDecodingStep03 } from "../src/execution-source-script-decoding/submit-step-03.js";
+import { submitExecutionSourceScriptDecodingStep04 } from "../src/execution-source-script-decoding/submit-step-04.js";
+import { submitExecutionSourceScriptDecodingStep05 } from "../src/execution-source-script-decoding/submit-step-05.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
@@ -67,7 +67,7 @@ import {
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
 } from "./support/emulator/measurement.js";
-import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator-v1.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   buildRemovalDeploymentInfo,

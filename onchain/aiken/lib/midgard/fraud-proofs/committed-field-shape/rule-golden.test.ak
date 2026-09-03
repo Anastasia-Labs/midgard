@@ -8,7 +8,7 @@
 //// **The verdict set** is the one that matters, and every vector in it is a
 //// `(slot, bytes)` pair rather than a byte string. §12.8's verdict is a total
 //// decision procedure of two arguments implemented twice — here and in
-//// `demo/midgard-sdk/src/fraud-proof/committed-field-shape-v1.ts` — and a twin
+//// `demo/midgard-sdk/src/fraud-proof/committed-field-shape.ts` — and a twin
 //// that transposed the slot or read §5.3's stride table one row differently
 //// would agree with its partner on most inputs and disagree on exactly the
 //// ones the fault kind exists for. Each test rebuilds the bytes from the same

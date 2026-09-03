@@ -30,16 +30,16 @@ import {
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
-} from "../witness-reference-scripts-v1.js";
+} from "../witness-reference-scripts.js";
 import {
   WITHDRAWAL_MISTAG_CATEGORY_LABEL,
   type WithdrawalMistagContracts,
-} from "./contracts-v1.js";
+} from "./contracts.js";
 import {
   requireWithdrawalMistagReferenceScript,
   withdrawalMistagError,
   withdrawalMistagStepLabel,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 const CancelSchema = faultProofStepRedeemerSchema(Data.Any());
 type StepIndex = 0 | 1 | 2 | 3 | 4;

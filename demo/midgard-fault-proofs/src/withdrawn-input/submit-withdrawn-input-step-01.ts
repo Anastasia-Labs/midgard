@@ -23,7 +23,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { prepareNativeTxInclusionCarriage } from "../native-inclusion-carriage-v1.js";
+import { prepareNativeTxInclusionCarriage } from "../native-inclusion-carriage.js";
 import {
   type PublishedProofChunk,
   walletInputsExcludingChunks,
@@ -43,21 +43,21 @@ import {
   type SubmitStep01TxInclusion,
 } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary-v1.js";
+} from "../workflow/transaction-boundary.js";
 import {
   WITHDRAWN_INPUT_CATEGORY_LABEL,
   type WithdrawnInputContracts,
-} from "./contracts-v1.js";
+} from "./contracts.js";
 import {
   requireWithdrawnInputReferenceScript,
   requireWithdrawnInputThreadUtxo,
   withdrawnInputSubmitError,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 export type SubmitWithdrawnInputStep01Result = {
   readonly txHash: string;

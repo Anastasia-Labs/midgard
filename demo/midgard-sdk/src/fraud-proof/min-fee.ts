@@ -16,7 +16,7 @@ import {
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "../common.js";
-import { FieldCarriageSchema } from "../native-tx-field-access-v1.js";
+import { FieldCarriageSchema } from "../native-tx-field-access.js";
 import {
   FaultProofStepCancel,
   FaultProofStepCancelSchema,

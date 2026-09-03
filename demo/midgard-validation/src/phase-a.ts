@@ -13,11 +13,11 @@ import {
 import {
   isMidgardConsensusProfile,
   MIDGARD_CONSENSUS_PROFILE,
-} from "@al-ft/midgard-core/consensus-profile-v1";
+} from "@al-ft/midgard-core/consensus-profile";
 import {
   type MidgardConsensusViolationCode,
   validateMidgardConsensusTxCbor,
-} from "@al-ft/midgard-core/consensus-validation-v1";
+} from "@al-ft/midgard-core/consensus-validation";
 import { collectMidgardAttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import { CML } from "@lucid-evolution/lucid";
 import { Effect } from "effect";

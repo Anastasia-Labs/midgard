@@ -44,7 +44,7 @@
   the measurement deployment (`hub_oracle=11…11`, `catalogue=22…22`, semantic
   resolver 1 of 76). Producing run: `pins the applied §3.2 necessity
   identities on the measurement deployment` in
-  `demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts`,
+  `demo/midgard-validation/tests/complete-item-proof-fit-emulator.test.ts`,
   which now gates both identities instead of arguing them. Every hash pinned
   above is therefore current under `605c8b8d…` and the measurement tables
   below stay bound; the C21-AUDIT "fresh applied re-measurement owed before
@@ -84,7 +84,7 @@
   gain #592's `field_preimage_certificate_policy_id`. The gate named in the
   bullet above — `pins the applied §3.2 necessity identities on the measurement
   deployment` in
-  `demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts` —
+  `demo/midgard-validation/tests/complete-item-proof-fit-emulator.test.ts` —
   re-derives both identities at runtime rather than hardcoding them, and is
   **green against this blueprint** (suite 5/5, 2026-08-15), so it gates the new
   values as it gated the old. Full record, commands and the
@@ -141,7 +141,7 @@
   capability floor per
   `docs/midgard/decisions/0001-cardano-l1-transaction-capability-floor.md`.
 - Fixture: shared exact-size item generators in
-  `demo/midgard-validation/tests/complete-item-proof-fit-v1.test.ts`;
+  `demo/midgard-validation/tests/complete-item-proof-fit.test.ts`;
   native evaluation semantics covered by the phase-A Aiken suites.
 
 ## Measurements — flat `FieldCarriageV1` scheme (current; §3.2 order — stop at the first tier that fits)
@@ -182,11 +182,11 @@ refresh needed, the pin above was already current) by running five suites
 with `MIDGARD_PRINT_PROOF_FIT=1`, one file at a time
 (`pnpm --config.verifyDepsBeforeRun=false --dir midgard-validation exec
 vitest run tests/<file> --pool=forks --no-file-parallelism --bail=0` from
-`demo/`): `complete-item-proof-fit-v1.test.ts` (5/5),
-`complete-item-proof-fit-emulator-v1.test.ts` (6/6),
-`field-preimage-carriage-fit-emulator-v1.test.ts` (16/16),
-`complete-item-carriage-tiers-emulator-v1.test.ts` (5/5), and
-`complete-item-equivalence-v1.test.ts` (2/2) — all green. This family's own
+`demo/`): `complete-item-proof-fit.test.ts` (5/5),
+`complete-item-proof-fit-emulator.test.ts` (6/6),
+`field-preimage-carriage-fit-emulator.test.ts` (16/16),
+`complete-item-carriage-tiers-emulator.test.ts` (5/5), and
+`complete-item-equivalence.test.ts` (2/2) — all green. This family's own
 "phase-A Aiken suites" (the twelve
 `phase-a-native-scripts-*-payload-semantic-v1.ak` validators cited in this
 file's Binding section) are Aiken-level unit tests, not part of the vitest
@@ -200,7 +200,7 @@ shared flat-carriage table, not a family-specific measurement, and is cited
 rather than re-derived: `docs/exec-plans/evidence/necessity/transaction-field-chunk-v1.md`'s
 own "Measurements — flat `FieldCarriageV1` scheme" section, re-run this pass
 via the same suites (that file additionally cites
-`complete-item-carriage-policy-v1.test.ts`, unchanged here). Carried from
+`complete-item-carriage-policy.test.ts`, unchanged here). Carried from
 there rather than re-taken: tier-1 nominal cap 14,336 (item ≤ 14,332),
 **re-derived 2026-08-23 on the post-Option-B route: the signed inline fit
 ends at a 14,004-byte item, above which the builder refuses pre-sign and
@@ -214,7 +214,7 @@ frame representation necessary in the first place —
 `maxNativeScriptNodeCount` and `maxNativeScriptDepth`, both 16,384
 (`MIDGARD_NATIVE_SCRIPT_MAX_NODE_COUNT_V1` /
 `MIDGARD_NATIVE_SCRIPT_MAX_DEPTH_V1`,
-`demo/midgard-core/src/consensus-profile-v1.ts:246-247`) — are structural
+`demo/midgard-core/src/consensus-profile.ts:246-247`) — are structural
 guardrails independent of carriage tier and did not move. None of the above
 is re-flagged as a new finding; it is the same movement
 `transaction-field-chunk-v1.md` already records, cited here because this
@@ -260,7 +260,7 @@ tokens (`chunk_proof` with chunk 0 of a ≤4,095-byte item) still carry the
 complete script bytes in one reveal exactly as the counted era's route did —
 only the door supplying the item's bytes changed. Chunk proofs and the
 complete-item read bind the identical bounded-item commitment:
-`demo/midgard-validation/tests/complete-item-equivalence-v1.test.ts` (2/2
+`demo/midgard-validation/tests/complete-item-equivalence.test.ts` (2/2
 this pass) proves commitment equality and
 omission/duplication/reorder/substitution/trailing rejection for both
 representations.
@@ -329,7 +329,7 @@ measured 13,282-byte frontier, publication + reference at or below 14,396),
 and single-chunk tokens (`chunk_proof` with chunk 0 of a ≤4,095-byte item)
 carry the complete script bytes in one reveal. Chunk proofs and the
 complete item bind the identical bounded-item commitment
-(`demo/midgard-validation/tests/complete-item-equivalence-v1.test.ts`
+(`demo/midgard-validation/tests/complete-item-equivalence.test.ts`
 proves commitment equality and omission/duplication/reorder/substitution/
 trailing rejection for both representations).
 

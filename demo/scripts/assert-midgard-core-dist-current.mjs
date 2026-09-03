@@ -13,7 +13,7 @@
 //      of src/ + the build script. A dist built before the stamp existed has
 //      no stamp and fails.
 //   2. The named tripwire: maxReliableDirectCompleteItemBytes parsed from
-//      src/consensus-profile-v1.ts must equal the compiled dist export.
+//      src/consensus-profile.ts must equal the compiled dist export.
 //
 // Remedy for every failure mode:  pnpm --filter @al-ft/midgard-core build
 import { readFile } from "node:fs/promises";
@@ -54,7 +54,7 @@ if (stamp.sha256 !== expected) {
 
 // Check 2: the named constant tripwire.
 const profileSource = await readFile(
-  resolve(coreRoot, "src/consensus-profile-v1.ts"),
+  resolve(coreRoot, "src/consensus-profile.ts"),
   "utf8",
 );
 const match = profileSource.match(
@@ -62,12 +62,12 @@ const match = profileSource.match(
 );
 if (!match) {
   fail(
-    "maxReliableDirectCompleteItemBytes not found in src/consensus-profile-v1.ts — update this preflight alongside the rename",
+    "maxReliableDirectCompleteItemBytes not found in src/consensus-profile.ts — update this preflight alongside the rename",
   );
 }
 const sourceValue = Number(match[1].replaceAll("_", ""));
 const dist = await import(
-  pathToFileURL(resolve(coreRoot, "dist/consensus-profile-v1.js")).href
+  pathToFileURL(resolve(coreRoot, "dist/consensus-profile.js")).href
 );
 const distValue =
   dist.MIDGARD_ENVELOPE_MEASUREMENTS.maxReliableDirectCompleteItemBytes;

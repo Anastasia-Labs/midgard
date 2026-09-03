@@ -55,7 +55,7 @@ import { l2TransactionSourceCbor as l2TransactionSourceCborV1 } from "./support/
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { makeSpendingValidator } from "./support/emulator/validators.js";
-import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator-v1.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
 import {
   countedTransactionsRoot,
   EMULATOR_HEADER_CLOCK_HEADROOM_MS,

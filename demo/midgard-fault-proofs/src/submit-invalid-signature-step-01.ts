@@ -54,7 +54,7 @@ import {
 } from "@lucid-evolution/lucid";
 
 import { parseHex, requireRecord } from "./json-file.js";
-import { prepareNativeTxInclusionCarriage } from "./native-inclusion-carriage-v1.js";
+import { prepareNativeTxInclusionCarriage } from "./native-inclusion-carriage.js";
 import {
   type PublishedProofChunk,
   walletInputsExcludingChunks,
@@ -85,12 +85,12 @@ import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessSpendingValidatorCarriage,
-} from "./witness-reference-scripts-v1.js";
+} from "./witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "./workflow/transaction-boundary-v1.js";
+} from "./workflow/transaction-boundary.js";
 
 /**
  * Preimage of the bad transaction's committed `witness_set_hash`, as

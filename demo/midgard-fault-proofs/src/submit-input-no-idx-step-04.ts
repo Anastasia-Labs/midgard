@@ -51,7 +51,7 @@ import {
   parseNativeTxCompactCbor,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
-} from "./field-opening-v1.js";
+} from "./field-opening.js";
 import { parseHex, requireRecord } from "./json-file.js";
 import { midgardTxOutputFromCanonicalCbor } from "./prepare-input-no-idx.js";
 import {
@@ -76,12 +76,12 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
   witnessSpendingValidatorCarriage,
-} from "./witness-reference-scripts-v1.js";
+} from "./witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "./workflow/transaction-boundary-v1.js";
+} from "./workflow/transaction-boundary.js";
 
 /** Prepared outputs preimage produced by `prepare-input-no-idx`. */
 export type SubmitInputNoIdxOutputsPreimage = {

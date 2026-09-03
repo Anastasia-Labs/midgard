@@ -8,8 +8,8 @@ import {
   isMidgardConsensusProfile,
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_CONSENSUS_PROFILE,
-} from "@al-ft/midgard-core/consensus-profile-v1";
-import { parseDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+} from "@al-ft/midgard-core/consensus-profile";
+import { parseDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { hexToBytes } from "@al-ft/midgard-core/hex";
 
 import { ProviderPayloadError } from "../core/errors.js";

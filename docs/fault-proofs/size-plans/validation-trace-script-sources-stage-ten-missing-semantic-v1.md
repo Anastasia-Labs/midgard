@@ -16,7 +16,7 @@ Assumes [`00-primer.md`](00-primer.md) and the anchor plan
 | Semantic index (arm) | 20 of 29; global slot `validationSemanticResolverGlobalIndexV1(8, 20) = 52` |
 | Library entry point | `verify_script_sources_stage_ten_missing_semantics_v1` → `script_sources_stage_ten_control_from_witness`, `script_sources_stage_ten_control_is_bound` (**`exact_script_sources_control`**), `rejected_successor_is_exact(…, reject_missing_required_witness)` |
 | Redeemer action | `VerifyMissing { input_index, output_index, transition }`; auxiliary `NoAuxiliaryWitness` (constructor 0) |
-| Rejection reached | `reject_missing_required_witness` (`E_MISSING_REQUIRED_WITNESS`, `rejection-reason-v1.ts:258`) |
+| Rejection reached | `reject_missing_required_witness` (`E_MISSING_REQUIRED_WITNESS`, `rejection-reason.ts:258`) |
 | Role / deployment entry today | none (anchor §1) |
 
 What the step proves (C45): the redeemer scan for the current effectful purpose

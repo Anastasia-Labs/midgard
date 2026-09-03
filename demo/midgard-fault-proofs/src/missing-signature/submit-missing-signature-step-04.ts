@@ -48,7 +48,7 @@ import {
 import {
   faultProofFieldOpening,
   publishFaultProofFieldCarriage,
-} from "../field-opening-v1.js";
+} from "../field-opening.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   type ResolvedProverSigner,
@@ -62,21 +62,21 @@ import {
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
-} from "../witness-reference-scripts-v1.js";
+} from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary-v1.js";
-import type { MissingSignatureContracts } from "./contracts-v1.js";
-import { planMissingSignatureAddressWitnessesOpening } from "./evidence-v1.js";
+} from "../workflow/transaction-boundary.js";
+import type { MissingSignatureContracts } from "./contracts.js";
+import { planMissingSignatureAddressWitnessesOpening } from "./evidence.js";
 import {
   missingSignatureStepLabel,
   missingSignatureSubmitError,
   requireMissingSignatureReferenceScript,
   requireMissingSignatureStepState,
   requireMissingSignatureThreadUtxo,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 const STEP_LABEL = missingSignatureStepLabel(3);
 

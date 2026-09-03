@@ -11,8 +11,8 @@ through the shared authenticated door:
 
 - `onchain/aiken/lib/midgard/fraud-proofs/field-opening-v1.ak`
 - `onchain/aiken/lib/midgard/native-tx-field-access-v1.ak`
-- `demo/midgard-sdk/src/fraud-proof/field-opening-v1.ts`
-- `demo/midgard-fault-proofs/src/field-opening-v1.ts`
+- `demo/midgard-sdk/src/fraud-proof/field-opening.ts`
+- `demo/midgard-fault-proofs/src/field-opening.ts`
 
 The transaction id anchors body fields 0–5. The transaction's authenticated
 `witness_set_hash` additionally anchors witness fields 6–8. A field opening

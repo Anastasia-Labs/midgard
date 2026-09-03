@@ -46,7 +46,7 @@ import {
   vnpOutput,
   vnpOutRef,
   vnpValue,
-} from "./support/value-not-preserved-emulator-v1.js";
+} from "./support/value-not-preserved-emulator.js";
 
 const POLICY_ID_HEX = "ab".repeat(28);
 const ASSET_NAME_HEX = "746f6b"; // "tok"

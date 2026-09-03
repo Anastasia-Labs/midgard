@@ -75,7 +75,7 @@ import {
   setupDecodingScenario,
   submitRawDecodingCancel,
   submitRawDecodingStep,
-} from "./support/native-script-decoding-emulator-v1.js";
+} from "./support/native-script-decoding-emulator.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 
 type DecodingHarness = Awaited<ReturnType<typeof makeDecodingEmulatorHarness>>;

@@ -16,7 +16,7 @@ import {
 import {
   advanceWithdrawnInputToStep03,
   makeWithdrawnInputEmulatorScenario,
-} from "./support/withdrawn-input-emulator-v1.js";
+} from "./support/withdrawn-input-emulator.js";
 
 describe("withdrawn-input emulator lifecycle", () => {
   it("mints the permanent fault token and removes the fraudulent block", async () => {

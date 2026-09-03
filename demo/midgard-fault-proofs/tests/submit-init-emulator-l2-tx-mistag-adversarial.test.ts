@@ -10,7 +10,7 @@ import {
   forceL2TxMistagStep01ForAdversarialTest,
   l2TxMistagCategory,
   publishL2TxMistagReferenceScripts,
-} from "./support/l2-tx-mistag-emulator-v1.js";
+} from "./support/l2-tx-mistag-emulator.js";
 import {
   expectStateQueueHeaderOrder,
   setupFraudulentBlock,

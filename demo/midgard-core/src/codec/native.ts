@@ -24,11 +24,11 @@ import {
   MIDGARD_POSIX_TIME_NONE,
 } from "./native-constants.js";
 import { midgardRedeemersToCardano } from "./native-redeemer.js";
-import { decodeMidgardFieldPreimage } from "./native-tx-field-access-v1.js";
+import { decodeMidgardFieldPreimage } from "./native-tx-field-access.js";
 import {
   decodeMidgardFieldItems,
   decodeMidgardSpendInputItem,
-} from "./native-tx-field-item-decoders-v1.js";
+} from "./native-tx-field-item-decoders.js";
 import {
   asFixedArray,
   asUnsigned,

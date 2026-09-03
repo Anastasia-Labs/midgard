@@ -27,7 +27,7 @@ import {
   faultProofFieldOpening,
   type FaultProofFieldOpeningPlan,
   publishFaultProofFieldCarriage,
-} from "../field-opening-v1.js";
+} from "../field-opening.js";
 import { PEXCLUDES_EXCLUSION_WITHDRAW_TITLE } from "../ne-submit-step-03.js";
 import {
   chunkedMembershipClaimRedeemer,
@@ -55,28 +55,28 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
   witnessWithdrawalValidatorCarriage,
-} from "../witness-reference-scripts-v1.js";
+} from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
-} from "../workflow/transaction-boundary-v1.js";
-import type { NetworkIdContracts } from "./contracts-v1.js";
+} from "../workflow/transaction-boundary.js";
+import type { NetworkIdContracts } from "./contracts.js";
 import type {
   PreparedNetworkIdPostUtxoProof,
   PreparedNetworkIdProof,
-} from "./prepare-v1.js";
+} from "./prepare.js";
 import {
   networkIdStepLabel,
   networkIdSubmitError,
   requireNetworkIdReferenceScript,
   requireNetworkIdStepState,
   requireNetworkIdThreadUtxo,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 import {
   networkIdWrongfulRejectionCloses,
   type PreparedNetworkIdWrongfulRejection,
-} from "./wrongful-rejection-v1.js";
+} from "./wrongful-rejection.js";
 
 const STEP_LABEL = networkIdStepLabel(1);
 

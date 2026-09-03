@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { type MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile-v1";
+import { type MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Duration, Effect, Metric, Option, Queue, Ref, Runtime } from "effect";
 import { Worker } from "worker_threads";

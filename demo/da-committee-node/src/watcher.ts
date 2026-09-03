@@ -6,7 +6,7 @@ import {
   encodeDaConflictEvidenceCbor,
   encodeDaConflictingSignatureHeaderEvidenceCbor,
 } from "@al-ft/midgard-core/da-transport";
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 
 import { l1SourceAuthorityDigest, type WatcherConfig } from "./config.js";

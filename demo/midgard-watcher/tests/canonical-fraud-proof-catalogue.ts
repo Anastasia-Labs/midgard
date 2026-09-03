@@ -6,7 +6,7 @@ import {
   DEPLOYMENT_MANIFEST_FRAUD_PROOF_CONTRACT_BY_CATEGORY,
   type DeploymentManifestFraudProofCatalogueIdentity,
   verifyDeploymentManifestFraudProofCatalogueIdentity,
-} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 
 type ContractIdentity = Readonly<{ scriptHash: string }>;

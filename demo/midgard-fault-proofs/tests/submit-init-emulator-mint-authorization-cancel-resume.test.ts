@@ -17,7 +17,7 @@ import {
   publishMintAuthorizationReferenceScripts,
   setupMintAuthorizationScenario,
   smallMintItemCbors,
-} from "./support/mint-authorization-emulator-v1.js";
+} from "./support/mint-authorization-emulator.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 
 describe("mint-authorization cancellation and restart", () => {

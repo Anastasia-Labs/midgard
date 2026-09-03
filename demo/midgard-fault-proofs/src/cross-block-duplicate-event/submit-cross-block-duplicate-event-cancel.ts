@@ -43,16 +43,16 @@ import {
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
-} from "../witness-reference-scripts-v1.js";
+} from "../witness-reference-scripts.js";
 import {
   CROSS_BLOCK_DUPLICATE_EVENT_CATEGORY_LABEL,
   type CrossBlockDuplicateEventContracts,
-} from "./contracts-v1.js";
+} from "./contracts.js";
 import {
   crossBlockDuplicateEventStepLabel,
   crossBlockDuplicateEventSubmitError,
   requireCrossBlockDuplicateEventReferenceScript,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 /**
  * Every step's spend redeemer shares the `Cancel` head; the `Continue` arm

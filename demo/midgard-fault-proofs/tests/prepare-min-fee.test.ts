@@ -17,7 +17,7 @@ import {
   h28,
   h32,
   outRefCbor,
-} from "./helpers/canonical-block-evidence-fixture-v1.js";
+} from "./helpers/canonical-block-evidence-fixture.js";
 
 const CATEGORY_ID = "00000013";
 type LucidDataSchema = Parameters<typeof Data.to>[1];

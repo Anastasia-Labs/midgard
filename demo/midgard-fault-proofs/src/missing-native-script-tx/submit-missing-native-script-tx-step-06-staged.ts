@@ -26,9 +26,9 @@ import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary-v1.js";
-import type { MissingNativeScriptTxContracts } from "./contracts-v1.js";
-import { prepareMissingNativeScriptTxStagedFieldOpening } from "./staged-field-opening-v1.js";
+} from "../workflow/transaction-boundary.js";
+import type { MissingNativeScriptTxContracts } from "./contracts.js";
+import { prepareMissingNativeScriptTxStagedFieldOpening } from "./staged-field-opening.js";
 import {
   advanceMissingNativeScriptTxGrammarCheckpoint,
   encodeMissingNativeScriptTxGrammarCheckpoint,
@@ -36,13 +36,13 @@ import {
   initialMissingNativeScriptTxGrammarCheckpoint,
   MISSING_NATIVE_SCRIPT_TX_STAGED_BATCH_LIMIT,
   missingNativeScriptTxGrammarCheckpointIsComplete,
-} from "./staged-walk-v1.js";
+} from "./staged-walk.js";
 import {
   missingNativeScriptTxStepLabel,
   missingNativeScriptTxSubmitError,
   requireMissingNativeScriptTxStepState,
   requireMissingNativeScriptTxThreadUtxo,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 const STEP_INDEX = 5 as const;
 const STEP_LABEL = missingNativeScriptTxStepLabel(STEP_INDEX);

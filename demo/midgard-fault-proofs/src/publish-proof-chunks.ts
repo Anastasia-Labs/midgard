@@ -52,7 +52,7 @@ import { selectFeeInput } from "./submit-step-01.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
-} from "./workflow/transaction-boundary-v1.js";
+} from "./workflow/transaction-boundary.js";
 
 export * from "./proof-chunk-carriage.js";
 export { MAXIMUM_CHUNK_PROOF_STEP_COUNT, MAXIMUM_PROOF_CHUNK_COUNT };

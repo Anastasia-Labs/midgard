@@ -42,16 +42,16 @@ import {
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
-} from "../witness-reference-scripts-v1.js";
+} from "../witness-reference-scripts.js";
 import {
   NATIVE_SCRIPT_DECODING_CATEGORY_LABEL,
   type NativeScriptDecodingContracts,
-} from "./contracts-v1.js";
+} from "./contracts.js";
 import {
   nativeScriptDecodingStepLabel,
   nativeScriptDecodingSubmitError,
   requireNativeScriptDecodingReferenceScript,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 /**
  * Every step's spend redeemer shares the `Cancel` head; the `Continue` arm

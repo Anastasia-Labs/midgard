@@ -22,7 +22,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary-v1.js";
+import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -44,12 +44,12 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
   witnessSpendingValidatorCarriage,
-} from "./witness-reference-scripts-v1.js";
+} from "./witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "./workflow/transaction-boundary-v1.js";
+} from "./workflow/transaction-boundary.js";
 
 export type SubmitInvalidRangeStep02CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;

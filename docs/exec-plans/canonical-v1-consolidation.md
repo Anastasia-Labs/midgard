@@ -303,7 +303,7 @@ for review, but no mixed-version commit is deployable.
 ### WB1 — Define the sole consensus tuple
 
 1. Replace launch and proof profile modules with one
-   `consensus-profile-v1.ts`.
+   `consensus-profile.ts`.
 2. Define the entire tuple in one frozen `MidgardConsensusProfileV1` object:
    protocol, native transaction, transition, DA, CEK, validation, dispute,
    manifest, API, size bounds, enabled features, and proof families.

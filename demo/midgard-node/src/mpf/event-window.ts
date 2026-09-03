@@ -12,7 +12,7 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   deriveMidgardNativeTxProofSource,
 } from "@al-ft/midgard-core/codec";
-import { type MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile-v1";
+import { type MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
 import {
   collectMidgardAttachedProgramEnvelopes,
   collectMidgardReferencedProgramEnvelopes,
@@ -641,7 +641,7 @@ export const classifyForcedTransactions = <R>({
           applyUTxOStatePatch(state, phaseB.statePatch);
         }
       }
-      const encoded = yield* ForcedTransactionsDB.encodeForcedInclusionValue({
+      const encoded = yield* ForcedTransactionsDB.encodeForcedInclusionValueV1({
         nativeTxCbor,
         verdict,
         consensusProfile,

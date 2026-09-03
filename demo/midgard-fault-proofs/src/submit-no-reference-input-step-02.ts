@@ -50,7 +50,7 @@ import {
   parseNativeTxCompactCbor,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
-} from "./field-opening-v1.js";
+} from "./field-opening.js";
 import { type NoReferenceInputPreimageEntry } from "./prepare-no-reference-input.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -70,12 +70,12 @@ import {
   selectFeeInput,
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
-import { witnessSpendingValidatorCarriage } from "./witness-reference-scripts-v1.js";
+import { witnessSpendingValidatorCarriage } from "./witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "./workflow/transaction-boundary-v1.js";
+} from "./workflow/transaction-boundary.js";
 
 const toMidgardTxInput = (
   entry: NoReferenceInputPreimageEntry,

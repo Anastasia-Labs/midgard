@@ -237,7 +237,7 @@
       "id": "V05-V18-retired-validation-identities",
       "paths": [
         "demo/midgard-sdk/src/fraud-proof/validation-dispute.ts",
-        "demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness-v1.ts",
+        "demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness.ts",
         "demo/midgard-validation/src/validation-machine-data.ts",
         "demo/midgard-validation/src/validation-machine",
         "onchain/aiken/lib/midgard/validation-claim-v1.ak",
@@ -609,7 +609,7 @@
       "auditStatus": "PASS",
       "sourceEvidence": [
         {
-          "path": "demo/midgard-core/src/consensus-profile-v1.ts",
+          "path": "demo/midgard-core/src/consensus-profile.ts",
           "symbols": [
             "MIDGARD_CONSENSUS_PROFILE",
             "MIDGARD_CONSENSUS_PROFILE_DIGEST",
@@ -663,13 +663,13 @@
           "persistence": "Embedded in authenticated deployment and public protocol identity; never parsed as a historical profile",
           "encoders": [
             {
-              "path": "demo/midgard-core/src/consensus-profile-v1.ts",
+              "path": "demo/midgard-core/src/consensus-profile.ts",
               "symbols": ["encodeMidgardConsensusProfile"]
             }
           ],
           "parsers": [
             {
-              "path": "demo/midgard-core/src/consensus-profile-v1.ts",
+              "path": "demo/midgard-core/src/consensus-profile.ts",
               "symbols": ["isMidgardConsensusProfile"]
             }
           ]
@@ -677,7 +677,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-core/tests/consensus-profile-v1.test.ts",
+          "path": "demo/midgard-core/tests/consensus-profile.test.ts",
           "testNames": [
             "pins the indivisible V1 version tuple",
             "accepts only the exact compiled V1 profile"
@@ -686,7 +686,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-core/tests/consensus-profile-v1.test.ts",
+          "path": "demo/midgard-core/tests/consensus-profile.test.ts",
           "testNames": [
             "accepts only the exact compiled V1 profile",
             "fails closed until validator-hash-bound L1 release evidence is compiled in"
@@ -720,7 +720,7 @@
       "auditStatus": "PASS",
       "sourceEvidence": [
         {
-          "path": "demo/midgard-core/src/consensus-profile-v1.ts",
+          "path": "demo/midgard-core/src/consensus-profile.ts",
           "symbols": [
             "MIDGARD_PROTOCOL_VERSION",
             "MIDGARD_CONSENSUS_PROFILE",
@@ -793,13 +793,13 @@
           "persistence": "Embedded in authenticated deployment/protocol identity; pre-launch non-V1 variants have no reader",
           "encoders": [
             {
-              "path": "demo/midgard-core/src/consensus-profile-v1.ts",
+              "path": "demo/midgard-core/src/consensus-profile.ts",
               "symbols": ["encodeMidgardConsensusProfile"]
             }
           ],
           "parsers": [
             {
-              "path": "demo/midgard-core/src/consensus-profile-v1.ts",
+              "path": "demo/midgard-core/src/consensus-profile.ts",
               "symbols": ["isMidgardConsensusProfile"]
             }
           ]
@@ -807,7 +807,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-core/tests/consensus-profile-v1.test.ts",
+          "path": "demo/midgard-core/tests/consensus-profile.test.ts",
           "testNames": ["pins the indivisible V1 version tuple"]
         },
         {
@@ -817,7 +817,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-core/tests/consensus-profile-v1.test.ts",
+          "path": "demo/midgard-core/tests/consensus-profile.test.ts",
           "testNames": ["accepts only the exact compiled V1 profile"]
         }
       ],
@@ -825,7 +825,7 @@
         "status": "PASS",
         "tests": [
           {
-            "path": "demo/midgard-core/tests/consensus-profile-v1.test.ts",
+            "path": "demo/midgard-core/tests/consensus-profile.test.ts",
             "testNames": ["pins the indivisible V1 version tuple"]
           },
           {
@@ -854,7 +854,7 @@
       "auditStatus": "PASS",
       "sourceEvidence": [
         {
-          "path": "demo/midgard-core/src/deployment-manifest-identity-v1.ts",
+          "path": "demo/midgard-core/src/deployment-manifest-identity.ts",
           "symbols": [
             "DEPLOYMENT_MANIFEST_ROOT_KEYS",
             "computeDeploymentManifestId",
@@ -863,11 +863,8 @@
           ]
         },
         {
-          "path": "demo/midgard-node/src/deployment-manifest-v1.ts",
-          "symbols": [
-            "DeploymentManifestValue",
-            "parseDeploymentManifestValue"
-          ]
+          "path": "demo/midgard-node/src/deployment-manifest.ts",
+          "symbols": ["DeploymentManifestValue", "parseDeploymentManifestValue"]
         }
       ],
       "canonicalForms": [
@@ -903,7 +900,7 @@
           "persistence": "Canonical deployment manifest artifact and every deployment-bound durable marker",
           "encoders": [
             {
-              "path": "demo/midgard-core/src/deployment-manifest-identity-v1.ts",
+              "path": "demo/midgard-core/src/deployment-manifest-identity.ts",
               "symbols": [
                 "computeDeploymentManifestId",
                 "normalizeDeploymentManifestJsonValue"
@@ -912,11 +909,11 @@
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/deployment-manifest-v1.ts",
+              "path": "demo/midgard-node/src/deployment-manifest.ts",
               "symbols": ["parseDeploymentManifestValue"]
             },
             {
-              "path": "demo/midgard-core/src/deployment-manifest-identity-v1.ts",
+              "path": "demo/midgard-core/src/deployment-manifest-identity.ts",
               "symbols": ["verifyFinalizedDeploymentManifest"]
             }
           ]
@@ -924,20 +921,20 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-node/tests/deployment-manifest-v1.test.ts",
+          "path": "demo/midgard-node/tests/deployment-manifest.test.ts",
           "testNames": [
             "accepts the sole exact authenticated V1 manifest",
             "delegates canonical JSON normalization and digesting to core"
           ]
         },
         {
-          "path": "demo/midgard-core/tests/deployment-manifest-identity-v1.test.ts",
+          "path": "demo/midgard-core/tests/deployment-manifest-identity.test.ts",
           "testNames": ["recomputes the exact full-manifest identity"]
         }
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-node/tests/deployment-manifest-v1.test.ts",
+          "path": "demo/midgard-node/tests/deployment-manifest.test.ts",
           "testNames": [
             "rejects missing and unexpected root fields",
             "rejects tampered script bytes even with a recomputed manifest ID",
@@ -945,7 +942,7 @@
           ]
         },
         {
-          "path": "demo/midgard-core/tests/deployment-manifest-identity-v1.test.ts",
+          "path": "demo/midgard-core/tests/deployment-manifest-identity.test.ts",
           "testNames": ["rejects tampering, missing fields, and extra fields"]
         }
       ],
@@ -1054,7 +1051,7 @@
     {
       "id": "C06",
       "family": "C",
-      "sourceOwnerAndCurrentIdentity": "Contract deployment marker and `manifestId` computation, owned by `midgard-core/src/deployment-manifest-identity-v1.ts`",
+      "sourceOwnerAndCurrentIdentity": "Contract deployment marker and `manifestId` computation, owned by `midgard-core/src/deployment-manifest-identity.ts`",
       "classification": "schema",
       "canonicalResult": "`DeploymentMarkerV1`; `midgard-deployment-marker-v1` bound to the canonical final `DeploymentManifestV1` manifest ID",
       "boundaryBindingAndPersistence": "Postgres pending-block-finalization and foreign-tip-reconciliation rows, pending-finalization MPF replay metadata, DA committee store, E2E deployment run state, and the public protocol-info payload",
@@ -1063,7 +1060,7 @@
       "auditStatus": "PASS",
       "sourceEvidence": [
         {
-          "path": "demo/midgard-core/src/deployment-manifest-identity-v1.ts",
+          "path": "demo/midgard-core/src/deployment-manifest-identity.ts",
           "symbols": [
             "MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION",
             "DeploymentMarker",
@@ -1074,17 +1071,11 @@
         },
         {
           "path": "demo/midgard-node/src/e2e/run-state.ts",
-          "symbols": [
-            "bindDeploymentRunStateToMarker",
-            "parseDeploymentMarker"
-          ]
+          "symbols": ["bindDeploymentRunStateToMarker", "parseDeploymentMarker"]
         },
         {
           "path": "demo/da-committee-node/src/store.ts",
-          "symbols": [
-            "assertDeploymentMarkerMatches",
-            "parseDeploymentMarker"
-          ]
+          "symbols": ["assertDeploymentMarkerMatches", "parseDeploymentMarker"]
         },
         {
           "path": "demo/midgard-node/src/database/pendingBlockFinalizations.ts",
@@ -1117,13 +1108,13 @@
           "persistence": "Persisted as two Postgres columns guarded by CHECK constraints (deployment_marker_schema_version = 'midgard-deployment-marker-v1' and deployment_manifest_id ~ '^[0-9a-f]{64}$'), as the DA store deployment record, and inside the E2E run-state identity; a different marker is terminal and requires an explicit fresh redeploy",
           "encoders": [
             {
-              "path": "demo/midgard-core/src/deployment-manifest-identity-v1.ts",
+              "path": "demo/midgard-core/src/deployment-manifest-identity.ts",
               "symbols": ["makeDeploymentMarker"]
             }
           ],
           "parsers": [
             {
-              "path": "demo/midgard-core/src/deployment-manifest-identity-v1.ts",
+              "path": "demo/midgard-core/src/deployment-manifest-identity.ts",
               "symbols": [
                 "parseDeploymentMarker",
                 "assertDeploymentMarkerMatches"
@@ -1134,7 +1125,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-core/tests/deployment-manifest-identity-v1.test.ts",
+          "path": "demo/midgard-core/tests/deployment-manifest-identity.test.ts",
           "testNames": ["owns the sole exact DeploymentMarkerV1 boundary"]
         },
         {
@@ -1150,7 +1141,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-core/tests/deployment-manifest-identity-v1.test.ts",
+          "path": "demo/midgard-core/tests/deployment-manifest-identity.test.ts",
           "testNames": ["owns the sole exact DeploymentMarkerV1 boundary"]
         },
         {
@@ -1203,7 +1194,7 @@
           ]
         },
         {
-          "path": "demo/midgard-core/src/deployment-manifest-identity-v1.ts",
+          "path": "demo/midgard-core/src/deployment-manifest-identity.ts",
           "symbols": [
             "cardanoProtocolParameters",
             "normalizeDeploymentManifestJsonValue",
@@ -1212,7 +1203,7 @@
           ]
         },
         {
-          "path": "demo/midgard-node/src/deployment-manifest-v1.ts",
+          "path": "demo/midgard-node/src/deployment-manifest.ts",
           "symbols": [
             "cardanoProtocolParameters",
             "parseDeploymentManifestValue",
@@ -1238,7 +1229,7 @@
               "symbols": ["cardanoProtocolParametersIdentityFromProvider"]
             },
             {
-              "path": "demo/midgard-core/src/deployment-manifest-identity-v1.ts",
+              "path": "demo/midgard-core/src/deployment-manifest-identity.ts",
               "symbols": [
                 "normalizeDeploymentManifestJsonValue",
                 "computeDeploymentManifestJsonDigest"
@@ -1247,11 +1238,11 @@
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/deployment-manifest-v1.ts",
+              "path": "demo/midgard-node/src/deployment-manifest.ts",
               "symbols": ["parseDeploymentManifestValue"]
             },
             {
-              "path": "demo/midgard-core/src/deployment-manifest-identity-v1.ts",
+              "path": "demo/midgard-core/src/deployment-manifest-identity.ts",
               "symbols": ["verifyFinalizedDeploymentManifest"]
             }
           ]
@@ -1265,20 +1256,20 @@
           ]
         },
         {
-          "path": "demo/midgard-core/tests/deployment-manifest-identity-v1.test.ts",
+          "path": "demo/midgard-core/tests/deployment-manifest-identity.test.ts",
           "testNames": ["owns canonical JSON normalization and digest vectors"]
         }
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-node/tests/deployment-manifest-v1.test.ts",
+          "path": "demo/midgard-node/tests/deployment-manifest.test.ts",
           "testNames": [
             "rejects tampered Cardano and DA identity fields",
             "rejects missing and unexpected root fields"
           ]
         },
         {
-          "path": "demo/midgard-core/tests/deployment-manifest-identity-v1.test.ts",
+          "path": "demo/midgard-core/tests/deployment-manifest-identity.test.ts",
           "testNames": ["rejects values outside the canonical JSON boundary"]
         }
       ],
@@ -1326,7 +1317,7 @@
           "symbols": ["makeGenesisConfirmedState"]
         },
         {
-          "path": "demo/midgard-sdk/src/state-queue-production.ts",
+          "path": "demo/midgard-sdk/src/state-queue-transactions.ts",
           "symbols": ["confirmedStateNextHeaderProtocolVersion"]
         },
         {
@@ -1401,7 +1392,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-sdk/tests/genesis-protocol-version-v1.test.ts",
+          "path": "demo/midgard-sdk/tests/genesis-protocol-version.test.ts",
           "testNames": [
             "keeps sentinel 0 authenticated and yields version 1 for ordinary headers"
           ]
@@ -1415,7 +1406,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-sdk/tests/genesis-protocol-version-v1.test.ts",
+          "path": "demo/midgard-sdk/tests/genesis-protocol-version.test.ts",
           "testNames": [
             "keeps sentinel 0 authenticated and yields version 1 for ordinary headers"
           ]
@@ -1431,7 +1422,7 @@
         "status": "PASS",
         "tests": [
           {
-            "path": "demo/midgard-sdk/tests/genesis-protocol-version-v1.test.ts",
+            "path": "demo/midgard-sdk/tests/genesis-protocol-version.test.ts",
             "testNames": [
               "keeps sentinel 0 authenticated and yields version 1 for ordinary headers"
             ]
@@ -1448,7 +1439,7 @@
       "obsoleteBranchEvidence": [],
       "notes": [
         "The TypeScript and Aiken tests run the same vectors: genesis time 10, ordinary header hash 0xaa repeated 28 times, non-genesis utxo root 0xbb repeated 32 times. Both assert genesis_confirmed_state_v1(10) equals the exact six-field sentinel, that a negative genesis time is refused, that both the sentinel and an ordinary V1 state yield next header version 1, and that each single-field mutation of the sentinel (protocol version 1, mutated header hash, mutated prev hash, mutated utxo root, end_time != start_time, negative time, start_time > end_time, protocol version 2) is refused.",
-        "Production wiring is present on both sides: demo/midgard-sdk/src/initialization.ts and state-queue.ts construct the genesis datum, state-queue.ts and state-queue-production.ts gate header construction on the authenticator, and onchain/aiken/validators/state-queue.ak uses genesis_confirmed_state_v1 for the initialization root datum and confirmed_state_next_header_protocol_version_v1 for the first and every subsequent ordinary header via commit_block_header_carries_confirmed_state_v1."
+        "Production wiring is present on both sides: demo/midgard-sdk/src/initialization.ts and state-queue.ts construct the genesis datum, state-queue.ts and state-queue-transactions.ts gate header construction on the authenticator, and onchain/aiken/validators/state-queue.ak uses genesis_confirmed_state_v1 for the initialization root datum and confirmed_state_next_header_protocol_version_v1 for the first and every subsequent ordinary header via commit_block_header_carries_confirmed_state_v1."
       ]
     },
     {
@@ -2589,7 +2580,7 @@
       "family": "N",
       "sourceOwnerAndCurrentIdentity": "demo/midgard-core/src/codec/native.ts: MidgardNativeTxProofFieldLengthsV1",
       "classification": "nested-schema",
-      "canonicalResult": "MidgardNativeTxProofFieldLengthsV1",
+      "canonicalResult": "MidgardNativeTxProofFieldLengths",
       "boundaryBindingAndPersistence": "Native proof source",
       "requiredEvidence": "Exact nine-field order, nonnegative canonical integers, arity rejection, proof-source/canonical-size binding, cross-language vectors, and retired-version absence",
       "disposition": "reset-to-v1",
@@ -2598,7 +2589,7 @@
         {
           "path": "demo/midgard-core/src/codec/native.ts",
           "symbols": [
-            "MidgardNativeTxProofFieldLengthsV1",
+            "MidgardNativeTxProofFieldLengths",
             "encodeMidgardNativeTxProofFieldLengths",
             "decodeMidgardNativeTxProofFieldLengths",
             "computeMidgardNativeTxCanonicalSizeFromProofSource"
@@ -2615,7 +2606,7 @@
       ],
       "canonicalForms": [
         {
-          "name": "MidgardNativeTxProofFieldLengthsV1",
+          "name": "MidgardNativeTxProofFieldLengths",
           "kind": "canonical CBOR nested schema",
           "wireRepresentation": "definite CBOR array of nine nonnegative canonical unsigned integers",
           "versionPolicy": "Exactly V1 with no historical arity aliases",
@@ -2860,7 +2851,7 @@
         {
           "path": "demo/lucid-midgard/src/builder/witness-bundle.ts",
           "symbols": [
-            "MidgardPartialWitnessBundle",
+            "MidgardPartialWitnessBundleV1",
             "PARTIAL_WITNESS_BUNDLE_FIELDS",
             "partialWitnessBundleFromWitnesses",
             "encodePartialWitnessBundle",
@@ -2872,7 +2863,7 @@
       ],
       "canonicalForms": [
         {
-          "name": "MidgardPartialWitnessBundle",
+          "name": "MidgardPartialWitnessBundleV1",
           "kind": "canonical CBOR tuple",
           "wireRepresentation": "seven-item definite CBOR array: text kind, two positive integer versions, two 32-byte hashes, canonical vkey-witness byte array, and matching 28-byte signer-key-hash array",
           "versionPolicy": "kind is exactly MidgardPartialWitnessBundleV1; bundle version and midgard native transaction version are both exactly 1",
@@ -2922,7 +2913,7 @@
         {
           "path": "demo/lucid-midgard/tests/api-export-snapshot.test.ts",
           "testNames": [
-            "MidgardPartialWitnessBundle",
+            "MidgardPartialWitnessBundleV1",
             "decodePartialWitnessBundle",
             "encodePartialWitnessBundle",
             "parsePartialWitnessBundle"
@@ -3713,11 +3704,7 @@
         },
         {
           "path": "demo/midgard-node/src/workers/commit-block-header/da-payload.ts",
-          "symbols": [
-            "DA_PAYLOAD_VERSION",
-            "encodeDaPayload",
-            "wrapDaPayload"
-          ]
+          "symbols": ["DA_PAYLOAD_VERSION", "encodeDaPayload", "wrapDaPayload"]
         },
         {
           "path": "demo/midgard-watcher/src/storage/public-da-client.ts",
@@ -6282,7 +6269,7 @@
           ]
         },
         {
-          "path": "demo/midgard-core/src/consensus-profile-v1.ts",
+          "path": "demo/midgard-core/src/consensus-profile.ts",
           "symbols": ["daRuntimeManifestSchemaVersion"]
         },
         {
@@ -6942,11 +6929,7 @@
           "encoders": [
             {
               "path": "demo/midgard-sdk/src/ledger-state.ts",
-              "symbols": [
-                "HeaderSchema",
-                "encodeHeaderCbor",
-                "hashBlockHeader"
-              ]
+              "symbols": ["HeaderSchema", "encodeHeaderCbor", "hashBlockHeader"]
             },
             {
               "path": "onchain/aiken/lib/midgard/ledger-state.ak",
@@ -6963,7 +6946,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-sdk/tests/header-v1.test.ts",
+          "path": "demo/midgard-sdk/tests/header.test.ts",
           "testNames": [
             "has the exact L01 TypeScript CBOR and blake2b-224 vector"
           ]
@@ -6981,7 +6964,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-sdk/tests/header-v1.test.ts",
+          "path": "demo/midgard-sdk/tests/header.test.ts",
           "testNames": [
             "has the exact L01 TypeScript CBOR and blake2b-224 vector"
           ]
@@ -7076,7 +7059,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-sdk/tests/header-v1.test.ts",
+          "path": "demo/midgard-sdk/tests/header.test.ts",
           "testNames": [
             "has the complete exact L02 transition-commitments vector and semantics"
           ]
@@ -7090,7 +7073,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-sdk/tests/header-v1.test.ts",
+          "path": "demo/midgard-sdk/tests/header.test.ts",
           "testNames": [
             "requires one validation descriptor for every normal or forced transaction"
           ]
@@ -7106,7 +7089,7 @@
         "status": "PASS",
         "tests": [
           {
-            "path": "demo/midgard-sdk/tests/header-v1.test.ts",
+            "path": "demo/midgard-sdk/tests/header.test.ts",
             "testNames": [
               "has the complete exact L02 transition-commitments vector and semantics"
             ]
@@ -7185,7 +7168,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-sdk/tests/header-v1.test.ts",
+          "path": "demo/midgard-sdk/tests/header.test.ts",
           "testNames": [
             "has the exact L03 StateQueueNodeV1 topology and datum vector"
           ]
@@ -7199,7 +7182,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-sdk/tests/header-v1.test.ts",
+          "path": "demo/midgard-sdk/tests/header.test.ts",
           "testNames": ["round-trips only protocol version 1 state-queue nodes"]
         },
         {
@@ -7213,7 +7196,7 @@
         "status": "PASS",
         "tests": [
           {
-            "path": "demo/midgard-sdk/tests/header-v1.test.ts",
+            "path": "demo/midgard-sdk/tests/header.test.ts",
             "testNames": [
               "has the exact L03 StateQueueNodeV1 topology and datum vector"
             ]
@@ -7456,7 +7439,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-sdk/tests/header-v1.test.ts",
+          "path": "demo/midgard-sdk/tests/header.test.ts",
           "testNames": [
             "has the exact L06 TransitionStepV1 CBOR/hash and rejects schema drift"
           ]
@@ -7470,7 +7453,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-sdk/tests/header-v1.test.ts",
+          "path": "demo/midgard-sdk/tests/header.test.ts",
           "testNames": [
             "has the exact L06 TransitionStepV1 CBOR/hash and rejects schema drift"
           ]
@@ -7486,7 +7469,7 @@
         "status": "PASS",
         "tests": [
           {
-            "path": "demo/midgard-sdk/tests/header-v1.test.ts",
+            "path": "demo/midgard-sdk/tests/header.test.ts",
             "testNames": [
               "has the exact L06 TransitionStepV1 CBOR/hash and rejects schema drift"
             ]
@@ -7552,7 +7535,7 @@
           "symbols": [
             "TxOrderPayloadSchema",
             "TxOrderEventSchema",
-            "ForcedInclusionTxSchema"
+            "ForcedInclusionTxV1Schema"
           ]
         },
         {
@@ -7611,7 +7594,7 @@
               "arity": 5
             },
             {
-              "name": "ForcedInclusionTx",
+              "name": "ForcedInclusionTxV1",
               "tag": 0,
               "arity": 3
             },
@@ -7641,7 +7624,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-sdk/tests/tx-order-v1.test.ts",
+          "path": "demo/midgard-sdk/tests/tx-order.test.ts",
           "testNames": [
             "pins the exact datum, spend, and forced-key V1 vectors"
           ]
@@ -7663,7 +7646,7 @@
           ]
         },
         {
-          "path": "demo/midgard-sdk/tests/tx-order-v1.test.ts",
+          "path": "demo/midgard-sdk/tests/tx-order.test.ts",
           "testNames": [
             "refuses material it cannot bind to a canonical transaction"
           ]
@@ -7673,7 +7656,7 @@
         "status": "PASS",
         "tests": [
           {
-            "path": "demo/midgard-sdk/tests/tx-order-v1.test.ts",
+            "path": "demo/midgard-sdk/tests/tx-order.test.ts",
             "testNames": [
               "pins the exact datum, spend, and forced-key V1 vectors"
             ]
@@ -7826,13 +7809,13 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-sdk/tests/tx-order-v1.test.ts",
+          "path": "demo/midgard-sdk/tests/tx-order.test.ts",
           "testNames": [
             "encodes immutable content-addressed L1 program material below the independent field bound"
           ]
         },
         {
-          "path": "demo/midgard-node/tests/tx-order-material-chain-v1.test.ts",
+          "path": "demo/midgard-node/tests/tx-order-material-chain.test.ts",
           "testNames": [
             "accepts one exact typed hash and rejects wrong roots, kinds, and encodings"
           ]
@@ -7846,7 +7829,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-node/tests/tx-order-material-chain-v1.test.ts",
+          "path": "demo/midgard-node/tests/tx-order-material-chain.test.ts",
           "testNames": [
             "accepts one exact typed hash and rejects wrong roots, kinds, and encodings"
           ]
@@ -7860,7 +7843,7 @@
         "status": "PASS",
         "tests": [
           {
-            "path": "demo/midgard-node/tests/tx-order-material-chain-v1.test.ts",
+            "path": "demo/midgard-node/tests/tx-order-material-chain.test.ts",
             "testNames": [
               "accepts one exact typed hash and rejects wrong roots, kinds, and encodings"
             ]
@@ -7970,7 +7953,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-node/tests/forced-transactions-v1.test.ts",
+          "path": "demo/midgard-node/tests/forced-transactions.test.ts",
           "testNames": [
             "encodes the sole canonical ForcedTransactionJournalMemberV1 four-field CBOR form",
             "rejects non-V1, aliased, or digest-invalid members at the Postgres journal read boundary"
@@ -7979,7 +7962,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-node/tests/forced-transactions-v1.test.ts",
+          "path": "demo/midgard-node/tests/forced-transactions.test.ts",
           "testNames": [
             "rejects legacy versions, defaults, aliases, extra fields, and non-canonical journal CBOR",
             "refuses encoder-side defaults, aliases, extra properties, and empty fields",
@@ -8064,7 +8047,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-node/tests/pending-finalization-v1.test.ts",
+          "path": "demo/midgard-node/tests/pending-finalization.test.ts",
           "testNames": [
             "accepts the sole delta-only V1 replay shape",
             "accepts the sole native-MPF V1 replay shape bound to metadata roots"
@@ -8085,7 +8068,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-node/tests/pending-finalization-v1.test.ts",
+          "path": "demo/midgard-node/tests/pending-finalization.test.ts",
           "testNames": ["rejects %s"]
         },
         {
@@ -8255,7 +8238,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-node/tests/foreign-tip-reconciliation-v1.test.ts",
+          "path": "demo/midgard-node/tests/foreign-tip-reconciliation.test.ts",
           "testNames": [
             "accepts the sole pending, verified-empty, and verified-DA V1 shapes",
             "authenticates new DA against deployment, profile, header, and digest",
@@ -8277,7 +8260,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-node/tests/foreign-tip-reconciliation-v1.test.ts",
+          "path": "demo/midgard-node/tests/foreign-tip-reconciliation.test.ts",
           "testNames": [
             "rejects %s",
             "rejects deployment, header, profile, digest, and empty-evidence replay substitutions"
@@ -8318,7 +8301,7 @@
       "auditStatus": "PASS",
       "sourceEvidence": [
         {
-          "path": "demo/midgard-core/src/ledger-output-commitment-v1.ts",
+          "path": "demo/midgard-core/src/ledger-output-commitment.ts",
           "symbols": [
             "MidgardLedgerOutputCommitment",
             "encodeMidgardLedgerOutputCommitment",
@@ -8372,7 +8355,7 @@
           "persistence": "Only the bounded descriptor is an MPF value; full canonical output CBOR remains in retained DA and database material and has no whole-output proof shortcut.",
           "encoders": [
             {
-              "path": "demo/midgard-core/src/ledger-output-commitment-v1.ts",
+              "path": "demo/midgard-core/src/ledger-output-commitment.ts",
               "symbols": [
                 "encodeMidgardLedgerOutputCommitment",
                 "buildMidgardLedgerOutputMaterial"
@@ -8385,7 +8368,7 @@
           ],
           "parsers": [
             {
-              "path": "demo/midgard-core/src/ledger-output-commitment-v1.ts",
+              "path": "demo/midgard-core/src/ledger-output-commitment.ts",
               "symbols": ["decodeMidgardLedgerOutputCommitment"]
             },
             {
@@ -8397,7 +8380,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-core/tests/ledger-output-commitment-v1.test.ts",
+          "path": "demo/midgard-core/tests/ledger-output-commitment.test.ts",
           "testNames": [
             "commits ordered assets without imposing a separate count cap",
             "keeps the ledger leaf bounded while authenticating a multi-chunk output",
@@ -8415,7 +8398,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-core/tests/ledger-output-commitment-v1.test.ts",
+          "path": "demo/midgard-core/tests/ledger-output-commitment.test.ts",
           "testNames": [
             "admits the exact Cardano Value byte bound and fails closed above it",
             "uses a transaction-size-derived asset guardrail rather than 128",
@@ -8434,7 +8417,7 @@
         "status": "PASS",
         "tests": [
           {
-            "path": "demo/midgard-core/tests/ledger-output-commitment-v1.test.ts",
+            "path": "demo/midgard-core/tests/ledger-output-commitment.test.ts",
             "testNames": [
               "commits ordered assets without imposing a separate count cap",
               "keeps the ledger leaf bounded while authenticating a multi-chunk output"
@@ -8712,7 +8695,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-sdk/tests/event-v1-abi.test.ts",
+          "path": "demo/midgard-sdk/tests/event-abi.test.ts",
           "testNames": [
             "matches every TypeScript event/operator tag, arity, field, and nested shape",
             "unwraps persisted active and retired operator nodes and rejects raw payload datums"
@@ -8729,7 +8712,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-sdk/tests/event-v1-abi.test.ts",
+          "path": "demo/midgard-sdk/tests/event-abi.test.ts",
           "testNames": [
             "rejects adjacent tags, wrong arities, decorative versions, and malformed nested values"
           ]
@@ -8747,7 +8730,7 @@
         "status": "PASS",
         "tests": [
           {
-            "path": "demo/midgard-sdk/tests/event-v1-abi.test.ts",
+            "path": "demo/midgard-sdk/tests/event-abi.test.ts",
             "testNames": [
               "matches every TypeScript event/operator tag, arity, field, and nested shape"
             ]
@@ -8950,7 +8933,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-sdk/tests/scheduler-v1-abi.test.ts",
+          "path": "demo/midgard-sdk/tests/scheduler-abi.test.ts",
           "testNames": [
             "matches every Aiken scheduler constructor tag and arity exactly"
           ]
@@ -8970,7 +8953,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-sdk/tests/scheduler-v1-abi.test.ts",
+          "path": "demo/midgard-sdk/tests/scheduler-abi.test.ts",
           "testNames": [
             "rejects adjacent scheduler tags and wrong constructor arities"
           ]
@@ -8980,7 +8963,7 @@
         "status": "PASS",
         "tests": [
           {
-            "path": "demo/midgard-sdk/tests/scheduler-v1-abi.test.ts",
+            "path": "demo/midgard-sdk/tests/scheduler-abi.test.ts",
             "testNames": [
               "matches every Aiken scheduler constructor tag and arity exactly"
             ]
@@ -9926,7 +9909,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-validation/tests/input-resolution-schedule-boundary-v1.test.ts",
+          "path": "demo/midgard-validation/tests/input-resolution-schedule-boundary.test.ts",
           "testNames": [
             "exhaustively folds the mixed one-spend/433-reference maximum",
             "exhaustively folds the 434-spend maximum with no reference inputs"
@@ -9956,7 +9939,7 @@
           ]
         },
         {
-          "path": "demo/midgard-validation/tests/input-resolution-schedule-boundary-v1.test.ts",
+          "path": "demo/midgard-validation/tests/input-resolution-schedule-boundary.test.ts",
           "testNames": [
             "exhaustively folds the mixed one-spend/433-reference maximum"
           ]
@@ -9966,7 +9949,7 @@
         "status": "PASS",
         "tests": [
           {
-            "path": "demo/midgard-validation/tests/input-resolution-schedule-boundary-v1.test.ts",
+            "path": "demo/midgard-validation/tests/input-resolution-schedule-boundary.test.ts",
             "testNames": [
               "exhaustively folds the mixed one-spend/433-reference maximum",
               "exhaustively folds the 434-spend maximum with no reference inputs"
@@ -9986,7 +9969,7 @@
       "notes": [
         "The TypeScript and Aiken tests run the same terminal vector for the mixed one-spend/433-reference boundary. Both pin the original schedule hash 95872510ce0c8c50c31d60b997049c0f7741916d7378a6cd264f7f6e60f26c75, the terminal accumulator a8e7978a7b04c06c22e93f148e20c4f05d1e52e342086d99dce07ebcf22162cd, the terminal frontier commitment b3de0271b55374bf3aba6fed0bc45c7acbf89cf6cb94f28255f9642820e98e5c, the penultimate accumulator a626f4411517e88a5d3cbd4f557eaa3016c097ee9faceb9f9778a122c3aa2085, the penultimate remaining schedule hash 11e90c7b9d22faa10a757fe7cbcfc12f5784cb6c546408583d36ce0dd5d49329, the penultimate spend index 1, and the identical five penultimate frontier peaks at heights 0, 4, 5, 7, and 8 (c830521b..., fb7125a9..., d434d9b8..., a0b8592e..., ef9e5287...). The last replayed node is byte-identical on both sides: source kind 1 (\"reference\" in TypeScript), key 82582000000000000000000000000000000000000000000000000000000000000000001901b1, and the same 0x90-prefixed ledger-output descriptor value. The 434-spend leg shares the same structure with source kind 0.",
         "The source-kind rejection is exercised on both sides against the same quantity. The TypeScript test body flips the last node's source kind from reference to spend, mutates the last key byte, and substitutes an all-0xff successor hash, asserting each changes the schedule hash; the Aiken verifier rebuilds the terminal control from the same last node and rejects a malformed terminal cursor and a malformed terminal accumulator. ledger_output_v1_rejects_unknown_reference_script_language additionally proves the reference-script language set is closed on chain, using the output CBOR ...0382184140 with language tag 65.",
-        "Commands run for this row: `aiken check -m maximum_reference_input_schedule_terminal_matches_typescript -m maximum_spend_input_schedule_terminal_matches_typescript -m script_sources_replay_appends_reference_scripts ...` from onchain/aiken and `pnpm --dir midgard-validation exec vitest run tests/input-resolution-schedule-boundary-v1.test.ts` from demo (2 tests collected, all pass).",
+        "Commands run for this row: `aiken check -m maximum_reference_input_schedule_terminal_matches_typescript -m maximum_spend_input_schedule_terminal_matches_typescript -m script_sources_replay_appends_reference_scripts ...` from onchain/aiken and `pnpm --dir midgard-validation exec vitest run tests/input-resolution-schedule-boundary.test.ts` from demo (2 tests collected, all pass).",
         "Aiken production wiring: replay_source_frontier in validation-machine-v1.ak appends script_proof_v1.reference_source_leaf_hash for a replayed input whose descriptor carries a reference script, and the TypeScript producer calls hashMidgardReferenceScriptSourceLeafV1 from demo/midgard-validation/src/validation-machine.ts on the same path.",
         "Issue #480 closed the remaining one-sided halves of this agreement. The field-0, field-1, and field-3 boundary tests now pin their accepted and adjacent cardinalities as exact literals (434 spend inputs at 16,379 signed bytes vs adjacent 435 at 16,417; 433 reference inputs at 16,380 vs adjacent 434 at 16,418; 224 observers at 16,338 vs adjacent 225 at 16,410) together with the complete field terminal fold vector, and Aiken replays the identical vectors through maximum_spend_input_field_terminal_matches_typescript, maximum_reference_input_field_terminal_matches_typescript, and maximum_observer_field_terminal_matches_typescript. Before that change Aiken pinned these terminals while the TypeScript boundary searches asserted only relative properties, so a drift in the derived maximum would not have been detected on either side."
       ]
@@ -10628,7 +10611,7 @@
           ]
         },
         {
-          "path": "demo/midgard-core/src/cek-blob-frontier-v1.ts",
+          "path": "demo/midgard-core/src/cek-blob-frontier.ts",
           "symbols": [
             "MidgardCekBlobFrontier",
             "appendMidgardCekBlobFrontierChunkRoot",
@@ -10664,7 +10647,7 @@
           "persistence": "Chunk/branch roots and preimages are retained in program-material DA; frontiers permit authenticated streaming without retaining all bytes in L1 state.",
           "encoders": [
             {
-              "path": "demo/midgard-core/src/cek-blob-frontier-v1.ts",
+              "path": "demo/midgard-core/src/cek-blob-frontier.ts",
               "symbols": ["encodeMidgardCekBlobFrontier"]
             },
             {
@@ -10674,7 +10657,7 @@
           ],
           "parsers": [
             {
-              "path": "demo/midgard-core/src/cek-blob-frontier-v1.ts",
+              "path": "demo/midgard-core/src/cek-blob-frontier.ts",
               "symbols": ["validateMidgardCekBlobFrontier"]
             },
             {
@@ -10686,7 +10669,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-core/tests/cek-blob-frontier-v1.test.ts",
+          "path": "demo/midgard-core/tests/cek-blob-frontier.test.ts",
           "testNames": [
             "reproduces the canonical left-balanced blob root for %i bytes",
             "encodes a compact cross-language frontier deterministically",
@@ -10703,7 +10686,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-core/tests/cek-blob-frontier-v1.test.ts",
+          "path": "demo/midgard-core/tests/cek-blob-frontier.test.ts",
           "testNames": [
             "fails closed for malformed occupancy and append after a partial leaf"
           ]
@@ -10720,7 +10703,7 @@
         "status": "PASS",
         "tests": [
           {
-            "path": "demo/midgard-core/tests/cek-blob-frontier-v1.test.ts",
+            "path": "demo/midgard-core/tests/cek-blob-frontier.test.ts",
             "testNames": [
               "encodes a compact cross-language frontier deterministically"
             ]
@@ -12336,10 +12319,7 @@
       "sourceEvidence": [
         {
           "path": "demo/midgard-sdk/src/fraud-proof/validation-dispute.ts",
-          "symbols": [
-            "ValidationClaimWitnessSchema",
-            "ValidationClaimWitness"
-          ]
+          "symbols": ["ValidationClaimWitnessSchema", "ValidationClaimWitness"]
         },
         {
           "path": "onchain/aiken/lib/midgard/validation-claim-v1.ak",
@@ -12395,7 +12375,7 @@
           "testNames": ["matches %s to %s recursively"]
         },
         {
-          "path": "demo/midgard-sdk/tests/validation-source-membership-v1.test.ts",
+          "path": "demo/midgard-sdk/tests/validation-source-membership.test.ts",
           "testNames": [
             "freezes forced/normal tags and exact nested membership proof vectors"
           ]
@@ -12403,7 +12383,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-sdk/tests/validation-source-membership-v1.test.ts",
+          "path": "demo/midgard-sdk/tests/validation-source-membership.test.ts",
           "testNames": [
             "rejects adjacent tags, wrong arity, swapped kinds, and wrong nesting"
           ]
@@ -12421,7 +12401,7 @@
             "testNames": ["matches %s to %s recursively"]
           },
           {
-            "path": "demo/midgard-sdk/tests/validation-source-membership-v1.test.ts",
+            "path": "demo/midgard-sdk/tests/validation-source-membership.test.ts",
             "testNames": [
               "freezes forced/normal tags and exact nested membership proof vectors"
             ]
@@ -12978,7 +12958,7 @@
       "auditStatus": "PASS",
       "sourceEvidence": [
         {
-          "path": "demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness-v1.ts",
+          "path": "demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness.ts",
           "symbols": [
             "ValidationAuxiliaryWitnessSchema",
             "ValidationAuxiliaryWitness"
@@ -13020,7 +13000,7 @@
           "persistence": "Nested in ValidationOneStepEvidenceV1 and retained as canonical CBOR when submitted",
           "encoders": [
             {
-              "path": "demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness-v1.ts",
+              "path": "demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness.ts",
               "symbols": ["ValidationAuxiliaryWitnessSchema"]
             },
             {
@@ -13038,7 +13018,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-sdk/tests/validation-auxiliary-witness-v1.test.ts",
+          "path": "demo/midgard-sdk/tests/validation-auxiliary-witness.test.ts",
           "testNames": [
             "round-trips the canonical 40-constructor V1 corpus exactly",
             "preserves every individual canonical tag and encoding"
@@ -13053,7 +13033,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-sdk/tests/validation-auxiliary-witness-v1.test.ts",
+          "path": "demo/midgard-sdk/tests/validation-auxiliary-witness.test.ts",
           "testNames": [
             "rejects adjacent tags, wrong arities, and malformed nested shapes",
             "contains only bounded descriptor-era production ABI fields"
@@ -13071,7 +13051,7 @@
         "status": "PASS",
         "tests": [
           {
-            "path": "demo/midgard-validation/tests/validation-controls-v1-abi.test.ts",
+            "path": "demo/midgard-validation/tests/validation-controls-abi.test.ts",
             "testNames": [
               "freezes all 40 ValidationAuxiliaryWitnessV1 tags and arities"
             ]
@@ -13154,7 +13134,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-validation/tests/validation-controls-v1-abi.test.ts",
+          "path": "demo/midgard-validation/tests/validation-controls-abi.test.ts",
           "testNames": [
             "matches exact V11 resolve-inputs and V12 script-source controls"
           ]
@@ -13168,7 +13148,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-validation/tests/validation-controls-v1-abi.test.ts",
+          "path": "demo/midgard-validation/tests/validation-controls-abi.test.ts",
           "testNames": [
             "rejects adjacent tags, wrong arities, and malformed controls"
           ]
@@ -13182,7 +13162,7 @@
         "status": "PASS",
         "tests": [
           {
-            "path": "demo/midgard-validation/tests/validation-controls-v1-abi.test.ts",
+            "path": "demo/midgard-validation/tests/validation-controls-abi.test.ts",
             "testNames": [
               "matches exact V11 resolve-inputs and V12 script-source controls"
             ]
@@ -13260,7 +13240,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-validation/tests/validation-controls-v1-abi.test.ts",
+          "path": "demo/midgard-validation/tests/validation-controls-abi.test.ts",
           "testNames": [
             "matches exact V11 resolve-inputs and V12 script-source controls"
           ]
@@ -13275,7 +13255,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-validation/tests/validation-controls-v1-abi.test.ts",
+          "path": "demo/midgard-validation/tests/validation-controls-abi.test.ts",
           "testNames": [
             "rejects adjacent tags, wrong arities, and malformed controls"
           ]
@@ -13289,7 +13269,7 @@
         "status": "PASS",
         "tests": [
           {
-            "path": "demo/midgard-validation/tests/validation-controls-v1-abi.test.ts",
+            "path": "demo/midgard-validation/tests/validation-controls-abi.test.ts",
             "testNames": [
               "matches exact V11 resolve-inputs and V12 script-source controls"
             ]
@@ -13368,7 +13348,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-validation/tests/validation-controls-v1-abi.test.ts",
+          "path": "demo/midgard-validation/tests/validation-controls-abi.test.ts",
           "testNames": [
             "matches the V13 native control and every integrity witness shape"
           ]
@@ -13383,7 +13363,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-validation/tests/validation-controls-v1-abi.test.ts",
+          "path": "demo/midgard-validation/tests/validation-controls-abi.test.ts",
           "testNames": [
             "rejects adjacent tags, wrong arities, and malformed controls"
           ]
@@ -13397,7 +13377,7 @@
         "status": "PASS",
         "tests": [
           {
-            "path": "demo/midgard-validation/tests/validation-controls-v1-abi.test.ts",
+            "path": "demo/midgard-validation/tests/validation-controls-abi.test.ts",
             "testNames": [
               "matches the V13 native control and every integrity witness shape"
             ]
@@ -13478,7 +13458,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-validation/tests/validation-controls-v1-abi.test.ts",
+          "path": "demo/midgard-validation/tests/validation-controls-abi.test.ts",
           "testNames": [
             "matches every exported V14 encoder and domain-separated hash"
           ]
@@ -13493,7 +13473,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-validation/tests/validation-controls-v1-abi.test.ts",
+          "path": "demo/midgard-validation/tests/validation-controls-abi.test.ts",
           "testNames": [
             "rejects adjacent tags, wrong arities, and malformed controls"
           ]
@@ -13507,7 +13487,7 @@
         "status": "PASS",
         "tests": [
           {
-            "path": "demo/midgard-validation/tests/validation-controls-v1-abi.test.ts",
+            "path": "demo/midgard-validation/tests/validation-controls-abi.test.ts",
             "testNames": [
               "matches every exported V14 encoder and domain-separated hash"
             ]
@@ -13601,7 +13581,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-validation/tests/validation-tail-controls-v1-abi.test.ts",
+          "path": "demo/midgard-validation/tests/validation-tail-controls-abi.test.ts",
           "testNames": [
             "freezes V15 accumulator and 12-field value-and-mint control bytes"
           ]
@@ -13613,7 +13593,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-validation/tests/validation-tail-controls-v1-abi.test.ts",
+          "path": "demo/midgard-validation/tests/validation-tail-controls-abi.test.ts",
           "testNames": [
             "freezes every V15/V16 auxiliary tag and arity with one corpus hash"
           ]
@@ -13630,7 +13610,7 @@
         "status": "PASS",
         "tests": [
           {
-            "path": "demo/midgard-validation/tests/validation-tail-controls-v1-abi.test.ts",
+            "path": "demo/midgard-validation/tests/validation-tail-controls-abi.test.ts",
             "testNames": [
               "freezes V15 accumulator and 12-field value-and-mint control bytes"
             ]
@@ -13725,7 +13705,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-validation/tests/validation-tail-controls-v1-abi.test.ts",
+          "path": "demo/midgard-validation/tests/validation-tail-controls-abi.test.ts",
           "testNames": [
             "freezes V16 pending mutation/control shapes and operation roots"
           ]
@@ -13745,7 +13725,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-validation/tests/validation-tail-controls-v1-abi.test.ts",
+          "path": "demo/midgard-validation/tests/validation-tail-controls-abi.test.ts",
           "testNames": [
             "freezes every V15/V16 auxiliary tag and arity with one corpus hash"
           ]
@@ -13759,7 +13739,7 @@
         "status": "PASS",
         "tests": [
           {
-            "path": "demo/midgard-validation/tests/validation-tail-controls-v1-abi.test.ts",
+            "path": "demo/midgard-validation/tests/validation-tail-controls-abi.test.ts",
             "testNames": [
               "freezes V16 pending mutation/control shapes and operation roots"
             ]
@@ -13838,7 +13818,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-validation/tests/validation-tail-controls-v1-abi.test.ts",
+          "path": "demo/midgard-validation/tests/validation-tail-controls-abi.test.ts",
           "testNames": [
             "freezes V17 accepted/rejected witnesses and rejects misclassification"
           ]
@@ -13852,7 +13832,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-validation/tests/validation-tail-controls-v1-abi.test.ts",
+          "path": "demo/midgard-validation/tests/validation-tail-controls-abi.test.ts",
           "testNames": [
             "freezes V17 accepted/rejected witnesses and rejects misclassification"
           ]
@@ -13866,7 +13846,7 @@
         "status": "PASS",
         "tests": [
           {
-            "path": "demo/midgard-validation/tests/validation-tail-controls-v1-abi.test.ts",
+            "path": "demo/midgard-validation/tests/validation-tail-controls-abi.test.ts",
             "testNames": [
               "freezes V17 accepted/rejected witnesses and rejects misclassification"
             ]
@@ -13951,7 +13931,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-sdk/tests/validation-source-membership-v1.test.ts",
+          "path": "demo/midgard-sdk/tests/validation-source-membership.test.ts",
           "testNames": [
             "freezes forced/normal tags and exact nested membership proof vectors"
           ]
@@ -13965,7 +13945,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-sdk/tests/validation-source-membership-v1.test.ts",
+          "path": "demo/midgard-sdk/tests/validation-source-membership.test.ts",
           "testNames": [
             "rejects adjacent tags, wrong arity, swapped kinds, and wrong nesting",
             "contains no retired V2/V3 source-membership production identity"
@@ -13985,7 +13965,7 @@
         "status": "PASS",
         "tests": [
           {
-            "path": "demo/midgard-sdk/tests/validation-source-membership-v1.test.ts",
+            "path": "demo/midgard-sdk/tests/validation-source-membership.test.ts",
             "testNames": [
               "freezes forced/normal tags and exact nested membership proof vectors"
             ]
@@ -14177,7 +14157,7 @@
       "canonicalForms": [],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-node/tests/forced-transactions-v1.test.ts",
+          "path": "demo/midgard-node/tests/forced-transactions.test.ts",
           "testNames": [
             "accepts only exact self-authenticating material from the immutable L1 address",
             "binds the exact canonical transaction independently of its derived verdict"
@@ -14788,7 +14768,7 @@
         {
           "path": "demo/midgard-validation/src/wire.ts",
           "symbols": [
-            "WirePhaseACandidate",
+            "WirePhaseACandidateV1",
             "serializePhaseACandidate",
             "deserializePhaseACandidate",
             "phaseACandidateWireIsExhaustive",
@@ -14798,7 +14778,7 @@
         },
         {
           "path": "demo/midgard-node/src/workers/utils/validation-pool.ts",
-          "symbols": ["PhaseAJobResponse", "WirePhaseACandidate"]
+          "symbols": ["PhaseAJobResponse", "WirePhaseACandidateV1"]
         },
         {
           "path": "demo/midgard-node/src/workers/validation.ts",
@@ -14811,7 +14791,7 @@
       ],
       "canonicalForms": [
         {
-          "name": "WirePhaseACandidate",
+          "name": "WirePhaseACandidateV1",
           "kind": "exact structured-clone worker response record",
           "wireRepresentation": "named-field structured-clone object; Buffer values become exact-length Uint8Array, bigint/Date/Map-compatible values use native structured clone, redeemer Data becomes canonical dataCborHex, and vkeyWitnesses is the explicit null sentinel",
           "versionPolicy": "The independently exchanged record has only the V1 type identity; the unversioned exported type is forbidden and no compatibility alias remains.",
@@ -14997,7 +14977,7 @@
           ]
         },
         {
-          "path": "demo/midgard-core/src/consensus-profile-v1.ts",
+          "path": "demo/midgard-core/src/consensus-profile.ts",
           "symbols": [
             "daRuntimeManifestSchemaVersion",
             "midgard-da-libp2p-runtime-manifest-v1",
@@ -15134,7 +15114,7 @@
           ]
         },
         {
-          "path": "demo/midgard-core/tests/consensus-profile-v1.test.ts",
+          "path": "demo/midgard-core/tests/consensus-profile.test.ts",
           "testNames": ["pins the indivisible V1 version tuple"]
         }
       ],
@@ -15194,7 +15174,7 @@
       "auditStatus": "PASS",
       "sourceEvidence": [
         {
-          "path": "demo/midgard-core/src/consensus-profile-v1.ts",
+          "path": "demo/midgard-core/src/consensus-profile.ts",
           "symbols": [
             "MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION",
             "midgard-deployment-manifest-v1",
@@ -15203,7 +15183,7 @@
           ]
         },
         {
-          "path": "demo/midgard-core/src/deployment-manifest-identity-v1.ts",
+          "path": "demo/midgard-core/src/deployment-manifest-identity.ts",
           "symbols": [
             "normalizeDeploymentManifestJsonValue",
             "computeDeploymentManifestJsonDigest",
@@ -15219,7 +15199,7 @@
           ]
         },
         {
-          "path": "demo/midgard-node/src/deployment-manifest-v1.ts",
+          "path": "demo/midgard-node/src/deployment-manifest.ts",
           "symbols": [
             "parseDeploymentManifestValue",
             "parseDeploymentManifestCommon",
@@ -15323,7 +15303,7 @@
               ]
             },
             {
-              "path": "demo/midgard-core/src/deployment-manifest-identity-v1.ts",
+              "path": "demo/midgard-core/src/deployment-manifest-identity.ts",
               "symbols": [
                 "computeDeploymentManifestId",
                 "computeDeploymentManifestJsonDigest",
@@ -15338,7 +15318,7 @@
           ],
           "parsers": [
             {
-              "path": "demo/midgard-node/src/deployment-manifest-v1.ts",
+              "path": "demo/midgard-node/src/deployment-manifest.ts",
               "symbols": [
                 "parseDeploymentManifestValue",
                 "parseDeploymentManifestCommon",
@@ -15352,7 +15332,7 @@
               ]
             },
             {
-              "path": "demo/midgard-core/src/deployment-manifest-identity-v1.ts",
+              "path": "demo/midgard-core/src/deployment-manifest-identity.ts",
               "symbols": [
                 "verifyDeploymentManifestIdentity",
                 "verifyFinalizedDeploymentManifest",
@@ -15382,7 +15362,7 @@
       ],
       "positiveEvidence": [
         {
-          "path": "demo/midgard-node/tests/deployment-manifest-v1.test.ts",
+          "path": "demo/midgard-node/tests/deployment-manifest.test.ts",
           "testNames": [
             "accepts the sole exact authenticated V1 manifest",
             "delegates canonical JSON normalization and digesting to core"
@@ -15405,11 +15385,11 @@
           ]
         },
         {
-          "path": "demo/midgard-core/tests/consensus-profile-v1.test.ts",
+          "path": "demo/midgard-core/tests/consensus-profile.test.ts",
           "testNames": ["pins the indivisible V1 version tuple"]
         },
         {
-          "path": "demo/midgard-core/tests/deployment-manifest-identity-v1.test.ts",
+          "path": "demo/midgard-core/tests/deployment-manifest-identity.test.ts",
           "testNames": [
             "recomputes the exact full-manifest identity",
             "owns canonical JSON normalization and digest vectors"
@@ -15418,7 +15398,7 @@
       ],
       "rejectionEvidence": [
         {
-          "path": "demo/midgard-node/tests/deployment-manifest-v1.test.ts",
+          "path": "demo/midgard-node/tests/deployment-manifest.test.ts",
           "testNames": [
             "rejects missing and unexpected root fields",
             "rejects a manifest missing any compiled contract",
@@ -15447,7 +15427,7 @@
           ]
         },
         {
-          "path": "demo/midgard-core/tests/deployment-manifest-identity-v1.test.ts",
+          "path": "demo/midgard-core/tests/deployment-manifest-identity.test.ts",
           "testNames": [
             "rejects tampering, missing fields, and extra fields",
             "rejects values outside the canonical JSON boundary"
@@ -15466,11 +15446,11 @@
         }
       ],
       "notes": [
-        "Sole identity owner confirmed mechanically: `computeDeploymentManifestV1Id`, `computeDeploymentManifestV1JsonDigest` and `normalizeDeploymentManifestV1JsonValue` are defined only in demo/midgard-core/src/deployment-manifest-identity-v1.ts. The node re-exports the normalizer and digest verbatim and its `computeDeploymentManifestId` delegates to `computeDeploymentManifestV1Id`; demo/da-committee-node/src/config.ts and demo/midgard-watcher/src (deployment-identity.ts, rule-bundle-v1.ts) import the same core functions. The test `delegates canonical JSON normalization and digesting to core` asserts reference identity (`toBe`) between the node re-exports and the core implementations, so a forked copy would fail.",
+        "Sole identity owner confirmed mechanically: `computeDeploymentManifestV1Id`, `computeDeploymentManifestV1JsonDigest` and `normalizeDeploymentManifestV1JsonValue` are defined only in demo/midgard-core/src/deployment-manifest-identity.ts. The node re-exports the normalizer and digest verbatim and its `computeDeploymentManifestId` delegates to `computeDeploymentManifestV1Id`; demo/da-committee-node/src/config.ts and demo/midgard-watcher/src (deployment-identity.ts, rule-bundle.ts) import the same core functions. The test `delegates canonical JSON normalization and digesting to core` asserts reference identity (`toBe`) between the node re-exports and the core implementations, so a forked copy would fail.",
         "The node parser is a strict superset check, not a replacement: `parseDeploymentManifestV1Value` first calls core `verifyDeploymentManifestV1Identity` (schemaVersion, exact 18 root keys, profile, profile digest, recomputed manifestId), then runs its own root/nested validation, then calls core `verifyFinalizedDeploymentManifestV1` on the parsed value. Finalized-contract completeness (including the mandatory fraud-proof catalogue and the `steps.prepareHubOracleNonce/deployNodeRuntimeReferenceScripts/initProtocol` must-be-complete rule) therefore always runs even though the node's own `validateContracts` treats `fraudProofCatalogue` as an optional key.",
         "Hostile recomputed-ID tampering is covered specifically: `rejects tampered script bytes even with a recomputed manifest ID`, `rejects catalogue root, positional ID, and membership-proof tampering`, `rejects a deployment manifest with an unknown network` and both da-committee-node `withRecomputedDeploymentManifestId` cases all recompute a self-consistent manifestId and still fail on the semantic binding.",
         "The producer cannot emit an unparsed manifest: `buildDeploymentManifestV1` returns `parseDeploymentManifestV1Value(manifest)`, so construction and reading share one language.",
-        "`demo/midgard-core/tests/deployment-manifest-identity-v1.test.ts` and `demo/midgard-node/tests/midgard-contracts.test.ts` contain further direct coverage of the core identity owner and the runtime contract reconstruction path, but neither file is in the passed-test index, so neither is cited.",
+        "`demo/midgard-core/tests/deployment-manifest-identity.test.ts` and `demo/midgard-node/tests/midgard-contracts.test.ts` contain further direct coverage of the core identity owner and the runtime contract reconstruction path, but neither file is in the passed-test index, so neither is cited.",
         "Core-side first-party coverage of the sole identity owner is cited directly: `recomputes the exact full-manifest identity` pins a golden manifestId vector for `computeDeploymentManifestV1Id`, and `rejects tampering, missing fields, and extra fields` rejects a network mutation (id mismatch), a missing root member, and an extra `historicalVersion` key at `verifyDeploymentManifestV1Identity`."
       ]
     },
@@ -15522,7 +15502,7 @@
           ]
         },
         {
-          "path": "demo/midgard-core/src/deployment-manifest-identity-v1.ts",
+          "path": "demo/midgard-core/src/deployment-manifest-identity.ts",
           "symbols": ["parseDeploymentMarker"]
         },
         {
@@ -15620,7 +15600,7 @@
               "symbols": ["exactRecord"]
             },
             {
-              "path": "demo/midgard-core/src/deployment-manifest-identity-v1.ts",
+              "path": "demo/midgard-core/src/deployment-manifest-identity.ts",
               "symbols": ["parseDeploymentMarker"]
             }
           ]
@@ -15671,7 +15651,7 @@
       "notes": [
         "Every mutation path re-parses the whole document: transitionDeploymentStep, bindDeploymentRunStateToMarkerV1, and writeDeploymentRunStateAtomic all call parseDeploymentRunState, so a corrupt or identity-inconsistent state fails before any byte reaches disk.",
         "identity has no required members; the parser enforces exactness by rejecting unknown keys and by cross-checking referenceScriptAuthPolicyId against referenceScriptAuthPolicy.policyId whenever both are present.",
-        "deploymentMarker is delegated to the shared core owner parseDeploymentMarkerV1 (demo/midgard-core/src/deployment-manifest-identity-v1.ts), which requires exactly schemaVersion and manifestId; bindDeploymentRunStateToMarkerV1 refuses to rebind a state to a different manifestId.",
+        "deploymentMarker is delegated to the shared core owner parseDeploymentMarkerV1 (demo/midgard-core/src/deployment-manifest-identity.ts), which requires exactly schemaVersion and manifestId; bindDeploymentRunStateToMarkerV1 refuses to rebind a state to a different manifestId.",
         "Atomicity is the shared helper in demo/midgard-node/src/files/atomic-write.ts: exclusive 'wx' temp file, tempHandle.sync(), rename over the target, then a parent-directory fsync. The lock file is a separate exclusive '<path>.lock' create that fails closed with 'Run state is locked'."
       ]
     },
@@ -16683,10 +16663,7 @@
             },
             {
               "path": "demo/midgard-node-tools/src/e2e/runner.ts",
-              "symbols": [
-                "parseRedactedCommand",
-                "parseChildProcessCleanup"
-              ]
+              "symbols": ["parseRedactedCommand", "parseChildProcessCleanup"]
             },
             {
               "path": "demo/midgard-node-tools/scripts/verify-phase4-pipelined-process-summary.mjs",

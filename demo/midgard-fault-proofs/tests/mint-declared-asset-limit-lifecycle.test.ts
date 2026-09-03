@@ -15,7 +15,7 @@ import {
   acceptedVerdictSubject,
   AddressData,
   addressDataFromBech32,
-  ForcedInclusionTxSchema,
+  ForcedInclusionTxV1Schema,
   forcedVerdictSubject,
   hashBlockHeader,
   OutputReference,
@@ -31,29 +31,29 @@ import {
   certifyFaultProofFieldCarriage,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
-} from "../src/field-opening-v1.js";
+} from "../src/field-opening.js";
+import { createMintDeclaredAssetLimitActuator } from "../src/mint-declared-asset-limit/actuator.js";
+import { buildMintDeclaredAssetLimitArtifact } from "../src/mint-declared-asset-limit/artifact.js";
 import {
   applyMintDeclaredAssetLimitScripts,
   type MintDeclaredAssetLimitContracts,
-} from "../src/mint-declared-asset-limit/contracts-v1.js";
+} from "../src/mint-declared-asset-limit/contracts.js";
 import {
   MINT_DECLARED_ASSET_LIMIT_CATEGORY_ID,
   prepareMintDeclaredAssetLimitEvidence,
-} from "../src/mint-declared-asset-limit/family-v1.js";
-import { createMintDeclaredAssetLimitActuator } from "../src/mint-declared-asset-limit/production-actuator-v1.js";
-import { buildMintDeclaredAssetLimitArtifact } from "../src/mint-declared-asset-limit/production-artifact-v1.js";
-import { planMintDeclaredAssetLimitStagedWalk } from "../src/mint-declared-asset-limit/staged-plan-v1.js";
-import { submitMintDeclaredAssetLimitCancel } from "../src/mint-declared-asset-limit/submit-cancel-v1.js";
+} from "../src/mint-declared-asset-limit/family.js";
+import { planMintDeclaredAssetLimitStagedWalk } from "../src/mint-declared-asset-limit/staged-plan.js";
+import { submitMintDeclaredAssetLimitCancel } from "../src/mint-declared-asset-limit/submit-cancel.js";
 import {
   submitMintDeclaredAssetLimitStep01Accepted,
   submitMintDeclaredAssetLimitStep01Forced,
-} from "../src/mint-declared-asset-limit/submit-step-01-v1.js";
-import { submitMintDeclaredAssetLimitStep02 } from "../src/mint-declared-asset-limit/submit-step-02-v1.js";
-import { submitMintDeclaredAssetLimitStep03 } from "../src/mint-declared-asset-limit/submit-step-03-v1.js";
-import { submitMintDeclaredAssetLimitStep04 } from "../src/mint-declared-asset-limit/submit-step-04-v1.js";
+} from "../src/mint-declared-asset-limit/submit-step-01.js";
+import { submitMintDeclaredAssetLimitStep02 } from "../src/mint-declared-asset-limit/submit-step-02.js";
+import { submitMintDeclaredAssetLimitStep03 } from "../src/mint-declared-asset-limit/submit-step-03.js";
+import { submitMintDeclaredAssetLimitStep04 } from "../src/mint-declared-asset-limit/submit-step-04.js";
 import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
-import { submitCapturedTransaction } from "../src/workflow/transaction-boundary-v1.js";
+import { submitCapturedTransaction } from "../src/workflow/transaction-boundary.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
@@ -632,7 +632,7 @@ describe("mintDeclaredAssetLimit local-catalogue maximum lifecycle", () => {
       baseFixture.eventKey.ForcedTransactionEventKey.tx_order_id;
     const keyBytes = Buffer.from(Data.to(sourceKey, OutputReference), "hex");
     const valueBytes = Buffer.from(
-      Data.to(forcedTransaction as never, ForcedInclusionTxSchema as never),
+      Data.to(forcedTransaction as never, ForcedInclusionTxV1Schema as never),
       "hex",
     );
     const root = await buildCountedRoot(ROOT_DOMAINS.forcedTransactionsV1, [

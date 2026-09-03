@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyRedeemerCanonicityScripts,
   REDEEMER_CANONICITY_BLUEPRINT_TITLES,
-} from "../src/redeemer-canonicity/contracts-v1.js";
+} from "../src/redeemer-canonicity/contracts.js";
 import {
   makeFaultProofEmulatorHarness,
   publishPlainReferenceScriptUtxo,

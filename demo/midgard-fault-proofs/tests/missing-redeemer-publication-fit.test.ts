@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyMissingRedeemerScripts,
   MISSING_REDEEMER_BLUEPRINT_TITLES,
-} from "../src/missing-redeemer/contracts-v1.js";
+} from "../src/missing-redeemer/contracts.js";
 import {
   makeFaultProofEmulatorHarness,
   publishPlainReferenceScriptUtxo,

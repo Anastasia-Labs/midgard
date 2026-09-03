@@ -21,7 +21,7 @@
  */
 
 import { MIDGARD_ENVELOPE_MEASUREMENTS } from "@al-ft/midgard-core";
-import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { PROTOCOL_PARAMETERS_DEFAULT } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

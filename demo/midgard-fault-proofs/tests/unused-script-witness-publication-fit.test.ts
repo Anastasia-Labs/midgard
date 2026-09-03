@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyUnusedScriptWitnessScripts,
   UNUSED_SCRIPT_WITNESS_BLUEPRINT_TITLES,
-} from "../src/unused-script-witness/contracts-v1.js";
+} from "../src/unused-script-witness/contracts.js";
 import {
   makeFaultProofEmulatorHarness,
   publishPlainReferenceScriptUtxo,

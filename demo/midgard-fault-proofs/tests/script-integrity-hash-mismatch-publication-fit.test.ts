@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyScriptIntegrityHashMismatchScripts,
   SCRIPT_INTEGRITY_HASH_MISMATCH_BLUEPRINT_TITLES,
-} from "../src/script-integrity-hash-mismatch/contracts-v1.js";
+} from "../src/script-integrity-hash-mismatch/contracts.js";
 import {
   makeFaultProofEmulatorHarness,
   publishPlainReferenceScriptUtxo,

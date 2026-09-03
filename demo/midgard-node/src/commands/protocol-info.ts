@@ -9,11 +9,11 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_PROTOCOL_INFO_API_VERSION,
   type MidgardConsensusProfile,
-} from "@al-ft/midgard-core/consensus-profile-v1";
+} from "@al-ft/midgard-core/consensus-profile";
 import {
   type DeploymentMarker,
   parseDeploymentMarker,
-} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { Network } from "@lucid-evolution/lucid";
 
 import { positiveSafeInteger } from "../artifact-schema.js";

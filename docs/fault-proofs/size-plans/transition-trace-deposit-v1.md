@@ -253,7 +253,7 @@ yield, role, or withdraw route for this final.
    "V1FpTtF5ProjectionYield"`, `"V1 fraud-proof transition-trace final-5
    summaries yield": "V1FpTtF5SummariesYield"` in
    `DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES`, `midgard-core`
-   `deployment-manifest-identity-v1.ts`, node `deployment-manifest-v1.ts`,
+   `deployment-manifest-identity.ts`, node `deployment-manifest.ts`,
    node `transactions/reference-scripts.ts` (`manifestReferenceScriptTarget`),
    node `commands/contract-deployment-info.ts` (`withdrawalDescriptor`); Aiken
    constants identical.

@@ -32,7 +32,7 @@
  * leaf convention. Requiring it would refuse a legitimate fabricated-withdrawal
  * proof whenever the block's unrelated transaction leaves use the payload-source
  * convention. The same reasoning is recorded at
- * `src/evidence/prepare-from-evidence-v1.ts:145-150`.
+ * `src/evidence/prepare-from-evidence.ts:145-150`.
  *
  * The L1 side of the argument is authenticated, never asserted: absence of a
  * withdrawal identity is established by exhibiting the committed `WithdrawalId` in
@@ -44,7 +44,7 @@
  *
  * Leaf bytes are compared in `serialiseData` form throughout — see the note on
  * definite versus indefinite Plutus maps in
- * `midgard-sdk/src/fraud-proof/fabricated-withdrawal-v1.ts`. A withdrawal leaf
+ * `midgard-sdk/src/fraud-proof/fabricated-withdrawal.ts`. A withdrawal leaf
  * value embeds a `Value` map, so this matters here in a way it did not for
  * deposits.
  */

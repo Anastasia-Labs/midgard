@@ -4,7 +4,7 @@
  * The test this replaces published a 180-input typed witness UTxO through
  * `ensureSpendInputsReferenceWitness` and pinned its min-Ada. That publication
  * is deleted: §8's carriage ladder replaced it with the §8.5 nothing-but-bytes
- * publication that `field-opening-v1.ts` builds, and the redeemer indices it fed
+ * publication that `field-opening.ts` builds, and the redeemer indices it fed
  * (`tx1_spend_inputs_ref_input_index` and its twin) no longer exist on-chain.
  *
  * The min-Ada calculation itself is still live — `publish-proof-chunks.ts` uses

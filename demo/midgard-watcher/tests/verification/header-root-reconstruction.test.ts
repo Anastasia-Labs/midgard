@@ -57,7 +57,7 @@ import {
 
 // ---------------------------------------------------------------------------
 // Fixture construction (mirrors demo/midgard-fault-proofs/tests/helpers/
-// canonical-block-evidence-fixture-v1.ts, using only package exports)
+// canonical-block-evidence-fixture.ts, using only package exports)
 // ---------------------------------------------------------------------------
 
 const h32 = (byte: number): string =>

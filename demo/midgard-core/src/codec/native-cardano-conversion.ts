@@ -6,12 +6,12 @@ import { type MidgardNativeTxCanonical } from "./native.js";
 import { EMPTY_NULL_ROOT } from "./native-constants.js";
 import { cardanoRedeemersToMidgardPreimageCbor } from "./native-redeemer.js";
 import { decodeMidgardNativeScript } from "./native-script.js";
-import { encodeMidgardFieldPreimage } from "./native-tx-field-access-v1.js";
+import { encodeMidgardFieldPreimage } from "./native-tx-field-access.js";
 import {
   encodeMidgardFieldPreimageForField,
   type MidgardTxInput,
   sortMidgardMintItems,
-} from "./native-tx-field-items-v1.js";
+} from "./native-tx-field-items.js";
 import { encodeMidgardTxOutput, type MidgardTxOutput } from "./output.js";
 import { type MidgardValue } from "./value.js";
 import {

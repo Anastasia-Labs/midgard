@@ -243,8 +243,8 @@ reject.
 The on-chain authority is
 `onchain/aiken/validators/da-params-governor.ak`; its off-chain twin is
 `demo/midgard-sdk/src/da-attestation.ts`. Focused parity and rotation coverage
-lives in `demo/midgard-sdk/tests/da-governor-safety-v1.test.ts` and
-`demo/midgard-sdk/tests/da-attestation-rotation-v1.test.ts`.
+lives in `demo/midgard-sdk/tests/da-governor-safety.test.ts` and
+`demo/midgard-sdk/tests/da-attestation-rotation.test.ts`.
 
 ## 5. Resource ceilings and hardware floors
 

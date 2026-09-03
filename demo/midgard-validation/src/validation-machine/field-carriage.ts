@@ -56,7 +56,7 @@ import {
  * **What moving it did and did not buy.** `src/index.ts` re-exports this module
  * wholesale, so the name is public API of `@al-ft/midgard-validation` and is
  * already imported across the package boundary:
- * `demo/midgard-fault-proofs/tests/cardano-capability-retained-da-v1.test.ts`
+ * `demo/midgard-fault-proofs/tests/cardano-capability-retained-da.test.ts`
  * takes `countedMachineTransactionChunkSteps` that way. So this is not
  * containment; what it buys is that the counted spelling now lives in the package
  * whose on-chain twin still asks for it, one import away from this note, instead

@@ -30,20 +30,20 @@ import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
-} from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+} from "../witness-reference-scripts.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary-v1.js";
-import type { CanonicalDecodabilityContracts } from "./contracts-v1.js";
+} from "../workflow/transaction-boundary.js";
+import type { CanonicalDecodabilityContracts } from "./contracts.js";
 import {
   canonicalDecodabilityStepLabel,
   canonicalDecodabilitySubmitError,
   requireCanonicalDecodabilityReferenceScript,
   requireCanonicalDecodabilityStepState,
   requireCanonicalDecodabilityThreadUtxo,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 const STEP_LABEL = canonicalDecodabilityStepLabel(1);
 

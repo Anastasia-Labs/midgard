@@ -302,7 +302,7 @@ Nothing named exists for this contract today beyond the `contracts.ts` title.
   `[[dispatcher.spendingScriptHash], fieldPreimageCertificatePolicyId?]`; the
   slot-0 resolver gains `reference_script_auth_policy_id` and loses
   `field_preimage_certificate_policy_id` — both changes flow through the
-  name-keyed semantic parameter map that `zz605-semantic-resolver-arity.test.ts`
+  name-keyed semantic parameter map that `semantic-resolver-arity-gate.test.ts`
   guards (declare the new name, drop nothing globally: other resolvers still use the certificate policy).
 - **Reference-script roles**: add the eight `V1VtSs…Yield` names to
   `REFERENCE_SCRIPT_AUTH_TOKEN_NAMES` (`demo/midgard-sdk/src/reference-scripts.ts`)
@@ -328,7 +328,7 @@ yield_role_index, yield_ref_input_index]`; the semantic submit builder adds
   keeps its stage checks. `yield_role_index` is derived from the one-step
   argument's auxiliary tag and the control's stage byte (2→0, 3→1/2,
   4→3/4, 6→5/6/7) by a new pure helper `scriptSourcesNonOutputYieldRoleIndexV1`.
-- **Funding requirements** (`demo/midgard-fault-proofs/src/workflow/production-funding-requirements-v1.ts`):
+- **Funding requirements** (`demo/midgard-fault-proofs/src/workflow/funding-requirements.ts`):
   one publication row per new script (nine) plus eight 2-ADA reward-account
   deposits.
 - **`midgard-core` / `validation` codec**: the one-step argument
@@ -350,7 +350,7 @@ resolver 8.
 
 Add `tests/submit-init-emulator-script-sources-non-output-v1.test.ts` (one
 journey per file, per the wasm-heap note in
-`submit-init-emulator-cek-value-and-mint-v1.test.ts`):
+`submit-init-emulator-cek-value-and-mint.test.ts`):
 
 1. _Publication fit:_ publish the dispatcher and all eight yields with
    `publishPlainReferenceScriptUtxo` inside `withRealL1MaxTxSize`, **no
@@ -413,7 +413,7 @@ node -e 'const b=require("./plutus.json");for(const v of b.validators)if(/script
 aiken check -m script_sources_raw_frame      # expected: ≥ 10 tests, 0 failures
 aiken check -m non_output_split              # expected: ≥ 16 tests, 0 failures
 cd ../../demo
-pnpm --filter @al-ft/midgard-fault-proofs test -- tests/zz605-semantic-resolver-arity.test.ts tests/validation-dispute-submit.test.ts tests/inspect-contracts.test.ts
+pnpm --filter @al-ft/midgard-fault-proofs test -- tests/semantic-resolver-arity-gate.test.ts tests/validation-dispute-submit.test.ts tests/inspect-contracts.test.ts
 pnpm --filter @al-ft/midgard-fault-proofs test -- tests/submit-init-emulator-script-sources-non-output-v1.test.ts   # 1 journey, ≤ 900 s
 pnpm --filter @al-ft/midgard-sdk test -- tests/reference-scripts.test.ts
 ```

@@ -22,14 +22,14 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import type { MinFeeContracts } from "./min-fee-contracts-v1.js";
+import type { MinFeeContracts } from "./min-fee-contracts.js";
 import {
   minFeeStepLabel,
   minFeeSubmitError,
   requireMinFeeReferenceScript,
   requireMinFeeThreadUtxo,
-} from "./min-fee-submit-common-v1.js";
-import { prepareNativeTxInclusionCarriage } from "./native-inclusion-carriage-v1.js";
+} from "./min-fee-submit-common.js";
+import { prepareNativeTxInclusionCarriage } from "./native-inclusion-carriage.js";
 import {
   type PublishedProofChunk,
   walletInputsExcludingChunks,
@@ -49,12 +49,12 @@ import {
   type SubmitStep01TxInclusion,
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
-import type { FaultProofWitnessReferenceScripts } from "./witness-reference-scripts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "./witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "./workflow/transaction-boundary-v1.js";
+} from "./workflow/transaction-boundary.js";
 
 const STEP_LABEL = minFeeStepLabel(0);
 

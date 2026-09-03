@@ -357,17 +357,17 @@ TypeScript producer of ScriptSources stage 7–12 one-step arguments (see §7).
   constant). Extend `ValidationTraceDisputeFaultProofContracts` with `yields`.
   The semantic title list and `script_sources_semantic_resolver_count = 29` are
   unchanged, so global slot 54 and `VALIDATION_SEMANTIC_RESOLVER_OFFSETS_V1` stay.
-- **Arity gate** `demo/midgard-fault-proofs/tests/zz605-semantic-resolver-arity.test.ts`
+- **Arity gate** `demo/midgard-fault-proofs/tests/semantic-resolver-arity-gate.test.ts`
   derives parameters from the blueprint; passes once the name is in the map,
-  fails closed with the #609 message otherwise. `zz610-compiled-script-arity.test.ts`
+  fails closed with the #609 message otherwise. `compiled-script-arity-gate.test.ts`
   sees the new withdraw validator.
 - **Reference-script roles**: `"V1 validation-trace script-sources redeemer-item-step yield": "V1VtSsRedeemerItemStepYield"`
   in `REFERENCE_SCRIPT_AUTH_TOKEN_NAMES` (`demo/midgard-sdk/src/reference-scripts.ts`,
   next to the min-ADA yields at lines 215–216) and in
   `DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES`
-  (`demo/midgard-core/src/deployment-manifest-identity-v1.ts:740`, with its
-  `deployment-manifest-identity-v1.test.ts`); the Aiken constant must equal the string.
-- **Manifest / deployment info**: `demo/midgard-node/src/deployment-manifest-v1.ts`
+  (`demo/midgard-core/src/deployment-manifest-identity.ts:740`, with its
+  `deployment-manifest-identity.test.ts`); the Aiken constant must equal the string.
+- **Manifest / deployment info**: `demo/midgard-node/src/deployment-manifest.ts`
   step-name map entry `validationTraceDisputeScriptSourcesRedeemerItemStepWithdraw`
   (precedent `fraudProofMinAdaStep02TxWithdraw`, lines 227/480);
   `demo/midgard-node/src/commands/contract-deployment-info.ts`
@@ -397,13 +397,13 @@ TypeScript producer of ScriptSources stage 7–12 one-step arguments (see §7).
   `RedeemerItemStepWitness` auxiliary (constructor 18: `[None, control, witness]`;
   `witness.action` index 0 → header, 1 → tail); `claim.claimed_next` is the
   off-chain replay of the descriptor step (the honest successor's item control;
-  `validation-auxiliary-witness-v1.ts` already models `RedeemerItemProofControlV1`);
+  `validation-auxiliary-witness.ts` already models `RedeemerItemProofControlV1`);
   `yield_to_ref_input_index` via `requireReferenceInputIndex` inside the
   `makeIndexedValidationStageRedeemer` layout callback (precedent
-  `src/min-ada/submit-step-02-v1.ts:264`). `submitValidationDisputeSemanticResolution`
+  `src/min-ada/submit-step-02.ts:264`). `submitValidationDisputeSemanticResolution`
   (~5956) adds `.readFrom([yieldReferenceUtxo])` and
   `.withdraw(scriptRewardAddress(network, yield.withdrawalScript), 0n, Data.void())`
-  for semantics 19/21/22 (precedent `submit-step-02-v1.ts:297,548–568`),
+  for semantics 19/21/22 (precedent `submit-step-02.ts:297,548–568`),
   sourcing the yield UTxO from the new deployment entry. Keep the
   `redeemerScanBegin`/`redeemerItemStep` family checks at lines 1556–1566
   (the auxiliary is unchanged).
@@ -433,14 +433,14 @@ script-free transaction, `buildForgedOperatorSuccessorValidationDisputeFixture`
 (line 930) accepts `disputedPhase: "cek" | "valueAndMint"` only, and neither
 `demo/midgard-core/src` nor `demo/midgard-sdk/src` contains a producer of
 discovery-stage controls (no `redeemer_item_control_hash` / `used_redeemer_bitmap`
-outside the SDK auxiliary-shape table). `resolver-proof-fit-sweep-generate-v1.test.ts`
+outside the SDK auxiliary-shape table). `resolver-proof-fit-sweep-generate.test.ts`
 reports resolver-8 rows in `unfit[]` for that reason. The Aiken vectors
 `script_sources_stage_ten_proves_mismatch_and_missing_redeemer_exactly` and
 `script_sources_stage_ten_redeemer_family_guards` are the only stage-ten fixtures.
 
 Add `tests/submit-init-emulator-script-sources-stage-ten-match-v1.test.ts`
 (one journey per file — see the wasm-heap note in
-`submit-init-emulator-value-and-mint-v1.test.ts`):
+`submit-init-emulator-value-and-mint.test.ts`):
 
 - **Fixture (new, shared by the group):** a TypeScript ScriptSources
   stage 7–12 step producer (`demo/midgard-sdk/src/fraud-proof/script-sources-trace-v1.ts`)
@@ -520,10 +520,10 @@ node -e 'const b=require("./plutus.json");for(const v of b.validators)if(/script
 cd - && rm -rf /tmp/size-check-ssb
 
 # 2. TypeScript (from demo/midgard-fault-proofs, pinned Node 22.22.2)
-pnpm exec vitest run tests/zz605-semantic-resolver-arity.test.ts tests/zz610-compiled-script-arity.test.ts tests/validation-dispute-submit.test.ts tests/inspect-contracts.test.ts
+pnpm exec vitest run tests/semantic-resolver-arity-gate.test.ts tests/compiled-script-arity-gate.test.ts tests/validation-dispute-submit.test.ts tests/inspect-contracts.test.ts
 pnpm exec vitest run tests/submit-init-emulator-script-sources-stage-ten-match-v1.test.ts   # publication margins > 0, award + removal
 # from demo/midgard-core
-pnpm exec vitest run tests/deployment-manifest-identity-v1.test.ts
+pnpm exec vitest run tests/deployment-manifest-identity.test.ts
 ```
 
 ## 10. Ordering and dependencies

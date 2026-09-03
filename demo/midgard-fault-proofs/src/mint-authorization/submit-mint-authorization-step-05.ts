@@ -40,20 +40,20 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
   witnessSpendingValidatorCarriage,
-} from "../witness-reference-scripts-v1.js";
+} from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary-v1.js";
-import type { MintAuthorizationContracts } from "./contracts-v1.js";
+} from "../workflow/transaction-boundary.js";
+import type { MintAuthorizationContracts } from "./contracts.js";
 import {
   mintAuthorizationStepLabel,
   mintAuthorizationSubmitError,
   requireMintAuthorizationReferenceScript,
   requireMintAuthorizationStepState,
   requireMintAuthorizationThreadUtxo,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 const STEP_LABEL = mintAuthorizationStepLabel(4);
 

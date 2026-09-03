@@ -42,14 +42,14 @@ import {
   submitInputSetUniquenessStep01,
   submitInputSetUniquenessStep02,
 } from "../src/input-set-uniqueness/index.js";
-import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal-v1.js";
+import { expectOnchainRefusal } from "./support/emulator/expect-onchain-refusal.js";
 import {
   buildInputSetUniquenessFixture,
   isuOutRef,
   makeInputSetUniquenessEmulatorHarness,
   publishInputSetUniquenessReferenceScripts,
   setupInputSetUniquenessScenario,
-} from "./support/input-set-uniqueness-emulator-v1.js";
+} from "./support/input-set-uniqueness-emulator.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 
 /**

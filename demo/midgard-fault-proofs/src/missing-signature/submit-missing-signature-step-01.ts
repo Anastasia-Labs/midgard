@@ -65,22 +65,22 @@ import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessWithdrawalValidatorCarriage,
-} from "../witness-reference-scripts-v1.js";
+} from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary-v1.js";
+} from "../workflow/transaction-boundary.js";
 import {
   MISSING_SIGNATURE_CATEGORY_LABEL,
   type MissingSignatureContracts,
-} from "./contracts-v1.js";
+} from "./contracts.js";
 import {
   missingSignatureStepLabel,
   missingSignatureSubmitError,
   requireMissingSignatureReferenceScript,
   requireMissingSignatureThreadUtxo,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 const STEP_LABEL = missingSignatureStepLabel(0);
 

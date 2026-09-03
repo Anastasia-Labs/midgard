@@ -28,7 +28,7 @@ import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { planFaultProofFieldOpening } from "../src/field-opening-v1.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.js";
 import {
   submitInvalidSignatureStep01,
   submitInvalidSignatureStep02,
@@ -42,7 +42,7 @@ import {
   publishInvalidSignatureReferenceScripts,
   setupInvalidSignatureScenario,
   submitRawInvalidSignatureStep02,
-} from "./support/invalid-signature-emulator-v1.js";
+} from "./support/invalid-signature-emulator.js";
 import { submitInit } from "./support/legacy-submit-emulator.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
 import {

@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyExecutionSourceScriptDecodingScripts,
   EXECUTION_SOURCE_SCRIPT_DECODING_BLUEPRINT_TITLES,
-} from "../src/execution-source-script-decoding/contracts-v1.js";
+} from "../src/execution-source-script-decoding/contracts.js";
 import {
   makeFaultProofEmulatorHarness,
   publishPlainReferenceScriptUtxo,

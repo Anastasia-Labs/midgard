@@ -36,12 +36,12 @@ import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import {
   applyScriptIntegrityHashMismatchScripts,
   type ScriptIntegrityHashMismatchContracts,
-} from "../src/script-integrity-hash-mismatch/contracts-v1.js";
+} from "../src/script-integrity-hash-mismatch/contracts.js";
 import {
   prepareScriptIntegrityHashMismatchEvidence,
   SCRIPT_INTEGRITY_HASH_MISMATCH_CATEGORY_ID,
-} from "../src/script-integrity-hash-mismatch/family-v1.js";
-import { buildScriptIntegrityStageThreeAuthenticationFromRetainedDa } from "../src/script-integrity-hash-mismatch/retained-stage-three-v1.js";
+} from "../src/script-integrity-hash-mismatch/family.js";
+import { buildScriptIntegrityStageThreeAuthenticationFromRetainedDa } from "../src/script-integrity-hash-mismatch/retained-stage-three.js";
 import {
   submitScriptIntegrityHashMismatchCancel,
   submitScriptIntegrityHashMismatchStep01Accepted,
@@ -49,7 +49,7 @@ import {
   submitScriptIntegrityHashMismatchStep03,
   submitScriptIntegrityHashMismatchStep04,
   submitScriptIntegrityHashMismatchStep05,
-} from "../src/script-integrity-hash-mismatch/submit-v1.js";
+} from "../src/script-integrity-hash-mismatch/submit.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
@@ -57,7 +57,7 @@ import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
-import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator-v1.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,

@@ -17,11 +17,11 @@ import {
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_VALIDATION_MACHINE_VERSION,
   MIDGARD_VALIDATION_TRACE_DESCRIPTOR_VERSION,
-} from "./consensus-profile-v1.js";
+} from "./consensus-profile.js";
 import {
   encodeMidgardMpfProofDescriptor,
   type MidgardMpfProofDescriptor,
-} from "./mpf-proof-fold-v1.js";
+} from "./mpf-proof-fold.js";
 import { aikenSerialisedPlutusDataCborPreservingMapOrder } from "./plutus-data-cbor.js";
 import {
   buildMidgardValidationMerkleFrontier,

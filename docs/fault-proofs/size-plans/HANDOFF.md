@@ -95,5 +95,5 @@ testing-status,execution-plan,coverage-matrix,architecture}.md` were brought
 in line with the code (min-ADA split, native-script-invalid frontier,
 missing-native-script-UTxO, blueprint identity, DA route, provider mode,
 finality policy, the 51-script size table, fixture-drift failures in
-`inspect-contracts.test.ts` and `submit-init-emulator-min-ada-v1.test.ts`).
+`inspect-contracts.test.ts` and `submit-init-emulator-min-ada.test.ts`).
 All uncommitted.

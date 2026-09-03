@@ -9,7 +9,7 @@ import {
 import {
   type DeploymentManifestValue,
   parseDeploymentManifestValue,
-} from "midgard-node/deployment-manifest-v1";
+} from "midgard-node/deployment-manifest";
 import {
   fetchKupoAncestorPoint,
   fetchKupoCreationPoint,
@@ -18,13 +18,13 @@ import {
   readOgmiosBlockTransaction,
   type WebSocketFactory,
   type WebSocketLike,
-} from "midgard-node/l1-tx-order-carriage-v1";
+} from "midgard-node/l1-tx-order-carriage";
 import { normalizeOgmiosHttpUrl } from "midgard-node/local-ledger-slot";
 
 import {
   parseReleaseL1FinalityPolicy,
   type ReleaseL1FinalityPolicy,
-} from "./e2e-release-finality-policy-v1.js";
+} from "./e2e-release-finality-policy.js";
 import type { StateCorrectionAvailabilityChallengeCapability } from "./e2e-state-correction-acceptance.js";
 import type { StateCorrectionIndependentAuthority } from "./e2e-state-correction-reconciliation.js";
 

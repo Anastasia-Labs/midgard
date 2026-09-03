@@ -3,7 +3,7 @@ import { Effect } from "effect";
 
 import { AlwaysSucceedsContract } from "../../src/services/always-succeeds.js";
 import { withRealStateQueueAndOperatorContracts } from "../../src/services/midgard-contracts.js";
-import { TEST_AVAILABILITY_PARAMETERS } from "./availability-challenge-v1.js";
+import { TEST_AVAILABILITY_PARAMETERS } from "./availability-challenge.js";
 
 export type TestOneShotOutRef = {
   readonly txHash: string;

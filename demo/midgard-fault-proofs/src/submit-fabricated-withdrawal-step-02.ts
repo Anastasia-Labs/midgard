@@ -54,7 +54,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { requireFabricatedReferenceScript } from "./fabricated-reference-script-v1.js";
+import { requireFabricatedReferenceScript } from "./fabricated-reference-script.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -79,7 +79,7 @@ import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
-} from "./workflow/transaction-boundary-v1.js";
+} from "./workflow/transaction-boundary.js";
 
 /** Which L1 witness the prover intends to submit. */
 export type FabricatedWithdrawalEvidenceArm =

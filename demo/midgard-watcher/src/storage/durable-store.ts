@@ -4,7 +4,7 @@ import { isProxy } from "node:util/types";
 import {
   type DeploymentMarker,
   parseDeploymentMarker,
-} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 
 export const WATCHER_DURABLE_STORE_SCHEMA_VERSION =
   "midgard-watcher-durable-store-v1" as const;

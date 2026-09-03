@@ -14,21 +14,21 @@ import {
   LOCAL_FILE_DIAGNOSTIC_PROVENANCE,
   MIDGARD_NODE_URL_DIAGNOSTIC_PROVENANCE,
   SAMPLE_EVIDENCE_DIAGNOSTIC_PROVENANCE,
-} from "./evidence/diagnostic-evidence-v1.js";
+} from "./evidence/diagnostic-evidence.js";
 import {
   resolveFabricatedDepositCliContracts,
   resolveFabricatedWithdrawalCliContracts,
-} from "./fabricated-cli-contracts-v1.js";
+} from "./fabricated-cli-contracts.js";
 import {
   generateFraudProofFamilyScaffold,
   writeFraudProofFamilyScaffold,
-} from "./family-scaffold/generate-v1.js";
+} from "./family-scaffold/generate.js";
 import {
   inspectContractsFromFiles,
   parseNetwork,
 } from "./inspect-contracts.js";
 import { readJsonFile, stringifyJson } from "./json-file.js";
-import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary-v1.js";
+import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary.js";
 import { neSubmitStep01FromFiles } from "./ne-submit-step-01.js";
 import { neSubmitStep02FromFiles } from "./ne-submit-step-02.js";
 import { neSubmitStep03FromFiles } from "./ne-submit-step-03.js";
@@ -89,7 +89,7 @@ import {
 import {
   runFraudProofWorkflowCli,
   workflowReadinessReport,
-} from "./workflow/cli-v1.js";
+} from "./workflow/cli.js";
 
 export type ParsedArgs = {
   readonly command: string | undefined;

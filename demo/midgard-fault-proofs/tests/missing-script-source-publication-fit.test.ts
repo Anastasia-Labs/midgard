@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyMissingScriptSourceScripts,
   MISSING_SCRIPT_SOURCE_BLUEPRINT_TITLES,
-} from "../src/missing-script-source/contracts-v1.js";
+} from "../src/missing-script-source/contracts.js";
 import {
   makeFaultProofEmulatorHarness,
   publishPlainReferenceScriptUtxo,

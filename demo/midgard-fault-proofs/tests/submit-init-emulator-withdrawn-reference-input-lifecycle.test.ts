@@ -21,7 +21,7 @@ import {
   makeWithdrawnReferenceInputEmulatorHarness,
   publishWithdrawnReferenceInputReferenceScripts,
   setupWithdrawnReferenceInputScenario,
-} from "./support/withdrawn-reference-input-emulator-v1.js";
+} from "./support/withdrawn-reference-input-emulator.js";
 
 describe("withdrawn-reference-input emulator lifecycle", () => {
   it("proves the same-block conflict, mints permanent evidence, and removes the fraudulent block", async () => {

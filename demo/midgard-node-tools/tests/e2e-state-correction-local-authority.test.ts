@@ -1,13 +1,13 @@
-import { DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { credentialToAddress } from "@lucid-evolution/lucid";
 import type {
   WebSocketFactory,
   WebSocketLike,
-} from "midgard-node/l1-tx-order-carriage-v1";
-import { makeFinalizedDeploymentManifestFixture } from "midgard-node/tests/helpers/finalized-deployment-manifest-v1";
+} from "midgard-node/l1-tx-order-carriage";
+import { makeFinalizedDeploymentManifestFixture } from "midgard-node/tests/helpers/finalized-deployment-manifest";
 import { describe, expect, it, vi } from "vitest";
 
-import { RELEASE_L1_FINALITY_POLICY_DEEP_ROLLBACK_POLICY } from "../src/commands/e2e-release-finality-policy-v1.js";
+import { RELEASE_L1_FINALITY_POLICY_DEEP_ROLLBACK_POLICY } from "../src/commands/e2e-release-finality-policy.js";
 import {
   createLocalKupmiosStateCorrectionAuthority,
   createLocalKupmiosStateCorrectionSource,

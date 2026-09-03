@@ -47,9 +47,9 @@ import {
   outRefFromByte,
   outRefFromTxId,
 } from "../../midgard-validation/tests/validation-fixtures.js";
-import { reconstructExecutionNativeScriptPurposes } from "../src/execution-native-script-invalid/canonical-reconstruction-v1.js";
-import { applyExecutionNativeScriptInvalidScripts } from "../src/execution-native-script-invalid/contracts-v1.js";
-import { prepareExecutionNativeScriptInvalidEvidence } from "../src/execution-native-script-invalid/family-v1.js";
+import { reconstructExecutionNativeScriptPurposes } from "../src/execution-native-script-invalid/canonical-reconstruction.js";
+import { applyExecutionNativeScriptInvalidScripts } from "../src/execution-native-script-invalid/contracts.js";
+import { prepareExecutionNativeScriptInvalidEvidence } from "../src/execution-native-script-invalid/family.js";
 import {
   submitExecutionNativeScriptInvalidAcceptedFinishInline,
   submitExecutionNativeScriptInvalidAcceptedFinishPurpose,
@@ -62,22 +62,22 @@ import {
   submitExecutionNativeScriptInvalidAcceptedReceive,
   submitExecutionNativeScriptInvalidAcceptedReferenceSource,
   submitExecutionNativeScriptInvalidAcceptedSpend,
-} from "../src/execution-native-script-invalid/submit-accepted-reconstruction-v1.js";
+} from "../src/execution-native-script-invalid/submit-accepted-reconstruction.js";
 import {
   submitExecutionNativeScriptInvalidAcceptedCancel,
   submitExecutionNativeScriptInvalidCancel,
-} from "../src/execution-native-script-invalid/submit-cancel-v1.js";
-import { submitExecutionNativeScriptInvalidInit } from "../src/execution-native-script-invalid/submit-init-v1.js";
+} from "../src/execution-native-script-invalid/submit-cancel.js";
+import { submitExecutionNativeScriptInvalidInit } from "../src/execution-native-script-invalid/submit-init.js";
 import {
   submitExecutionNativeScriptInvalidStep01Accepted,
   submitExecutionNativeScriptInvalidStep01Forced,
-} from "../src/execution-native-script-invalid/submit-step-01-v1.js";
-import { submitExecutionNativeScriptInvalidStep02 } from "../src/execution-native-script-invalid/submit-step-02-v1.js";
-import { submitExecutionNativeScriptInvalidStep03 } from "../src/execution-native-script-invalid/submit-step-03-v1.js";
-import { submitExecutionNativeScriptInvalidStep04StartSignerScan } from "../src/execution-native-script-invalid/submit-step-04-v1.js";
-import { submitExecutionNativeScriptInvalidStep05 } from "../src/execution-native-script-invalid/submit-step-05-v1.js";
-import { submitExecutionNativeScriptInvalidStep06 } from "../src/execution-native-script-invalid/submit-step-06-v1.js";
-import { buildExecutionSourceMachineAuthentication } from "../src/execution-source-script-decoding/machine-authentication-v1.js";
+} from "../src/execution-native-script-invalid/submit-step-01.js";
+import { submitExecutionNativeScriptInvalidStep02 } from "../src/execution-native-script-invalid/submit-step-02.js";
+import { submitExecutionNativeScriptInvalidStep03 } from "../src/execution-native-script-invalid/submit-step-03.js";
+import { submitExecutionNativeScriptInvalidStep04StartSignerScan } from "../src/execution-native-script-invalid/submit-step-04.js";
+import { submitExecutionNativeScriptInvalidStep05 } from "../src/execution-native-script-invalid/submit-step-05.js";
+import { submitExecutionNativeScriptInvalidStep06 } from "../src/execution-native-script-invalid/submit-step-06.js";
+import { buildExecutionSourceMachineAuthentication } from "../src/execution-source-script-decoding/machine-authentication.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
@@ -85,7 +85,7 @@ import {
   captureEmulatorSubmission,
   type CompleteSignedTransactionMeasurement,
 } from "./support/emulator/measurement.js";
-import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator-v1.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   buildRemovalDeploymentInfo,

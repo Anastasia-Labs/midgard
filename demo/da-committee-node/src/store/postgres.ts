@@ -3,7 +3,7 @@ import {
   type DeploymentMarker,
   MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
   parseDeploymentMarker,
-} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Pool, type PoolClient } from "pg";
 
 import type {

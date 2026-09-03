@@ -196,7 +196,7 @@ state-queue redesign directly.
   contract-deployment-info / inspection fixtures.
 - **SDK contract wiring.** `demo/midgard-sdk/src/fraud-proof/contracts/`
   applies parameters by blueprint title; new validators need entries and the
-  arity test (`zz605-semantic-resolver-arity.test.ts`) must see them.
+  arity test (`semantic-resolver-arity-gate.test.ts`) must see them.
 - **Submit routing.** `demo/midgard-fault-proofs/src/validation-dispute/submit.ts`
   attaches resolver reference inputs by deployment entry; a yield needs its
   reference input and a zero withdrawal added to the transaction builder.
@@ -235,7 +235,7 @@ existing table is PascalCase `<Family><Arm><Kind>` with `<Kind>` one of
   `"V1 validation-trace script-sources redeemer-item-step yield"`.
 
 Add a length assertion for every new constant (Aiken test on the constant,
-`deployment-manifest-identity-v1.test.ts` on the table) so a 33-byte name
+`deployment-manifest-identity.test.ts` on the table) so a 33-byte name
 fails at build time rather than at mint time.
 
 ### Landing order

@@ -5,7 +5,7 @@ import {
   deriveMidgardNativeTxProofSource,
 } from "@al-ft/midgard-core";
 import {
-  ForcedInclusionTxSchema,
+  ForcedInclusionTxV1Schema,
   forcedVerdictSubject,
   OutputReference,
   Proof,
@@ -15,12 +15,12 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data, getAddressDetails } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import type { InvalidRangeContracts } from "../src/invalid-range/contracts-v1.js";
-import { prepareInvalidRangeEvidence } from "../src/invalid-range/family-v1.js";
+import type { InvalidRangeContracts } from "../src/invalid-range/contracts.js";
+import { prepareInvalidRangeEvidence } from "../src/invalid-range/family.js";
 import {
   submitInvalidRangeStep01Forced,
   submitInvalidRangeStep02V1,
-} from "../src/invalid-range/submit-v1.js";
+} from "../src/invalid-range/submit.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { submitInit } from "../src/submit-init.js";
 import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
@@ -28,8 +28,8 @@ import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import {
   admitNativeInclusionTwoStepArtifact,
   NATIVE_INCLUSION_TWO_STEP_ARTIFACT,
-} from "../src/workflow/production-native-inclusion-two-step-v1.js";
-import { submitZeroInputCancel } from "../src/zero-input/submit-cancel-v1.js";
+} from "../src/workflow/native-inclusion-two-step.js";
+import { submitZeroInputCancel } from "../src/zero-input/submit-cancel.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
@@ -111,7 +111,7 @@ describe("invalidRange wrongful-rejection real lifecycle", () => {
     const key = base.eventKey.ForcedTransactionEventKey.tx_order_id;
     const keyBytes = Buffer.from(Data.to(key, OutputReference), "hex");
     const valueBytes = Buffer.from(
-      Data.to(leaf as never, ForcedInclusionTxSchema as never),
+      Data.to(leaf as never, ForcedInclusionTxV1Schema as never),
       "hex",
     );
     const root = await buildCountedRoot(ROOT_DOMAINS.forcedTransactionsV1, [

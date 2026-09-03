@@ -11,7 +11,7 @@
  * evaluations themselves. The only isolation the wasm module respects is a
  * process boundary, and vitest isolates per FILE, not per test — hence this
  * orchestrator: it runs the benchmark file
- * (`tests/native-script-scan-fault-proof-exunits-emulator-v1.test.ts`) once
+ * (`tests/native-script-scan-fault-proof-exunits-emulator.test.ts`) once
  * per MEASUREMENT in a fresh process, then once more to judge the merged
  * readings against the committed ledger. The file's own env knobs
  * (`MIDGARD_SCAN_BENCH_{SHAPES,NODES,STEPS,MAXFIT,MODE,OUT,MERGED}`) are the
@@ -41,7 +41,7 @@ import { fileURLToPath } from "node:url";
 
 const packageRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const BENCH_TEST_FILE =
-  "tests/native-script-scan-fault-proof-exunits-emulator-v1.test.ts";
+  "tests/native-script-scan-fault-proof-exunits-emulator.test.ts";
 const FILTER_ENV = [
   "MIDGARD_SCAN_BENCH_SHAPES",
   "MIDGARD_SCAN_BENCH_NODES",

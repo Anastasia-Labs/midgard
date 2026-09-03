@@ -32,7 +32,7 @@ thread and mints the permanent fraud-proof token. Cancellation is explicit.
 
 ## Off-chain surfaces
 
-- SDK schema: `demo/midgard-sdk/src/fraud-proof/withdrawn-input-v1.ts`
+- SDK schema: `demo/midgard-sdk/src/fraud-proof/withdrawn-input.ts`
 - family package: `demo/midgard-fault-proofs/src/withdrawn-input/`
 - catalogue: `demo/midgard-sdk/src/fraud-proof/catalogue.ts`
 

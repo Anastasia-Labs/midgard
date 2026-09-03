@@ -20,7 +20,7 @@ plan records its own measured numbers.
 | Machine stage | control `stage == 3` (signature payload after a `token_head` step), `SignerSetProofV1.SignerBetweenProof` |
 | Library entry point | `validation_machine_v1.verify_phase_a_native_signature_between_payload_semantics_v1(pre, transition, chunk_proof, next_chunk_proof, peaks, lower_index, lower_signer_hash, lower_siblings, upper_signer_hash, upper_siblings)` |
 | Redeemer | `ct.StepRedeemer<ActionV1>` with `VerifyToken { input_index, output_index, transition, chunk_proof, next_chunk_proof, signer_proof }`; auxiliary hashed as `NativeScriptTokenWitness { chunk_proof, next_chunk_proof, signer_proof }` (shape `[3, 3]` in `VALIDATION_AUXILIARY_SHAPES_V1.nativeScriptToken`) |
-| Rejection reasons it can emit | `WitnessNativeScriptMalformed` (`reject_invalid_field_type`, `demo/midgard-sdk/src/rejection-reason-v1.ts` PhaseANativeScripts section) |
+| Rejection reasons it can emit | `WitnessNativeScriptMalformed` (`reject_invalid_field_type`, `demo/midgard-sdk/src/rejection-reason.ts` PhaseANativeScripts section) |
 | Role name today | none — semantic resolvers carry no auth-role NFT; they are hash-checked against the applied contract |
 | Deployment entry today | none. `VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics.phaseANativeScriptsSignatureBetweenPayload` in `demo/midgard-sdk/src/fraud-proof/contracts.ts` only; `submit.ts` attaches the body inline, which cannot fit at any size above ~12 KB once the two-chunk redeemer is present |
 
@@ -350,7 +350,7 @@ node -e 'const b=require("./plutus.json");for(const v of b.validators)if(/phase_
 # expect: main.spend 12,324 ± regeneration drift, and ≤ 15,000
 /home/gumbo/.aiken/versions/v1.1.23-org-5adf7837/bin/aiken check -m phase_a   # all phase_a tests pass; new count = existing 7 + those in §8
 cd demo/midgard-fault-proofs && pnpm test -- tests/submit-init-emulator-validation-dispute-phase-a-signature.test.ts   # 1 publication-fit + 1 lifecycle + 1 negative + 1 cancel + 1 max-shape
-pnpm test -- tests/zz605-semantic-resolver-arity.test.ts tests/zz610-compiled-script-arity.test.ts tests/inspect-contracts.test.ts
+pnpm test -- tests/semantic-resolver-arity-gate.test.ts tests/compiled-script-arity-gate.test.ts tests/inspect-contracts.test.ts
 MIDGARD_PRINT_PROOF_FIT=1 pnpm test -- tests/submit-init-emulator-validation-dispute-phase-a-signature.test.ts   # prints ExUnits per stage
 ```
 

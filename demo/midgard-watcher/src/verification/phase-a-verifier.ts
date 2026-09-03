@@ -76,7 +76,7 @@ import {
   MIDGARD_CONSENSUS_PROFILE_DIGEST,
   MIDGARD_CONSENSUS_PROFILE_ID,
   MIDGARD_PROTOCOL_VERSION,
-} from "@al-ft/midgard-core/consensus-profile-v1";
+} from "@al-ft/midgard-core/consensus-profile";
 import { collectMidgardAttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import type { MidgardValidationPhaseName } from "@al-ft/midgard-core/validation-trace";
 import { canonicalBlockEvidenceFromVerifiedPayload } from "@al-ft/midgard-fault-proofs";
@@ -101,7 +101,7 @@ import {
   WATCHER_RULE_BUNDLE_REJECTION_SELECTION,
   WATCHER_RULE_BUNDLE_VALIDATION_PHASE_PRIORITY,
   type WatcherRuleBundle,
-} from "./rule-bundle-v1.js";
+} from "./rule-bundle.js";
 
 export const WATCHER_PHASE_A_VERIFIER_SCHEMA_VERSION =
   "midgard-watcher-phase-a-verifier-v1" as const;
@@ -265,7 +265,7 @@ export const WATCHER_PHASE_A_DOMINATED_REJECT_CODE_JUSTIFICATIONS =
     [RejectCodes.AssetCount]:
       "dominated: 16,385 distinct assets cannot fit the 32,768-byte outputs and mint preimage bounds (E_FIELD_PREIMAGE_SIZE), and a single large value hits E_VALUE_SIZE at 5,000 bytes first.",
     [RejectCodes.ScriptProgramSize]:
-      "dominated: consensus-validation-v1.ts has no E_SCRIPT_PROGRAM_SIZE call site; oversized programs surface as E_SCRIPT_PROGRAM_ENCODING from the bounded envelope decoder.",
+      "dominated: consensus-validation.ts has no E_SCRIPT_PROGRAM_SIZE call site; oversized programs surface as E_SCRIPT_PROGRAM_ENCODING from the bounded envelope decoder.",
     [RejectCodes.NativeScriptDepth]:
       "dominated: the canonical native-script encoder refuses nesting past the V1 maximum, so no canonical transaction can carry an over-deep script.",
     [RejectCodes.NativeScriptNodeCount]:

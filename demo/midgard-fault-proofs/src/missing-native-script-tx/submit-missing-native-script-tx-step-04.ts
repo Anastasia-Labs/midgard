@@ -25,7 +25,7 @@ import {
   faultProofFieldOpening,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
-} from "../field-opening-v1.js";
+} from "../field-opening.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   type ResolvedProverSigner,
@@ -37,15 +37,15 @@ import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary-v1.js";
-import type { MissingNativeScriptTxContracts } from "./contracts-v1.js";
+} from "../workflow/transaction-boundary.js";
+import type { MissingNativeScriptTxContracts } from "./contracts.js";
 import {
   missingNativeScriptTxStepLabel,
   missingNativeScriptTxSubmitError,
   requireMissingNativeScriptTxReferenceScript,
   requireMissingNativeScriptTxStepState,
   requireMissingNativeScriptTxThreadUtxo,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 const STEP_LABEL = missingNativeScriptTxStepLabel(3);
 

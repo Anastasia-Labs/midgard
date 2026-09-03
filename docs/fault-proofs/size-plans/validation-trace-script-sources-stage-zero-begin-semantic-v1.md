@@ -153,7 +153,7 @@ node -e 'const b=require("./plutus.json");for(const v of b.validators)if(/script
 # expected: 5 titles, all OK (begin is the gate)
 aiken check -m script_sources_stage_zero   # expected: existing 5 machine vectors + ≥ 10 new, 0 failures
 aiken check -m native_tx_field_access      # expected: existing suite + 2, 0 failures
-cd ../../demo && pnpm --filter @al-ft/midgard-fault-proofs test -- tests/submit-init-emulator-script-sources-stage-zero-v1.test.ts tests/zz605-semantic-resolver-arity.test.ts
+cd ../../demo && pnpm --filter @al-ft/midgard-fault-proofs test -- tests/submit-init-emulator-script-sources-stage-zero-v1.test.ts tests/semantic-resolver-arity-gate.test.ts
 ```
 
 ## 10. Ordering and dependencies

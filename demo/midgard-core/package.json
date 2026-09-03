@@ -53,24 +53,6 @@
       "import": "./dist/codec/index.js",
       "require": "./dist/codec/index.cjs"
     },
-    "./consensus-profile-v1": {
-      "midgard-source": "./src/consensus-profile-v1.ts",
-      "types": "./dist/consensus-profile-v1.d.ts",
-      "import": "./dist/consensus-profile-v1.js",
-      "require": "./dist/consensus-profile-v1.cjs"
-    },
-    "./capability-parity-v1": {
-      "midgard-source": "./src/capability-parity-v1.ts",
-      "types": "./dist/capability-parity-v1.d.ts",
-      "import": "./dist/capability-parity-v1.js",
-      "require": "./dist/capability-parity-v1.cjs"
-    },
-    "./consensus-validation-v1": {
-      "midgard-source": "./src/consensus-validation-v1.ts",
-      "types": "./dist/consensus-validation-v1.d.ts",
-      "import": "./dist/consensus-validation-v1.js",
-      "require": "./dist/consensus-validation-v1.cjs"
-    },
     "./validation-trace": {
       "midgard-source": "./src/validation-trace.ts",
       "types": "./dist/validation-trace.d.ts",
@@ -82,12 +64,6 @@
       "types": "./dist/validation-dispute.d.ts",
       "import": "./dist/validation-dispute.js",
       "require": "./dist/validation-dispute.cjs"
-    },
-    "./mpf-proof-fold-v1": {
-      "midgard-source": "./src/mpf-proof-fold-v1.ts",
-      "types": "./dist/mpf-proof-fold-v1.d.ts",
-      "import": "./dist/mpf-proof-fold-v1.js",
-      "require": "./dist/mpf-proof-fold-v1.cjs"
     },
     "./script-proof": {
       "midgard-source": "./src/script-proof.ts",
@@ -143,18 +119,6 @@
       "import": "./dist/da-request-deadline.js",
       "require": "./dist/da-request-deadline.cjs"
     },
-    "./retention-window-v1": {
-      "midgard-source": "./src/retention-window-v1.ts",
-      "types": "./dist/retention-window-v1.d.ts",
-      "import": "./dist/retention-window-v1.js",
-      "require": "./dist/retention-window-v1.cjs"
-    },
-    "./deployment-manifest-identity-v1": {
-      "midgard-source": "./src/deployment-manifest-identity-v1.ts",
-      "types": "./dist/deployment-manifest-identity-v1.d.ts",
-      "import": "./dist/deployment-manifest-identity-v1.js",
-      "require": "./dist/deployment-manifest-identity-v1.cjs"
-    },
     "./codec/address": {
       "midgard-source": "./src/codec/address.ts",
       "types": "./dist/codec/address.d.ts",
@@ -191,18 +155,6 @@
       "import": "./dist/codec/native-constants.js",
       "require": "./dist/codec/native-constants.cjs"
     },
-    "./codec/native-tx-carriage-v1": {
-      "midgard-source": "./src/codec/native-tx-carriage-v1.ts",
-      "types": "./dist/codec/native-tx-carriage-v1.d.ts",
-      "import": "./dist/codec/native-tx-carriage-v1.js",
-      "require": "./dist/codec/native-tx-carriage-v1.cjs"
-    },
-    "./codec/native-tx-field-access-v1": {
-      "midgard-source": "./src/codec/native-tx-field-access-v1.ts",
-      "types": "./dist/codec/native-tx-field-access-v1.d.ts",
-      "import": "./dist/codec/native-tx-field-access-v1.js",
-      "require": "./dist/codec/native-tx-field-access-v1.cjs"
-    },
     "./codec/native-script": {
       "midgard-source": "./src/codec/native-script.ts",
       "types": "./dist/codec/native-script.d.ts",
@@ -233,11 +185,59 @@
       "import": "./dist/codec/versioned-script.js",
       "require": "./dist/codec/versioned-script.cjs"
     },
-    "./scripts/golden-channel.mjs": "./scripts/golden-channel.mjs"
+    "./scripts/golden-channel.mjs": "./scripts/golden-channel.mjs",
+    "./consensus-profile": {
+      "midgard-source": "./src/consensus-profile.ts",
+      "types": "./dist/consensus-profile.d.ts",
+      "import": "./dist/consensus-profile.js",
+      "require": "./dist/consensus-profile.cjs"
+    },
+    "./capability-parity": {
+      "midgard-source": "./src/capability-parity.ts",
+      "types": "./dist/capability-parity.d.ts",
+      "import": "./dist/capability-parity.js",
+      "require": "./dist/capability-parity.cjs"
+    },
+    "./consensus-validation": {
+      "midgard-source": "./src/consensus-validation.ts",
+      "types": "./dist/consensus-validation.d.ts",
+      "import": "./dist/consensus-validation.js",
+      "require": "./dist/consensus-validation.cjs"
+    },
+    "./mpf-proof-fold": {
+      "midgard-source": "./src/mpf-proof-fold.ts",
+      "types": "./dist/mpf-proof-fold.d.ts",
+      "import": "./dist/mpf-proof-fold.js",
+      "require": "./dist/mpf-proof-fold.cjs"
+    },
+    "./retention-window": {
+      "midgard-source": "./src/retention-window.ts",
+      "types": "./dist/retention-window.d.ts",
+      "import": "./dist/retention-window.js",
+      "require": "./dist/retention-window.cjs"
+    },
+    "./deployment-manifest-identity": {
+      "midgard-source": "./src/deployment-manifest-identity.ts",
+      "types": "./dist/deployment-manifest-identity.d.ts",
+      "import": "./dist/deployment-manifest-identity.js",
+      "require": "./dist/deployment-manifest-identity.cjs"
+    },
+    "./codec/native-tx-carriage": {
+      "midgard-source": "./src/codec/native-tx-carriage.ts",
+      "types": "./dist/codec/native-tx-carriage.d.ts",
+      "import": "./dist/codec/native-tx-carriage.js",
+      "require": "./dist/codec/native-tx-carriage.cjs"
+    },
+    "./codec/native-tx-field-access": {
+      "midgard-source": "./src/codec/native-tx-field-access.ts",
+      "types": "./dist/codec/native-tx-field-access.d.ts",
+      "import": "./dist/codec/native-tx-field-access.js",
+      "require": "./dist/codec/native-tx-field-access.cjs"
+    }
   },
   "scripts": {
     "clean": "rimraf dist",
-    "build": "tsup src/index.ts src/assets.ts src/blake2b-224-trace-v1.ts src/blake2b-256-trace-v1.ts src/bounded-blob-v1.ts src/bounded-collection-v1.ts src/bounded-item-v1.ts src/capability-parity-v1.ts src/cek-proof.ts src/cek-semantic.ts src/cek-source-blob-v1.ts src/consensus-profile-v1.ts src/consensus-validation-v1.ts src/deployment-manifest-identity-v1.ts src/ledger-output-commitment-v1.ts src/ledger-output-proof-v1.ts src/ledger-output-scan-v1.ts src/mpf-proof-fold-v1.ts src/native-script-decoding-engine-v1.ts src/native-script-scan-v1.ts src/script-proof.ts src/validation-dispute.ts src/validation-trace.ts src/validation-merkle.ts src/error-format.ts src/hex.ts src/out-ref.ts src/plutus-data-cbor.ts src/retention-window-v1.ts src/da-compression.ts src/da-payload-envelope.ts src/da-payload-sizing.ts src/da-request-deadline.ts src/da-transport.ts src/codec/index.ts src/codec/address.ts src/codec/cbor.ts src/codec/datum.ts src/codec/errors.ts src/codec/hash.ts src/codec/native.ts src/codec/native-constants.ts src/codec/native-tx-carriage-v1.ts src/codec/native-tx-field-access-v1.ts src/codec/native-tx-field-items-v1.ts src/codec/native-script.ts src/codec/output.ts src/codec/script-language-views.ts src/codec/value.ts src/codec/versioned-script.ts --format esm,cjs --dts --clean && node scripts/write-dist-source-digest.mjs",
+    "build": "tsup src/index.ts src/assets.ts src/blake2b-224-trace.ts src/blake2b-256-trace.ts src/bounded-blob.ts src/bounded-collection.ts src/bounded-item.ts src/capability-parity.ts src/cek-proof.ts src/cek-semantic.ts src/cek-source-blob.ts src/consensus-profile.ts src/consensus-validation.ts src/deployment-manifest-identity.ts src/ledger-output-commitment.ts src/ledger-output-proof.ts src/ledger-output-scan.ts src/mpf-proof-fold.ts src/native-script-decoding-engine.ts src/native-script-scan.ts src/script-proof.ts src/validation-dispute.ts src/validation-trace.ts src/validation-merkle.ts src/error-format.ts src/hex.ts src/out-ref.ts src/plutus-data-cbor.ts src/retention-window.ts src/da-compression.ts src/da-payload-envelope.ts src/da-payload-sizing.ts src/da-request-deadline.ts src/da-transport.ts src/codec/index.ts src/codec/address.ts src/codec/cbor.ts src/codec/datum.ts src/codec/errors.ts src/codec/hash.ts src/codec/native.ts src/codec/native-constants.ts src/codec/native-tx-carriage.ts src/codec/native-tx-field-access.ts src/codec/native-tx-field-items.ts src/codec/native-script.ts src/codec/output.ts src/codec/script-language-views.ts src/codec/value.ts src/codec/versioned-script.ts --format esm,cjs --dts --clean && node scripts/write-dist-source-digest.mjs",
     "docs:consensus-profile-v1:check": "pnpm run build && node scripts/sync-consensus-profile-doc-v1.mjs --check",
     "docs:consensus-profile-v1:sync": "pnpm run build && node scripts/sync-consensus-profile-doc-v1.mjs",
     "fixtures:native-tx-field-access-v1:check": "pnpm run build && node scripts/generate-native-tx-field-access-v1-goldens.mjs --check",

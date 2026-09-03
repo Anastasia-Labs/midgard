@@ -7,7 +7,7 @@ import {
   applyExecutionNativeScriptInvalidScripts,
   EXECUTION_NATIVE_SCRIPT_INVALID_ACCEPTED_PRELUDE_TITLES,
   EXECUTION_NATIVE_SCRIPT_INVALID_BLUEPRINT_TITLES,
-} from "../src/execution-native-script-invalid/contracts-v1.js";
+} from "../src/execution-native-script-invalid/contracts.js";
 import {
   makeFaultProofEmulatorHarness,
   publishPlainReferenceScriptUtxo,

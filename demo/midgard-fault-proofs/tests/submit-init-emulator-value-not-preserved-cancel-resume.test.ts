@@ -16,7 +16,7 @@ import {
   vnpOutput,
   vnpOutRef,
   vnpValue,
-} from "./support/value-not-preserved-emulator-v1.js";
+} from "./support/value-not-preserved-emulator.js";
 
 describe("value-not-preserved cancellation and restart", () => {
   it("cancels through the public submitter after the full input fold and starts a fresh thread", async () => {

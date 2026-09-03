@@ -18,7 +18,7 @@ import {
   MIDGARD_CONSENSUS_PROFILE_DIGEST,
   MIDGARD_RELEASE_EVIDENCE_DIGEST,
   type MidgardConsensusProfile,
-} from "@al-ft/midgard-core/consensus-profile-v1";
+} from "@al-ft/midgard-core/consensus-profile";
 import {
   DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
   DA_TRANSPORT_LIMITS,
@@ -35,7 +35,7 @@ import {
   deriveDeploymentManifestCardanoProtocolParametersFromOgmios,
   makeDeploymentMarker,
   parseDeploymentManifestAvailabilityChallenge,
-} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   GENESIS_HEADER_HASH,
@@ -60,7 +60,7 @@ import {
   type DeploymentManifestValue,
   normalizeDeploymentManifestJsonValue,
   parseDeploymentManifestValue,
-} from "../deployment-manifest-v1.js";
+} from "../deployment-manifest.js";
 import {
   bindDeploymentRunStateToMarker,
   defaultDeploymentRunStatePath,

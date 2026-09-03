@@ -46,7 +46,7 @@ Remaining P0 work:
   per script, with the shared primer, is indexed in
   [size-plans/README.md](size-plans/README.md).
 - Repair the fixture drift that keeps `inspect-contracts.test.ts` and
-  `submit-init-emulator-min-ada-v1.test.ts` red after the reference-script
+  `submit-init-emulator-min-ada.test.ts` red after the reference-script
   role-NFT change, so the catalogue-root pin and the validation-dispute
   min-ADA journey are verified again.
 - Drive every other category's maximum supported shape through the same

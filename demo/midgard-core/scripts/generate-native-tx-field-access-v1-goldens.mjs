@@ -7,11 +7,11 @@
  * deterministic chunk split and §8.6's certificate asset name.
  *
  * Every value is computed by the TypeScript twin
- * (`demo/midgard-core/src/codec/native-tx-field-access-v1.ts`) and written to
+ * (`demo/midgard-core/src/codec/native-tx-field-access.ts`) and written to
  * two places:
  *
  *   * `demo/midgard-core/tests/fixtures/native-tx-field-access-v1.generated.json`
- *     — recomputed by `tests/native-tx-field-access-v1-goldens.test.ts`, so a
+ *     — recomputed by `tests/native-tx-field-access-goldens.test.ts`, so a
  *     drifting twin fails on the TypeScript side; and
  *   * `onchain/aiken/lib/midgard/native-tx-field-access-v1-golden.test.ak`
  *     — recomputed by the Aiken producers under the fork runner, so a
@@ -67,7 +67,7 @@ import {
   midgardFieldStride,
   buildMidgardWholeFieldView,
   splitMidgardFieldPreimageIntoChunks,
-} from "../dist/codec/native-tx-field-access-v1.js";
+} from "../dist/codec/native-tx-field-access.js";
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptDirectory, "..");
@@ -246,7 +246,10 @@ const buildGolden = () => {
   // itself — so each side rebuilds the payload, splits it by its own §8.4 rule
   // and recomputes every chunk digest, instead of one side pinning digests the
   // other only counts.
-  const tier3Preimage = repeatToLength(TIER3_PREIMAGE_BLOCK, TIER3_TOTAL_LENGTH);
+  const tier3Preimage = repeatToLength(
+    TIER3_PREIMAGE_BLOCK,
+    TIER3_TOTAL_LENGTH,
+  );
   // The block is a period of `filler`, so the compaction is lossless: these are
   // the same bytes `filler(TIER3_TOTAL_LENGTH, 77)` has always produced.
   if (!tier3Preimage.equals(filler(TIER3_TOTAL_LENGTH, 77))) {
@@ -277,8 +280,7 @@ const buildGolden = () => {
       maximumCardanoSpendRedeemerCount:
         MIDGARD_MAXIMUM_CARDANO_SPEND_REDEEMER_COUNT,
       chunkBytesK: MIDGARD_CHUNK_BYTES_K,
-      maxTier1RedeemerPreimageBytes:
-        MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
+      maxTier1RedeemerPreimageBytes: MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
       maxTier3ChunkCount: MIDGARD_MAX_TIER3_CHUNK_COUNT,
       // §5.3 item widths. The *strides* are what the encoders spend, and they
       // are pinned by the stride table below; these are the payload widths the
@@ -372,7 +374,7 @@ const renderAiken = (golden) => {
     "// chunk split and §8.6's certificate asset name.",
     "//",
     "// Every constant below was produced by the TypeScript twin",
-    "// (`demo/midgard-core/src/codec/native-tx-field-access-v1.ts`) and is recomputed",
+    "// (`demo/midgard-core/src/codec/native-tx-field-access.ts`) and is recomputed",
     "// here by the Aiken producers, so the two encoders cannot silently diverge. The",
     "// nine per-field item encodings of §5.3 fan out over this same module in #569.",
     "",
@@ -451,7 +453,9 @@ const renderAiken = (golden) => {
     "  }",
     "}",
     "",
-    ...section("§4 the empty-field commitment — field-independent, plain hashing"),
+    ...section(
+      "§4 the empty-field commitment — field-independent, plain hashing",
+    ),
     "test golden_empty_field_commitment_matches_typescript() {",
     "  and {",
     '    encode_field_preimage([]) == #"80",',
@@ -511,7 +515,9 @@ const renderAiken = (golden) => {
     "  }",
     "}",
     "",
-    ...section("§8.4 tier-3 payload — rebuilt here, not read out of the vector"),
+    ...section(
+      "§8.4 tier-3 payload — rebuilt here, not read out of the vector",
+    ),
     "/// The tier-3 vector's payload: `golden_tier3_preimage_block` repeated to",
     "/// `golden_tier3_total_length` bytes. The artifacts carry the 256-byte period,",
     "/// not the 16 KiB it expands to, and each language expands it for itself — so",

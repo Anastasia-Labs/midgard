@@ -48,7 +48,7 @@ the canonical machine. Every step supports explicit prover cancellation.
 
 ## Off-chain surfaces
 
-- SDK schema: `demo/midgard-sdk/src/fraud-proof/mint-authorization-v1.ts`
+- SDK schema: `demo/midgard-sdk/src/fraud-proof/mint-authorization.ts`
 - family implementation: `demo/midgard-fault-proofs/src/mint-authorization/`
 - catalogue: `demo/midgard-sdk/src/fraud-proof/catalogue.ts`
 

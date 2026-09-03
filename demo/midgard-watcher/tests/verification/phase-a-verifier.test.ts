@@ -51,7 +51,7 @@ import {
 } from "@al-ft/midgard-core/codec";
 import type { MidgardNativeScript } from "@al-ft/midgard-core/codec/native-script";
 import { encodeMidgardTxOutput } from "@al-ft/midgard-core/codec/output";
-import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import { buildCountedRoot, encodeData } from "@al-ft/midgard-fault-proofs";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -107,7 +107,7 @@ import {
   makeWatcherCanonicalRuleBundle,
   WATCHER_RULE_BUNDLE_VALIDATION_PHASE_PRIORITY,
   type WatcherRuleBundle,
-} from "../../src/verification/rule-bundle-v1.js";
+} from "../../src/verification/rule-bundle.js";
 
 // ---------------------------------------------------------------------------
 // Shared fixture material

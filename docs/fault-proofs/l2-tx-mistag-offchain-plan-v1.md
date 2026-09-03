@@ -39,7 +39,7 @@ normal-leaf verdict this family proves.
 
 ## Off-chain surfaces
 
-- wire schemas: `demo/midgard-fault-proofs/src/l2-tx-mistag/schemas-v1.ts`
+- wire schemas: `demo/midgard-fault-proofs/src/l2-tx-mistag/schemas.ts`
 - family implementation: `demo/midgard-fault-proofs/src/l2-tx-mistag/`
 - catalogue: `demo/midgard-sdk/src/fraud-proof/catalogue.ts`
 
@@ -54,7 +54,7 @@ faulty-block removal; zero-code honest leaves, substituted scalars, malformed
 evidence, cancellation, and resume are refused or handled at the expected
 boundary:
 
-- `prepare-l2-tx-mistag-v1.test.ts`
+- `prepare-l2-tx-mistag.test.ts`
 - `submit-init-emulator-l2-tx-mistag.test.ts`
 - `submit-init-emulator-l2-tx-mistag-adversarial.test.ts`
 - `submit-init-emulator-l2-tx-mistag-negatives.test.ts`

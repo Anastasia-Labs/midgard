@@ -14,14 +14,14 @@ import {
 import {
   EventKeySchema,
   EventToStepValueSchema,
-  ForcedInclusionTxSchema,
+  ForcedInclusionTxV1Schema,
   HeaderSchema,
   L2TransactionSourceSchema,
   TransitionStepSchema,
   ValidationTraceDescriptorSchema,
 } from "../ledger-state.js";
 import { rootMembershipProofSchema } from "../transition-trace.js";
-import { ValidationAuxiliaryWitnessSchema } from "./validation-auxiliary-witness-v1.js";
+import { ValidationAuxiliaryWitnessSchema } from "./validation-auxiliary-witness.js";
 
 export const ValidationMachinePhaseSchema = Data.Enum([
   Data.Literal("CanonicalDecode"),
@@ -359,7 +359,7 @@ const ValidationEventToStepMembershipSchema = rootMembershipProofSchema(
 );
 const ForcedValidationSourceMembershipSchema = rootMembershipProofSchema(
   OutputReferenceSchema,
-  ForcedInclusionTxSchema,
+  ForcedInclusionTxV1Schema,
 );
 const NormalValidationSourceMembershipSchema = rootMembershipProofSchema(
   H32Schema,

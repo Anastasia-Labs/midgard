@@ -24,7 +24,7 @@ mutated signer/evaluator checkpoint cannot convict.
   `createNativeScriptInvalidWorkflowRunner`
 - Aiken tests: `staged-v1.test.ak`
 - evidence-machine tests:
-  `demo/midgard-fault-proofs/tests/native-script-invalid-evidence-machine-v1.test.ts`
+  `demo/midgard-fault-proofs/tests/native-script-invalid-evidence-machine.test.ts`
 
 The five-step path binds the transaction and selected script, scans the bounded
 signer frontier, carries an authenticated resumable evaluator cursor/stack,

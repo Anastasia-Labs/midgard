@@ -14,7 +14,7 @@ import {
   network,
   publishCanonicalDecodabilityReferenceScripts,
   setupCanonicalDecodabilityScenario,
-} from "./support/canonical-decodability-emulator-v1.js";
+} from "./support/canonical-decodability-emulator.js";
 import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
 
 const initializedScenario = async () => {

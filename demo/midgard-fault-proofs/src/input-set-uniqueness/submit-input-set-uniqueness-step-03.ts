@@ -19,21 +19,21 @@ import {
   faultProofFieldCarriage,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
-} from "../field-opening-v1.js";
-import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
+} from "../field-opening.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
-import type { InputSetUniquenessContracts } from "./contracts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
+import type { InputSetUniquenessContracts } from "./contracts.js";
 import {
   requireInputSetUniquenessReferenceScript,
   requireInputSetUniquenessStepState,
   requireInputSetUniquenessThreadUtxo,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 import {
   inputSetUniquenessCheckpoint,
   type InputSetUniqueScanState,
-} from "./wrongful-rejection-v1.js";
+} from "./wrongful-rejection.js";
 
 const uniqueUtxos = (utxos: readonly UTxO[]): readonly UTxO[] => {
   const seen = new Set<string>();

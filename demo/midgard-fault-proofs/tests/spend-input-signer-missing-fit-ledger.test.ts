@@ -2,7 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-import { buildVanRossemFitLedger } from "../src/proof-fit/van-rossem-fit-ledger-v1.js";
+import { buildVanRossemFitLedger } from "../src/proof-fit/van-rossem-fit-ledger.js";
 
 const lifecycle = [
   ["accepted-init", 1497, 666796n, 229214076n],

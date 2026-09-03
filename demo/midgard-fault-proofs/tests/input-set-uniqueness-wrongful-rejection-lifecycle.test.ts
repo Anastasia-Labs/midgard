@@ -1,6 +1,6 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
-  ForcedInclusionTxSchema,
+  ForcedInclusionTxV1Schema,
   OutputReference,
   Proof,
   ROOT_DOMAINS,
@@ -13,7 +13,7 @@ import {
   certifyFaultProofFieldCarriage,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
-} from "../src/field-opening-v1.js";
+} from "../src/field-opening.js";
 import {
   submitInputSetUniquenessCancel,
   submitInputSetUniquenessForcedStep01,
@@ -36,7 +36,7 @@ import {
   buildInputSetUniquenessFixture,
   makeInputSetUniquenessEmulatorHarness,
   publishInputSetUniquenessReferenceScripts,
-} from "./support/input-set-uniqueness-emulator-v1.js";
+} from "./support/input-set-uniqueness-emulator.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
 import {
   expectProofFit,
@@ -97,7 +97,7 @@ const exerciseForcedLifecycle = async ({
   } as const;
   const keyBytes = Buffer.from(Data.to(sourceKey, OutputReference), "hex");
   const valueBytes = Buffer.from(
-    Data.to(forcedTransaction as never, ForcedInclusionTxSchema as never),
+    Data.to(forcedTransaction as never, ForcedInclusionTxV1Schema as never),
     "hex",
   );
   const forcedRoot = await buildCountedRoot(ROOT_DOMAINS.forcedTransactionsV1, [

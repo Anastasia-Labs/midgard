@@ -1,4 +1,4 @@
-import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { assetsToValue, CML, walletFromSeed } from "@lucid-evolution/lucid";
 import { makeMidgardTxOutput } from "midgard-node/tests/midgard-output-helpers";
 import {

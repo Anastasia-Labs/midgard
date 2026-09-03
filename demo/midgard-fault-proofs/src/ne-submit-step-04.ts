@@ -34,7 +34,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary-v1.js";
+import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary.js";
 import { PEXCLUDES_EXCLUSION_WITHDRAW_TITLE } from "./ne-submit-step-03.js";
 import {
   chunkedNonMembershipClaimRedeemer,
@@ -69,12 +69,12 @@ import {
   witnessMintingPolicyCarriage,
   witnessSpendingValidatorCarriage,
   witnessWithdrawalValidatorCarriage,
-} from "./witness-reference-scripts-v1.js";
+} from "./witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "./workflow/transaction-boundary-v1.js";
+} from "./workflow/transaction-boundary.js";
 
 export type NeSubmitStep04CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;

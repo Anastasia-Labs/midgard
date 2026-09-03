@@ -1134,7 +1134,7 @@ MidgardTransitionStepV1
 
 ### Forced Transaction Value Shape
 
-`ForcedInclusionTx CBOR` is:
+`ForcedInclusionTxV1 CBOR` is:
 
 ```text
 ForcedInclusionTx {

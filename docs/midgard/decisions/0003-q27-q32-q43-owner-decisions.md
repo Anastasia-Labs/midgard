@@ -21,7 +21,7 @@ The current source proves the gap rather than an exemption:
   records this exact absence.
 - `demo/midgard-validation/src/phase-a.ts` validates a parameterized minimum
   fee only. The existing SDK `CML.min_ada_required` use in
-  `demo/midgard-sdk/src/fraud-proof/validation-proof-item-v1.ts` funds a
+  `demo/midgard-sdk/src/fraud-proof/validation-proof-item.ts` funds a
   _proof publication output_, not a canonical L2 output and is therefore not
   a consensus check.
 - The ValidationClaim context carries fee parameters but not the target

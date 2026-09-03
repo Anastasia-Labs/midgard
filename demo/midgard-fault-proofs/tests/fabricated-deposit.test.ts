@@ -10,7 +10,7 @@
  * Every committed-leaf, commitment, nonce and handoff constant below is the
  * value **measured out of the Aiken family modules**
  * `onchain/aiken/lib/midgard/fraud-proofs/fabricated-deposit/step-0{1,2,3,4}.ak`
- * and pinned in `demo/midgard-sdk/tests/fabricated-deposit-v1.test.ts`. The
+ * and pinned in `demo/midgard-sdk/tests/fabricated-deposit.test.ts`. The
  * committed `deposits_root`s and the step-04 handoff bytes asserted here are
  * therefore Aiken-measured absolutes, not one TypeScript derivation compared
  * against another.
@@ -23,7 +23,7 @@
  *   DIVERTED_DEPOSIT_INFO)`, the authentic identity with diverted content.
  *
  * Both are re-committed into a real `DaPayload` here, because
- * `tests/helpers/canonical-block-evidence-fixture-v1.ts` hard-wires an empty
+ * `tests/helpers/canonical-block-evidence-fixture.ts` hard-wires an empty
  * deposit source set.
  */
 import { createHash } from "node:crypto";
@@ -41,7 +41,7 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
 import {
   classifyFabricatedDepositFault,
   fabricatedDepositBlockEvidenceFromVerifiedPayload,
@@ -62,7 +62,7 @@ import {
   FABRICATED_DEPOSIT_ARTIFACT,
   type FabricatedDepositArtifact,
   requireFabricatedDepositArtifact,
-} from "../src/workflow/production-fabricated-deposit-evidence-v1.js";
+} from "../src/workflow/fabricated-deposit-evidence.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
@@ -71,7 +71,7 @@ import {
   h32,
   outRefCbor,
   reencodeFixturePayload,
-} from "./helpers/canonical-block-evidence-fixture-v1.js";
+} from "./helpers/canonical-block-evidence-fixture.js";
 
 // ## Aiken-measured fixture twins
 //

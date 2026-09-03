@@ -14,7 +14,7 @@ import {
 import {
   type DeploymentManifestValue,
   parseDeploymentManifestValue,
-} from "midgard-node/deployment-manifest-v1";
+} from "midgard-node/deployment-manifest";
 
 import type {
   DbEvidence,

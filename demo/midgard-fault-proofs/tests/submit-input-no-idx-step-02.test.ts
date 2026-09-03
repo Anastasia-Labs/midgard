@@ -28,7 +28,7 @@ import { describe, expect, it } from "vitest";
 import {
   faultProofFieldOpening,
   planFaultProofFieldOpening,
-} from "../src/field-opening-v1.js";
+} from "../src/field-opening.js";
 import { h32, makeNativeTx } from "./support/submit-init-emulator-shared.js";
 
 const OWNER = "cd".repeat(28);

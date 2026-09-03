@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { makeInputSetUniquenessEmulatorHarness } from "./support/input-set-uniqueness-emulator-v1.js";
+import { makeInputSetUniquenessEmulatorHarness } from "./support/input-set-uniqueness-emulator.js";
 import { publishPlainReferenceScriptUtxo } from "./support/submit-init-emulator-shared.js";
 
 describe("input-set-uniqueness direction-complete publication fit", () => {

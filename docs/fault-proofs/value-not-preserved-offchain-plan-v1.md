@@ -43,7 +43,7 @@ later redeemers cannot substitute those values.
 ## Off-chain surfaces
 
 - wire schemas:
-  `demo/midgard-fault-proofs/src/value-not-preserved/schemas-v1.ts`
+  `demo/midgard-fault-proofs/src/value-not-preserved/schemas.ts`
 - family implementation: `demo/midgard-fault-proofs/src/value-not-preserved/`
 - catalogue: `demo/midgard-sdk/src/fraud-proof/catalogue.ts`
 

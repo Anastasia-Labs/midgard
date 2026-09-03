@@ -47,7 +47,7 @@ import {
   faultProofFieldOpening,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
-} from "../field-opening-v1.js";
+} from "../field-opening.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   type ResolvedProverSigner,
@@ -59,8 +59,8 @@ import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary-v1.js";
-import type { NativeScriptDecodingContracts } from "./contracts-v1.js";
+} from "../workflow/transaction-boundary.js";
+import type { NativeScriptDecodingContracts } from "./contracts.js";
 import {
   buildNativeScriptDecodingChunkProof,
   buildNativeScriptDecodingLedgerMembership,
@@ -70,20 +70,20 @@ import {
   nativeScriptDecodingScanArgsEvidence,
   nativeScriptDecodingSubjectFieldIndex,
   nativeScriptDecodingWindowProofs,
-} from "./evidence-v1.js";
+} from "./evidence.js";
 import {
   NativeScriptDecodingPlanRoutes,
   type NativeScriptDecodingScanPlan,
   type NativeScriptDecodingScanSegmentPlan,
   type NativeScriptDecodingVerdictPlan,
-} from "./scan-plan-v1.js";
+} from "./scan-plan.js";
 import {
   nativeScriptDecodingStepLabel,
   nativeScriptDecodingSubmitError,
   requireNativeScriptDecodingReferenceScript,
   requireNativeScriptDecodingStepState,
   requireNativeScriptDecodingThreadUtxo,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 const OPEN_SUBJECT_INDEX = 2 as const;
 const BIND_DESCRIPTOR_INDEX = 3 as const;

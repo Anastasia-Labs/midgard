@@ -1,4 +1,4 @@
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { describe, expect, it } from "vitest";
 
 import {

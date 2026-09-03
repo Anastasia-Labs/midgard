@@ -19,7 +19,7 @@ and
 | Role name today        | none (published hash-checked, no auth-role token; the only CEK role in the roster is the retired `V1ValidationTraceCekResolver0`)                                                                                                                                                                                                                               |
 | Deployment entry today | `validationTraceDisputeCekContextStepSemantic` (`VALIDATION_CEK_SEMANTIC_REFERENCE_SCRIPT_DEPLOYMENT_ENTRIES_V1[2]`, `demo/midgard-fault-proofs/src/validation-dispute/submit.ts:815`)                                                                                                                                                                          |
 | SDK title key          | `VALIDATION_TRACE_DISPUTE_FAULT_PROOF_TITLES.semantics.cekContextStep` (`demo/midgard-sdk/src/fraud-proof/contracts.ts:458`)                                                                                                                                                                                                                                    |
-| Emulator today         | published only in `submit-init-emulator-validation-dispute.test.ts` ("publishes and verifies the generated-blueprint CEK semantic-resolver reference scripts") with `oversized: true` under `maxTxSize: 262_144`; never driven through a dispute journey (the only CEK journey, `submit-init-emulator-cek-value-and-mint-v1.test.ts`, disputes the finish kind) |
+| Emulator today         | published only in `submit-init-emulator-validation-dispute.test.ts` ("publishes and verifies the generated-blueprint CEK semantic-resolver reference scripts") with `oversized: true` under `maxTxSize: 262_144`; never driven through a dispute journey (the only CEK journey, `submit-init-emulator-cek-value-and-mint.test.ts`, disputes the finish kind) |
 
 The step this resolver proves is one of fourteen context-build stages
 (`CekContextControlV1.stage` 0..13, stage 7 unused) that turn the native
@@ -362,7 +362,7 @@ finalizeCardano, assemble, txInfo, seed, settle }` mirroring
 
 Exists today: publication of the three oversized CEK bodies with
 `oversized: true` under a 262,144 `maxTxSize` (`submit-init-emulator-validation-dispute.test.ts:156`);
-the finish-kind journey (`submit-init-emulator-cek-value-and-mint-v1.test.ts`).
+the finish-kind journey (`submit-init-emulator-cek-value-and-mint.test.ts`).
 `dispute-scenario.ts` publishes the selected semantic under
 `withRealL1MaxTxSize` unless `semanticIsOversized`.
 
@@ -430,7 +430,7 @@ node -e 'const b=require("./plutus.json");let n=0,bad=0;for(const v of b.validat
 /home/gumbo/.aiken/versions/v1.1.23-org-5adf7837/bin/aiken check -m "midgard/validation_machine_v1.{cek_context_chain_agrees_with_the_aggregate, cek_context_step_route_agrees_with_the_aggregate, cek_kinds_partition_the_cek_step_space}"
 cd /home/gumbo/midgard-hub/midgard
 pnpm --filter @al-ft/midgard-sdk test -- tests/validation-resolver-applied-hashes.test.ts
-pnpm --filter @al-ft/midgard-fault-proofs test -- tests/zz605-semantic-resolver-arity.test.ts tests/zz610-compiled-script-arity.test.ts tests/validation-dispute-submit.test.ts
+pnpm --filter @al-ft/midgard-fault-proofs test -- tests/semantic-resolver-arity-gate.test.ts tests/compiled-script-arity-gate.test.ts tests/validation-dispute-submit.test.ts
 pnpm --filter @al-ft/midgard-fault-proofs test -- tests/submit-init-emulator-validation-dispute.test.ts        # CEK publication test now without oversized
 pnpm --filter @al-ft/midgard-fault-proofs test -- tests/submit-init-emulator-cek-context-step-v1.test.ts
 ```

@@ -37,20 +37,20 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
   witnessWithdrawalValidatorCarriage,
-} from "../witness-reference-scripts-v1.js";
+} from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary-v1.js";
+} from "../workflow/transaction-boundary.js";
 import {
   WITHDRAWN_INPUT_CATEGORY_LABEL,
   type WithdrawnInputContracts,
-} from "./contracts-v1.js";
+} from "./contracts.js";
 import {
   type WithdrawnInputCatalogueCategory,
   withdrawnInputSubmitError,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 type LucidDataSchema = Parameters<typeof Data.to>[1];
 

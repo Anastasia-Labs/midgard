@@ -35,7 +35,7 @@ import {
   makeMintAuthorizationEmulatorHarness,
   publishMintAuthorizationReferenceScripts,
   setupMintAuthorizationScenario,
-} from "./support/mint-authorization-emulator-v1.js";
+} from "./support/mint-authorization-emulator.js";
 import {
   buildRemovalDeploymentInfo,
   network,

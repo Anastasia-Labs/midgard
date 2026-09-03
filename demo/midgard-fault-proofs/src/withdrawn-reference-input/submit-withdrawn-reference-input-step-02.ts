@@ -48,7 +48,7 @@ import {
   faultProofFieldOpening,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
-} from "../field-opening-v1.js";
+} from "../field-opening.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   type ResolvedProverSigner,
@@ -60,14 +60,14 @@ import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
-} from "../workflow/transaction-boundary-v1.js";
-import type { WithdrawnReferenceInputContracts } from "./contracts-v1.js";
+} from "../workflow/transaction-boundary.js";
+import type { WithdrawnReferenceInputContracts } from "./contracts.js";
 import {
   requireWithdrawnReferenceInputReferenceScript,
   requireWithdrawnReferenceInputStepState,
   requireWithdrawnReferenceInputThreadUtxo,
   withdrawnReferenceInputSubmitError,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 export type SubmitWithdrawnReferenceInputStep02Result = {
   readonly txHash: string;

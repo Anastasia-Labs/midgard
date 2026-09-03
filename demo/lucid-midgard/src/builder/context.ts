@@ -7,8 +7,8 @@ import {
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_CONSENSUS_PROFILE,
   type MidgardConsensusProfile,
-} from "@al-ft/midgard-core/consensus-profile-v1";
-import type { DeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+} from "@al-ft/midgard-core/consensus-profile";
+import type { DeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type { Network } from "@lucid-evolution/lucid";
 
 import {

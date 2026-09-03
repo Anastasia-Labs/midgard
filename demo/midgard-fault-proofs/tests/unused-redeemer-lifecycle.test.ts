@@ -30,36 +30,36 @@ import {
   plutusV3ScriptWitness,
 } from "../../midgard-validation/tests/validation-fixtures.js";
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
-import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
 import {
   applyUnusedRedeemerScripts,
   type UnusedRedeemerContracts,
-} from "../src/unused-redeemer/contracts-v1.js";
-import { UNUSED_REDEEMER_CATEGORY_ID } from "../src/unused-redeemer/family-v1.js";
-import { buildUnusedRedeemerMaterialFromRetainedDa } from "../src/unused-redeemer/production-replay-v1.js";
-import { submitUnusedRedeemerCancel } from "../src/unused-redeemer/submit-cancel-v1.js";
+} from "../src/unused-redeemer/contracts.js";
+import { UNUSED_REDEEMER_CATEGORY_ID } from "../src/unused-redeemer/family.js";
+import { buildUnusedRedeemerMaterialFromRetainedDa } from "../src/unused-redeemer/replay.js";
+import { submitUnusedRedeemerCancel } from "../src/unused-redeemer/submit-cancel.js";
 import {
   submitUnusedRedeemerStep01Accepted,
   submitUnusedRedeemerStep01Forced,
-} from "../src/unused-redeemer/submit-step-01-v1.js";
-import { submitUnusedRedeemerStep02 } from "../src/unused-redeemer/submit-step-02-v1.js";
-import { submitUnusedRedeemerStep02a } from "../src/unused-redeemer/submit-step-02a-v1.js";
-import { submitUnusedRedeemerStep02b } from "../src/unused-redeemer/submit-step-02b-v1.js";
-import { submitUnusedRedeemerStep02c } from "../src/unused-redeemer/submit-step-02c-v1.js";
-import { submitUnusedRedeemerStep03 } from "../src/unused-redeemer/submit-step-03-v1.js";
-import { submitUnusedRedeemerStep04 } from "../src/unused-redeemer/submit-step-04-v1.js";
-import { submitUnusedRedeemerStep05 } from "../src/unused-redeemer/submit-step-05-v1.js";
-import { submitUnusedRedeemerStep06 } from "../src/unused-redeemer/submit-step-06-v1.js";
+} from "../src/unused-redeemer/submit-step-01.js";
+import { submitUnusedRedeemerStep02 } from "../src/unused-redeemer/submit-step-02.js";
+import { submitUnusedRedeemerStep02a } from "../src/unused-redeemer/submit-step-02a.js";
+import { submitUnusedRedeemerStep02b } from "../src/unused-redeemer/submit-step-02b.js";
+import { submitUnusedRedeemerStep02c } from "../src/unused-redeemer/submit-step-02c.js";
+import { submitUnusedRedeemerStep03 } from "../src/unused-redeemer/submit-step-03.js";
+import { submitUnusedRedeemerStep04 } from "../src/unused-redeemer/submit-step-04.js";
+import { submitUnusedRedeemerStep05 } from "../src/unused-redeemer/submit-step-05.js";
+import { submitUnusedRedeemerStep06 } from "../src/unused-redeemer/submit-step-06.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
 import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
-import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator-v1.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,

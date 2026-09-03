@@ -53,7 +53,7 @@ import {
   encodeLinkedListNodeView,
   EventKeySchema,
   EventToStepValueSchema,
-  ForcedInclusionTxSchema,
+  ForcedInclusionTxV1Schema,
   type FraudProofCatalogueDeploymentInfo,
   FraudProofComputationThreadStepDatum,
   FraudProofTokenDatum,
@@ -1187,7 +1187,7 @@ export const buildInvalidForcedTransitionTraceFixture = async ({
       key: txOrderId,
       keySchema: OutputReference as never,
       value: forcedTransaction,
-      valueSchema: ForcedInclusionTxSchema,
+      valueSchema: ForcedInclusionTxV1Schema,
     }),
   ];
   const forcedPreimageEntries = [

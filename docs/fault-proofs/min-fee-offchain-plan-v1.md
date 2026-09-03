@@ -35,7 +35,7 @@ for the strict violation. Cancellation is explicit.
 
 - SDK schema and arithmetic twin: `demo/midgard-sdk/src/fraud-proof/min-fee.ts`
 - preparation: `demo/midgard-fault-proofs/src/prepare-min-fee.ts`
-- contract/submit modules: `demo/midgard-fault-proofs/src/min-fee-contracts-v1.ts`
+- contract/submit modules: `demo/midgard-fault-proofs/src/min-fee-contracts.ts`
   and `demo/midgard-fault-proofs/src/submit-min-fee-*.ts`
 - catalogue: `demo/midgard-sdk/src/fraud-proof/catalogue.ts`
 

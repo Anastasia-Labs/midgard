@@ -250,7 +250,7 @@ export const buildSourceMembershipProof = async ({
 
 /**
  * The raw forced-transaction leaf membership — the
- * `RootMembershipProof<OutputReference, ForcedInclusionTx>` shape itself,
+ * `RootMembershipProof<OutputReference, ForcedInclusionTxV1>` shape itself,
  * outside the `TransitionSourceMembershipProof` enum wrapper
  * `buildSourceMembershipProof` returns. The decoding-fault family's step-02
  * (`forced_membership`) consumes the leaf directly.
@@ -262,7 +262,7 @@ export const buildForcedTransactionLeafMembershipProof = async ({
   readonly reconstruction: TransitionTraceReconstruction;
   readonly eventKey: SDK.EventKey;
 }): Promise<
-  SDK.RootMembershipProof<SDK.OutputReference, SDK.ForcedInclusionTx>
+  SDK.RootMembershipProof<SDK.OutputReference, SDK.ForcedInclusionTxV1>
 > => {
   const event = sourceEventOrThrow(reconstruction, eventKey);
   if (event.phase !== "ForcedTransaction") {

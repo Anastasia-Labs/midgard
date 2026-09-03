@@ -41,5 +41,5 @@ required memory reserve. Incremental traversal retains both limits.
 Items at or below 12000 serialized bytes continue to use representation 1;
 the fallback applies only above it. Both representations authenticate
 commitment `validation-item-root-v1` and share the equivalence tests at
-`demo/midgard-validation/tests/complete-item-proof-fit-v1.test.ts`
+`demo/midgard-validation/tests/complete-item-proof-fit.test.ts`
 (omission, duplication, reorder, substitution, trailing data all reject).

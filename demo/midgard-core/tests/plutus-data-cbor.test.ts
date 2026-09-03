@@ -5,7 +5,7 @@ import {
   finalizeMidgardCekDataTraverse,
   MIDGARD_CEK_DATA_TRAVERSE_MAX_SOURCE_SPAN,
   nextMidgardCekDataTraverseSpan,
-} from "../src/cek-data-traverse-v1.js";
+} from "../src/cek-data-traverse.js";
 import {
   aikenSerialisedPlutusDataCbor,
   aikenSerialisedPlutusDataCborPreservingMapOrder,

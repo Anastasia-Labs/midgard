@@ -36,19 +36,19 @@ import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
-} from "../witness-reference-scripts-v1.js";
+} from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary-v1.js";
-import type { CrossBlockDuplicateEventContracts } from "./contracts-v1.js";
+} from "../workflow/transaction-boundary.js";
+import type { CrossBlockDuplicateEventContracts } from "./contracts.js";
 import {
   crossBlockDuplicateEventSubmitError,
   requireCrossBlockDuplicateEventReferenceScript,
   requireCrossBlockDuplicateEventStep02State,
   requireCrossBlockDuplicateEventThread,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 export type SubmitCrossBlockDuplicateEventStep02Result = {
   readonly txHash: string;

@@ -5,7 +5,7 @@ import {
 import { SqlClient } from "@effect/sql";
 import { Effect } from "effect";
 
-import { parseDeploymentManifestValue } from "../deployment-manifest-v1.js";
+import { parseDeploymentManifestValue } from "../deployment-manifest.js";
 import { Database } from "../services/database.js";
 import {
   clearTable,

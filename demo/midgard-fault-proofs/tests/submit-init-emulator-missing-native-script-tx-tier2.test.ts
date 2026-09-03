@@ -40,7 +40,7 @@ import {
   makeMissingNativeScriptTxEmulatorHarness,
   publishMissingNativeScriptTxReferenceScripts,
   setupMissingNativeScriptTxFixture,
-} from "./support/missing-native-script-tx-emulator-v1.js";
+} from "./support/missing-native-script-tx-emulator.js";
 import {
   expectSingleUtxoWithUnit,
   network,

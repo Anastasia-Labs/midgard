@@ -84,7 +84,7 @@ Two suites in the package are currently red because their fixtures predate
 the reference-script role-NFT change, not because of a validator or
 transaction-fit problem: `inspect-contracts.test.ts` (9 of 12 tests fail on
 the `referenceScriptAuthPolicy` deployment-info shape check) and
-`submit-init-emulator-min-ada-v1.test.ts` (the validation-dispute journey to
+`submit-init-emulator-min-ada.test.ts` (the validation-dispute journey to
 the `E_MIN_ADA` conviction fails at stage setup with "Reference-script auth
 policy must be a native script").
 
@@ -149,7 +149,7 @@ suites):
 - `inspect-contracts.test.ts` failed 9/12 on deployment-fixture drift
   (`referenceScriptAuthPolicy` shape), so the catalogue-root pin was not
   re-verified;
-- `submit-init-emulator-min-ada-v1.test.ts` failed 1/1 at stage setup on the
+- `submit-init-emulator-min-ada.test.ts` failed 1/1 at stage setup on the
   same reference-script auth-policy fixture drift.
 
 These focused checks are not a substitute for the complete commands above.

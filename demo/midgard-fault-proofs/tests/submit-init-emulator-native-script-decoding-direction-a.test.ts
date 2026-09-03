@@ -55,7 +55,7 @@ import {
   makeDecodingEmulatorHarness,
   publishDecodingReferenceScripts,
   setupDecodingScenario,
-} from "./support/native-script-decoding-emulator-v1.js";
+} from "./support/native-script-decoding-emulator.js";
 import {
   buildRemovalDeploymentInfo,
   expectSingleUtxoWithUnit,

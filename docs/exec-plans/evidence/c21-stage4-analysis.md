@@ -36,7 +36,7 @@ if (transitionCbor.length >= maximum ||
 ```
 
 - `minSupportedL1MaxTxBytes` = `MAX_L1_FAULT_PROOF_TX_BYTES` = `16 * 1024`
-  (`demo/midgard-core/src/consensus-profile-v1.ts:48`, `:191`). The comparison
+  (`demo/midgard-core/src/consensus-profile.ts:48`, `:191`). The comparison
   is `>=`, so the admissible maximum is **16,383** bytes.
 - The binding term is `evidenceCbor` (it strictly contains the other two).
 
@@ -77,7 +77,7 @@ chunked byte string with definite 64-byte chunks. The repository's own encoder
 states the rule at `demo/midgard-core/src/plutus-data-cbor.ts:445-483`
 (`<= 64` definite; otherwise `0x5f` + `chunkOffset += 64` chunks + `0xff`),
 and the profile records that the machine deliberately uses this form
-(`demo/midgard-core/src/consensus-profile-v1.ts:29-31`).
+(`demo/midgard-core/src/consensus-profile.ts:29-31`).
 
 For an item of `N` bytes, with `q = floor(N/64)` and `r = N mod 64`:
 
@@ -97,7 +97,7 @@ N = 14775 -> q = 230,                r = 55 -> E = 2 + 15,180 + 57 = 15,239
 ### 1.4 Solving for the constant, and hence for 14,774
 
 Write `evidence(N) = C + E(N)` where `C` is everything except the item term.
-The pinned test (`demo/midgard-validation/tests/complete-item-proof-fit-v1.test.ts:311-331`)
+The pinned test (`demo/midgard-validation/tests/complete-item-proof-fit.test.ts:311-331`)
 bisects and establishes `evidence(14774) <= 16383 < evidence(14775)`.
 Because `E(14775) - E(14774) = 1` exactly, this pins `C` to a single value:
 
@@ -122,7 +122,7 @@ overhead:
 ### 1.5 The number is a single-output best case — this is not recorded anywhere
 
 The fixture builds a transaction with **one** output
-(`complete-item-proof-fit-v1.test.ts:272-274`, `buildTraceWithOutputs([…])`),
+(`complete-item-proof-fit.test.ts:272-274`, `buildTraceWithOutputs([…])`),
 so `collection_proof.frontier` holds one peak and `collection_proof.siblings`
 is empty. `bounded_collection_v1.verify_item`
 (`onchain/aiken/lib/midgard/bounded-collection-v1.ak:123-152`) consumes both,
@@ -202,13 +202,13 @@ only.** In `demo/midgard-fault-proofs/src/validation-dispute/submit.ts`:
 signed. The profile's measured direct frontier for the structurally
 equivalent complete-item redeemer is
 `maxExactDirectCompleteItemBytes: 8_769` / `maxReliableDirectCompleteItemBytes:
-8_273` (`demo/midgard-core/src/consensus-profile-v1.ts:92-94`), against a
+8_273` (`demo/midgard-core/src/consensus-profile.ts:92-94`), against a
 `maxReliableDirectCompleteItemProofTransactionBytes: 15_872` measurement.
 
 Also note `selectValidationCompleteItemCarriageV1`
 (`submit.ts:123-140`) **throws** above
 `maxSinglePublicationCompleteItemBytes = 14_396`
-(`consensus-profile-v1.ts:55`) — so even the reference route, if it were
+(`consensus-profile.ts:55`) — so even the reference route, if it were
 wired up, would stop at 14,396, still short of 16,384.
 
 **Practical gap: roughly (8,769, 16,384], not (14,774, 16,384].** I could not
@@ -222,21 +222,21 @@ measure the exact stage-4 direct frontier without building a transaction.
 
 - Midgard's own consensus admission rule caps an output preimage at exactly
   16,384 bytes and rejects only *above* it:
-  `demo/midgard-core/src/consensus-validation-v1.ts:1087-1092`
+  `demo/midgard-core/src/consensus-validation.ts:1087-1092`
   (`E_LEDGER_OUTPUT_SIZE`), with
   `MAX_LEDGER_OUTPUT_PREIMAGE_BYTES = MAX_L1_FAULT_PROOF_TX_BYTES`
-  (`consensus-profile-v1.ts:67`).
+  (`consensus-profile.ts:67`).
 - No datum-size cap exists in the profile; only `maxOutputValueCborBytes:
   5_000` bounds the *Value* part. A ~15 KB inline datum is admissible, which
   is exactly how the fixture builds one
-  (`complete-item-proof-fit-v1.test.ts:94-118`).
+  (`complete-item-proof-fit.test.ts:94-118`).
 - The capability floor decision *requires* this:
   `docs/midgard/decisions/0001-cardano-l1-transaction-capability-floor.md:77`
   records "Serialized output preimage … 16,384 … Equal byte floor", and
   `:116` "Midgard must accept at least 16,384 bytes of canonical transaction
   data".
 - The **trace itself builds fine** at 16,384 — the test constructs it and only
-  the *argument* throws (`complete-item-proof-fit-v1.test.ts:271-281`). So
+  the *argument* throws (`complete-item-proof-fit.test.ts:271-281`). So
   both parties can commit descriptors; the failure is purely at evidence
   production.
 
@@ -469,7 +469,7 @@ Intended path: `docs/exec-plans/evidence/necessity/script-sources-output-item-fo
   floor per
   `docs/midgard/decisions/0001-cardano-l1-transaction-capability-floor.md`.
 - Fixture: exact-size canonical output items generated in
-  `demo/midgard-validation/tests/complete-item-proof-fit-v1.test.ts`
+  `demo/midgard-validation/tests/complete-item-proof-fit.test.ts`
   (deterministically regenerable), swept over output counts
   K ∈ {1, 2, 16, 256, 16384} because the collection proof grows with K.
 
@@ -493,7 +493,7 @@ overhead C, `buildValidationOneStepArgumentV1`
 (`demo/midgard-validation/src/validation-machine-data.ts:1466-1475`) rejects
 once `C + E(N) >= minSupportedL1MaxTxBytes = 16,384`. For the one-output
 fixture C = 1,145, giving the pinned frontier N = 14,774
-(`complete-item-proof-fit-v1.test.ts:331`); C grows by ≈73 bytes per Merkle
+(`complete-item-proof-fit.test.ts:331`); C grows by ≈73 bytes per Merkle
 level of the outputs collection, so the frontier falls as the transaction's
 output count rises.
 
@@ -528,13 +528,13 @@ fallback.
 Every output continues to be carried as a complete item wherever it fits:
 the canonical-decode producer emits `TransactionFieldItemWitness` at or below
 `maxSinglePublicationCompleteItemBytes` (14,396) with its guard pinned by
-`complete-item-carriage-policy-v1.test.ts`, and the stage-5 output traversal
+`complete-item-carriage-policy.test.ts`, and the stage-5 output traversal
 retains its complete-item path per
 `docs/exec-plans/evidence/necessity/ledger-output-incremental-proof-v1.md`.
 Both bind the same bounded-item commitment; equivalence and
 omission/duplication/reorder/substitution/trailing rejection are exercised by
-`demo/midgard-validation/tests/complete-item-equivalence-v1.test.ts` and
-`demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts`.
+`demo/midgard-validation/tests/complete-item-equivalence.test.ts` and
+`demo/midgard-validation/tests/complete-item-proof-fit-emulator.test.ts`.
 ```
 
 ---

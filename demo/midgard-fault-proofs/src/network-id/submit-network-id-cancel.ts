@@ -3,8 +3,8 @@ import {
   submitCanonicalDecodabilityCancel,
   type SubmitCanonicalDecodabilityCancelResult,
 } from "../canonical-decodability/submit-canonical-decodability-cancel.js";
-import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
-import type { NetworkIdContracts } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
+import type { NetworkIdContracts } from "./contracts.js";
 
 type BaseParams = Parameters<typeof submitCanonicalDecodabilityCancel>[0];
 

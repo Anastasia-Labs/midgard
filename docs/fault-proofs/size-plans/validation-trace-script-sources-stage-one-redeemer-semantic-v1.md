@@ -283,7 +283,7 @@ node -e 'const b=require("./plutus.json");for(const v of b.validators)if(/script
 # expected: 16 titles, all OK; script_sources_stage_one_redeemer_semantic_v1 absent
 aiken check -m script_sources_redeemer_normalization   # expected: 39 + ≥ 5 tests, 0 failures
 aiken check -m script_sources_stage_one_begin          # expected: ≥ 7 tests
-cd ../../demo && pnpm --filter @al-ft/midgard-fault-proofs test -- tests/validation-dispute-submit.test.ts tests/zz605-semantic-resolver-arity.test.ts tests/submit-init-emulator-script-sources-stage-one-v1.test.ts
+cd ../../demo && pnpm --filter @al-ft/midgard-fault-proofs test -- tests/validation-dispute-submit.test.ts tests/semantic-resolver-arity-gate.test.ts tests/submit-init-emulator-script-sources-stage-one-v1.test.ts
 ```
 
 ## 10. Ordering and dependencies

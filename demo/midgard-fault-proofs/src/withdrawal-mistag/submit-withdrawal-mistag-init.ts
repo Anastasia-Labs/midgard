@@ -6,12 +6,12 @@ import {
   submitNativeScriptDecodingInit,
 } from "../native-script-decoding/submit-native-script-decoding-init.js";
 import type { ResolvedProverSigner } from "../runtime.js";
-import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   type WithdrawalMistagCatalogueCategory,
   type WithdrawalMistagContracts,
-} from "./contracts-v1.js";
+} from "./contracts.js";
 
 const genericInitContracts = (
   contracts: WithdrawalMistagContracts,

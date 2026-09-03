@@ -45,7 +45,7 @@
   the measurement deployment (`hub_oracle=11…11`, `catalogue=22…22`, semantic
   resolver 1 of 76). Producing run: `pins the applied §3.2 necessity
   identities on the measurement deployment` in
-  `demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts`,
+  `demo/midgard-validation/tests/complete-item-proof-fit-emulator.test.ts`,
   which now gates both identities instead of arguing them. Every hash pinned
   above is therefore current under `605c8b8d…` and the measurement tables
   below stay bound; the C21-AUDIT "fresh applied re-measurement owed before
@@ -85,7 +85,7 @@
   gain #592's `field_preimage_certificate_policy_id`. The gate named in the
   bullet above — `pins the applied §3.2 necessity identities on the measurement
   deployment` in
-  `demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts` —
+  `demo/midgard-validation/tests/complete-item-proof-fit-emulator.test.ts` —
   re-derives both identities at runtime rather than hardcoding them, and is
   **green against this blueprint** (suite 5/5, 2026-08-15), so it gates the new
   values as it gated the old. Full record, commands and the
@@ -142,9 +142,9 @@
   capability floor per
   `docs/midgard/decisions/0001-cardano-l1-transaction-capability-floor.md`.
 - Fixture: shared exact-size generators in
-  `demo/midgard-validation/tests/complete-item-proof-fit-v1.test.ts`;
+  `demo/midgard-validation/tests/complete-item-proof-fit.test.ts`;
   nested-data boundary behavior in
-  `demo/midgard-validation/tests/nested-redeemer-data-boundary-v1.test.ts`.
+  `demo/midgard-validation/tests/nested-redeemer-data-boundary.test.ts`.
 
 ## Measurements — flat `FieldCarriageV1` scheme (current; §3.2 order — stop at the first tier that fits)
 
@@ -185,19 +185,19 @@ refresh needed, the pin above was already current) by running six suites
 with `MIDGARD_PRINT_PROOF_FIT=1`, one file at a time
 (`pnpm --config.verifyDepsBeforeRun=false --dir midgard-validation exec
 vitest run tests/<file> --pool=forks --no-file-parallelism --bail=0` from
-`demo/`): `complete-item-proof-fit-v1.test.ts` (5/5),
-`complete-item-proof-fit-emulator-v1.test.ts` (6/6),
-`field-preimage-carriage-fit-emulator-v1.test.ts` (16/16),
-`complete-item-carriage-tiers-emulator-v1.test.ts` (5/5),
-`nested-redeemer-data-boundary-v1.test.ts` (1/1), and
-`complete-item-equivalence-v1.test.ts` (2/2) — all green.
+`demo/`): `complete-item-proof-fit.test.ts` (5/5),
+`complete-item-proof-fit-emulator.test.ts` (6/6),
+`field-preimage-carriage-fit-emulator.test.ts` (16/16),
+`complete-item-carriage-tiers-emulator.test.ts` (5/5),
+`nested-redeemer-data-boundary.test.ts` (1/1), and
+`complete-item-equivalence.test.ts` (2/2) — all green.
 
 **Movement notes.** The byte-fit half of this artifact's argument is now the
 shared flat-carriage table, not a family-specific measurement, and is cited
 rather than re-derived: `docs/exec-plans/evidence/necessity/transaction-field-chunk-v1.md`'s
 own "Measurements — flat `FieldCarriageV1` scheme" section, re-run this pass
 via the same six suites (that file additionally cites
-`complete-item-carriage-policy-v1.test.ts`, 6/6 here too). Carried from
+`complete-item-carriage-policy.test.ts`, 6/6 here too). Carried from
 there rather than re-taken: tier-1 nominal cap
 `MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES_V1` = 14,336 (item ≤ 14,332),
 **re-derived 2026-08-23 on the post-Option-B route: the signed inline fit
@@ -257,10 +257,10 @@ Redeemer items that fit tier 1 (signed inline frontier 14,004 bytes; the 14,336-
 step, exactly as the counted era's "small payloads traverse in a single
 begin/step pair" did — only the door supplying that preimage changed.
 Chunked traversal and the complete-item read bind the identical item
-commitment: `demo/midgard-validation/tests/complete-item-equivalence-v1.test.ts`
+commitment: `demo/midgard-validation/tests/complete-item-equivalence.test.ts`
 (2/2 this pass) proves commitment equality and
 omission/duplication/reorder/substitution/trailing rejection for both, and
-`complete-item-carriage-policy-v1.test.ts` (6/6 this pass) pins that the
+`complete-item-carriage-policy.test.ts` (6/6 this pass) pins that the
 producer still keeps the complete-item witness first and guards the chunked
 fallback by the measured threshold.
 
@@ -327,7 +327,7 @@ Redeemer items at or below 14,396 bytes keep complete-item byte carriage
 reference at or below 14,396), and small payloads traverse in a single
 begin/step pair whose chunk carries the complete item bytes. Chunked and
 complete representations bind the identical item commitment
-(`demo/midgard-validation/tests/complete-item-equivalence-v1.test.ts`),
+(`demo/midgard-validation/tests/complete-item-equivalence.test.ts`),
 with omission/duplication/reorder/substitution/trailing rejection proven
 for both.
 

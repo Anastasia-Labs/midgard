@@ -18,19 +18,19 @@ import {
 import {
   type MidgardFieldCarriagePlan,
   planMidgardFieldCarriage,
-} from "@al-ft/midgard-core/codec/native-tx-carriage-v1";
+} from "@al-ft/midgard-core/codec/native-tx-carriage";
 import {
   encodeMidgardFieldArrayHeader,
   midgardFieldCommitment,
-} from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
+} from "@al-ft/midgard-core/codec/native-tx-field-access";
 import {
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_ENVELOPE_MEASUREMENTS,
-} from "@al-ft/midgard-core/consensus-profile-v1";
+} from "@al-ft/midgard-core/consensus-profile";
 import {
   deriveMidgardTxFieldPreimages,
   validateMidgardConsensusTxCbor,
-} from "@al-ft/midgard-core/consensus-validation-v1";
+} from "@al-ft/midgard-core/consensus-validation";
 import {
   type Assets,
   CML,
@@ -57,7 +57,7 @@ import {
 import {
   resolveCertificateReferenceIndex,
   resolveChunkReferenceIndices,
-} from "../fraud-proof/field-preimage-carriage-v1.js";
+} from "../fraud-proof/field-preimage-carriage.js";
 import { HubOracleError } from "../hub-oracle.js";
 import { authenticateUTxOs, AuthenticUTxO } from "../internals.js";
 import {
@@ -71,8 +71,8 @@ import {
 import {
   type FieldCarriage,
   FieldCarriageSchema,
-} from "../native-tx-field-access-v1.js";
-import { OperatorVerdictSchema } from "../rejection-reason-v1.js";
+} from "../native-tx-field-access.js";
+import { OperatorVerdictSchema } from "../rejection-reason.js";
 import { RawRootMembershipProofSchema } from "../transition-trace.js";
 import {
   buildCompletedUserEventMintTxProgram,

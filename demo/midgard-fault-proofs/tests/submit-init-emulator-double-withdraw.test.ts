@@ -19,7 +19,7 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import type { DoubleWithdrawContracts } from "../src/double-withdraw/contracts-v1.js";
+import type { DoubleWithdrawContracts } from "../src/double-withdraw/contracts.js";
 import {
   submitDoubleWithdrawCancel,
   submitDoubleWithdrawInit,
@@ -43,7 +43,7 @@ import {
   keyValuePhasProof,
 } from "../src/transition-trace/phas.js";
 import { outputWithDatumAndUnitPredicate } from "../src/tx-layout.js";
-import { expectOnchainRefusal } from "./support/native-script-decoding-emulator-v1.js";
+import { expectOnchainRefusal } from "./support/native-script-decoding-emulator.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   buildRemovalDeploymentInfo,

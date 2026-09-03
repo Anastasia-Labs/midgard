@@ -28,8 +28,8 @@ import {
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_PROTOCOL_VERSION,
   MIDGARD_TRANSITION_STEP_SCHEMA_VERSION,
-} from "@al-ft/midgard-core/consensus-profile-v1";
-import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation-v1";
+} from "@al-ft/midgard-core/consensus-profile";
+import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation";
 import {
   type DaPayloadEnvelopeTimingStage,
   unwrapDaPayload,
@@ -779,9 +779,9 @@ const validateDaPayloadConsensus = (body: SDK.DaPayloadBody): void => {
         `${fieldName} has no same-key forced_transaction_preimages entry`,
       );
     }
-    const forced = decodeCanonicalData<SDK.ForcedInclusionTx>(
+    const forced = decodeCanonicalData<SDK.ForcedInclusionTxV1>(
       valueHex,
-      SDK.ForcedInclusionTxSchema as never,
+      SDK.ForcedInclusionTxV1Schema as never,
       `${fieldName}.value`,
     );
     const tx = validateFullTransaction(
@@ -1285,9 +1285,9 @@ const validateProofTraceCoverage = (payload: SDK.DaPayload): void => {
       SDK.OutputReference as never,
       `forced_transactions[${index.toString()}].key`,
     );
-    const forced = decodeCanonicalData<SDK.ForcedInclusionTx>(
+    const forced = decodeCanonicalData<SDK.ForcedInclusionTxV1>(
       value,
-      SDK.ForcedInclusionTxSchema as never,
+      SDK.ForcedInclusionTxV1Schema as never,
       `forced_transactions[${index.toString()}].value`,
     );
     expectedVerdicts.set(

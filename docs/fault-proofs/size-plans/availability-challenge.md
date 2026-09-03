@@ -14,12 +14,12 @@ dispatcher; §3 explains why.
 | Blueprint titles              | `availability_challenge.availability_challenge.mint`, `.spend`, `.else` (one compiled body)                                                                                                                                                                         |
 | Files                         | `onchain/aiken/validators/availability-challenge.ak` (1,529 lines), `onchain/aiken/lib/midgard/availability-challenge.ak` (799 lines)                                                                                                                               |
 | Raw size (unapplied)          | 19,927 bytes (reproducible 2026-09-01 build, re-measured in the probe copy)                                                                                                                                                                                         |
-| Applied size                  | 20,017 bytes, script hash `8cd5ef370e2dd7e5af3ad3f7d80729cd79bed9c14e0e9f2ce79f47c4` under the node test parameters (`demo/midgard-node/tests/availability-challenge-publication-admission-v1.test.ts`)                                                             |
+| Applied size                  | 20,017 bytes, script hash `8cd5ef370e2dd7e5af3ad3f7d80729cd79bed9c14e0e9f2ce79f47c4` under the node test parameters (`demo/midgard-node/tests/availability-challenge-publication-admission.test.ts`)                                                             |
 | Signed publication (measured) | 20,524 / 20,522 bytes (docs/public_testnet_readiness.md Q58 blocker bullet); the ledger rejects at 16,384                                                                                                                                                                |
 | Applied parameters            | `hub_oracle_policy_id: PolicyId`, `parameters: availability.ParametersV1` (`response_geometry`, `da_bond_lovelace`, `challenger_bond_lovelace`, five fee ceilings)                                                                                                  |
 | Arms                          | mint: `MintBondFromAttestation`, `OpenChallenge`, `SettleTranche`, `CloseChallenge`, `TimeoutChallenge`; spend: `AdvanceTranche`, `ConsumeCarrier`, `Coordinate`                                                                                                    |
-| Role names today              | `AvailabilityChallengeSpend`, `AvailabilityChallengeMint` (`REFERENCE_SCRIPT_AUTH_TOKEN_NAMES` in `demo/midgard-sdk/src/reference-scripts.ts`; `DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES` in `demo/midgard-core/src/deployment-manifest-identity-v1.ts`) |
-| Deployment entries today      | `availabilityChallengeSpend`, `availabilityChallengeMint` (`DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE`; node `deployment-manifest-v1.ts`, `midgard-contracts.ts` `REAL_AVAILABILITY_CHALLENGE_SCRIPT_TITLES`, `contract-deployment-info.ts`)         |
+| Role names today              | `AvailabilityChallengeSpend`, `AvailabilityChallengeMint` (`REFERENCE_SCRIPT_AUTH_TOKEN_NAMES` in `demo/midgard-sdk/src/reference-scripts.ts`; `DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES` in `demo/midgard-core/src/deployment-manifest-identity.ts`) |
+| Deployment entries today      | `availabilityChallengeSpend`, `availabilityChallengeMint` (`DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_CONTRACT_BY_ROLE`; node `deployment-manifest.ts`, `midgard-contracts.ts` `REAL_AVAILABILITY_CHALLENGE_SCRIPT_TITLES`, `contract-deployment-info.ts`)         |
 | Publication targets today     | `nodeRuntimeReferenceScriptTargets` publishes both roles; the `da` scope publishes the minting role again (`demo/midgard-node/src/transactions/reference-scripts.ts` lines 1491–1512, 1676–1682, both carrying the `#649` oversize caveat)                          |
 | Consumers of the applied hash | `correction_lock.spend` (parameter), `state_queue.mint` (`availability_policy_id`), `state_queue.spend`, `state_queue_yields.remove_unavailable`, `da_attestation` (mint+spend), hub-oracle datum (runtime)                                                         |
 
@@ -173,7 +173,7 @@ dispatcher.
   `TerminalAccumulatorDatumV1`, `StateQueueStatusV1`, every asset-name
   derivation and every accumulator domain string are **unchanged**. The
   watcher's decoded state (`daAvailability` in
-  `production-state-queue-observation-v1.ts`, `da-availability-state-v1.ts`)
+  `authenticated-state-queue-observation.ts`, `da-availability-state.ts`)
   is unaffected.
 
 ### Handshake (kept exactly as the primer requires)
@@ -314,7 +314,7 @@ is marked done.
 
 What exists today (verified by reading the sources):
 
-- **Datums, redeemers, planning.** `demo/midgard-sdk/src/availability-challenge-v1.ts`
+- **Datums, redeemers, planning.** `demo/midgard-sdk/src/availability-challenge.ts`
   (2,585 lines) has every schema (`DaAvailabilityMintRedeemerV1Schema`,
   `DaAvailabilitySpendRedeemerV1Schema`, bond/tranche/terminal/publication
   datums), the commitment builder and canonical asserts, tranche layout and
@@ -348,10 +348,10 @@ What exists today (verified by reading the sources):
   is always `blocked`.
 - **Watcher.** `deployment-identity.ts` authenticates the manifest's
   `availabilityChallenge` parameters (`watcherDeploymentAvailabilityChallengeAuthorityV1`),
-  `production-state-queue-observation-v1.ts` decodes the node's
-  `daAvailability` status, and `production-prover-funding-calculation-v1.ts`
+  `authenticated-state-queue-observation.ts` decodes the node's
+  `daAvailability` status, and `prover-funding-calculation.ts`
   accepts a `da_availability_lifecycle` funding scope (defined in
-  `demo/midgard-fault-proofs/src/workflow/production-funding-requirements-v1.ts`
+  `demo/midgard-fault-proofs/src/workflow/funding-requirements.ts`
   with the `availability_carrier` semantic role and admitted by
   `admitProductionAvailabilityFundingRequirementsV1`). There is **no**
   availability adapter: nothing indexes bond/tranche/carrier UTxOs, decides to
@@ -359,9 +359,9 @@ What exists today (verified by reading the sources):
   observation already exposes `Challenged` blocks (merge is refused by
   `daAvailabilityStateQueueStatusPermitsMergeV1`).
 - **Roles/manifest/inspection.** Two roles wired everywhere listed in §1;
-  `demo/midgard-node/tests/deployment-manifest-v1.test.ts`,
+  `demo/midgard-node/tests/deployment-manifest.test.ts`,
   `contract-deployment-info.test.ts`, `midgard-contracts.test.ts` and
-  `demo/midgard-core/tests/deployment-manifest-identity-v1.test.ts` pin the
+  `demo/midgard-core/tests/deployment-manifest-identity.test.ts` pin the
   current role vectors; `demo/midgard-fault-proofs/tests/support/emulator/contracts.ts`
   uses `base.escapeHatch.policyId` as a stand-in availability policy and
   `validators.ts` maps `availabilityChallenge` to an always-succeeds script.
@@ -370,7 +370,7 @@ What exists today (verified by reading the sources):
   `demo/midgard-fault-proofs/tests`. The bond mint is exercised through
   `attestQueuedStateQueueHeader` in `demo/midgard-node/tests/deposit-flow-emulator-shared.ts`
   with `maxTxSize` raised to 65,536 (also in `initialization-emulator.test.ts`);
-  `availability-challenge-publication-admission-v1.test.ts` asserts the
+  `availability-challenge-publication-admission.test.ts` asserts the
   current _failure_ to publish; `scratch-cg1-publication-fit.test.ts` is
   `it.skip` pending #649.
 
@@ -447,12 +447,12 @@ Work items (all new unless marked "change"):
    `e2e-state-correction-local-authority.ts` with authenticated manifest
    presence (`authenticated_deployed`) so the acceptance gate can be satisfied.
 6. **Funding requirements.** Add concrete rows to
-   `production-funding-requirements-v1.ts` for the `da_availability_lifecycle`
+   `funding-requirements.ts` for the `da_availability_lifecycle`
    scope: challenger bond + `max_open_fee_lovelace`; per-publication
    `max_publication_fee_lovelace` × `maximumDaAvailabilityPublicationCountV1`;
    settlement, close and timeout fee ceilings; collateral; and the five yield
    reference inputs' min-Ada as deployment (not prover) cost. The watcher's
-   `production-prover-funding-calculation-v1.ts` already consumes this scope.
+   `prover-funding-calculation.ts` already consumes this scope.
 7. **Watcher adapter** (W30, "observes but does not own liveness" per Q61
    applies only to attestation timeout; the challenge is a watcher action):
    `demo/midgard-watcher/src/availability-challenge-indexer-v1.ts` (bond,
@@ -461,7 +461,7 @@ Work items (all new unless marked "change"):
    and `production-availability-challenge-adapter-v1.ts` (decides open when
    retained-DA retrieval fails after attestation, drives settle/close/timeout,
    never publishes chunks — that is the accountable DA signers' job). Wire
-   through `production-fault-proof-supervisor-v1.ts` and the operations HTTP
+   through `fault-proof-supervisor.ts` and the operations HTTP
    surface; no operator-local inputs.
 8. **Codec changes.** None in `midgard-core`/`midgard-validation`; the only
    ABI delta is the SDK `DaAvailabilityMintRedeemerV1Schema` field.
@@ -489,7 +489,7 @@ tranche, small response class, 1 h window); payload B of two tranches (4 MiB +
    `publishPlainReferenceScriptUtxo` for all six scripts without `oversized`,
    assert `completeSignedBytes < 16_384` and
    `SDK.assertReferenceScriptRawBodiesFitL1EnvelopeV1(nodeRuntimeReferenceScriptTargets(contracts))`
-   does not throw. Invert `availability-challenge-publication-admission-v1.test.ts`
+   does not throw. Invert `availability-challenge-publication-admission.test.ts`
    (rename to "…admits…", pin the six new hashes and sizes). Un-skip
    `scratch-cg1-publication-fit.test.ts` and restore `maxTxSize` to
    `PROTOCOL_PARAMETERS_DEFAULT.maxTxSize` in `deposit-flow-emulator-shared.ts`
@@ -539,7 +539,7 @@ tranche, small response class, 1 h window); payload B of two tranches (4 MiB +
 Existing helpers to extend: `publishStateQueueYieldReferenceScriptV1`
 (`demo/midgard-fault-proofs/tests/support/emulator/reference-scripts.ts`) gets
 an availability sibling `publishAvailabilityChallengeYieldReferenceScriptV1`;
-`state-queue-yield-publication-admission-v1.test.ts` gets a sibling
+`state-queue-yield-publication-admission.test.ts` gets a sibling
 `availability-challenge-yield-publication-admission-v1.test.ts` in the same
 package once the fault-proofs emulator stops using the always-succeeds
 stand-in.
@@ -603,7 +603,7 @@ pnpm --filter @al-ft/midgard-fault-proofs test -- zz610-compiled-script-arity st
 pnpm --filter midgard-watcher test -- availability-challenge-indexer-v1 production-state-queue-observation-v1
 ```
 
-Blueprint identity: one regeneration; `deployment-manifest-v1.test.ts` and
+Blueprint identity: one regeneration; `deployment-manifest.test.ts` and
 `midgard-contracts.test.ts` pin the new blueprint SHA-256, applied hashes and
 catalogue root once (§10).
 

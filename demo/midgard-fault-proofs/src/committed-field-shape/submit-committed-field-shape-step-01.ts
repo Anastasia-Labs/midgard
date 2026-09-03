@@ -62,20 +62,20 @@ import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessWithdrawalValidatorCarriage,
-} from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+} from "../witness-reference-scripts.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary-v1.js";
-import type { CommittedFieldShapeContracts } from "./contracts-v1.js";
-import type { PreparedCommittedFieldShape } from "./prepare-committed-field-shape-v1.js";
+} from "../workflow/transaction-boundary.js";
+import type { CommittedFieldShapeContracts } from "./contracts.js";
+import type { PreparedCommittedFieldShape } from "./prepare-committed-field-shape.js";
 import {
   committedFieldShapeStepLabel,
   committedFieldShapeSubmitError,
   requireCommittedFieldShapeReferenceScript,
   requireCommittedFieldShapeThreadUtxo,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 const STEP_LABEL = committedFieldShapeStepLabel(0);
 

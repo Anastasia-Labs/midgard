@@ -297,7 +297,7 @@ describe.sequential("deposit flow emulator", () => {
       );
 
       const forcedEncoding = await Effect.runPromise(
-        ForcedTransactionsDB.encodeForcedInclusionValue({
+        ForcedTransactionsDB.encodeForcedInclusionValueV1({
           nativeTxCbor: forcedTransfer.txCbor,
           verdict: "ForcedTxValid",
           consensusProfile: MIDGARD_CONSENSUS_PROFILE,
@@ -450,7 +450,7 @@ describe.sequential("deposit flow emulator", () => {
         );
       const forcedSource = Data.from(
         forcedJournalMember.sourceValueCbor.toString("hex"),
-        SDK.ForcedInclusionTx,
+        SDK.ForcedInclusionTxV1,
       );
       expect(forcedSource.verdict).toBe("ForcedTxValid");
 

@@ -25,25 +25,25 @@ import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
-} from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+} from "../witness-reference-scripts.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary-v1.js";
-import type { L2TxMistagContracts } from "./contracts-v1.js";
+} from "../workflow/transaction-boundary.js";
+import type { L2TxMistagContracts } from "./contracts.js";
 import {
   L2TxMistagStep02Datum,
   L2TxMistagStep02SpendRedeemer,
   type L2TxMistagStep02State,
-} from "./schemas-v1.js";
+} from "./schemas.js";
 import {
   l2TxMistagStepLabel,
   l2TxMistagSubmitError,
   requireL2TxMistagReferenceScript,
   requireL2TxMistagStepState,
   requireL2TxMistagThreadUtxo,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 const STEP_LABEL = l2TxMistagStepLabel(1);
 

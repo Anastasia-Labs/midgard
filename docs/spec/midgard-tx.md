@@ -286,7 +286,7 @@ Item-level rules:
   direct call to `encode_midgard_tx_input`, the field-0/1 item encoder. In
   TypeScript the one spelling is
   `encodeMidgardSpendInputItem`
-  (`demo/midgard-core/src/codec/native-tx-field-items-v1.ts`), reached
+  (`demo/midgard-core/src/codec/native-tx-field-items.ts`), reached
   through `outRefToCbor` / `utxoOutRefCbor`
   (`demo/lucid-midgard/src/core/output.ts`) and `midgardOutRefToCbor`
   (`demo/midgard-validation/src/validation-candidate.ts`). CML's
@@ -571,7 +571,7 @@ value are in E1 immediately after this list.
   `maxFieldPublicationDatumBytes` 4,574 →
   `maxFieldPublicationUnsignedTransactionBytes` 4,675, i.e. 101 bytes of
   unsigned framing (`MIDGARD_ENVELOPE_MEASUREMENTS`,
-  `demo/midgard-core/src/consensus-profile-v1.ts`) — leaving room for a
+  `demo/midgard-core/src/consensus-profile.ts`) — leaving room for a
   15,900-byte chunk plus datum envelope, output, fee, and one vkey witness
   inside 16,384. **Phase-4 cross-check, mandatory:** the counted-era
   _complete-item_ publication — a heavier script-custody shape — measured
@@ -585,7 +585,7 @@ value are in E1 immediately after this list.
   bytes lighter at the smaller size (814 B at 15,570 → 799 B at 15,073).
   Both frontiers are pinned by the "pins the exact applied publication
   frontiers and reliability reserve" case in
-  `demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts`.
+  `demo/midgard-validation/tests/complete-item-proof-fit-emulator.test.ts`.
   (**Corrected 2026-08-14**, owner ruling: these two were 15,489 and 14,993,
   about 80 bytes below the shape they describe. The error was internal to
   `MIDGARD_ENVELOPE_MEASUREMENTS` — the same block's
@@ -603,7 +603,7 @@ value are in E1 immediately after this list.
   on 2026-08-14 when the publication-maximum case was corrected to select field 2
   rather than field 0. The case itself now runs as "carries one complete item at
   the applied publication maximum through the tier-2 door" in
-  `demo/midgard-validation/tests/complete-item-carriage-tiers-emulator-v1.test.ts`,
+  `demo/midgard-validation/tests/complete-item-carriage-tiers-emulator.test.ts`,
   which is where a >tier-1 publication belongs.
 
   **#580 disposition (2026-08-15): real, correct, and not a capability gap. The
@@ -681,7 +681,7 @@ no reserve.
 Every row is a real signed emulator transaction at mainnet
 `coinsPerUtxoByte` (4,310); the measurement is
 `§8.3 Phase-4 exit measurement — the tier-2 raw-UTxO bound` in
-`demo/midgard-validation/tests/field-preimage-carriage-fit-emulator-v1.test.ts`,
+`demo/midgard-validation/tests/field-preimage-carriage-fit-emulator.test.ts`,
 and §8.10 states how to re-take it.
 
 **The frontiers are pinned at one-byte resolution.** They are frontiers, so a
@@ -714,7 +714,7 @@ that does not fit, and 15,149 the first that does not clear the reserve.
   that is 492 bytes; at 15,900 it is 500; at 14,336 it is 450.
 
 `midgardCarriagePublicationBytes` in
-`demo/midgard-core/src/codec/native-tx-carriage-v1.ts` is that decomposition as
+`demo/midgard-core/src/codec/native-tx-carriage.ts` is that decomposition as
 a function, and the emulator measurement asserts it reproduces the real signed
 transaction size **to the byte at every payload size it is sampled at**, on both
 sides of the 24-, 64- and 256-byte boundaries as well as across the ladder. The
@@ -806,7 +806,7 @@ spec/code divergence:
 
 - `chunk_bytes_k` in `onchain/aiken/lib/midgard/native-tx-field-access-v1.ak` and
   `MIDGARD_CHUNK_BYTES_K` in
-  `demo/midgard-core/src/codec/native-tx-field-access-v1.ts` both read 15,148.
+  `demo/midgard-core/src/codec/native-tx-field-access.ts` both read 15,148.
   The TypeScript half is asserted **equal to the derived frontier**
   (`MIDGARD_MAX_PUBLISHABLE_CARRIAGE_BYTES`) rather than merely equal to a
   literal, so `K` cannot drift away from the measurement that fixes it.
@@ -886,7 +886,7 @@ neither was stated in the first revision of this erratum:
 
 > **#580 UPDATE (2026-08-15) — the allowance is now measured, and 14,336
 > stands.** The Phase-7 pass measured the step side that #574 could not, through
-> `demo/midgard-validation/tests/complete-item-proof-fit-v1.test.ts` (`keeps
+> `demo/midgard-validation/tests/complete-item-proof-fit.test.ts` (`keeps
 stage-4 one-step evidence O(1) in output size at every admissible output`)
 > against the Phase-6 blueprint. At the cap, a 14,336-byte preimage produces a
 > **14,795-byte auxiliary** — confirming the 450-byte Plutus-Data chunking figure
@@ -915,7 +915,7 @@ stage-4 one-step evidence O(1) in output size at every admissible output`)
 >
 > **#611 UPDATE (2026-08-17) — the signed-transaction half is now measured, and
 > it FALSIFIES the bound.** The new row in
-> `demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts`
+> `demo/midgard-validation/tests/complete-item-proof-fit-emulator.test.ts`
 > (`measures the complete signed tier-1 step transaction at the 14,336-byte
 preimage cap`) builds and submits the at-cap authenticate transaction on the
 > emulator against the applied resolver, on both bases. Deployed route
@@ -1667,9 +1667,9 @@ must not be written expecting otherwise.
 The flat successor to the counted era's `maxSinglePublicationCompleteItemBytes`
 = 14,396. Measured as real signed emulator transactions by
 `§8.3 Phase-4 exit measurement — the tier-2 raw-UTxO bound` in
-`demo/midgard-validation/tests/field-preimage-carriage-fit-emulator-v1.test.ts`,
+`demo/midgard-validation/tests/field-preimage-carriage-fit-emulator.test.ts`,
 run by `pnpm --dir demo/midgard-validation exec vitest run
-tests/field-preimage-carriage-fit-emulator-v1.test.ts`:
+tests/field-preimage-carriage-fit-emulator.test.ts`:
 
 | bound                        | preimage     | signed transaction |
 | ---------------------------- | ------------ | ------------------ |
@@ -1685,7 +1685,7 @@ The framing and chunking figures §8.3 E1 and this section quote inline — 740,
 723 and 698 bytes of non-payload framing at 15,644, 15,123 and 14,336; 492, 500
 and 450 bytes of Plutus-Data chunking overhead; and the 16,235 / 363 / 149
 worked tier-2 example — are **derivations of the cost model, and are asserted**
-in `demo/midgard-core/tests/native-tx-carriage-v1.test.ts` rather than left as
+in `demo/midgard-core/tests/native-tx-carriage.test.ts` rather than left as
 prose a reader has to recompute.
 
 **What the flat bound actually beats, measured like for like.** The counted era's

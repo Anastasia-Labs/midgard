@@ -7,7 +7,7 @@
 // the §8 carriage each preimage selects.
 //
 // Every constant below was produced by the TypeScript twins
-// (`demo/midgard-core/src/codec/native-tx-field-items-v1.ts`) and is recomputed
+// (`demo/midgard-core/src/codec/native-tx-field-items.ts`) and is recomputed
 // here by the Aiken producers, so the two encoders cannot silently diverge. The
 // shared surface all nine fields agree on is pinned by the sibling module
 // `native-tx-field-access-v1-golden.test.ak` (#568); this one is the per-field

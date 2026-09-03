@@ -20,7 +20,7 @@ import {
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_CONSENSUS_PROFILE,
   type MidgardConsensusProfile,
-} from "@al-ft/midgard-core/consensus-profile-v1";
+} from "@al-ft/midgard-core/consensus-profile";
 import { type Assets, CML, type Network } from "@lucid-evolution/lucid";
 
 import { compareOutRefs, outRefLabel } from "../tx-context.js";

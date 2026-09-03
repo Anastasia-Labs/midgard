@@ -275,7 +275,7 @@ assert.doesNotMatch(
 );
 assert.equal(evidence.wholePreimageFinding.status, "RESOLVED_ABI");
 assert.deepEqual(evidence.wholePreimageFinding.removedFrom, [
-  "demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness-v1.ts",
+  "demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness.ts",
   "demo/midgard-validation/src/validation-machine",
   "demo/midgard-validation/src/validation-machine-data.ts",
   "onchain/aiken/lib/midgard/validation-machine-v1.ak",

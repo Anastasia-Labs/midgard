@@ -39,7 +39,7 @@ import {
   submitRawCommittedFieldShapeCancel,
   submitRawCommittedFieldShapeStep01,
   submitRawCommittedFieldShapeStep02,
-} from "./support/committed-field-shape-emulator-v1.js";
+} from "./support/committed-field-shape-emulator.js";
 import {
   expectSingleUtxoWithUnit,
   makeNativeTx,
@@ -441,7 +441,7 @@ describe("committed-field-shape adversarial prover and recovery", () => {
       }),
     ).rejects.toThrow(/only the prover can cancel/u);
     const { threadUtxo, threadToken } = await import(
-      "../src/committed-field-shape/submit-common-v1.js"
+      "../src/committed-field-shape/submit-common.js"
     ).then(({ requireCommittedFieldShapeThreadUtxo }) =>
       requireCommittedFieldShapeThreadUtxo({
         lucid: harness.proverLucid,

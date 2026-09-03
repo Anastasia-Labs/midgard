@@ -4,7 +4,7 @@ import { type Server } from "node:net";
 import { join } from "node:path";
 
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
-import { DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { DEPLOYMENT_MANIFEST_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   availabilityResponseGeometry,
   buildDaAvailabilityCommitment,

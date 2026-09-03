@@ -104,7 +104,7 @@ import {
   encodeCborArrayRaw,
   encodeCborBytes,
 } from "@al-ft/midgard-core/codec/cbor";
-import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
 import type { MidgardValidationPhaseName } from "@al-ft/midgard-core/validation-trace";
 import { MidgardValidationPhase } from "@al-ft/midgard-core/validation-trace";
 import {
@@ -185,7 +185,7 @@ import {
   WATCHER_RULE_BUNDLE_REJECTION_SELECTION,
   WATCHER_RULE_BUNDLE_VALIDATION_PHASE_PRIORITY,
   type WatcherRuleBundle,
-} from "./rule-bundle-v1.js";
+} from "./rule-bundle.js";
 
 export const WATCHER_BLOCK_REPLAY_SCHEMA_VERSION =
   "midgard-watcher-block-replay-v1" as const;

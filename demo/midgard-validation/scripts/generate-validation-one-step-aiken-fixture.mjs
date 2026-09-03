@@ -22,8 +22,8 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_VALIDATION_DISPUTE_VERSION,
 } from "@al-ft/midgard-core";
-import { planMidgardFieldCarriage } from "@al-ft/midgard-core/codec/native-tx-carriage-v1";
-import { selectMidgardFieldCarriageTier } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
+import { planMidgardFieldCarriage } from "@al-ft/midgard-core/codec/native-tx-carriage";
+import { selectMidgardFieldCarriageTier } from "@al-ft/midgard-core/codec/native-tx-field-access";
 import {
   deriveFieldPreimageCertification,
   fieldPreimagePublicationDatumCbor,

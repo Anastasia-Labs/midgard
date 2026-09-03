@@ -1,7 +1,7 @@
 import {
   isMidgardConsensusProfile,
   type MidgardConsensusProfile,
-} from "@al-ft/midgard-core/consensus-profile-v1";
+} from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
@@ -14,7 +14,7 @@ import type {
 import { bytesToHex, normalizeHex } from "../utils/hex.js";
 import { classifyDaAttestationMarker } from "./attestation-marker.js";
 import type { ChainSyncCursor, ChainSyncEvent } from "./provider.js";
-import { terminalRetentionOutcomes } from "./terminal-retention-observation-v1.js";
+import { terminalRetentionOutcomes } from "./terminal-retention-observation.js";
 
 export interface StateQueueProvider {
   fetchStateQueueNodes(): Promise<readonly ObservedStateQueueNode[]>;

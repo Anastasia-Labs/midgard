@@ -43,7 +43,7 @@
   the measurement deployment (`hub_oracle=11…11`, `catalogue=22…22`, semantic
   resolver 1 of 76). Producing run: `pins the applied §3.2 necessity
   identities on the measurement deployment` in
-  `demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts`,
+  `demo/midgard-validation/tests/complete-item-proof-fit-emulator.test.ts`,
   which now gates both identities instead of arguing them. Every hash pinned
   above is therefore current under `605c8b8d…` and the measurement tables
   below stay bound; the C21-AUDIT "fresh applied re-measurement owed before
@@ -83,7 +83,7 @@
   gain #592's `field_preimage_certificate_policy_id`. The gate named in the
   bullet above — `pins the applied §3.2 necessity identities on the measurement
   deployment` in
-  `demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts` —
+  `demo/midgard-validation/tests/complete-item-proof-fit-emulator.test.ts` —
   re-derives both identities at runtime rather than hardcoding them, and is
   **green against this blueprint** (suite 5/5, 2026-08-15), so it gates the new
   values as it gated the old. Full record, commands and the
@@ -140,9 +140,9 @@
   capability floor per
   `docs/midgard/decisions/0001-cardano-l1-transaction-capability-floor.md`.
 - Fixture: shared exact-size generators in
-  `demo/midgard-validation/tests/complete-item-proof-fit-v1.test.ts`;
+  `demo/midgard-validation/tests/complete-item-proof-fit.test.ts`;
   mint boundary corpus in
-  `demo/midgard-validation/tests/ordered-collection-mint-boundary-v1.test.ts`.
+  `demo/midgard-validation/tests/ordered-collection-mint-boundary.test.ts`.
 
 ## Measurements — flat `FieldCarriageV1` scheme (current; §3.2 order — stop at the first tier that fits)
 
@@ -181,13 +181,13 @@ refresh needed, the pin above was already current) by running six suites
 with `MIDGARD_PRINT_PROOF_FIT=1`, one file at a time
 (`pnpm --config.verifyDepsBeforeRun=false --dir midgard-validation exec
 vitest run tests/<file> --pool=forks --no-file-parallelism --bail=0` from
-`demo/`): `complete-item-proof-fit-v1.test.ts` (5/5),
-`complete-item-proof-fit-emulator-v1.test.ts` (6/6),
-`field-preimage-carriage-fit-emulator-v1.test.ts` (16/16),
-`complete-item-carriage-tiers-emulator-v1.test.ts` (5/5),
-`ordered-collection-mint-boundary-v1.test.ts` (1/1), and
-`complete-item-equivalence-v1.test.ts` (2/2) — all green.
-`ordered-collection-mint-boundary-v1.test.ts`'s own `MIDGARD_PRINT_PROOF_FIT`
+`demo/`): `complete-item-proof-fit.test.ts` (5/5),
+`complete-item-proof-fit-emulator.test.ts` (6/6),
+`field-preimage-carriage-fit-emulator.test.ts` (16/16),
+`complete-item-carriage-tiers-emulator.test.ts` (5/5),
+`ordered-collection-mint-boundary.test.ts` (1/1), and
+`complete-item-equivalence.test.ts` (2/2) — all green.
+`ordered-collection-mint-boundary.test.ts`'s own `MIDGARD_PRINT_PROOF_FIT`
 receipt this pass still prints a field-5 `chunkProof` (`chunkIndex: 0`,
 `totalLength: 43`) alongside the outputs' collection proof, confirming the
 per-asset `bounded_item_v1` chunk structure is live in the current tree
@@ -198,7 +198,7 @@ shared flat-carriage table, not a family-specific measurement, and is cited
 rather than re-derived: `docs/exec-plans/evidence/necessity/transaction-field-chunk-v1.md`'s
 own "Measurements — flat `FieldCarriageV1` scheme" section, re-run this pass
 via the same suites (that file additionally cites
-`complete-item-carriage-policy-v1.test.ts`, 6/6 here too). Carried from
+`complete-item-carriage-policy.test.ts`, 6/6 here too). Carried from
 there rather than re-taken: tier-1 nominal cap 14,336 (item ≤ 14,332),
 **re-derived 2026-08-23 on the post-Option-B route: the signed inline fit
 ends at a 14,004-byte item, above which the builder refuses pre-sign and
@@ -209,9 +209,9 @@ exact, unmoved by #606; tier-3 combined lower bound 16,613 bytes (not the
 P7-pinned 16,579 — #606 welded `field_hash` into the certificate datum,
 `docs/spec/midgard-tx.md` §8.10). The two byte guardrails that make this
 fold necessary in the first place — `maxTransactionAggregateFieldBytes`
-32,768 (`MAX_MINT_PREIMAGE_BYTES`, `demo/midgard-core/src/consensus-profile-v1.ts:174`)
+32,768 (`MAX_MINT_PREIMAGE_BYTES`, `demo/midgard-core/src/consensus-profile.ts:174`)
 and `maxDistinctAssetCount` 16,384
-(`MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT`, `consensus-profile-v1.ts:146,255`)
+(`MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT`, `consensus-profile.ts:146,255`)
 — are structural guardrails independent of carriage tier and did not move.
 None of the above is re-flagged as a new finding; it is the same movement
 `transaction-field-chunk-v1.md` already records, cited here because this
@@ -259,10 +259,10 @@ machine as a complete preimage in one carriage step, exactly as the counted
 era's "small fields fold in a single chunk whose bytes are the complete
 field" did — only the door supplying that preimage changed. Chunked
 per-asset folding and the complete-item read bind the identical bounded-item
-commitment: `demo/midgard-validation/tests/complete-item-equivalence-v1.test.ts`
+commitment: `demo/midgard-validation/tests/complete-item-equivalence.test.ts`
 (2/2 this pass) proves commitment equality and
 omission/duplication/reorder/substitution/trailing rejection for both, and
-`ordered-collection-mint-boundary-v1.test.ts` (1/1 this pass) exercises the
+`ordered-collection-mint-boundary.test.ts` (1/1 this pass) exercises the
 deployed mint policy/asset packing at the `maxValueSize` boundary with every
 policy authorized by its field-6 native script.
 
@@ -328,7 +328,7 @@ publication + reference at or below 14,396); small fields fold in a single
 chunk whose bytes are the complete field. Chunked and complete
 representations bind the identical bounded-item commitment with hostile
 omission/duplication/reorder/substitution/trailing rejection proven at
-`demo/midgard-validation/tests/complete-item-equivalence-v1.test.ts`.
+`demo/midgard-validation/tests/complete-item-equivalence.test.ts`.
 
 ## Re-measurement 2026-08-03 (task C21-AUDIT)
 

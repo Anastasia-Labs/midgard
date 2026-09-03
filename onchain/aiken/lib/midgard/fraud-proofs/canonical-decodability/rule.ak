@@ -67,7 +67,7 @@ use midgard/native_tx_field_access_v1.{
 // computation-thread state between two transactions and a thread datum is a
 // wire form (§10.6's reason, one level out): an off-chain twin has to be able
 // to write and read the value, and `demo/midgard-sdk`'s
-// `canonical-decodability-v1.ts` mirrors these constants by name.
+// `canonical-decodability.ts` mirrors these constants by name.
 //
 // **They are diagnostic, not load-bearing.** `is_canonical_decodability_violation_v1`
 // asks only whether the verdict is `verdict_grammatical`, so a mis-assigned

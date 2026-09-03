@@ -45,17 +45,17 @@ import {
 } from "../runtime.js";
 import { requireInitialStepDatum, selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
-} from "../workflow/transaction-boundary-v1.js";
-import type { DoubleWithdrawContracts } from "./contracts-v1.js";
+} from "../workflow/transaction-boundary.js";
+import type { DoubleWithdrawContracts } from "./contracts.js";
 import {
   doubleWithdrawSubmitError,
   requireDoubleWithdrawReferenceScript,
   requireDoubleWithdrawThreadUtxo,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 export type SubmitDoubleWithdrawInclusion = PreparedDoubleWithdrawInclusion & {
   readonly withdrawalMembershipProof: Proof;

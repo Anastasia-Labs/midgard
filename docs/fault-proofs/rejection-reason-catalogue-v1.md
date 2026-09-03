@@ -5,7 +5,7 @@ forced-inclusion verdict. The authoritative constructor order, fields, and
 legacy-code bridge are implemented in:
 
 - `onchain/aiken/lib/midgard/rejection-reason-v1.ak`
-- `demo/midgard-sdk/src/rejection-reason-v1.ts`
+- `demo/midgard-sdk/src/rejection-reason.ts`
 - `docs/spec/midgard-tx.md` §13
 
 This document records the stable design rules without copying the complete

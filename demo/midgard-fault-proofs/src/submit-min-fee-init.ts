@@ -24,11 +24,11 @@ import {
 import {
   MIN_FEE_CATEGORY_LABEL,
   type MinFeeContracts,
-} from "./min-fee-contracts-v1.js";
+} from "./min-fee-contracts.js";
 import {
   type MinFeeCatalogueCategory,
   minFeeSubmitError,
-} from "./min-fee-submit-common-v1.js";
+} from "./min-fee-submit-common.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   encodePhasMembershipProofRedeemer,
@@ -46,12 +46,12 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
   witnessWithdrawalValidatorCarriage,
-} from "./witness-reference-scripts-v1.js";
+} from "./witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "./workflow/transaction-boundary-v1.js";
+} from "./workflow/transaction-boundary.js";
 
 type LucidDataSchema = Parameters<typeof Data.to>[1];
 

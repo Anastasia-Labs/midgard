@@ -8,7 +8,7 @@ import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   isMidgardConsensusProfile,
   MIDGARD_CONSENSUS_PROFILE,
-} from "@al-ft/midgard-core/consensus-profile-v1";
+} from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import {
   canonicalCommittedWithdrawalTransitionEffect,

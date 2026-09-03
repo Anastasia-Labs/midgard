@@ -2,7 +2,7 @@ import {
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_PROTOCOL_VERSION,
   MIDGARD_TRANSITION_STEP_SCHEMA_VERSION,
-} from "@al-ft/midgard-core/consensus-profile-v1";
+} from "@al-ft/midgard-core/consensus-profile";
 import { Data } from "@lucid-evolution/lucid";
 import { Data as EffectData, Effect } from "effect";
 
@@ -20,15 +20,15 @@ import {
   PubKeyHashSchema,
   ValueSchema,
 } from "./common.js";
-import { DaAvailabilityStateQueueStatusSchema } from "./da-availability-state-v1.js";
+import { DaAvailabilityStateQueueStatusSchema } from "./da-availability-state.js";
 import {
   EMPTY_MERKLE_TREE_ROOT,
   GENESIS_HEADER_HASH,
   GENESIS_PROTOCOL_VERSION,
 } from "./ledger-constants.js";
-import { OperatorVerdictSchema } from "./rejection-reason-v1.js";
+import { OperatorVerdictSchema } from "./rejection-reason.js";
 
-export { NO_DA_ATTESTATION } from "./da-availability-state-v1.js";
+export { NO_DA_ATTESTATION } from "./da-availability-state.js";
 
 export const HeaderHashSchema = Data.Bytes({ minLength: 28, maxLength: 28 });
 export type HeaderHash = Data.Static<typeof HeaderHashSchema>;
@@ -645,7 +645,7 @@ export const BoundedItemChunkProof =
 // commitments were the §4 flat hashes of real material (a payload declaring
 // counted roots could still satisfy it, which is why the replacement closes the
 // gap by construction rather than by arithmetic). The §8 replacement is
-// `FieldPreimageCertificateV1` in `native-tx-field-access-v1.ts`, whose manifest
+// `FieldPreimageCertificateV1` in `native-tx-field-access.ts`, whose manifest
 // is over §8.4 chunks of a preimage rather than over items of a counted
 // collection — so it is a different artifact, not a renamed one, and nothing here
 // forwards to it.
@@ -708,18 +708,18 @@ export const L2TransactionSource =
   L2TransactionSourceSchema as unknown as L2TransactionSource;
 
 /**
- * Twin of `midgard/ledger_state.ForcedInclusionTx`. It shed
+ * Twin of `midgard/ledger_state.ForcedInclusionTxV1`. It shed
  * `transaction_commitment` for the same reason and in the same change — see
  * {@link L2TransactionSourceSchema}.
  */
-export const ForcedInclusionTxSchema = Data.Object({
+export const ForcedInclusionTxV1Schema = Data.Object({
   tx_id: H32Schema,
   source: NativeTxProofSourceSchema,
   verdict: OperatorVerdictSchema,
 });
-export type ForcedInclusionTx = Data.Static<typeof ForcedInclusionTxSchema>;
-export const ForcedInclusionTx =
-  ForcedInclusionTxSchema as unknown as ForcedInclusionTx;
+export type ForcedInclusionTxV1 = Data.Static<typeof ForcedInclusionTxV1Schema>;
+export const ForcedInclusionTxV1 =
+  ForcedInclusionTxV1Schema as unknown as ForcedInclusionTxV1;
 
 export const TransitionPhaseSchema = Data.Enum([
   Data.Literal("Withdrawal"),

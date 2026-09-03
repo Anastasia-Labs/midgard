@@ -24,7 +24,7 @@ import {
   missingSignatureProverDeps,
   publishMissingSignatureReferenceScripts,
   setupMissingSignatureScenario,
-} from "./support/missing-signature-emulator-v1.js";
+} from "./support/missing-signature-emulator.js";
 import {
   buildRemovalDeploymentInfo,
   expectSingleUtxoWithUnit,

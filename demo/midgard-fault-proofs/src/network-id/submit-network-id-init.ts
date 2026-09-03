@@ -3,9 +3,9 @@ import {
   submitCanonicalDecodabilityInit,
   type SubmitCanonicalDecodabilityInitResult,
 } from "../canonical-decodability/submit-canonical-decodability-init.js";
-import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
-import type { NetworkIdContracts } from "./contracts-v1.js";
-import type { NetworkIdCatalogueCategory } from "./submit-common-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
+import type { NetworkIdContracts } from "./contracts.js";
+import type { NetworkIdCatalogueCategory } from "./submit-common.js";
 
 type BaseParams = Parameters<typeof submitCanonicalDecodabilityInit>[0];
 

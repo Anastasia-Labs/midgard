@@ -63,19 +63,19 @@ import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary-v1.js";
-import type { NativeScriptDecodingContracts } from "./contracts-v1.js";
+} from "../workflow/transaction-boundary.js";
+import type { NativeScriptDecodingContracts } from "./contracts.js";
 import {
   buildNativeScriptDecodingStep02Evidence,
   nativeScriptDecodingScanAccusationOf,
-} from "./evidence-v1.js";
+} from "./evidence.js";
 import {
   nativeScriptDecodingStepLabel,
   nativeScriptDecodingSubmitError,
   requireNativeScriptDecodingReferenceScript,
   requireNativeScriptDecodingStepState,
   requireNativeScriptDecodingThreadUtxo,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 const STEP_LABEL = nativeScriptDecodingStepLabel(1);
 

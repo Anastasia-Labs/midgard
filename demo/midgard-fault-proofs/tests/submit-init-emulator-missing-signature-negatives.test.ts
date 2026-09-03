@@ -19,7 +19,7 @@ import {
   missingSignatureProverDeps,
   publishMissingSignatureReferenceScripts,
   setupMissingSignatureScenario,
-} from "./support/missing-signature-emulator-v1.js";
+} from "./support/missing-signature-emulator.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 
 type Harness = Awaited<ReturnType<typeof makeMissingSignatureEmulatorHarness>>;

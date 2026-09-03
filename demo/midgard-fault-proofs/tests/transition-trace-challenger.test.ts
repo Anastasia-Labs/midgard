@@ -39,12 +39,12 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { fetchFraudProofEvidence } from "../src/evidence/production-fraud-proof-evidence-v1.js";
-import { prepareAcceptedFieldPreimageLengthMismatch } from "../src/field-preimage-length-mismatch/prepare-accepted-v1.js";
+import { fetchFraudProofEvidence } from "../src/evidence/fraud-proof-evidence.js";
 import {
   detectAuthenticatedFieldPreimageLengthEvidence,
   detectFieldPreimageLengthCompleteReplay,
-} from "../src/field-preimage-length-mismatch/production-evidence-v1.js";
+} from "../src/field-preimage-length-mismatch/evidence.js";
+import { prepareAcceptedFieldPreimageLengthMismatch } from "../src/field-preimage-length-mismatch/prepare-accepted.js";
 import {
   buildCountedRoot,
   buildEventToStepMismatchFault,
@@ -197,7 +197,7 @@ const forcedTxInvalidPlutus: SDK.OperatorVerdict = {
 const forcedTx = (
   byte: number,
   verdict: SDK.OperatorVerdict = forcedTxInvalidPlutus,
-): SDK.ForcedInclusionTx => {
+): SDK.ForcedInclusionTxV1 => {
   const material = nativeMaterial(byte);
   if (verdict === "ForcedTxValid") {
     return {
@@ -411,8 +411,8 @@ const buildPayloadFixture = async ({
     ([key, value], index): SDK.DaPayloadEntry => {
       const forced = Data.from(
         value,
-        SDK.ForcedInclusionTx,
-      ) as SDK.ForcedInclusionTx;
+        SDK.ForcedInclusionTxV1,
+      ) as SDK.ForcedInclusionTxV1;
       const preimage = canonicalPreimageByCommitment.get(
         proofSourceCommitment(forced.source),
       );
@@ -804,7 +804,7 @@ describe("transition-trace challenger tooling", () => {
           key: txOrderId,
           keySchema: SDK.OutputReference as never,
           value: forced,
-          valueSchema: SDK.ForcedInclusionTxSchema,
+          valueSchema: SDK.ForcedInclusionTxV1Schema,
         }),
       ],
       steps: [step],
@@ -999,7 +999,7 @@ describe("transition-trace challenger tooling", () => {
                 key: outRef(3),
                 keySchema: SDK.OutputReference as never,
                 value: forcedTx(40, forcedTxInvalidPlutus),
-                valueSchema: SDK.ForcedInclusionTxSchema,
+                valueSchema: SDK.ForcedInclusionTxV1Schema,
               }),
             ],
             steps: [
@@ -1245,7 +1245,7 @@ describe("transition-trace challenger tooling", () => {
           key: txOrderId,
           keySchema: SDK.OutputReference as never,
           value: forced,
-          valueSchema: SDK.ForcedInclusionTxSchema,
+          valueSchema: SDK.ForcedInclusionTxV1Schema,
         }),
       ],
       steps: [
@@ -1291,7 +1291,7 @@ describe("transition-trace challenger tooling", () => {
     const lengths = decodeMidgardNativeTxProofFieldLengths(
       Buffer.from(forced.source.field_preimage_lengths_cbor, "hex"),
     );
-    const honestForced: SDK.ForcedInclusionTx = {
+    const honestForced: SDK.ForcedInclusionTxV1 = {
       ...forced,
       source: {
         ...forced.source,
@@ -1308,7 +1308,7 @@ describe("transition-trace challenger tooling", () => {
           key: txOrderId,
           keySchema: SDK.OutputReference as never,
           value: forced,
-          valueSchema: SDK.ForcedInclusionTxSchema,
+          valueSchema: SDK.ForcedInclusionTxV1Schema,
         }),
       ],
       steps: [
@@ -1799,7 +1799,7 @@ describe("transition-trace challenger tooling", () => {
           key: txOrderId,
           keySchema: SDK.OutputReference as never,
           value: forcedTx(50, forcedTxInvalidPlutus),
-          valueSchema: SDK.ForcedInclusionTxSchema,
+          valueSchema: SDK.ForcedInclusionTxV1Schema,
         }),
       ],
       steps: [
@@ -1967,7 +1967,7 @@ describe("transition-trace challenger tooling", () => {
           key: txOrderId,
           keySchema: SDK.OutputReference as never,
           value: forcedTx(70, forcedTxInvalidPlutus),
-          valueSchema: SDK.ForcedInclusionTxSchema,
+          valueSchema: SDK.ForcedInclusionTxV1Schema,
         }),
       ],
       steps: [
@@ -2034,7 +2034,7 @@ describe("transition-trace challenger tooling", () => {
           key: txOrderId,
           keySchema: SDK.OutputReference as never,
           value: forcedTx(60, forcedTxInvalidPlutus),
-          valueSchema: SDK.ForcedInclusionTxSchema,
+          valueSchema: SDK.ForcedInclusionTxV1Schema,
         }),
       ],
       deposits: [
@@ -2159,7 +2159,7 @@ describe("transition-trace challenger tooling", () => {
           key: outOfWindowForcedId,
           keySchema: SDK.OutputReference as never,
           value: forcedTx(73, forcedTxInvalidPlutus),
-          valueSchema: SDK.ForcedInclusionTxSchema,
+          valueSchema: SDK.ForcedInclusionTxV1Schema,
         }),
       ],
       steps: [
@@ -2316,7 +2316,7 @@ describe("transition-trace challenger tooling", () => {
           key: forcedId,
           keySchema: SDK.OutputReference as never,
           value: forcedTx(13, "ForcedTxValid"),
-          valueSchema: SDK.ForcedInclusionTxSchema,
+          valueSchema: SDK.ForcedInclusionTxV1Schema,
         }),
       ],
       steps: [

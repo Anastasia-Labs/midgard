@@ -5,7 +5,7 @@ import type {
   MidgardNativeTxBodyCompact,
 } from "./native.js";
 import { MIDGARD_NATIVE_NETWORK_ID_NONE } from "./native-constants.js";
-import { midgardFieldCommitment } from "./native-tx-field-access-v1.js";
+import { midgardFieldCommitment } from "./native-tx-field-access.js";
 import {
   asFixedArray,
   asSigned,
@@ -180,7 +180,7 @@ export const decodeNativeTxBodyCanonicalValue = (
  * reversion exists to remove — and would give the format a second verdict on
  * canonicality. Callers that need the grammar checked use
  * {@link decodeMidgardFieldPreimageV1} or the per-field readers in
- * `native-tx-field-item-decoders-v1.ts`; producers that build the bytes go
+ * `native-tx-field-item-decoders.ts`; producers that build the bytes go
  * through `encodeMidgardFieldPreimageForFieldV1`, which cannot emit a
  * non-canonical preimage.
  *

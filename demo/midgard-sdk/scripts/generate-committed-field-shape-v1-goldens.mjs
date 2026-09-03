@@ -31,7 +31,7 @@
  * Two artifacts, the pair every channel emits:
  *
  *   * `demo/midgard-sdk/tests/fixtures/committed-field-shape-v1.generated.json`
- *     — recomputed by `tests/committed-field-shape-v1.test.ts`, so a drifting
+ *     — recomputed by `tests/committed-field-shape.test.ts`, so a drifting
  *     TypeScript twin fails on the TypeScript side; and
  *   * `onchain/aiken/lib/midgard/fraud-proofs/committed-field-shape/rule-golden.test.ak`
  *     — recomputed by the Aiken producers under the fork runner, so a divergence
@@ -128,9 +128,7 @@ const renderConstruction = (construction) => {
     return aikenBytes(construction.hex);
   }
   if (construction.kind === "envelope") {
-    const items = construction.items
-      .map((item) => aikenBytes(item))
-      .join(", ");
+    const items = construction.items.map((item) => aikenBytes(item)).join(", ");
     return `encode_field_preimage([${items}])`;
   }
   return `sized_field_envelope_v1(${String(construction.totalLength)}, ${aikenBytes(
@@ -356,10 +354,7 @@ const buildGolden = () => {
       fieldIndex: vector.fieldIndex,
       verdict,
     });
-    if (
-      convicts &&
-      envelopeVerdict !== MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL
-    ) {
+    if (convicts && envelopeVerdict !== MIDGARD_ENVELOPE_VERDICT_GRAMMATICAL) {
       throw new Error(
         `vector ${vector.label} is convicted by both §12.7 and §12.8`,
       );
@@ -467,7 +462,7 @@ const renderAiken = (golden) =>
     "//// **The verdict set** is the one that matters, and every vector in it is a",
     "//// `(slot, bytes)` pair rather than a byte string. §12.8's verdict is a total",
     "//// decision procedure of two arguments implemented twice — here and in",
-    "//// `demo/midgard-sdk/src/fraud-proof/committed-field-shape-v1.ts` — and a twin",
+    "//// `demo/midgard-sdk/src/fraud-proof/committed-field-shape.ts` — and a twin",
     "//// that transposed the slot or read §5.3's stride table one row differently",
     "//// would agree with its partner on most inputs and disagree on exactly the",
     "//// ones the fault kind exists for. Each test rebuilds the bytes from the same",

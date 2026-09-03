@@ -15,8 +15,8 @@ import {
   publishCanonicalDecodabilityReferenceScripts,
   setupCanonicalDecodabilityScenario,
   submitCanonicalDecodabilityStep01Raw,
-} from "./support/canonical-decodability-emulator-v1.js";
-import { expectOnchainRefusal } from "./support/native-script-decoding-emulator-v1.js";
+} from "./support/canonical-decodability-emulator.js";
+import { expectOnchainRefusal } from "./support/native-script-decoding-emulator.js";
 import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
 
 describe("canonical-decodability witness-field lifecycle", () => {

@@ -2,8 +2,8 @@ import { MIDGARD_POSIX_TIME_NONE } from "@al-ft/midgard-core";
 import { Data } from "@lucid-evolution/lucid";
 
 import { OutputReferenceSchema } from "../common.js";
-import { ForcedInclusionTxSchema, HeaderSchema } from "../ledger-state.js";
-import { RejectionReasonSchema } from "../rejection-reason-v1.js";
+import { ForcedInclusionTxV1Schema, HeaderSchema } from "../ledger-state.js";
+import { RejectionReasonSchema } from "../rejection-reason.js";
 import { rootMembershipProofSchema } from "../transition-trace.js";
 import {
   FaultProofStepCancel,
@@ -45,7 +45,7 @@ export const InvalidRangeStep01SourceSchema = Data.Enum([
       header: HeaderSchema,
       membership: rootMembershipProofSchema(
         OutputReferenceSchema,
-        ForcedInclusionTxSchema,
+        ForcedInclusionTxV1Schema,
       ),
       direction: Data.Integer(),
     }),
@@ -55,7 +55,7 @@ export const InvalidRangeForcedSourcePayloadSchema = Data.Object({
   header: HeaderSchema,
   membership: rootMembershipProofSchema(
     OutputReferenceSchema,
-    ForcedInclusionTxSchema,
+    ForcedInclusionTxV1Schema,
   ),
   direction: Data.Integer(),
 });

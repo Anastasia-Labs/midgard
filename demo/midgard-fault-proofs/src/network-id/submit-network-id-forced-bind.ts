@@ -13,12 +13,12 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
-import type { NetworkIdContracts } from "./contracts-v1.js";
-import type { PreparedNetworkIdWrongfulRejection } from "./wrongful-rejection-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
+import type { NetworkIdContracts } from "./contracts.js";
+import type { PreparedNetworkIdWrongfulRejection } from "./wrongful-rejection.js";
 
 export const submitNetworkIdForcedBind = async ({
   lucid,

@@ -184,7 +184,7 @@ measurement:
   production CML path at depth 1, two mirroring Aiken tests, selector 4/4
   under both compilers.
 - Evidence verified present on the tree: `buildRawSignedCardanoUnaryRedeemersCandidateV1`
-  at demo/midgard-validation/tests/helpers/unary-depth-candidate-v1.ts:305;
+  at demo/midgard-validation/tests/helpers/unary-depth-candidate.ts:305;
   `maximum_unary_redeemer_depth_is_bound_by_signed_cardano_capacity` at
   onchain/aiken/lib/midgard/fraud-proofs/c26-unary-depth-v1.test.ak:150; the
   manifest row's `expectedNonzeroCounts` records the closure and ends
@@ -310,13 +310,13 @@ catalogue.ts:23–25 warns inserting shifts every later ID):
    `NO_REFERENCE_INPUT_FAULT_PROOF_TITLES` :48,
    `REFERENCE_INPUT_NO_IDX_FAULT_PROOF_TITLES` :62,
    `INVALID_SIGNATURE_FAULT_PROOF_TITLES` :74).
-4. demo/midgard-core/src/deployment-manifest-identity-v1.ts —
+4. demo/midgard-core/src/deployment-manifest-identity.ts —
    `DEPLOYMENT_MANIFEST_V1_CONTRACT_NAMES` += `fraudProofNoReferenceInput`,
    `fraudProofReferenceInputNoIndex`, `fraudProofInvalidSignature`, plus the
    chunked challenge validator's contract names (spend/mint), and
    `DEPLOYMENT_MANIFEST_V1_FRAUD_PROOF_CATALOGUE_CATEGORY_ORDER` (:83–94)
    += the three categories.
-5. demo/midgard-node/src/deployment-manifest-v1.ts:609 area — category →
+5. demo/midgard-node/src/deployment-manifest.ts:609 area — category →
    contract-name map += 3.
 6. demo/midgard-node/src/services/midgard-contracts.ts:710 area —
    `spendingValidatorFromManifest` arms += 3, plus challenge-validator
@@ -339,7 +339,7 @@ Fixtures (the "two hand-pinned catalogue fixtures", identified exactly):
     (root `774e736e…`, :20–74) and `POSITIONAL_SCRIPT_CATALOGUE` (root
     `6af775fd…`, :75–129), new roots + 11 membership proofs each, against
     the post-#545 blueprint's step-01 hashes.
-12. demo/midgard-core/tests/deployment-manifest-identity-v1.test.ts:27 —
+12. demo/midgard-core/tests/deployment-manifest-identity.test.ts:27 —
     pinned root `774e736e…` + its 8 proofs recomputed to 11.
 
 Explicitly OUT of this batch: demo/midgard-fault-proofs/src/runtime.ts
@@ -400,7 +400,7 @@ Verification the batch owes (per §4.4 and the harvest entry's lessons):
    services, and the two hand-pinned catalogue fixtures" — verified, but it
    omits demo/midgard-watcher/src/deployment-identity.ts (a production
    category map, :40) and, unless "node services" is read broadly,
-   demo/midgard-node/src/deployment-manifest-v1.ts and
+   demo/midgard-node/src/deployment-manifest.ts and
    src/commands/contract-deployment-info.ts. The execution contract above
    enumerates all of them.
 5. **Verified sound (no flag, recorded for completeness):** the Q1X-F5

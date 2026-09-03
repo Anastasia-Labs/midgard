@@ -24,7 +24,7 @@ import type {
   ObservedStateQueueNode,
   ObservedStateQueueSnapshot,
 } from "../domain.js";
-import { createLocalKupmiosStateQueueReplayProvider } from "./state-queue-replay-provider-v1.js";
+import { createLocalKupmiosStateQueueReplayProvider } from "./state-queue-replay-provider.js";
 import type { StateQueueProvider } from "./state-queue-scanner.js";
 
 type CardanoNetwork = "Mainnet" | "Preprod" | "Preview" | "Custom";

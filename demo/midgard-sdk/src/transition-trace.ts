@@ -19,8 +19,8 @@ import {
   EventKeySchema,
   type EventToStepValue,
   EventToStepValueSchema,
-  type ForcedInclusionTx,
-  ForcedInclusionTxSchema,
+  type ForcedInclusionTxV1,
+  ForcedInclusionTxV1Schema,
   TRANSITION_STEP_SCHEMA_VERSION,
   type TransitionStep,
   TransitionStepSchema,
@@ -205,10 +205,10 @@ export const WithdrawalSourceMembershipProof =
   WithdrawalSourceMembershipProofSchema as unknown as WithdrawalSourceMembershipProof;
 
 export const ForcedTransactionSourceMembershipProofSchema =
-  rootMembershipProofSchema(OutputReferenceSchema, ForcedInclusionTxSchema);
+  rootMembershipProofSchema(OutputReferenceSchema, ForcedInclusionTxV1Schema);
 export type ForcedTransactionSourceMembershipProof = RootMembershipProof<
   OutputReference,
-  ForcedInclusionTx
+  ForcedInclusionTxV1
 >;
 export const ForcedTransactionSourceMembershipProof =
   ForcedTransactionSourceMembershipProofSchema as unknown as ForcedTransactionSourceMembershipProof;

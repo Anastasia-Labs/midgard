@@ -3,7 +3,7 @@
  */
 
 import { decodeSingleCbor } from "@al-ft/midgard-core/codec/cbor";
-import { type MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile-v1";
+import { type MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
 import { MidgardValidationPhase } from "@al-ft/midgard-core/validation-trace";
 import * as SDK from "@al-ft/midgard-sdk";
 import {

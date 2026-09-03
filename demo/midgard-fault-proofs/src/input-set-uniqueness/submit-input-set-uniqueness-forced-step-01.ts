@@ -1,5 +1,5 @@
 import {
-  type ForcedInclusionTx,
+  type ForcedInclusionTxV1,
   forcedVerdictSubject,
   type Header,
   InputSetUniquenessStep01SpendRedeemerSchema,
@@ -17,17 +17,17 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { submitLinearFaultContinue } from "../linear-fault-submit-v1.js";
+import { submitLinearFaultContinue } from "../linear-fault-submit.js";
 import type { ResolvedProverSigner } from "../runtime.js";
 import { requireInitialStepDatum } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
-import type { InputSetUniquenessContracts } from "./contracts-v1.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
+import type { InputSetUniquenessContracts } from "./contracts.js";
 import {
   requireInputSetUniquenessReferenceScript,
   requireInputSetUniquenessThreadUtxo,
-} from "./submit-common-v1.js";
-import { bindForcedDuplicateInput } from "./wrongful-rejection-v1.js";
+} from "./submit-common.js";
+import { bindForcedDuplicateInput } from "./wrongful-rejection.js";
 
 export const submitInputSetUniquenessForcedStep01 = async ({
   lucid,
@@ -47,7 +47,10 @@ export const submitInputSetUniquenessForcedStep01 = async ({
   readonly signer: ResolvedProverSigner;
   readonly threadOutRef: string;
   readonly header: Header;
-  readonly membership: RootMembershipProof<OutputReference, ForcedInclusionTx>;
+  readonly membership: RootMembershipProof<
+    OutputReference,
+    ForcedInclusionTxV1
+  >;
   readonly referenceScriptUtxo: UTxO;
   readonly preSubmitBoundary?: FraudProofPreSubmitBoundary;
   readonly awaitConfirmation?: boolean;

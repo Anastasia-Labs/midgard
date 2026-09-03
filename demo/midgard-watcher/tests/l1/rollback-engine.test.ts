@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { createServer as createTlsServer } from "node:tls";
 
 import { computeHash32 } from "@al-ft/midgard-core/codec/hash";
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { CML } from "@lucid-evolution/lucid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 

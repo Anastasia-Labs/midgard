@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyZeroInputScripts,
   ZERO_INPUT_BLUEPRINT_TITLES,
-} from "../src/zero-input/contracts-v1.js";
+} from "../src/zero-input/contracts.js";
 import {
   makeFaultProofEmulatorHarness,
   publishPlainReferenceScriptUtxo,

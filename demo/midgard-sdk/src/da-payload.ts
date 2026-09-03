@@ -2,7 +2,7 @@ import { encodeCborInteger } from "@al-ft/midgard-core/codec/cbor";
 import { Data, toHex } from "@lucid-evolution/lucid";
 import { sha256 } from "@noble/hashes/sha2.js";
 
-import { ValidationAuxiliaryWitnessSchema } from "./fraud-proof/validation-auxiliary-witness-v1.js";
+import { ValidationAuxiliaryWitnessSchema } from "./fraud-proof/validation-auxiliary-witness.js";
 import {
   ValidationMachineStateSchema,
   ValidationTraceProofSchema,

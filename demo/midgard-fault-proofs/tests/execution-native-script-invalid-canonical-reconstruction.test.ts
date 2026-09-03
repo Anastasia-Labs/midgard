@@ -14,7 +14,7 @@ import {
   nativeScriptWitness,
   outRefFromByte,
 } from "../../midgard-validation/tests/validation-fixtures.js";
-import { reconstructExecutionNativeScriptPurposes } from "../src/execution-native-script-invalid/canonical-reconstruction-v1.js";
+import { reconstructExecutionNativeScriptPurposes } from "../src/execution-native-script-invalid/canonical-reconstruction.js";
 
 describe("executionNativeScriptInvalid canonical source reconstruction", () => {
   it("derives spend, mint, observe, and receive execution order independently of witness order", () => {

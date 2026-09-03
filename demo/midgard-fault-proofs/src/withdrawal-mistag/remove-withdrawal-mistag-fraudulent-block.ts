@@ -1,5 +1,5 @@
 import { submitRemoveFraudulentBlock } from "../remove-fraudulent-block.js";
-import type { WithdrawalMistagContracts } from "./contracts-v1.js";
+import type { WithdrawalMistagContracts } from "./contracts.js";
 
 export const submitRemoveWithdrawalMistagFraudulentBlock = async ({
   contracts: _contracts,

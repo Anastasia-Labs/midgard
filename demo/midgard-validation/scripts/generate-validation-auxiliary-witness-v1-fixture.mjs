@@ -6,7 +6,7 @@ import { blake2b } from "@noble/hashes/blake2.js";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
 import { encodeValidationAuxiliaryWitnessCbor } from "../dist/index.js";
-import { canonicalValidationAuxiliaryWitnesses } from "../tests/fixtures/validation-auxiliary-witness-v1-canonical.ts";
+import { canonicalValidationAuxiliaryWitnesses } from "../tests/fixtures/validation-auxiliary-witness-canonical.js";
 
 const jsonPath = new URL(
   "../tests/fixtures/validation-auxiliary-witness-v1.generated.json",

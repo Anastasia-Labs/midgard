@@ -28,7 +28,7 @@ import {
   getCompiledScript,
 } from "../../../src/runtime.js";
 import { PHAS_MEMBERSHIP_WITHDRAW_TITLE } from "../../../src/submit-step-01.js";
-import { type FaultProofWitnessReferenceScripts } from "../../../src/witness-reference-scripts-v1.js";
+import { type FaultProofWitnessReferenceScripts } from "../../../src/witness-reference-scripts.js";
 import { network } from "./blueprints.js";
 import {
   type CompleteSignedTransactionMeasurement,

@@ -6,7 +6,7 @@
 import {
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_TRANSITION_STEP_SCHEMA_VERSION,
-} from "@al-ft/midgard-core/consensus-profile-v1";
+} from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect, Fiber, Option } from "effect";
 

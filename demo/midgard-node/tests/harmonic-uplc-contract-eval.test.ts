@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
 import { withRealStateQueueAndOperatorContracts } from "../src/services/midgard-contracts.js";
-import { TEST_AVAILABILITY_PARAMETERS } from "./helpers/availability-challenge-v1.js";
+import { TEST_AVAILABILITY_PARAMETERS } from "./helpers/availability-challenge.js";
 
 const oneShotOutRef = {
   txHash: "aa".repeat(32),

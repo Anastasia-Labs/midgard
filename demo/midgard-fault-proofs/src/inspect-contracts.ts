@@ -1,5 +1,5 @@
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
-import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import {
   buildFaultProofContracts,

@@ -8,7 +8,7 @@
  * (`tx.complete({ localUPLCEval: true })` + sign + submit + `awaitTx()`) and
  * measuring the genuinely evaluated ExUnits/bytes off the signed
  * transaction — happens in
- * `demo/midgard-fault-proofs/tests/resolver-proof-fit-sweep-generate-v1.test.ts`,
+ * `demo/midgard-fault-proofs/tests/resolver-proof-fit-sweep-generate.test.ts`,
  * a vitest test file living in the same package as the pinned
  * emulator-harness support helpers it imports verbatim
  * (`tests/support/submit-init-emulator-shared.ts`,
@@ -53,7 +53,7 @@ const fixturePath = fileURLToPath(
 
 /**
  * Runs the harness-based generation worker
- * (`resolver-proof-fit-sweep-generate-v1.test.ts`) via `vitest run` inside
+ * (`resolver-proof-fit-sweep-generate.test.ts`) via `vitest run` inside
  * `demo/midgard-fault-proofs`, writing the fixture JSON to `outputPath`.
  * Never swallows the worker's own output — a real emulator lifecycle
  * failure surfaces exactly as vitest reports it.
@@ -68,7 +68,7 @@ const runGenerator = (outputPath) => {
         "exec",
         "vitest",
         "run",
-        "tests/resolver-proof-fit-sweep-generate-v1.test.ts",
+        "tests/resolver-proof-fit-sweep-generate.test.ts",
       ],
       {
         cwd: faultProofsDir,
@@ -82,7 +82,7 @@ const runGenerator = (outputPath) => {
     );
   } catch (error) {
     fail(
-      `the harness generation worker (resolver-proof-fit-sweep-generate-v1.test.ts) failed: ${String(error)}`,
+      `the harness generation worker (resolver-proof-fit-sweep-generate.test.ts) failed: ${String(error)}`,
     );
   }
 };

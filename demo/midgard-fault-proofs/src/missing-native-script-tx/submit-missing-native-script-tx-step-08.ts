@@ -32,14 +32,14 @@ import {
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
-} from "../witness-reference-scripts-v1.js";
+} from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary-v1.js";
-import type { MissingNativeScriptTxContracts } from "./contracts-v1.js";
-import { prepareMissingNativeScriptTxStagedFieldOpening } from "./staged-field-opening-v1.js";
+} from "../workflow/transaction-boundary.js";
+import type { MissingNativeScriptTxContracts } from "./contracts.js";
+import { prepareMissingNativeScriptTxStagedFieldOpening } from "./staged-field-opening.js";
 import {
   advanceMissingNativeScriptTxSemanticCheckpoint,
   decodeMissingNativeScriptTxSemanticCheckpoint,
@@ -49,13 +49,13 @@ import {
   missingNativeScriptTxRequiredScriptPresentThrough,
   missingNativeScriptTxSemanticCheckpointIsComplete,
   resolveMissingNativeScriptTxSemanticCheckpoint,
-} from "./staged-walk-v1.js";
+} from "./staged-walk.js";
 import {
   missingNativeScriptTxStepLabel,
   missingNativeScriptTxSubmitError,
   requireMissingNativeScriptTxStepState,
   requireMissingNativeScriptTxThreadUtxo,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 const STEP_INDEX = 7 as const;
 const STEP_LABEL = missingNativeScriptTxStepLabel(STEP_INDEX);

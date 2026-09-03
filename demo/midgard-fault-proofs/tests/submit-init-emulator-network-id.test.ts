@@ -25,7 +25,7 @@ import {
   makeNetworkIdEmulatorHarness,
   NETWORK_ID_EMULATOR_CATEGORY_ID,
   publishNetworkIdReferenceScripts,
-} from "./support/network-id-emulator-v1.js";
+} from "./support/network-id-emulator.js";
 import {
   EMULATOR_HEADER_CLOCK_HEADROOM_MS,
   emulatorSuccessorHeaderStart,
@@ -44,7 +44,7 @@ import {
   MAXIMUM_PROOF_STEP_COUNT,
   syntheticDeepMembershipProof,
   syntheticDeepSharedRootProofs,
-} from "./support/synthetic-deep-proof-v1.js";
+} from "./support/synthetic-deep-proof.js";
 
 describe("Q35 network-id real-fault lifecycle", () => {
   it.each([

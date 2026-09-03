@@ -17,7 +17,7 @@ import {
   decodeMidgardNativeTxFullFromCanonicalCbor,
   encodeMidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
@@ -37,7 +37,7 @@ const generatedAikenPath = join(
   repositoryRoot,
   "onchain/aiken/lib/midgard/transaction-root-v1-golden.test.ak",
 );
-const buildEntrypointPath = join(packageRoot, "dist/transaction-root-v1.js");
+const buildEntrypointPath = join(packageRoot, "dist/transaction-root.js");
 const checkOnly = process.argv.includes("--check");
 
 if (
@@ -457,7 +457,7 @@ const makeAiken = ({ transactions, forcedOrders, roots }) => {
     lines.push(
       `test rf031_${entry.constantPrefix}_forced_source_and_verdict_are_exact() {`,
       `  expect Some(data) = cbor.deserialise(${entry.constantPrefix}_value_cbor)`,
-      `  expect value: ledger_state.ForcedInclusionTx = data`,
+      `  expect value: ledger_state.ForcedInclusionTxV1 = data`,
       `  expect Some(order_data) = cbor.deserialise(${entry.constantPrefix}_key)`,
       "  expect order: OutputReference = order_data",
       "  and {",
@@ -572,10 +572,7 @@ const normalEntries = parsedTransactions.map((parsed) => {
     canonicalCbor,
     MIDGARD_CONSENSUS_PROFILE,
   );
-  const decoded = Data.from(
-    valueCbor.toString("hex"),
-    SDK.L2TransactionSource,
-  );
+  const decoded = Data.from(valueCbor.toString("hex"), SDK.L2TransactionSource);
   const source = decoded;
   const full = decodeMidgardNativeTxFullFromCanonicalCbor(canonicalCbor);
   return {
@@ -597,11 +594,7 @@ const forcedInputNames = new Set();
 const forcedEntries = [];
 for (const [index, value] of canonical.forcedOrders.entries()) {
   const label = `canonical input.forcedOrders[${index.toString()}]`;
-  exactKeys(
-    value,
-    ["name", "transaction", "orderId", "verdict"],
-    label,
-  );
+  exactKeys(value, ["name", "transaction", "orderId", "verdict"], label);
   const name = nonEmptyString(value.name, `${label}.name`);
   if (forcedInputNames.has(name)) fail(`duplicate forced order name ${name}`);
   forcedInputNames.add(name);
@@ -639,7 +632,7 @@ for (const [index, value] of canonical.forcedOrders.entries()) {
   };
   const keyCbor = Buffer.from(Data.to(orderId, SDK.OutputReference), "hex");
   const forced = await Effect.runPromise(
-    production.encodeForcedInclusionValue({
+    production.encodeForcedInclusionValueV1({
       nativeTxCbor: Buffer.from(transaction.canonicalTransactionCborHex, "hex"),
       verdict: VERDICTS[verdictName].sdk,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
@@ -647,7 +640,7 @@ for (const [index, value] of canonical.forcedOrders.entries()) {
   );
   const decoded = Data.from(
     forced.value.toString("hex"),
-    SDK.ForcedInclusionTx,
+    SDK.ForcedInclusionTxV1,
   );
   if (
     JSON.stringify(decoded.verdict, (_key, item) =>

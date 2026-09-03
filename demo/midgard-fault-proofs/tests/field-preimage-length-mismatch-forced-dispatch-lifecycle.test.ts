@@ -27,9 +27,9 @@ import {
   type FaultProofFieldOpeningPlan,
   faultProofRawFieldCarriage,
   publishFaultProofFieldCarriage,
-} from "../src/field-opening-v1.js";
-import { prepareAcceptedFieldPreimageLengthMismatch } from "../src/field-preimage-length-mismatch/prepare-accepted-v1.js";
-import type { ManifestBoundFieldPreimageLengthConfig } from "../src/field-preimage-length-mismatch/production-config-v1.js";
+} from "../src/field-opening.js";
+import type { ManifestBoundFieldPreimageLengthConfig } from "../src/field-preimage-length-mismatch/config.js";
+import { prepareAcceptedFieldPreimageLengthMismatch } from "../src/field-preimage-length-mismatch/prepare-accepted.js";
 import {
   submitFieldPreimageLengthAcceptedAuthentication,
   submitFieldPreimageLengthAcceptedDispatch,
@@ -38,8 +38,8 @@ import {
   submitFieldPreimageLengthForcedDispatch,
   submitFieldPreimageLengthInit,
   submitFieldPreimageLengthTerminal,
-} from "../src/field-preimage-length-mismatch/submit-lucid-v1.js";
-import { prepareFieldPreimageLengthWorkflow } from "../src/field-preimage-length-mismatch/workflow-v1.js";
+} from "../src/field-preimage-length-mismatch/submit-lucid.js";
+import { prepareFieldPreimageLengthWorkflow } from "../src/field-preimage-length-mismatch/workflow.js";
 import { encodeL2TransactionSourceValue } from "../src/prepare-double-spend.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import {
@@ -47,7 +47,7 @@ import {
   parseSubmitStep01TxInclusion,
 } from "../src/submit-step-01.js";
 import { buildForcedTransactionLeafMembershipProof } from "../src/transition-trace/witnesses.js";
-import { committedFieldShapeScenarioMaterial } from "./support/committed-field-shape-emulator-v1.js";
+import { committedFieldShapeScenarioMaterial } from "./support/committed-field-shape-emulator.js";
 import { network } from "./support/emulator/blueprints.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";

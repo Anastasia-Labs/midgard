@@ -156,7 +156,7 @@ cd onchain/aiken && /home/gumbo/.aiken/versions/v1.1.23-org-5adf7837/bin/aiken b
 node -e 'const b=require("./plutus.json");for(const v of b.validators)if(/phase_a_script_preconditions/.test(v.title))console.log(v.title,Buffer.from(v.compiledCode,"hex").length)'
 # expect item ≈12,556, finalize ≈8,824, prepare 5,302
 /home/gumbo/.aiken/versions/v1.1.23-org-5adf7837/bin/aiken check -m phase_a_script_preconditions   # existing 4 + §8 tests
-cd demo/midgard-fault-proofs && pnpm test -- tests/submit-init-emulator-validation-dispute-phase-a-preconditions.test.ts tests/zz605-semantic-resolver-arity.test.ts tests/inspect-contracts.test.ts
+cd demo/midgard-fault-proofs && pnpm test -- tests/submit-init-emulator-validation-dispute-phase-a-preconditions.test.ts tests/semantic-resolver-arity-gate.test.ts tests/inspect-contracts.test.ts
 ```
 
 ## 10. Ordering and dependencies

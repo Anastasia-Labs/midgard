@@ -5,7 +5,7 @@ import {
   type DeploymentManifestFraudProofCatalogueCategory,
   type DeploymentMarker,
   MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
-} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   DA_ATTESTATION_ASSET_NAME_PREFIX,
   DaAttestationDatum,

@@ -39,7 +39,7 @@ import {
   makeWithdrawnReferenceInputEmulatorHarness,
   publishWithdrawnReferenceInputReferenceScripts,
   setupWithdrawnReferenceInputScenario,
-} from "./support/withdrawn-reference-input-emulator-v1.js";
+} from "./support/withdrawn-reference-input-emulator.js";
 
 /**
  * 364 decoys plus the accused reference input (constant §5.3 stride of 40

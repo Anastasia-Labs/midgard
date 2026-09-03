@@ -41,9 +41,9 @@ import {
   parseNativeTxCompactCbor,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
-} from "./field-opening-v1.js";
+} from "./field-opening.js";
 import { parseHex } from "./json-file.js";
-import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary-v1.js";
+import { rejectRetiredUnauthenticatedSubmissionRoute } from "./legacy-submission-boundary.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -65,12 +65,12 @@ import {
   selectFeeInput,
 } from "./submit-step-01.js";
 import { computationThreadOutputPredicate } from "./tx-layout.js";
-import { witnessSpendingValidatorCarriage } from "./witness-reference-scripts-v1.js";
+import { witnessSpendingValidatorCarriage } from "./witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
-} from "./workflow/transaction-boundary-v1.js";
+} from "./workflow/transaction-boundary.js";
 
 export type SubmitStep03CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;

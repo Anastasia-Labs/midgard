@@ -41,19 +41,19 @@ import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
-} from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+} from "../witness-reference-scripts.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary-v1.js";
-import type { DoubleWithdrawContracts } from "./contracts-v1.js";
+} from "../workflow/transaction-boundary.js";
+import type { DoubleWithdrawContracts } from "./contracts.js";
 import {
   doubleWithdrawSubmitError,
   requireDoubleWithdrawReferenceScript,
   requireDoubleWithdrawStepState,
   requireDoubleWithdrawThreadUtxo,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 import {
   deriveDoubleWithdrawMembership,
   type SubmitDoubleWithdrawInclusion,

@@ -18,11 +18,11 @@ import {
   encodeDaProofBundleByHeaderResponseCbor,
   encodeDaTraceStepByIndexResponseCbor,
 } from "@al-ft/midgard-core/da-transport";
-import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { makeDeploymentMarker } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   MIDGARD_RETENTION_WINDOW,
   RETENTION_MS_PER_DAY,
-} from "@al-ft/midgard-core/retention-window-v1";
+} from "@al-ft/midgard-core/retention-window";
 import {
   DA_PAYLOAD_VERSION,
   type DaPayload,

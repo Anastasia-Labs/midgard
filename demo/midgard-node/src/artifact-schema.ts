@@ -16,8 +16,8 @@
  *   bounded nonempty string". Stricter semantics, not just different words.
  *
  * Module-local dialects that intentionally stay outside this file:
- * `deployment-manifest-v1.ts` ("Deployment manifest <field> …", accepts
- * whitespace-only strings), `l1-tx-order-carriage-v1.ts` (domain parsers,
+ * `deployment-manifest.ts` ("Deployment manifest <field> …", accepts
+ * whitespace-only strings), `l1-tx-order-carriage.ts` (domain parsers,
  * "is not a …"), and `database/utils/exact-record.ts` (the DB-adapter
  * record contract).
  */

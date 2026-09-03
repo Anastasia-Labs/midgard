@@ -1,7 +1,7 @@
 import {
   MIDGARD_CONSENSUS_PROFILE,
   type MidgardConsensusProfile,
-} from "@al-ft/midgard-core/consensus-profile-v1";
+} from "@al-ft/midgard-core/consensus-profile";
 import { Effect, Option } from "effect";
 
 import {

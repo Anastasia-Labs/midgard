@@ -1,5 +1,5 @@
 import { formatUnknownError } from "@al-ft/midgard-core";
-import { parseDeploymentManifestEconomics } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { parseDeploymentManifestEconomics } from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   ACTIVE_OPERATOR_NODE_ASSET_NAME_PREFIX,
   ACTIVE_OPERATORS_ROOT_ASSET_NAME,
@@ -90,7 +90,7 @@ import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "./workflow/transaction-boundary-v1.js";
+} from "./workflow/transaction-boundary.js";
 
 export const STATE_QUEUE_REMOVAL_VALIDITY_WINDOW_MS = 300_000n;
 export const STATE_QUEUE_REMOVAL_VALIDITY_BACKDATE_MS = 120_000n;

@@ -7,14 +7,14 @@ import {
   assertMidgardConsensusReleaseReady,
   MIDGARD_CONSENSUS_PROFILE,
   type MidgardConsensusProfile,
-} from "@al-ft/midgard-core/consensus-profile-v1";
+} from "@al-ft/midgard-core/consensus-profile";
 import {
   assertDeploymentMarkerMatches,
   type DeploymentManifestL1Finality,
   type DeploymentMarker,
   makeDeploymentMarker,
   parseDeploymentManifestAvailabilityChallenge,
-} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { formatUnknownError } from "@al-ft/midgard-core/error-format";
 import { normalizeOutRef } from "@al-ft/midgard-core/out-ref";
 import * as SDK from "@al-ft/midgard-sdk";
@@ -38,7 +38,7 @@ import { Effect, Layer } from "effect";
 import {
   type DeploymentManifestValue,
   parseDeploymentManifestValue,
-} from "../deployment-manifest-v1.js";
+} from "../deployment-manifest.js";
 import {
   defaultDeploymentRunStatePath,
   loadDeploymentRunState,

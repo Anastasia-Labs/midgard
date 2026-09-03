@@ -90,19 +90,19 @@ import {
   computeWatcherRuleBundleCommitment,
   makeWatcherCanonicalRuleBundle,
   type WatcherRuleBundle,
-} from "../../src/verification/rule-bundle-v1.js";
+} from "../../src/verification/rule-bundle.js";
+import {
+  createGenuineSettlementAuthorities,
+  type GenuineSettlementAuthority,
+  type GenuineSettlementAuthorityFixtureSet,
+} from "../support/settlement-authority-scenarios.js";
 import {
   createGenuineUserEventDepositWithdrawalAuthorities,
   type GenuineUserEventAuthorityFixtureSet,
   genuineUserEventForcedPayloadForCanonicalTx,
   type UserEventAcceptedAuthorityScenario,
   userEventForcedOperatorVerdictForClassification,
-} from "../support/w15-authority-scenarios.js";
-import {
-  createGenuineSettlementAuthorities,
-  type GenuineSettlementAuthority,
-  type GenuineSettlementAuthorityFixtureSet,
-} from "../support/w16-authority-scenarios.js";
+} from "../support/user-event-authority-scenarios.js";
 import { createWatcherOpaqueAuthorityHarness } from "../support/watcher-opaque-authority-harness.js";
 
 const header = { blockSlot: 0n } as Parameters<
@@ -776,7 +776,7 @@ const publicEventFromW15 = (
           },
           verdict,
         },
-        SDK.ForcedInclusionTxSchema,
+        SDK.ForcedInclusionTxV1Schema,
       ),
     ] as SDK.DaPayloadEntry,
     forcedPreimage: [

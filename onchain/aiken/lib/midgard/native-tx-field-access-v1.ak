@@ -121,7 +121,7 @@ pub const max_field_item_count: Int = 65535
 ///
 /// Declared once here; callers name this constant rather than repeating the
 /// literal. Its TypeScript twin is `MIDGARD_CHUNK_BYTES_K_V1` in
-/// `demo/midgard-core/src/codec/native-tx-field-access-v1.ts`, which is asserted
+/// `demo/midgard-core/src/codec/native-tx-field-access.ts`, which is asserted
 /// equal to the cost model's derived frontier so neither half can drift.
 pub const chunk_bytes_k: Int = 15148
 

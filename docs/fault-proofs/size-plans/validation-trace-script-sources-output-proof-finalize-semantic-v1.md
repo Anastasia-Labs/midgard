@@ -188,7 +188,7 @@ cd onchain/aiken && aiken build --env testnet
 node -e 'const b=require("./plutus.json");for(const v of b.validators)if(/(script_sources_output_proof_finalize_semantic_v1\.main\.spend|ledger_output_descriptor_.*_yield_v1\.main\.withdraw)$/.test(v.title)){const n=Buffer.from(v.compiledCode,"hex").length;console.log(v.title,n,n<=15000?"OK":"OVER")}'
 # expected: 5 titles, all OK
 aiken check -m ledger_output_descriptor_yields   # expected: ≥ 11 tests, 0 failures
-cd ../../demo && pnpm --filter @al-ft/midgard-fault-proofs test -- tests/submit-init-emulator-script-sources-output-proof-v1.test.ts tests/validation-dispute-submit.test.ts tests/zz605-semantic-resolver-arity.test.ts
+cd ../../demo && pnpm --filter @al-ft/midgard-fault-proofs test -- tests/submit-init-emulator-script-sources-output-proof-v1.test.ts tests/validation-dispute-submit.test.ts tests/semantic-resolver-arity-gate.test.ts
 ```
 
 ## 10. Ordering and dependencies

@@ -52,7 +52,7 @@ import {
   publishDecodingReferenceScripts,
   setupDecodingScenario,
   submitRawDecodingCancel,
-} from "./support/native-script-decoding-emulator-v1.js";
+} from "./support/native-script-decoding-emulator.js";
 import {
   expectSingleUtxoWithUnit,
   network,

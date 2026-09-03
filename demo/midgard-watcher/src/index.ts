@@ -5,7 +5,7 @@ export {
   type WatcherFaultDecisionBridge,
   type WatcherFaultDecisionBridgeResult,
   type WatcherFaultDecisionTarget,
-} from "./fault-proofs/production-fault-decision-bridge-v1.js";
+} from "./fault-proofs/fault-decision-bridge.js";
 export {
   openWatcherFaultDecisionJournal,
   unsafeOpenWatcherFaultDecisionJournalForTest,
@@ -14,7 +14,7 @@ export {
   WATCHER_FAULT_DECISION_RECORD_SCHEMA_VERSION,
   type WatcherFaultDecisionJournal,
   type WatcherPersistedFaultDecisionRecord,
-} from "./fault-proofs/production-fault-decision-journal-v1.js";
+} from "./fault-proofs/fault-decision-journal.js";
 export {
   createWatcherFaultProofApplication,
   unsafeCreateWatcherFaultProofApplicationForTest,
@@ -29,7 +29,7 @@ export {
   type WatcherFaultProofInfrastructureAuthority,
   type WatcherFaultProofStartupReadiness,
   type WatcherInstalledWorkflowCategory,
-} from "./fault-proofs/production-fault-proof-application-v1.js";
+} from "./fault-proofs/fault-proof-application.js";
 export {
   createWatcherFaultProofSupervisor,
   enqueueWatcherFaultDecision,
@@ -41,7 +41,13 @@ export {
   type WatcherFaultProofJob,
   type WatcherFaultProofSupervisor,
   type WatcherFaultProofSupervisorStatus,
-} from "./fault-proofs/production-fault-proof-supervisor-v1.js";
+} from "./fault-proofs/fault-proof-supervisor.js";
+export {
+  assertWatcherProtocolParameterRuntimeAuthority,
+  createWatcherProtocolParameterRuntimeAuthority,
+  WATCHER_PROTOCOL_PARAMETER_RUNTIME_AUTHORITY,
+  type WatcherProtocolParameterRuntimeAuthority,
+} from "./funding/prover-funding.js";
 export {
   assertWatcherProverFundingAuthorityFactory,
   createWatcherProverFundingAuthority,
@@ -49,7 +55,7 @@ export {
   WATCHER_PROVER_FUNDING_AUTHORITY,
   type WatcherProverFundingAuthority,
   type WatcherProverFundingAuthorityFactory,
-} from "./funding/production-prover-funding-authority-v1.js";
+} from "./funding/prover-funding-authority.js";
 export {
   aggregateWatcherProverFundingSweep,
   assertWatcherProverFundingCalculation,
@@ -60,7 +66,7 @@ export {
   type WatcherProverFundingActionCalculation,
   type WatcherProverFundingCalculation,
   type WatcherProverFundingSweep,
-} from "./funding/production-prover-funding-calculation-v1.js";
+} from "./funding/prover-funding-calculation.js";
 export {
   assertWatcherProverFundingReservationPlan,
   makeWatcherProverFundingReservationRecord,
@@ -72,13 +78,14 @@ export {
   type WatcherProverFundingReservationRecord,
   type WatcherProverFundingReservationStore,
   type WatcherProverFundingReservationTransition,
-} from "./funding/production-prover-funding-reservation-v1.js";
+} from "./funding/prover-funding-reservation.js";
 export {
-  assertWatcherProtocolParameterRuntimeAuthority,
-  createWatcherProtocolParameterRuntimeAuthority,
-  WATCHER_PROTOCOL_PARAMETER_RUNTIME_AUTHORITY,
-  type WatcherProtocolParameterRuntimeAuthority,
-} from "./funding/production-prover-funding-v1.js";
+  isWatcherProverFundingReservationConflict,
+  openWatcherSqliteProverFundingReservationStore,
+  WATCHER_SQLITE_PROVER_FUNDING_RESERVATION_STORE,
+  type WatcherProverFundingReservationConflict,
+  type WatcherSqliteProverFundingReservationStoreRuntime,
+} from "./funding/sqlite-prover-funding-reservation-store.js";
 export {
   assertWatcherWorkflowFundingProfileOverlay,
   createWatcherWorkflowFundingReleaseEvidence,
@@ -90,18 +97,11 @@ export {
   type WatcherWorkflowFundingProfileOverlay,
   type WatcherWorkflowFundingReleaseEvidence,
   workflowFundingProfileFromOverlay,
-} from "./funding/production-workflow-funding-profile-overlay-v1.js";
-export {
-  isWatcherProverFundingReservationConflict,
-  openWatcherSqliteProverFundingReservationStore,
-  WATCHER_SQLITE_PROVER_FUNDING_RESERVATION_STORE,
-  type WatcherProverFundingReservationConflict,
-  type WatcherSqliteProverFundingReservationStoreRuntime,
-} from "./funding/sqlite-prover-funding-reservation-store-v1.js";
+} from "./funding/workflow-funding-profile-overlay.js";
 export {
   deriveWatcherAttestationTimeoutObservation,
   type WatcherAttestationTimeoutObservation,
-} from "./indexers/attestation-timeout-observation-v1.js";
+} from "./indexers/attestation-timeout-observation.js";
 export {
   assertWatcherStateQueueObservation,
   createWatcherStateQueueObservationSource,
@@ -110,7 +110,7 @@ export {
   type WatcherStateQueueHeaderObservation,
   type WatcherStateQueueObservationSource,
   type WatcherStateQueueRecovery,
-} from "./indexers/production-state-queue-observation-v1.js";
+} from "./indexers/authenticated-state-queue-observation.js";
 export {
   evaluateWatcherProofThreadIndexer,
   makeWatcherProofThreadJournal,
@@ -357,7 +357,7 @@ export {
   WATCHER_LOCAL_KUPMIOS_NATIVE_OBSERVATION_SCHEMA_VERSION,
   type WatcherLocalKupmiosNativeObservation,
   type WatcherLocalKupmiosNativeObservationRuntime,
-} from "./l1/local-kupmios-native-observation-v1.js";
+} from "./l1/local-kupmios-native-observation.js";
 export {
   evaluateWatcherMultiProviderConsistency,
   WATCHER_MULTI_PROVIDER_ALERT_CODES,
@@ -375,7 +375,7 @@ export {
   admitWatcherNativeRollForwardBlock,
   WATCHER_NATIVE_BLOCK_ADMISSION_SCHEMA_VERSION,
   type WatcherNativeBlockAdmission,
-} from "./l1/native-block-admission-v1.js";
+} from "./l1/native-block-admission.js";
 export {
   parseWatcherNativeChainSyncEvent,
   startWatcherNativeChainSync,
@@ -388,7 +388,7 @@ export {
   type WatcherNativeChainSyncRollBackward,
   type WatcherNativeChainSyncRollForward,
   type WatcherNativeChainSyncRuntime,
-} from "./l1/native-chain-sync-v1.js";
+} from "./l1/native-chain-sync.js";
 export {
   evaluateAndPersistWatcherPostFinalityRecovery,
   evaluateAndPersistWatcherRollback,
@@ -447,6 +447,12 @@ export {
   type WatcherRollbackVerificationContext,
 } from "./l1/rollback-engine.js";
 export {
+  createWatcherChainCoordinator,
+  unsafeCreateWatcherChainCoordinatorForTest,
+  WATCHER_CHAIN_COORDINATOR_SCHEMA_VERSION,
+  type WatcherChainCoordinator,
+} from "./runtime/chain-coordinator.js";
+export {
   parseWatcherConfig,
   parseWatcherConfigJson,
   parseWatcherStrictJsonValue,
@@ -468,6 +474,7 @@ export {
   type WatcherTargetNetwork,
   type WatcherWalletKeySource,
 } from "./runtime/config.js";
+export { loadWatcherVerifiedDeploymentAuthority } from "./runtime/deployment-authority.js";
 export {
   assertWatcherDeploymentProtocolParameterAuthority,
   assertWatcherDeploymentProtocolScriptAuthority,
@@ -494,17 +501,10 @@ export {
   type WatcherReferenceScriptIdentity,
 } from "./runtime/deployment-identity.js";
 export {
-  createWatcherChainCoordinator,
-  unsafeCreateWatcherChainCoordinatorForTest,
-  WATCHER_CHAIN_COORDINATOR_SCHEMA_VERSION,
-  type WatcherChainCoordinator,
-} from "./runtime/production-chain-coordinator-v1.js";
-export { loadWatcherVerifiedDeploymentAuthority } from "./runtime/production-deployment-authority-v1.js";
-export {
   startWatcherOperationsHttpServer,
   WATCHER_OPERATIONS_HTTP,
   type WatcherOperationsHttpServer,
-} from "./runtime/production-operations-http-v1.js";
+} from "./runtime/operations-http.js";
 export {
   createWatcherOperationsObservability,
   WATCHER_ALERT_CODES,
@@ -526,7 +526,7 @@ export {
   type WatcherProofStageKind,
   type WatcherProofStepDiagnostic,
   type WatcherVerificationDiagnostic,
-} from "./runtime/production-operations-observability-v1.js";
+} from "./runtime/operations-observability.js";
 export {
   decodeWatcherAuthenticationKey32,
   decodeWatcherHttpBearerSecret,
@@ -540,25 +540,7 @@ export {
   type WatcherProcessConfig,
   watcherSecretSourceIdentity,
   type WatcherTrustedHeadAuthorityProcessConfig,
-} from "./runtime/production-process-config-v1.js";
-export {
-  createWatcherStateQueueRuntime,
-  WATCHER_STATE_QUEUE_RUNTIME_SCHEMA_VERSION,
-  type WatcherStateQueueRuntime,
-} from "./runtime/production-state-queue-runtime-v1.js";
-export {
-  createWatcherTrustedHeadClientRuntime,
-  startWatcherTrustedHeadAuthorityProcess,
-  type WatcherTrustedHeadAuthorityProcessRuntime,
-  type WatcherTrustedHeadClientRuntime,
-} from "./runtime/production-trusted-head-runtime-v1.js";
-export {
-  createWatcherRuntime,
-  mintWatcherProverFundingReservationPermit,
-  WATCHER_RUNTIME_SCHEMA_VERSION,
-  type WatcherProverFundingUtxoProvider,
-  type WatcherRuntime,
-} from "./runtime/production-watcher-runtime-v1.js";
+} from "./runtime/process-config.js";
 export {
   runWatcherCommand,
   unsafeRunWatcherCommandForTest,
@@ -568,6 +550,11 @@ export {
   type WatcherCommandIo,
 } from "./runtime/scaffold.js";
 export {
+  createWatcherStateQueueRuntime,
+  WATCHER_STATE_QUEUE_RUNTIME_SCHEMA_VERSION,
+  type WatcherStateQueueRuntime,
+} from "./runtime/state-queue-runtime.js";
+export {
   createWatcherTrustedHeadAuthorityClient,
   openWatcherTrustedHeadAuthorityStore,
   startWatcherTrustedHeadAuthorityServer,
@@ -576,7 +563,20 @@ export {
   type WatcherTrustedHeadAuthorityClient,
   type WatcherTrustedHeadAuthorityServer,
   type WatcherTrustedHeadAuthorityStore,
-} from "./runtime/trusted-head-authority-v1.js";
+} from "./runtime/trusted-head-authority.js";
+export {
+  createWatcherTrustedHeadClientRuntime,
+  startWatcherTrustedHeadAuthorityProcess,
+  type WatcherTrustedHeadAuthorityProcessRuntime,
+  type WatcherTrustedHeadClientRuntime,
+} from "./runtime/trusted-head-runtime.js";
+export {
+  createWatcherRuntime,
+  mintWatcherProverFundingReservationPermit,
+  WATCHER_RUNTIME_SCHEMA_VERSION,
+  type WatcherProverFundingUtxoProvider,
+  type WatcherRuntime,
+} from "./runtime/watcher-runtime.js";
 export {
   assertWatcherCanonicalRetentionWindow,
   decodeWatcherCanonicalBlockStoreSnapshot,
@@ -618,6 +618,11 @@ export {
   type WatcherCanonicalRetentionWindow,
   watcherCanonicalRetentionWindowFromVerifiedManifest,
 } from "./storage/canonical-block-store.js";
+export {
+  createWatcherDurableRuntime,
+  WATCHER_DURABLE_RUNTIME_SCHEMA_VERSION,
+  type WatcherDurableRuntime,
+} from "./storage/durable-runtime.js";
 export {
   compareAndSwapWatcherDurableAtomicSnapshot,
   decodeWatcherDurableStore,
@@ -664,19 +669,6 @@ export {
   type WatcherSubmission,
 } from "./storage/durable-store.js";
 export {
-  createWatcherDurableRuntime,
-  WATCHER_DURABLE_RUNTIME_SCHEMA_VERSION,
-  type WatcherDurableRuntime,
-} from "./storage/production-durable-runtime-v1.js";
-export {
-  createWatcherRetainedDaRuntime,
-  createWatcherWorkflowRuntimeLoader,
-  WATCHER_RETAINED_DA_RUNTIME,
-  type WatcherRetainedDaRuntime,
-  type WatcherRetainedDaRuntimeOptions,
-  type WatcherWorkflowInfrastructureBuilder,
-} from "./storage/production-retained-da-runtime-v1.js";
-export {
   WATCHER_PUBLIC_DA_CLIENT_SCHEMA_VERSION,
   type WatcherPublicDaAttempt,
   type WatcherPublicDaAttemptStatus,
@@ -699,10 +691,28 @@ export {
   type WatcherPublicDaLibp2pTransportOptions,
 } from "./storage/public-da-libp2p-transport.js";
 export {
+  createWatcherRetainedDaRuntime,
+  createWatcherWorkflowRuntimeLoader,
+  WATCHER_RETAINED_DA_RUNTIME,
+  type WatcherRetainedDaRuntime,
+  type WatcherRetainedDaRuntimeOptions,
+  type WatcherWorkflowInfrastructureBuilder,
+} from "./storage/retained-da-runtime.js";
+export {
   openWatcherSqliteDurableBackend,
   WATCHER_SQLITE_DURABLE_BACKEND_SCHEMA_VERSION,
   type WatcherSqliteDurableBackend,
-} from "./storage/sqlite-durable-backend-v1.js";
+} from "./storage/sqlite-durable-backend.js";
+export {
+  assertWatcherAuthenticatedReplayTranscript,
+  createWatcherAuthenticatedReplayTranscript,
+  replayWatcherAuthenticatedReplayTranscript,
+  WATCHER_AUTHENTICATED_REPLAY_TRANSCRIPT,
+  type WatcherAuthenticatedReplayTranscript,
+  watcherAuthenticatedReplayTranscriptCborHex,
+  type WatcherReplayCoordinate,
+  watcherReplayRawRecordCborHex,
+} from "./verification/authenticated-replay-transcript.js";
 export {
   assertWatcherFullBlockReplayResult,
   evaluateWatcherBlockReplay,
@@ -798,7 +808,7 @@ export {
   type WatcherMissingSignatureDetection,
   type WatcherMissingSignatureDetectionConfig,
   type WatcherMissingSignatureVkeySources,
-} from "./verification/missing-signature-detector-v1.js";
+} from "./verification/missing-signature-detector.js";
 export {
   evaluateWatcherPhaseABlock,
   type EvaluateWatcherPhaseABlockInput,
@@ -827,16 +837,6 @@ export {
   type WatcherPhaseAVerifierReasonCode,
 } from "./verification/phase-a-verifier.js";
 export {
-  assertWatcherAuthenticatedReplayTranscript,
-  createWatcherAuthenticatedReplayTranscript,
-  replayWatcherAuthenticatedReplayTranscript,
-  WATCHER_AUTHENTICATED_REPLAY_TRANSCRIPT,
-  type WatcherAuthenticatedReplayTranscript,
-  watcherAuthenticatedReplayTranscriptCborHex,
-  type WatcherReplayCoordinate,
-  watcherReplayRawRecordCborHex,
-} from "./verification/production-authenticated-replay-transcript-v1.js";
-export {
   computeWatcherRuleBundleCommitment,
   encodeWatcherRuleBundle,
   type LoadedWatcherRuleBundle,
@@ -854,4 +854,4 @@ export {
   type WatcherRuleBundleErrorCode,
   type WatcherRuleBundleFeature,
   type WatcherRuleBundleTargetParameters,
-} from "./verification/rule-bundle-v1.js";
+} from "./verification/rule-bundle.js";

@@ -66,7 +66,7 @@ export type DecodedTransactionEntry = {
 
 export type DecodedForcedTransactionEntry = DecodedRootEntry<
   SDK.OutputReference,
-  SDK.ForcedInclusionTx
+  SDK.ForcedInclusionTxV1
 > & {
   readonly fullTransactionCbor: Buffer;
 };
@@ -532,7 +532,7 @@ const decodeTransactions = async ({
 const authenticateForcedTransactionPreimages = (
   entries: readonly DecodedRootEntry<
     SDK.OutputReference,
-    SDK.ForcedInclusionTx
+    SDK.ForcedInclusionTxV1
   >[],
   preimages: readonly SDK.DaPayloadEntry[],
 ): readonly DecodedForcedTransactionEntry[] => {
@@ -578,7 +578,7 @@ const authenticateForcedTransactionPreimages = (
           entry.value.verdict === "ForcedTxValid" ? "TxIsValid" : "TxIsInvalid",
         ),
       );
-      const expected: SDK.ForcedInclusionTx = {
+      const expected: SDK.ForcedInclusionTxV1 = {
         tx_id: computeMidgardNativeTxId(full).toString("hex"),
         source: {
           compact_cbor: source.compactCbor.toString("hex"),
@@ -590,8 +590,8 @@ const authenticateForcedTransactionPreimages = (
         verdict: entry.value.verdict,
       };
       if (
-        Data.to(entry.value, SDK.ForcedInclusionTx) !==
-        Data.to(expected, SDK.ForcedInclusionTx)
+        Data.to(entry.value, SDK.ForcedInclusionTxV1) !==
+        Data.to(expected, SDK.ForcedInclusionTxV1)
       ) {
         throw new Error(
           "source or commitment does not match canonical preimage",
@@ -949,12 +949,12 @@ export const reconstructDaPayload = async ({
   });
   const decodedForcedTransactions = decodeTypedEntries<
     SDK.OutputReference,
-    SDK.ForcedInclusionTx
+    SDK.ForcedInclusionTxV1
   >({
     fieldName: "forced_transactions",
     entries: body.forced_transactions,
     keySchema: SDK.OutputReference as never,
-    valueSchema: SDK.ForcedInclusionTxSchema,
+    valueSchema: SDK.ForcedInclusionTxV1Schema,
   });
   const forcedTransactions = authenticateForcedTransactionPreimages(
     decodedForcedTransactions,

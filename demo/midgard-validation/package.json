@@ -153,8 +153,8 @@
     "fixtures:ordered-collection-boundary-aiken:sync": "pnpm run build && node scripts/generate-ordered-collection-boundary-aiken-goldens.mjs",
     "fixtures:ordered-collection-boundary-aiken:check": "pnpm run build && node scripts/generate-ordered-collection-boundary-aiken-goldens.mjs --check",
     "test": "vitest run",
-    "test:evidence": "node scripts/run-scan-bench-evidence-v1.mjs && MIDGARD_VALIDATION_EVIDENCE=1 vitest run tests/resolver-proof-fit-sweep-v1.test.ts",
-    "test:evidence:update": "MIDGARD_SCAN_BENCH_UPDATE=1 node scripts/run-scan-bench-evidence-v1.mjs && MIDGARD_VALIDATION_EVIDENCE=1 vitest run tests/resolver-proof-fit-sweep-v1.test.ts",
+    "test:evidence": "node scripts/run-scan-bench-evidence-v1.mjs && MIDGARD_VALIDATION_EVIDENCE=1 vitest run tests/resolver-proof-fit-sweep.test.ts",
+    "test:evidence:update": "MIDGARD_SCAN_BENCH_UPDATE=1 node scripts/run-scan-bench-evidence-v1.mjs && MIDGARD_VALIDATION_EVIDENCE=1 vitest run tests/resolver-proof-fit-sweep.test.ts",
     "test:cardano-capability-p2:data-breadth": "NODE_OPTIONS=--max-old-space-size=4096 node scripts/verify-goal-cardano-capability-p2-data-breadth.mjs"
   },
   "keywords": [

@@ -26,7 +26,7 @@ cannot convict.
   `createMissingNativeScriptUtxoWorkflowRunner`
 - Aiken tests: `staged-v1.test.ak`
 - retained-history/evidence tests:
-  `demo/midgard-fault-proofs/tests/native-script-family-evidence-v1.test.ts`
+  `demo/midgard-fault-proofs/tests/native-script-family-evidence.test.ts`
 
 The seven-step path binds the transaction and selected input, authenticates
 predecessor UTxO membership and the native credential, proves the relevant

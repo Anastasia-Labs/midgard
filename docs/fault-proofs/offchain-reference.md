@@ -77,7 +77,7 @@ the library is therefore not the same as an installed production workflow.
 
 ## Watcher application
 
-`demo/midgard-watcher/src/fault-proofs/production-fault-proof-application-v1.ts` installs
+`demo/midgard-watcher/src/fault-proofs/fault-proof-application.ts` installs
 25 categories:
 
 ```text
@@ -120,7 +120,7 @@ and cannot establish completion.
 
 ## Node and DA integration
 
-- `demo/midgard-node/src/deployment-manifest-v1.ts` binds the complete contract
+- `demo/midgard-node/src/deployment-manifest.ts` binds the complete contract
   and catalogue identity.
 - `demo/midgard-node/src/transactions/reference-scripts.ts` publishes the
   required family step scripts.

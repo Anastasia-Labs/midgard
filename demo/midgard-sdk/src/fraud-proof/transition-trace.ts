@@ -17,7 +17,7 @@ import {
 import {
   type OperatorVerdict,
   OperatorVerdictSchema,
-} from "../rejection-reason-v1.js";
+} from "../rejection-reason.js";
 import {
   type AdjacentTraceProof,
   AdjacentTraceProofSchema,

@@ -14,7 +14,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "../deployment-manifest-v1.js";
+import { DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE } from "../deployment-manifest.js";
 import { loadPhasMembershipWithdrawalScript } from "../phas-membership.js";
 import { runProviderStepWithRetry } from "../provider-retry.js";
 import { compareOutRefs, outRefLabel } from "../tx-context.js";

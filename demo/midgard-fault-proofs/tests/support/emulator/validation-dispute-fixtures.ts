@@ -17,7 +17,7 @@ import {
   EMPTY_MERKLE_TREE_ROOT,
   EventKeySchema,
   EventToStepValueSchema,
-  ForcedInclusionTxSchema,
+  ForcedInclusionTxV1Schema,
   Header,
   OutputReference,
   ROOT_DOMAINS,
@@ -115,7 +115,7 @@ export const buildForcedValidationDisputeCommitments = async ({
     key: txOrderId,
     keySchema: OutputReference as never,
     value: forcedTransaction,
-    valueSchema: ForcedInclusionTxSchema,
+    valueSchema: ForcedInclusionTxV1Schema,
   });
   const transitionEntry = transitionTraceDaEntry({
     key: step.step_index,

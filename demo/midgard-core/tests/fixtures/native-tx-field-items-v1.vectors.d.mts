@@ -19,7 +19,7 @@
  * The cost is that `tsc` reads this file and never the module beside it (the
  * package sets neither `allowJs` nor `checkJs`), so these declarations are
  * asserted rather than derived. The export *list* is checked against the real
- * module by `tests/native-tx-field-items-v1-goldens.test.ts`; the declared
+ * module by `tests/native-tx-field-items-goldens.test.ts`; the declared
  * types are not, and rely instead on every value here being driven through the
  * real encoders and compared byte-for-byte against the checked-in fixture,
  * where a wrong shape fails loudly.
@@ -33,7 +33,7 @@ import type {
   MidgardRedeemerPurposeV1,
   MidgardRedeemerWitnessV1,
   MidgardTxInputV1,
-} from "../../src/codec/native-tx-field-items-v1.js";
+} from "../../src/codec/native-tx-field-items.js";
 import type {
   MidgardNativeTxBodyCanonicalV1,
   MidgardNativeTxWitnessSetCanonicalV1,

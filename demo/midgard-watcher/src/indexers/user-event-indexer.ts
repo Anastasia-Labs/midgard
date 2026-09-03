@@ -6,18 +6,18 @@ import {
   decodeMidgardNativeTxProofFieldLengths,
   verifyMidgardNativeTxProofSource,
 } from "@al-ft/midgard-core/codec/native";
-import { MIDGARD_EMPTY_FIELD_COMMITMENT } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
-import { midgardTxFieldCommitmentsFromSource } from "@al-ft/midgard-core/consensus-validation-v1";
+import { MIDGARD_EMPTY_FIELD_COMMITMENT } from "@al-ft/midgard-core/codec/native-tx-field-access";
+import { midgardTxFieldCommitmentsFromSource } from "@al-ft/midgard-core/consensus-validation";
 import {
   type DeploymentMarker,
   MIDGARD_DEPLOYMENT_MARKER_SCHEMA_VERSION,
-} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   DepositDatumSchema,
   DepositEventSchema,
   DepositSpendRedeemerSchema,
   EVENT_WAIT_DURATION_MS,
-  ForcedInclusionTxSchema,
+  ForcedInclusionTxV1Schema,
   HubOracleDatumSchema,
   MerkleRoot,
   outputReferenceToPlutusDataCbor,
@@ -2051,7 +2051,7 @@ const verifyTerminalSemantics = (
                 source: tx.source,
                 verdict: spend.purpose,
               } as never,
-              ForcedInclusionTxSchema as never,
+              ForcedInclusionTxV1Schema as never,
             );
           } catch {
             return null;

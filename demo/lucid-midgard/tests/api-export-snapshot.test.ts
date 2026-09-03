@@ -43,7 +43,7 @@ const expectedNamedExports = [
   "MidgardFetch",
   "MidgardNodeProvider",
   "MidgardNodeProviderOptions",
-  "MidgardPartialWitnessBundle",
+  "MidgardPartialWitnessBundleV1",
   "MIDGARD_PROTECTED_ADDRESS_HEADER_MASK",
   "MidgardProtocolInfo",
   "MidgardProtocolParameters",

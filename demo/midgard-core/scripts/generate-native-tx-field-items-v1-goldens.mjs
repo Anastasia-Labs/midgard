@@ -12,11 +12,11 @@
  * the other half: for every field index 0..8, what `enc_i` actually is.
  *
  * Every value is computed by the TypeScript twins
- * (`demo/midgard-core/src/codec/native-tx-field-items-v1.ts`, plus the reused
+ * (`demo/midgard-core/src/codec/native-tx-field-items.ts`, plus the reused
  * canonical encoders for fields 2 and 6) and written to two places:
  *
  *   * `demo/midgard-core/tests/fixtures/native-tx-field-items-v1.generated.json`
- *     — recomputed by `tests/native-tx-field-items-v1-goldens.test.ts`, so a
+ *     — recomputed by `tests/native-tx-field-items-goldens.test.ts`, so a
  *     drifting twin fails on the TypeScript side; and
  *   * `onchain/aiken/lib/midgard/native-tx-field-items-v1-golden.test.ak`
  *     — recomputed by the Aiken producers under the fork runner, so a
@@ -66,7 +66,7 @@ import {
   midgardFieldItemExtent,
   midgardFieldStride,
   selectMidgardFieldCarriageTier,
-} from "../dist/codec/native-tx-field-access-v1.js";
+} from "../dist/codec/native-tx-field-access.js";
 import {
   encodeMidgardFieldItems,
   encodeMidgardFieldPreimageForField,
@@ -76,7 +76,7 @@ import {
   MIDGARD_FIELD_NAMES,
   MIDGARD_REDEEMER_PURPOSE_TAGS,
   midgardFieldCommitmentForField,
-} from "../dist/codec/native-tx-field-items-v1.js";
+} from "../dist/codec/native-tx-field-items.js";
 import {
   encodeMidgardNativeTxProofFieldLengths,
   midgardNativeTxProofFieldPreimageLengths,
@@ -152,7 +152,6 @@ const LANGUAGE_TAG_VECTORS = [
   },
 ];
 
-
 // ---------------------------------------------------------------------------
 // §8.4 straddle vector
 // ---------------------------------------------------------------------------
@@ -225,10 +224,7 @@ const assertStraddleIsReachableV1 = (headerLength, preimageLength) => {
  * no longer sampling.
  */
 const assertCarriageBoundariesStraddleKV1 = () => {
-  for (const required of [
-    MIDGARD_CHUNK_BYTES_K,
-    MIDGARD_CHUNK_BYTES_K + 1,
-  ]) {
+  for (const required of [MIDGARD_CHUNK_BYTES_K, MIDGARD_CHUNK_BYTES_K + 1]) {
     if (!CARRIAGE_BOUNDARY_LENGTHS.includes(required)) {
       throw new Error(
         `§8.3: CARRIAGE_BOUNDARY_LENGTHS must sample ${required.toString()} ` +
@@ -292,9 +288,7 @@ const buildStraddle = () => {
       // A read is straddling when its byte range crosses a multiple of K.
       straddles:
         Math.floor(extent.offset / MIDGARD_CHUNK_BYTES_K) !==
-        Math.floor(
-          (extent.offset + extent.length - 1) / MIDGARD_CHUNK_BYTES_K,
-        ),
+        Math.floor((extent.offset + extent.length - 1) / MIDGARD_CHUNK_BYTES_K),
       itemHex: hex(midgardFieldItemAt(view, index)),
     };
   });
@@ -302,7 +296,10 @@ const buildStraddle = () => {
   // crosses the boundary. A neighbour that also straddled, or a middle one that
   // did not, would leave the §8.8 stitch untested.
   const straddling = reads.filter((read) => read.straddles);
-  if (straddling.length !== 1 || straddling[0].itemIndex !== STRADDLE_ITEM_INDEX) {
+  if (
+    straddling.length !== 1 ||
+    straddling[0].itemIndex !== STRADDLE_ITEM_INDEX
+  ) {
     throw new Error(
       `§8.4: item ${STRADDLE_ITEM_INDEX} must be the sole straddling read (got ` +
         `${straddling.map((read) => read.itemIndex).join(",") || "none"})`,
@@ -375,19 +372,19 @@ const buildGolden = () => {
   }));
 
   // §5.3's two value sets, pinned as the canonical bytes each tag occupies.
-  const languageTags = LANGUAGE_TAG_VECTORS.map(({ language, tag, script }) => ({
-    language,
-    tag,
-    itemHex: hex(encodeMidgardVersionedScript(script)),
-  }));
+  const languageTags = LANGUAGE_TAG_VECTORS.map(
+    ({ language, tag, script }) => ({
+      language,
+      tag,
+      itemHex: hex(encodeMidgardVersionedScript(script)),
+    }),
+  );
   const purposeTags = Object.entries(MIDGARD_REDEEMER_PURPOSE_TAGS).map(
     ([purpose, tag]) => ({
       purpose,
       tag,
       itemHex: hex(
-        encodeMidgardRedeemerWitnessItem(
-          redeemer(purpose, 1, "d87980", 2, 3),
-        ),
+        encodeMidgardRedeemerWitnessItem(redeemer(purpose, 1, "d87980", 2, 3)),
       ),
     }),
   );
@@ -564,7 +561,7 @@ const renderAiken = (golden) => {
     "// the §8 carriage each preimage selects.",
     "//",
     "// Every constant below was produced by the TypeScript twins",
-    "// (`demo/midgard-core/src/codec/native-tx-field-items-v1.ts`) and is recomputed",
+    "// (`demo/midgard-core/src/codec/native-tx-field-items.ts`) and is recomputed",
     "// here by the Aiken producers, so the two encoders cannot silently diverge. The",
     "// shared surface all nine fields agree on is pinned by the sibling module",
     "// `native-tx-field-access-v1-golden.test.ak` (#568); this one is the per-field",
@@ -673,7 +670,9 @@ const renderAiken = (golden) => {
   }
 
   // -- producer round-trips --------------------------------------------------
-  lines.push(...section("§5.3 producer round-trips — decode, re-encode, compare"));
+  lines.push(
+    ...section("§5.3 producer round-trips — decode, re-encode, compare"),
+  );
   lines.push(
     "/// The half of item-encoding agreement that a byte literal cannot carry: the",
     "/// Aiken decoder accepts the TypeScript preimage, and the field's own Aiken",
@@ -699,7 +698,9 @@ const renderAiken = (golden) => {
   }
 
   // -- direct item encoders --------------------------------------------------
-  lines.push(...section("§5.3 item encoders called directly on structured values"));
+  lines.push(
+    ...section("§5.3 item encoders called directly on structured values"),
+  );
   for (const field of FIELD_VECTORS) {
     const encoder = AIKEN_ITEM_ENCODERS[field.fieldIndex];
     if (encoder === undefined) {
@@ -776,7 +777,7 @@ const renderAiken = (golden) => {
       "golden_f0_f1_decoder_rejects_a_non_minimal_tx_id_header",
       [
         "/// Fields 0/1, the decode side of the same width. `59 0020` is a second,",
-        "/// wider spelling of \"32 bytes\" that `decode_definite_bytes_at` will read,",
+        '/// wider spelling of "32 bytes" that `decode_definite_bytes_at` will read,',
         "/// so a 39-byte item would otherwise decode to the *same* out-ref as the",
         "/// canonical 38-byte one — two trie keys naming one out-ref. The exact-38",
         "/// guard in `decode_midgard_tx_input_cbor` is what rejects it, and its",
@@ -788,7 +789,9 @@ const renderAiken = (golden) => {
     ),
     ...widthNegative(
       "golden_f7_item_rejects_a_short_verification_key",
-      ["/// Field 7 is structurally fixed at 101 bytes: 32-byte key, 64-byte signature."],
+      [
+        "/// Field 7 is structurally fixed at 101 bytes: 32-byte key, 64-byte signature.",
+      ],
       `encode_midgard_address_witness(MidgardAddressWitness { verification_key: ${aikenBytes(hex(filler(31, 1)))}, signature: ${aikenBytes(hex(filler(64, 2)))} })`,
     ),
     ...widthNegative(
@@ -804,7 +807,7 @@ const renderAiken = (golden) => {
   // across the field — and duplicates reject at both. No positive vector can
   // see either rule: every one of them is already ordered, so a *deleted*
   // check is invisible there. These four are the Aiken twins of the TypeScript
-  // ordering negatives in `tests/native-tx-field-items-v1-goldens.test.ts`;
+  // ordering negatives in `tests/native-tx-field-items-goldens.test.ts`;
   // without them "§5.6 ordering is enforced" would be a claim about one twin
   // and an assumption about the other.
   lines.push(...section("§5.6 ordering assertions — the negatives that bite"));
@@ -817,12 +820,18 @@ const renderAiken = (golden) => {
         "/// refuse it: the decoder does, so bytes that got past here would never",
         "/// decode on either side.",
       ],
-      `encode_mint_policy_item(${aikenMintPolicyId(0)}, ${aikenMintAssets([["4141", 1], ["42", 2]])})`,
+      `encode_mint_policy_item(${aikenMintPolicyId(0)}, ${aikenMintAssets([
+        ["4141", 1],
+        ["42", 2],
+      ])})`,
     ),
     ...widthNegative(
       "golden_f5_asset_names_reject_a_repeat",
       ["/// The duplicate half of the same rule, one level down."],
-      `encode_mint_policy_item(${aikenMintPolicyId(0)}, ${aikenMintAssets([["41", 1], ["41", 2]])})`,
+      `encode_mint_policy_item(${aikenMintPolicyId(0)}, ${aikenMintAssets([
+        ["41", 1],
+        ["41", 2],
+      ])})`,
     ),
     ...widthNegative(
       "golden_f5_policy_ids_reject_descending_order",
@@ -885,14 +894,16 @@ const renderAiken = (golden) => {
     "/// nothing about either language's encoder.",
     "test golden_script_language_tags_match_typescript() {",
     "  and {",
-    ...LANGUAGE_TAG_VECTORS.map(({ language, aikenConstructor, tag, script }) => {
-      const tagHex = tag === 128 ? "1880" : tag.toString(16).padStart(2, "0");
-      const scriptBytes =
-        language === "NativeCardano"
-          ? hex(encodeMidgardNativeScript(script.nativeScript))
-          : hex(script.scriptBytes);
-      return `    bytearray.take(bytearray.drop(encode_midgard_versioned_script(MidgardVersionedScript { language: ${aikenConstructor}, script_bytes: ${aikenBytes(scriptBytes)} }), 1), ${tagHex.length / 2}) == ${aikenBytes(tagHex)},`;
-    }),
+    ...LANGUAGE_TAG_VECTORS.map(
+      ({ language, aikenConstructor, tag, script }) => {
+        const tagHex = tag === 128 ? "1880" : tag.toString(16).padStart(2, "0");
+        const scriptBytes =
+          language === "NativeCardano"
+            ? hex(encodeMidgardNativeScript(script.nativeScript))
+            : hex(script.scriptBytes);
+        return `    bytearray.take(bytearray.drop(encode_midgard_versioned_script(MidgardVersionedScript { language: ${aikenConstructor}, script_bytes: ${aikenBytes(scriptBytes)} }), 1), ${tagHex.length / 2}) == ${aikenBytes(tagHex)},`;
+      },
+    ),
     "  }",
     "}",
     "",
@@ -911,7 +922,9 @@ const renderAiken = (golden) => {
   );
 
   // -- §2.4 wire-order transposition ----------------------------------------
-  lines.push(...section("§2.4 field-preimage lengths — the wire-order transposition"));
+  lines.push(
+    ...section("§2.4 field-preimage lengths — the wire-order transposition"),
+  );
   lines.push(
     "/// §2.4 places `script_witnesses` at wire position 6 and `address_witnesses` at",
     "/// 7 — transposed relative to the record declaration, which lists address before",

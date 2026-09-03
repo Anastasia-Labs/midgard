@@ -43,7 +43,7 @@ import {
   makeDecodingEmulatorHarness,
   publishDecodingReferenceScripts,
   setupDecodingScenario,
-} from "./support/native-script-decoding-emulator-v1.js";
+} from "./support/native-script-decoding-emulator.js";
 import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
 
 const FORCED_ORDER_KEY: SDK.OutputReference = {

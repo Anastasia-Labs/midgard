@@ -1,7 +1,7 @@
 import {
   isMidgardConsensusProfile,
   type MidgardConsensusProfile,
-} from "@al-ft/midgard-core/consensus-profile-v1";
+} from "@al-ft/midgard-core/consensus-profile";
 import {
   credentialToAddress,
   Data,

@@ -80,7 +80,7 @@
   the measurement deployment (`hub_oracle=11…11`, `catalogue=22…22`, semantic
   resolver 1 of 76). Producing run: `pins the applied §3.2 necessity
   identities on the measurement deployment` in
-  `demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts`,
+  `demo/midgard-validation/tests/complete-item-proof-fit-emulator.test.ts`,
   which now gates both identities instead of arguing them. Every hash pinned
   above is therefore current under `605c8b8d…` and the measurement tables
   below stay bound; the C21-AUDIT "fresh applied re-measurement owed before
@@ -90,7 +90,7 @@
   capability floor per
   `docs/midgard/decisions/0001-cardano-l1-transaction-capability-floor.md`.
 - Fixture: shared exact-size generators in
-  `demo/midgard-validation/tests/complete-item-proof-fit-v1.test.ts`;
+  `demo/midgard-validation/tests/complete-item-proof-fit.test.ts`;
   hash-trace semantics covered by the script-sources stage-zero Aiken
   suites.
 
@@ -133,7 +133,7 @@ below 14,396 bytes retains complete-item carriage for its byte
 authentication (direct at or below the measured 13,282-byte frontier,
 publication + reference at or below 14,396). Chunk proofs bind the same
 item commitment as the complete item
-(`demo/midgard-validation/tests/complete-item-equivalence-v1.test.ts`),
+(`demo/midgard-validation/tests/complete-item-equivalence.test.ts`),
 and hostile omission/duplication/reorder/substitution/trailing chunks
 reject in both representations.
 

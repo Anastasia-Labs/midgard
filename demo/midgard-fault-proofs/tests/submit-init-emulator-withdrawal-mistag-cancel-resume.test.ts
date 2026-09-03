@@ -15,7 +15,7 @@ import {
   publishWithdrawalMistagScripts,
   setupWithdrawalMistagScenario,
   withdrawalMistagBlockUtxo,
-} from "./support/withdrawal-mistag-emulator-v1.js";
+} from "./support/withdrawal-mistag-emulator.js";
 
 describe("withdrawal-mistag cancel and resume", () => {
   it("burns a cancelled thread, re-initialises, and resumes from only its committed out-ref", async () => {

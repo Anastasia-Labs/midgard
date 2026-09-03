@@ -8,7 +8,7 @@ import {
   encodeMidgardTxOutput,
 } from "@al-ft/midgard-core";
 import {
-  ForcedInclusionTxSchema,
+  ForcedInclusionTxV1Schema,
   forcedVerdictSubject,
   OutputReference,
   Proof,
@@ -35,7 +35,7 @@ import { submitSetupTx } from "./support/emulator/setup-tx.js";
 import {
   makeNetworkIdEmulatorHarness,
   publishNetworkIdReferenceScripts,
-} from "./support/network-id-emulator-v1.js";
+} from "./support/network-id-emulator.js";
 import { buildInvalidForcedTransitionTraceFixture } from "./support/submit-init-emulator-fixtures.js";
 import { publishRemovalReferenceScripts } from "./support/submit-init-emulator-shared.js";
 
@@ -88,7 +88,7 @@ describe("networkId wrongful-rejection real lifecycle", () => {
     const sourceKey = base.eventKey.ForcedTransactionEventKey.tx_order_id;
     const keyBytes = Buffer.from(Data.to(sourceKey, OutputReference), "hex");
     const valueBytes = Buffer.from(
-      Data.to(forcedTransaction as never, ForcedInclusionTxSchema as never),
+      Data.to(forcedTransaction as never, ForcedInclusionTxV1Schema as never),
       "hex",
     );
     const root = await buildCountedRoot(ROOT_DOMAINS.forcedTransactionsV1, [

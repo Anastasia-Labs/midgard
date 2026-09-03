@@ -40,7 +40,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { requireFabricatedReferenceScript } from "./fabricated-reference-script-v1.js";
+import { requireFabricatedReferenceScript } from "./fabricated-reference-script.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   fetchUtxoByOutRef,
@@ -63,12 +63,12 @@ import { outputWithDatumAndUnitPredicate } from "./tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
-} from "./witness-reference-scripts-v1.js";
+} from "./witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "./workflow/transaction-boundary-v1.js";
+} from "./workflow/transaction-boundary.js";
 
 export const requireFabricatedWithdrawalStep04Datum = ({
   threadUtxo,

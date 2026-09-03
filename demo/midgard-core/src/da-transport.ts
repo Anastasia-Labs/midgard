@@ -12,7 +12,7 @@ import {
   MidgardTxCodecErrorCodes,
 } from "./codec/errors.js";
 import { ensureHash32 } from "./codec/hash.js";
-import { MIDGARD_CONSENSUS_LIMITS } from "./consensus-profile-v1.js";
+import { MIDGARD_CONSENSUS_LIMITS } from "./consensus-profile.js";
 import {
   DA_PAYLOAD_INNER_SCHEMA_VERSION,
   DaPayloadContentEncoding,

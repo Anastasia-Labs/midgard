@@ -1,5 +1,5 @@
 import type { MidgardValue } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 
 import type { MidgardLedgerMint } from "./ledger-tx/types.js";
 import type { ScriptMintValue } from "./script-context.js";
@@ -163,14 +163,14 @@ export const mintDeltaToScriptMintValue = (
 //
 // This is a HAND MIRROR of the Aiken twin, not a call into a ledger library.
 // `CML.min_ada_required` does appear in
-// `demo/midgard-sdk/src/fraud-proof/validation-proof-item-v1.ts`, but it funds a
+// `demo/midgard-sdk/src/fraud-proof/validation-proof-item.ts`, but it funds a
 // _proof publication output_ on L1 and is not this consensus quantity; do not
 // read the two as the same computation (decision 0003, Q27).
 //
 // D-S4 (#618): because both copies are hand-written, they are bound to each
 // other on pinned absolute vectors -- including the exactly-at-the-floor accept
 // and one-lovelace-below reject legs -- by
-// `tests/min-ada-twin-cross-check-v1.test.ts`. Changing the slope, the
+// `tests/min-ada-twin-cross-check.test.ts`. Changing the slope, the
 // intercept, or the comparison on either side fails that suite.
 export const MIN_ADA_OUTPUT_OVERHEAD_BYTES = 160n;
 
@@ -199,7 +199,7 @@ export const outputMeetsMinAda = (
  * because the rate that convicts a block is not the block producer's to
  * declare. Its Aiken counterpart is `env.coins_per_utxo_byte`
  * (onchain/aiken/env/default.ak, onchain/aiken/env/testnet.ak), and
- * `tests/min-ada-twin-cross-check-v1.test.ts` holds the two production pins
+ * `tests/min-ada-twin-cross-check.test.ts` holds the two production pins
  * equal to each other and to the C70 snapshot.
  */
 export const MIDGARD_COINS_PER_UTXO_BYTE = BigInt(

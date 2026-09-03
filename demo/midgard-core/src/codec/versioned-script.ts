@@ -18,7 +18,7 @@ import {
 import {
   decodeMidgardFieldPreimage,
   encodeMidgardFieldPreimage,
-} from "./native-tx-field-access-v1.js";
+} from "./native-tx-field-access.js";
 
 export const MidgardVersionedScriptTags = {
   NativeCardano: 0n,

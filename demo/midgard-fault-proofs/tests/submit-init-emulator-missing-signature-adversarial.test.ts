@@ -14,7 +14,7 @@ import {
   publishMissingSignatureReferenceScripts,
   setupMissingSignatureScenario,
   submitRawMissingSignatureStep04,
-} from "./support/missing-signature-emulator-v1.js";
+} from "./support/missing-signature-emulator.js";
 import {
   expectOnchainRefusal,
   network,

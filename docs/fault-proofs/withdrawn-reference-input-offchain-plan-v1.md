@@ -34,7 +34,7 @@ explicit.
 ## Off-chain surfaces
 
 - SDK schema:
-  `demo/midgard-sdk/src/fraud-proof/withdrawn-reference-input-v1.ts`
+  `demo/midgard-sdk/src/fraud-proof/withdrawn-reference-input.ts`
 - family package:
   `demo/midgard-fault-proofs/src/withdrawn-reference-input/`
 - catalogue: `demo/midgard-sdk/src/fraud-proof/catalogue.ts`

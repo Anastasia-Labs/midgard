@@ -4,13 +4,13 @@ import { fileURLToPath } from "node:url";
 import {
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_DEPLOYMENT_MANIFEST_SCHEMA_VERSION,
-} from "@al-ft/midgard-core/consensus-profile-v1";
+} from "@al-ft/midgard-core/consensus-profile";
 import {
   DA_RUNTIME_MANIFEST_SCHEMA_VERSION,
   DA_TRANSPORT_LIMITS,
   DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
-import { DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity";
 import type {
   MidgardValidators,
   ReferenceScriptAuthPolicyDeploymentInfo,
@@ -47,7 +47,7 @@ import {
   computeDeploymentManifestJsonDigest,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   normalizeDeploymentManifestJsonValue,
-} from "../src/deployment-manifest-v1.js";
+} from "../src/deployment-manifest.js";
 import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
 import {
   midgardContractsFromDeploymentManifest,
@@ -57,7 +57,7 @@ import {
   buildFraudProofCatalogueDeploymentInfo,
   fraudProofsToIndexedValidators,
 } from "../src/transactions/initialization.js";
-import { TEST_AVAILABILITY_CHALLENGE } from "./helpers/availability-challenge-v1.js";
+import { TEST_AVAILABILITY_CHALLENGE } from "./helpers/availability-challenge.js";
 
 const testReferenceScriptAuthPolicy = (
   _policyId: string,

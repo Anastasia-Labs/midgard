@@ -202,7 +202,7 @@ const transition = constr(0, [bytes(Buffer.from([0x81, 0x00])), machineState]);
 const proofTransaction = (itemBytes, route) => {
   // Deployed Verify carries the FieldCarriage as its own fourth field;
   // Inline is Constr(0, [preimage]) (canonical-decode-item-semantic-v1.ak:20-26,
-  // native-tx-field-access-v1.ts:39-88).
+  // native-tx-field-access.ts:39-88).
   const carriage = constr(0, [bytes(Buffer.alloc(itemBytes, 0x55))]);
   const action =
     route === "direct"

@@ -14,7 +14,7 @@ import {
   type ScriptLanguageName,
   verifyMidgardNativeScript,
 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_LIMITS } from "@al-ft/midgard-core/consensus-profile";
 import {
   collectMidgardAttachedProgramEnvelopes,
   decodeMidgardScriptProgramEnvelope,

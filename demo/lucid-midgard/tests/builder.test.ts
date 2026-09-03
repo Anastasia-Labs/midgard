@@ -4,7 +4,7 @@ import {
   midgardAddressFromText,
   protectMidgardAddress,
 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { CML } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 

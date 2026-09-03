@@ -37,10 +37,10 @@ partially applied certificate policy is not an alternative protocol.
 - `onchain/aiken/lib/midgard/fraud-proofs/field-opening-v1.ak`
 - `onchain/aiken/lib/midgard/native-tx-field-access-v1.ak`
 - `onchain/aiken/validators/field-preimage-certificate.ak`
-- `demo/midgard-core/src/codec/native-tx-field-access-v1.ts`
-- `demo/midgard-core/src/codec/native-tx-carriage-v1.ts`
-- `demo/midgard-sdk/src/fraud-proof/field-preimage-carriage-v1.ts`
-- `demo/midgard-fault-proofs/src/field-opening-v1.ts`
+- `demo/midgard-core/src/codec/native-tx-field-access.ts`
+- `demo/midgard-core/src/codec/native-tx-carriage.ts`
+- `demo/midgard-sdk/src/fraud-proof/field-preimage-carriage.ts`
+- `demo/midgard-fault-proofs/src/field-opening.ts`
 
 These sources own the live wire shapes, bounds, transaction layout, and
 authentication rules. This decision intentionally carries no network epoch,

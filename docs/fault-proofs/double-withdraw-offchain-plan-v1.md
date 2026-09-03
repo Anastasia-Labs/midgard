@@ -30,7 +30,7 @@ mints the permanent fraud-proof token. Cancellation is explicit.
 
 ## Off-chain surfaces
 
-- SDK schema: `demo/midgard-sdk/src/fraud-proof/double-withdraw-v1.ts`
+- SDK schema: `demo/midgard-sdk/src/fraud-proof/double-withdraw.ts`
 - family package: `demo/midgard-fault-proofs/src/double-withdraw/`
 - preparation: `demo/midgard-fault-proofs/src/prepare-double-withdraw.ts`
 - catalogue: `demo/midgard-sdk/src/fraud-proof/catalogue.ts`

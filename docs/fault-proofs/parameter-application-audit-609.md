@@ -27,7 +27,7 @@ parameter names. The resolver table supplies values for known names; an unknown
 name is an error. Count-only or index-specific hand-written argument lists are
 not acceptable because resolver parameter sets differ.
 
-`demo/midgard-fault-proofs/tests/zz605-semantic-resolver-arity.test.ts` checks
+`demo/midgard-fault-proofs/tests/semantic-resolver-arity-gate.test.ts` checks
 that deployed resolvers equal their full declared application, differ from
 under-applied prefixes, and that production builders cannot bypass the guarded
 application helpers.

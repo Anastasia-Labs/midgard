@@ -28,7 +28,7 @@
  * {@link prepareInputNoIdxFromCanonicalEvidence} routes provenance through
  * `assertSecurityGradeEvidenceV1` and the native inclusion root through
  * `assertNativeInclusionRootAuthenticatedV1`
- * (`src/evidence/prepare-from-evidence-v1.ts`). The `--midgard-node-url` and
+ * (`src/evidence/prepare-from-evidence.ts`). The `--midgard-node-url` and
  * `--transactions` entry points below are the operator-diagnostic rehearsal
  * routes and are labelled as such; they can never mint a security-grade claim.
  *

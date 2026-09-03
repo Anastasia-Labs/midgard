@@ -24,7 +24,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { MIDGARD_FIELD_INDEX } from "@al-ft/midgard-sdk";
 import { describe, expect, it } from "vitest";
 
-import { planFaultProofFieldOpening } from "../src/field-opening-v1.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.js";
 import {
   submitMintAuthorizationInit,
   submitMintAuthorizationStep01,
@@ -46,7 +46,7 @@ import {
   smallMintItemCbors,
   submitRawMintAuthorizationStep02TamperedMint,
   tamperFieldPreimageBytes,
-} from "./support/mint-authorization-emulator-v1.js";
+} from "./support/mint-authorization-emulator.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 
 const ACCUSED_POLICY_INDEX = 0n;

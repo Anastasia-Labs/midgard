@@ -28,16 +28,16 @@ import {
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
-} from "../witness-reference-scripts-v1.js";
+} from "../witness-reference-scripts.js";
 import {
   L2_TX_MISTAG_CATEGORY_LABEL,
   type L2TxMistagContracts,
-} from "./contracts-v1.js";
+} from "./contracts.js";
 import {
   l2TxMistagStepLabel,
   l2TxMistagSubmitError,
   requireL2TxMistagReferenceScript,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 const CancelSpendRedeemerSchema = faultProofStepRedeemerSchema(Data.Any());
 type CancelSpendRedeemer = Data.Static<typeof CancelSpendRedeemerSchema>;

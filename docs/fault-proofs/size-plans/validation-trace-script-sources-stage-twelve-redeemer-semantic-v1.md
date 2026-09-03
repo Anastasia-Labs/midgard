@@ -18,7 +18,7 @@ Assumes [`00-primer.md`](00-primer.md) and the anchor plan
 | Library entry point | `verify_script_sources_stage_twelve_redeemer_semantics_v1` → `script_sources_stage_twelve_redeemer_auxiliary_is_family` → `verify_script_sources_stage_twelve_semantics_v1` (generic decoder/binder + whole `script_sources_stage_twelve`, incl. `redeemer_item_proof_v1.step_v1`, `descriptor_v1`, `hash_control_v1`) |
 | Redeemer action | `VerifyRedeemer { input_index, output_index, transition, auxiliary: ValidationAuxiliaryWitnessV1 }` |
 | Auxiliaries accepted | `RedeemerScanBeginWitness` (constructor 10) when `redeemer_item_control_hash == ""`; `RedeemerItemStepWitness` (constructor 18, `redeemer_control: None`) otherwise |
-| Rejection reached | `reject_invalid_field_type` (`E_INVALID_FIELD_TYPE`, `demo/midgard-sdk/src/rejection-reason-v1.ts:247`) for an extraneous redeemer |
+| Rejection reached | `reject_invalid_field_type` (`E_INVALID_FIELD_TYPE`, `demo/midgard-sdk/src/rejection-reason.ts:247`) for an extraneous redeemer |
 | Role / deployment entry today | none (anchor §1) |
 
 What the step proves (C45 "unused/extraneous rejection"): after every purpose
@@ -123,7 +123,7 @@ Anchor §6 with roster entry `19: "validationTraceDisputeScriptSourcesStageTwelv
 `semanticActionFieldsV1` for semantic 19 mirrors ten-mismatch (constructor by
 staged auxiliary shape); yield `readFrom` + zero `withdraw` for the step arm.
 The stage-12 rejection successor's `E_INVALID_FIELD_TYPE` is already in
-`rejection-reason-v1.ts`; no codec change beyond the shared claim schema.
+`rejection-reason.ts`; no codec change beyond the shared claim schema.
 
 ## 7. Emulator scenario tests
 

@@ -4,7 +4,7 @@ import { submitWithdrawnInputStep03 } from "../src/index.js";
 import {
   advanceWithdrawnInputToStep03,
   makeWithdrawnInputEmulatorScenario,
-} from "./support/withdrawn-input-emulator-v1.js";
+} from "./support/withdrawn-input-emulator.js";
 
 describe("withdrawn-input honest-block refusal", () => {
   it("refuses on-chain when the withdrawals root commits a different out-ref", async () => {

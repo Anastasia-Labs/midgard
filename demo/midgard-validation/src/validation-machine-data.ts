@@ -43,7 +43,7 @@ import {
   MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES,
   type MidgardFieldCarriage,
   selectMidgardFieldCarriageTier,
-} from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
+} from "@al-ft/midgard-core/codec/native-tx-field-access";
 import { Constr, Data } from "@lucid-evolution/lucid";
 
 import type {

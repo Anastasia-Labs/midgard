@@ -34,7 +34,7 @@ explicit.
 ## Off-chain surfaces
 
 - SDK schema:
-  `demo/midgard-sdk/src/fraud-proof/cross-block-duplicate-event-v1.ts`
+  `demo/midgard-sdk/src/fraud-proof/cross-block-duplicate-event.ts`
 - family package:
   `demo/midgard-fault-proofs/src/cross-block-duplicate-event/`
 - catalogue: `demo/midgard-sdk/src/fraud-proof/catalogue.ts`

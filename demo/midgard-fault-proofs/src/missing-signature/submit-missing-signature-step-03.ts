@@ -37,15 +37,15 @@ import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
-} from "../workflow/transaction-boundary-v1.js";
-import type { MissingSignatureContracts } from "./contracts-v1.js";
+} from "../workflow/transaction-boundary.js";
+import type { MissingSignatureContracts } from "./contracts.js";
 import {
   missingSignatureStepLabel,
   missingSignatureSubmitError,
   requireMissingSignatureReferenceScript,
   requireMissingSignatureStepState,
   requireMissingSignatureThreadUtxo,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 const STEP_LABEL = missingSignatureStepLabel(2);
 

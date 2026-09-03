@@ -17,8 +17,8 @@ import {
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_CONSENSUS_PROFILE,
   type MidgardConsensusProfile,
-} from "@al-ft/midgard-core/consensus-profile-v1";
-import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation-v1";
+} from "@al-ft/midgard-core/consensus-profile";
+import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation";
 import { hexToBytes } from "@al-ft/midgard-core/hex";
 import { collectMidgardAttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import * as SDK from "@al-ft/midgard-sdk";

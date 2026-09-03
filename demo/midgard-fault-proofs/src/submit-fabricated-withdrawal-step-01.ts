@@ -62,7 +62,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { requireFabricatedReferenceScript } from "./fabricated-reference-script-v1.js";
+import { requireFabricatedReferenceScript } from "./fabricated-reference-script.js";
 import { parseHex, readJsonFile, requireRecord } from "./json-file.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -86,7 +86,7 @@ import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
-} from "./workflow/transaction-boundary-v1.js";
+} from "./workflow/transaction-boundary.js";
 
 /** Human-readable family label used in every local failure message. */
 export const FABRICATED_WITHDRAWAL_CATEGORY_LABEL = "fabricated-withdrawal";

@@ -15,7 +15,7 @@ Cites [00-primer.md](00-primer.md). Companion plan:
 | Family position | Transition-trace **final 4**; `route_v1.route_index` sends `InvalidOneStepTransition { witness: L2TransactionTransition }` and `AcceptedTransactionTransitionMismatch` here. Terminal step: `common.finalize` burns the thread and mints the permanent fraud-proof token |
 | Library entry | `proof.validate_accepted_transaction_fault_proof(proof, asset_name)` → `validate_transition_fault_proof_envelope` + `validate_l2_transaction_transition` (7 witness fields) or `validate_accepted_transaction_transition_mismatch` |
 | Role name today | `V1FpTransitionTraceFinal4` (`DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES["V1 fraud-proof transition-trace final-4"]`) |
-| Deployment entry today | `fraudProofTransitionTraceAcceptedTransaction` (`TRANSITION_TRACE_FINAL_REFERENCE_SCRIPT_ENTRIES[4]` in `demo/midgard-fault-proofs/src/transition-trace/submit.ts`; same name in `midgard-core` `deployment-manifest-identity-v1.ts`, node `deployment-manifest-v1.ts`, `runtime.ts`, `inspect-contracts.ts`, watcher `proof-thread-indexer.ts`) |
+| Deployment entry today | `fraudProofTransitionTraceAcceptedTransaction` (`TRANSITION_TRACE_FINAL_REFERENCE_SCRIPT_ENTRIES[4]` in `demo/midgard-fault-proofs/src/transition-trace/submit.ts`; same name in `midgard-core` `deployment-manifest-identity.ts`, node `deployment-manifest.ts`, `runtime.ts`, `inspect-contracts.ts`, watcher `proof-thread-indexer.ts`) |
 | Emulator today | Published only with `oversized: true` via `TRANSITION_TRACE_OVERSIZED_REFERENCE_SCRIPT_ENTRIES` (`tests/support/emulator/reference-scripts.ts:644`); no scenario exercises final 4 |
 
 ## 2. Why it is this size
@@ -343,13 +343,13 @@ yield, any withdraw route, any reference-script role beyond the finals.
    extend `TransitionTraceFaultProofContracts["transitionTrace"]` with
    `yields: { l2Open, l2Summaries, l2Replay, claimStructure, claimSource,
    claimEndpoints }`. Dispatcher hash depends only on the four parameters, so
-   there is no cycle. Arity: `zz605-semantic-resolver-arity.test.ts` /
-   `zz610-compiled-script-arity.test.ts` must see the new titles.
+   there is no cycle. Arity: `semantic-resolver-arity-gate.test.ts` /
+   `compiled-script-arity-gate.test.ts` must see the new titles.
 2. **Reference-script roles**: add six rows to
    `DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES`
    (`"V1 fraud-proof transition-trace final-4 L2 open yield": "V1FpTtF4L2OpenYield"`,
-   …), mirrored in `midgard-core/src/deployment-manifest-identity-v1.ts`
-   (both the contract-name list and the role map), `midgard-node/src/deployment-manifest-v1.ts`,
+   …), mirrored in `midgard-core/src/deployment-manifest-identity.ts`
+   (both the contract-name list and the role map), `midgard-node/src/deployment-manifest.ts`,
    `midgard-node/src/transactions/reference-scripts.ts`
    (`manifestReferenceScriptTarget(name, yields.x.withdrawalScript)` as for
    `fraudProofMinAdaStep02TxWithdraw`), and
@@ -370,7 +370,7 @@ yield, any withdraw route, any reference-script role beyond the finals.
    `submitTransitionTraceFinalV1`, when `finalIndex === 4`: resolve the yield
    reference scripts by entry name, `readFrom` them, `.withdraw(scriptRewardAddress(network, yield.withdrawalScript), 0n, redeemer)`
    for each, and build `final_yield_v1.Args` with `yield_ref_input_indices`
-   from `requireReferenceInputIndex` (pattern: `min-ada/submit-step-02-v1.ts`).
+   from `requireReferenceInputIndex` (pattern: `min-ada/submit-step-02.ts`).
    Redeemers: `OpenedOutputsV1` from the reconstruction's decoded spend inputs
    (`midgardOutRefToCbor` keys) and outputs (canonical codec in
    `midgard-core`), `OutputSummariesV1` from

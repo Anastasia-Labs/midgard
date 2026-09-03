@@ -28,7 +28,7 @@ mints the permanent fraud-proof token. Cancellation is explicit.
 
 ## Off-chain surfaces
 
-- SDK schema: `demo/midgard-sdk/src/fraud-proof/committed-field-shape-v1.ts`
+- SDK schema: `demo/midgard-sdk/src/fraud-proof/committed-field-shape.ts`
 - family package: `demo/midgard-fault-proofs/src/committed-field-shape/`
 - catalogue: `demo/midgard-sdk/src/fraud-proof/catalogue.ts`
 

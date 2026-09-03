@@ -17,7 +17,7 @@
  *
  * **Why it lives in the SDK.** Two of the three artifacts it pins are Plutus
  * **Data** encodings, whose off-chain producer is `Data.to` against the schemas
- * in `src/fraud-proof/canonical-decodability-v1.ts`; the verdict twin is in the
+ * in `src/fraud-proof/canonical-decodability.ts`; the verdict twin is in the
  * same module. A vector is only worth having if it is emitted by the thing that
  * will really emit it, so the generator sits beside the producer. The shared
  * channel plumbing is imported from midgard-core rather than copied, so the
@@ -26,7 +26,7 @@
  * Two artifacts, the pair every channel emits:
  *
  *   * `demo/midgard-sdk/tests/fixtures/canonical-decodability-v1.generated.json`
- *     — recomputed by `tests/canonical-decodability-v1.test.ts`, so a drifting
+ *     — recomputed by `tests/canonical-decodability.test.ts`, so a drifting
  *     TypeScript twin fails on the TypeScript side; and
  *   * `onchain/aiken/lib/midgard/fraud-proofs/canonical-decodability/rule-golden.test.ak`
  *     — recomputed by the Aiken producers under the fork runner, so a
@@ -92,8 +92,7 @@ const bytes = (...values) => Buffer.from(values);
 const filler = (length) => Buffer.alloc(length, 0x5a);
 
 /** The honest §5.1 producer, spelled here so the two twins share no code. */
-const envelope = (items) =>
-  miscountedMidgardFieldPreimage(items.length, items);
+const envelope = (items) => miscountedMidgardFieldPreimage(items.length, items);
 
 /**
  * Each vector is built from **inputs** — a declared count and a list of items,
@@ -444,7 +443,7 @@ const renderAiken = (golden) =>
     "////",
     "//// **The verdict set** is the one that matters. §12.7's verdict is a total",
     "//// decision procedure implemented twice — here and in",
-    "//// `demo/midgard-sdk/src/fraud-proof/canonical-decodability-v1.ts` — and the",
+    "//// `demo/midgard-sdk/src/fraud-proof/canonical-decodability.ts` — and the",
     "//// two must agree on every byte string. A disagreement is silent in both",
     "//// directions: a twin that calls a committed non-envelope grammatical leaves",
     "//// a genuine fault unfiled, and one that calls an envelope ungrammatical has",

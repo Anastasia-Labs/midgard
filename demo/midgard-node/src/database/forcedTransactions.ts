@@ -18,8 +18,8 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_CONSENSUS_PROFILE_ID,
   type MidgardConsensusProfile,
-} from "@al-ft/midgard-core/consensus-profile-v1";
-import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation-v1";
+} from "@al-ft/midgard-core/consensus-profile";
+import { validateMidgardConsensusTxCbor } from "@al-ft/midgard-core/consensus-validation";
 import { aikenSerialisedPlutusDataCbor } from "@al-ft/midgard-core/plutus-data-cbor";
 import * as SDK from "@al-ft/midgard-sdk";
 import { SqlClient } from "@effect/sql";
@@ -97,7 +97,7 @@ export type Entry = {
   [Columns.STATUS]: Status;
 };
 
-export type ForcedInclusionValueInput = {
+export type ForcedInclusionValueV1Input = {
   readonly nativeTxCbor: Buffer;
   readonly verdict: SDK.OperatorVerdict;
   readonly consensusProfile: MidgardConsensusProfile;
@@ -111,7 +111,7 @@ export type ForcedInclusionValueInput = {
  *
  * `operator_validity` persists exactly this bit; the full verdict — arm and
  * subject coordinates — lives in `forced_inclusion_value`, the byte-exact
- * `ForcedInclusionTx` leaf the roots commit to.
+ * `ForcedInclusionTxV1` leaf the roots commit to.
  */
 export const midgardTxValidityOfVerdict = (
   verdict: SDK.OperatorVerdict,
@@ -316,11 +316,11 @@ const sameImmutablePayload = (left: Entry, right: Entry): boolean => {
   );
 };
 
-export const encodeForcedInclusionValue = ({
+export const encodeForcedInclusionValueV1 = ({
   nativeTxCbor,
   verdict,
   consensusProfile,
-}: ForcedInclusionValueInput): Effect.Effect<
+}: ForcedInclusionValueV1Input): Effect.Effect<
   {
     readonly txId: Buffer;
     readonly txCompact: Buffer;
@@ -380,7 +380,7 @@ export const encodeForcedInclusionValue = ({
           cause,
         }),
     });
-    const forcedInclusionTx: SDK.ForcedInclusionTx = {
+    const forcedInclusionTx: SDK.ForcedInclusionTxV1 = {
       tx_id: material.txId.toString("hex"),
       source: {
         compact_cbor: material.source.compactCbor.toString("hex"),
@@ -395,7 +395,7 @@ export const encodeForcedInclusionValue = ({
       try: () =>
         Buffer.from(
           aikenSerialisedPlutusDataCbor(
-            LucidData.to(forcedInclusionTx, SDK.ForcedInclusionTx),
+            LucidData.to(forcedInclusionTx, SDK.ForcedInclusionTxV1),
           ),
           "hex",
         ),

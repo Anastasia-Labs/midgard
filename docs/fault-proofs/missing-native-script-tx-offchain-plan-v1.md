@@ -30,7 +30,7 @@ the permanent fraud-proof token. Cancellation is explicit at every step.
 ## Off-chain surfaces
 
 - SDK schema:
-  `demo/midgard-sdk/src/fraud-proof/missing-native-script-tx-v1.ts`
+  `demo/midgard-sdk/src/fraud-proof/missing-native-script-tx.ts`
 - family package:
   `demo/midgard-fault-proofs/src/missing-native-script-tx/`
 - catalogue: `demo/midgard-sdk/src/fraud-proof/catalogue.ts`

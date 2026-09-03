@@ -18,7 +18,7 @@ import {
   type DaAvailabilityMintRedeemer,
   DaAvailabilityMintRedeemerSchema,
   encodeDaAvailabilityBondDatum,
-} from "./availability-challenge-v1.js";
+} from "./availability-challenge.js";
 import {
   type AddressData,
   addressDataFromBech32,
@@ -128,7 +128,7 @@ export const MIN_DA_COMMITTEE_SIZE = 1;
  *
  * How far the cross-language agreement is actually measured differs by side,
  * and the two should not be conflated. Off-chain,
- * `tests/da-governor-safety-v1.test.ts` sweeps every representable set size — 0
+ * `tests/da-governor-safety.test.ts` sweeps every representable set size — 0
  * through `max_indexed_signer_count` (256), the largest committee the
  * attested-signer bitmap can index — and pins the whole table by digest.
  * On-chain, the equivalent Aiken test pins a *sample* of set sizes (the lifted

@@ -54,7 +54,7 @@ import {
   buildCanonicalBlockFixture,
   buildFixtureTransaction,
   type CanonicalBlockFixture,
-} from "./helpers/canonical-block-evidence-fixture-v1.js";
+} from "./helpers/canonical-block-evidence-fixture.js";
 
 const h28 = (byte: string): string => byte.repeat(28);
 const h32 = (byte: string): string => byte.repeat(32);

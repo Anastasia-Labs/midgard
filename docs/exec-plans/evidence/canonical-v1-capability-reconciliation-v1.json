@@ -24,7 +24,7 @@
       "path": "demo/midgard-validation/src/validation-machine-data.ts"
     },
     "validationAuxiliaryTypeScript": {
-      "path": "demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness-v1.ts"
+      "path": "demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness.ts"
     },
     "validationMachineAiken": {
       "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak"
@@ -66,47 +66,47 @@
     "C20-0": [
       {
         "kind": "vitest",
-        "file": "demo/midgard-validation/tests/ordered-collection-spend-inputs-boundary-v1.test.ts"
+        "file": "demo/midgard-validation/tests/ordered-collection-spend-inputs-boundary.test.ts"
       }
     ],
     "C20-1": [
       {
         "kind": "vitest",
-        "file": "demo/midgard-validation/tests/ordered-collection-reference-inputs-boundary-v1.test.ts"
+        "file": "demo/midgard-validation/tests/ordered-collection-reference-inputs-boundary.test.ts"
       }
     ],
     "C20-2": [
       {
         "kind": "vitest",
-        "file": "demo/midgard-validation/tests/ordered-collection-boundary-v1.test.ts"
+        "file": "demo/midgard-validation/tests/ordered-collection-boundary.test.ts"
       }
     ],
     "C20-3": [
       {
         "kind": "vitest",
-        "file": "demo/midgard-validation/tests/ordered-collection-observer-native-script-boundary-v1.test.ts"
+        "file": "demo/midgard-validation/tests/ordered-collection-observer-native-script-boundary.test.ts"
       }
     ],
     "C20-4": [
       {
         "kind": "vitest",
-        "file": "demo/midgard-validation/tests/ordered-collection-signer-witness-boundary-v1.test.ts"
+        "file": "demo/midgard-validation/tests/ordered-collection-signer-witness-boundary.test.ts"
       }
     ],
     "C20-5": [
       {
         "kind": "vitest",
-        "file": "demo/midgard-validation/tests/ordered-collection-mint-boundary-v1.test.ts"
+        "file": "demo/midgard-validation/tests/ordered-collection-mint-boundary.test.ts"
       }
     ],
     "C20-6": [
       {
         "kind": "vitest",
-        "file": "demo/midgard-validation/tests/ordered-collection-observer-native-script-boundary-v1.test.ts"
+        "file": "demo/midgard-validation/tests/ordered-collection-observer-native-script-boundary.test.ts"
       },
       {
         "kind": "vitest",
-        "file": "demo/midgard-validation/tests/ordered-collection-mint-boundary-v1.test.ts"
+        "file": "demo/midgard-validation/tests/ordered-collection-mint-boundary.test.ts"
       },
       {
         "kind": "aiken",
@@ -117,7 +117,7 @@
     "C20-7": [
       {
         "kind": "vitest",
-        "file": "demo/midgard-validation/tests/ordered-collection-signer-witness-boundary-v1.test.ts"
+        "file": "demo/midgard-validation/tests/ordered-collection-signer-witness-boundary.test.ts"
       },
       {
         "kind": "aiken",
@@ -128,51 +128,51 @@
     "C20-8": [
       {
         "kind": "vitest",
-        "file": "demo/midgard-validation/tests/ordered-collection-redeemer-boundary-v1.test.ts"
+        "file": "demo/midgard-validation/tests/ordered-collection-redeemer-boundary.test.ts"
       },
       {
         "kind": "vitest",
-        "file": "demo/midgard-validation/tests/redeemer-item-proof-v1.test.ts"
+        "file": "demo/midgard-validation/tests/redeemer-item-proof.test.ts"
       },
       {
         "kind": "vitest",
-        "file": "demo/midgard-validation/tests/nested-redeemer-data-boundary-v1.test.ts"
+        "file": "demo/midgard-validation/tests/nested-redeemer-data-boundary.test.ts"
       }
     ],
     "C21": [
       {
         "kind": "vitest",
-        "file": "demo/midgard-sdk/tests/validation-proof-item-v1.test.ts"
+        "file": "demo/midgard-sdk/tests/validation-proof-item.test.ts"
       }
     ],
     "C22": [
       {
         "kind": "vitest",
-        "file": "demo/midgard-validation/tests/nested-value-boundary-v1.test.ts"
+        "file": "demo/midgard-validation/tests/nested-value-boundary.test.ts"
       }
     ],
     "C23": [
       {
         "kind": "vitest",
-        "file": "demo/midgard-validation/tests/data-breadth-boundary-v1.test.ts"
+        "file": "demo/midgard-validation/tests/data-breadth-boundary.test.ts"
       }
     ],
     "C24": [
       {
         "kind": "vitest",
-        "file": "demo/midgard-validation/tests/data-breadth-boundary-v1.test.ts"
+        "file": "demo/midgard-validation/tests/data-breadth-boundary.test.ts"
       }
     ],
     "C25": [
       {
         "kind": "vitest",
-        "file": "demo/midgard-validation/tests/data-breadth-boundary-v1.test.ts"
+        "file": "demo/midgard-validation/tests/data-breadth-boundary.test.ts"
       }
     ],
     "C26": [
       {
         "kind": "vitest",
-        "file": "demo/midgard-validation/tests/plutus-data-unary-depth-boundary-v1.test.ts"
+        "file": "demo/midgard-validation/tests/plutus-data-unary-depth-boundary.test.ts"
       }
     ],
     "C27": [
@@ -196,39 +196,39 @@
     "C30": [
       {
         "kind": "vitest",
-        "file": "demo/midgard-fault-proofs/tests/cardano-capability-retained-da-v1.test.ts"
+        "file": "demo/midgard-fault-proofs/tests/cardano-capability-retained-da.test.ts"
       },
       {
         "kind": "vitest",
-        "file": "demo/midgard-validation/tests/retained-da-boundary-v1.test.ts"
+        "file": "demo/midgard-validation/tests/retained-da-boundary.test.ts"
       }
     ],
     "C31": [
       {
         "kind": "vitest",
-        "file": "demo/midgard-fault-proofs/tests/cardano-capability-retained-da-v1.test.ts"
+        "file": "demo/midgard-fault-proofs/tests/cardano-capability-retained-da.test.ts"
       },
       {
         "kind": "vitest",
-        "file": "demo/midgard-validation/tests/retained-da-boundary-v1.test.ts"
+        "file": "demo/midgard-validation/tests/retained-da-boundary.test.ts"
       }
     ],
     "C32": [
       {
         "kind": "vitest",
-        "file": "demo/midgard-validation/tests/nested-value-boundary-v1.test.ts"
+        "file": "demo/midgard-validation/tests/nested-value-boundary.test.ts"
       },
       {
         "kind": "vitest",
-        "file": "demo/midgard-validation/tests/data-breadth-boundary-v1.test.ts"
+        "file": "demo/midgard-validation/tests/data-breadth-boundary.test.ts"
       },
       {
         "kind": "vitest",
-        "file": "demo/midgard-validation/tests/nested-redeemer-data-boundary-v1.test.ts"
+        "file": "demo/midgard-validation/tests/nested-redeemer-data-boundary.test.ts"
       },
       {
         "kind": "vitest",
-        "file": "demo/midgard-validation/tests/plutus-data-unary-depth-boundary-v1.test.ts"
+        "file": "demo/midgard-validation/tests/plutus-data-unary-depth-boundary.test.ts"
       },
       {
         "kind": "vitest",
@@ -236,7 +236,7 @@
       },
       {
         "kind": "vitest",
-        "file": "demo/midgard-validation/tests/retained-da-boundary-v1.test.ts"
+        "file": "demo/midgard-validation/tests/retained-da-boundary.test.ts"
       },
       {
         "kind": "vitest",
@@ -244,37 +244,37 @@
       },
       {
         "kind": "vitest",
-        "file": "demo/midgard-fault-proofs/tests/cardano-capability-retained-da-v1.test.ts"
+        "file": "demo/midgard-fault-proofs/tests/cardano-capability-retained-da.test.ts"
       }
     ],
     "C33": [
       {
         "kind": "vitest",
-        "file": "demo/midgard-validation/tests/redeemer-collateral-schema-feasibility-v1.test.ts"
+        "file": "demo/midgard-validation/tests/redeemer-collateral-schema-feasibility.test.ts"
       }
     ]
   },
   "p2WitnessNote": "Executable witnesses for every P2 task published as PASS. The check runs these and derives p2Summary.pass from runner reports; a task with no passing witness cannot be counted.",
   "p2WitnessCommands": [
-    "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-spend-inputs-boundary-v1.test.ts",
-    "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-reference-inputs-boundary-v1.test.ts",
-    "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-boundary-v1.test.ts",
-    "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-observer-native-script-boundary-v1.test.ts",
-    "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-signer-witness-boundary-v1.test.ts",
-    "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-mint-boundary-v1.test.ts",
-    "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-redeemer-boundary-v1.test.ts",
-    "pnpm --dir demo/midgard-validation exec vitest run tests/redeemer-item-proof-v1.test.ts",
-    "pnpm --dir demo/midgard-validation exec vitest run tests/nested-redeemer-data-boundary-v1.test.ts",
-    "pnpm --dir demo/midgard-sdk exec vitest run tests/validation-proof-item-v1.test.ts",
-    "pnpm --dir demo/midgard-validation exec vitest run tests/nested-value-boundary-v1.test.ts",
-    "pnpm --dir demo/midgard-validation exec vitest run tests/data-breadth-boundary-v1.test.ts",
-    "pnpm --dir demo/midgard-validation exec vitest run tests/plutus-data-unary-depth-boundary-v1.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-spend-inputs-boundary.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-reference-inputs-boundary.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-boundary.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-observer-native-script-boundary.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-signer-witness-boundary.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-mint-boundary.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/ordered-collection-redeemer-boundary.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/redeemer-item-proof.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/nested-redeemer-data-boundary.test.ts",
+    "pnpm --dir demo/midgard-sdk exec vitest run tests/validation-proof-item.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/nested-value-boundary.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/data-breadth-boundary.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/plutus-data-unary-depth-boundary.test.ts",
     "pnpm --dir demo/midgard-core exec vitest run tests/script-proof.test.ts",
     "pnpm --dir demo/midgard-validation exec vitest run tests/cek-program.test.ts",
     "pnpm --dir demo/midgard-validation exec vitest run tests/validation-machine.test.ts",
-    "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/cardano-capability-retained-da-v1.test.ts",
-    "pnpm --dir demo/midgard-validation exec vitest run tests/retained-da-boundary-v1.test.ts",
-    "pnpm --dir demo/midgard-validation exec vitest run tests/redeemer-collateral-schema-feasibility-v1.test.ts",
+    "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/cardano-capability-retained-da.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/retained-da-boundary.test.ts",
+    "pnpm --dir demo/midgard-validation exec vitest run tests/redeemer-collateral-schema-feasibility.test.ts",
     "cd onchain/aiken && aiken check -e -m inline_carriage_authenticates_a_witness_set_field"
   ],
   "p2Summary": {
@@ -304,7 +304,7 @@
     "status": "RESOLVED_ABI",
     "constructor": "TransactionFieldPreimageWitness",
     "removedFrom": [
-      "demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness-v1.ts",
+      "demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness.ts",
       "demo/midgard-validation/src/validation-machine",
       "demo/midgard-validation/src/validation-machine-data.ts",
       "onchain/aiken/lib/midgard/validation-machine-v1.ak"

@@ -10,7 +10,7 @@ import {
   publishWithdrawalMistagScripts,
   removeWithdrawalMistagBlock,
   setupWithdrawalMistagScenario,
-} from "./support/withdrawal-mistag-emulator-v1.js";
+} from "./support/withdrawal-mistag-emulator.js";
 
 describe("withdrawal-mistag valid marked invalid emulator lifecycle", () => {
   it("mints permanent fraud evidence and removes the fraudulent block", async () => {

@@ -12,7 +12,7 @@ import { CML } from "@lucid-evolution/lucid";
 import {
   type WatcherNativeChainSyncAuthority,
   watcherNativeChainSyncAuthorityDetails,
-} from "./native-chain-sync-v1.js";
+} from "./native-chain-sync.js";
 
 export const WATCHER_AUTHENTICATED_L1_PROVIDER_SCHEMA_VERSION =
   "midgard-watcher-authenticated-l1-provider-v1" as const;

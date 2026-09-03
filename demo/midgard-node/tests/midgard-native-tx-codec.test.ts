@@ -30,7 +30,7 @@ import {
 import {
   deriveMidgardTxFieldPreimages,
   verifyMidgardTxFieldPreimage,
-} from "@al-ft/midgard-core/consensus-validation-v1";
+} from "@al-ft/midgard-core/consensus-validation";
 import { CML } from "@lucid-evolution/lucid";
 import { encode } from "cborg";
 import { describe, expect, it } from "vitest";

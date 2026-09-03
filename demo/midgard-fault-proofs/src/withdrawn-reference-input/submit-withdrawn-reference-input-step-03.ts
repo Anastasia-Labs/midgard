@@ -41,21 +41,21 @@ import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
-} from "../witness-reference-scripts-v1.js";
+} from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary-v1.js";
-import type { WithdrawnReferenceInputContracts } from "./contracts-v1.js";
-import { verifyWithdrawnReferenceInputMembership } from "./prepare-withdrawn-reference-input-v1.js";
+} from "../workflow/transaction-boundary.js";
+import type { WithdrawnReferenceInputContracts } from "./contracts.js";
+import { verifyWithdrawnReferenceInputMembership } from "./prepare-withdrawn-reference-input.js";
 import {
   requireWithdrawnReferenceInputReferenceScript,
   requireWithdrawnReferenceInputStepState,
   requireWithdrawnReferenceInputThreadUtxo,
   withdrawnReferenceInputStepLabel,
   withdrawnReferenceInputSubmitError,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 const STEP_LABEL = withdrawnReferenceInputStepLabel(2);
 

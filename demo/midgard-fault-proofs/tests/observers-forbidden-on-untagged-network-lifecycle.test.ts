@@ -14,7 +14,7 @@ import {
   acceptedVerdictSubject,
   AddressData,
   addressDataFromBech32,
-  ForcedInclusionTxSchema,
+  ForcedInclusionTxV1Schema,
   forcedVerdictSubject,
   OutputReference,
   Proof,
@@ -29,26 +29,26 @@ import {
   certifyFaultProofFieldCarriage,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
-} from "../src/field-opening-v1.js";
+} from "../src/field-opening.js";
+import { createObserversForbiddenActuator } from "../src/observers-forbidden-on-untagged-network/actuator.js";
+import { buildObserversForbiddenArtifact } from "../src/observers-forbidden-on-untagged-network/artifact.js";
 import {
   applyObserversForbiddenScripts,
   type ObserversForbiddenContracts,
-} from "../src/observers-forbidden-on-untagged-network/contracts-v1.js";
+} from "../src/observers-forbidden-on-untagged-network/contracts.js";
 import {
   OBSERVERS_FORBIDDEN_ON_UNTAGGED_NETWORK_CATEGORY_ID,
   prepareObserversForbiddenEvidence,
-} from "../src/observers-forbidden-on-untagged-network/family-v1.js";
-import { createObserversForbiddenActuator } from "../src/observers-forbidden-on-untagged-network/production-actuator-v1.js";
-import { buildObserversForbiddenArtifact } from "../src/observers-forbidden-on-untagged-network/production-artifact-v1.js";
-import { submitObserversForbiddenCancel } from "../src/observers-forbidden-on-untagged-network/submit-cancel-v1.js";
+} from "../src/observers-forbidden-on-untagged-network/family.js";
+import { submitObserversForbiddenCancel } from "../src/observers-forbidden-on-untagged-network/submit-cancel.js";
 import {
   submitObserversForbiddenStep01Accepted,
   submitObserversForbiddenStep01Forced,
-} from "../src/observers-forbidden-on-untagged-network/submit-step-01-v1.js";
-import { submitObserversForbiddenStep02 } from "../src/observers-forbidden-on-untagged-network/submit-step-02-v1.js";
+} from "../src/observers-forbidden-on-untagged-network/submit-step-01.js";
+import { submitObserversForbiddenStep02 } from "../src/observers-forbidden-on-untagged-network/submit-step-02.js";
 import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
-import { submitCapturedTransaction } from "../src/workflow/transaction-boundary-v1.js";
+import { submitCapturedTransaction } from "../src/workflow/transaction-boundary.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
@@ -168,7 +168,7 @@ const runForcedContradiction = async ({
   const sourceKey = baseFixture.eventKey.ForcedTransactionEventKey.tx_order_id;
   const keyBytes = Buffer.from(Data.to(sourceKey, OutputReference), "hex");
   const valueBytes = Buffer.from(
-    Data.to(forcedTransaction as never, ForcedInclusionTxSchema as never),
+    Data.to(forcedTransaction as never, ForcedInclusionTxV1Schema as never),
     "hex",
   );
   const root = await buildCountedRoot(ROOT_DOMAINS.forcedTransactionsV1, [

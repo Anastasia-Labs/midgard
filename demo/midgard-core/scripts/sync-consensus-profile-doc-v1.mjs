@@ -3,7 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import {
   encodeMidgardConsensusProfile,
   MIDGARD_CONSENSUS_PROFILE_DIGEST,
-} from "../dist/consensus-profile-v1.js";
+} from "../dist/consensus-profile.js";
 
 const START =
   "<!-- BEGIN MIDGARD_CONSENSUS_PROFILE_V1_GENERATED: do not edit -->";

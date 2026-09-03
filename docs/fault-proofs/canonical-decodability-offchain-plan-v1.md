@@ -30,7 +30,7 @@ thread, and mints the permanent fraud-proof token. Cancellation is explicit.
 ## Off-chain surfaces
 
 - SDK schema:
-  `demo/midgard-sdk/src/fraud-proof/canonical-decodability-v1.ts`
+  `demo/midgard-sdk/src/fraud-proof/canonical-decodability.ts`
 - family package:
   `demo/midgard-fault-proofs/src/canonical-decodability/`
 - catalogue: `demo/midgard-sdk/src/fraud-proof/catalogue.ts`

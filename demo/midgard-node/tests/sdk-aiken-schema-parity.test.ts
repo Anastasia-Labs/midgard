@@ -50,7 +50,7 @@ const repoRoot = path.resolve(testDir, "../../..");
  * #584 retired `transaction_commitment` from the committed source leaves without
  * regenerating `plutus.json`, so four rows compare a two- or three-field SDK
  * schema against a stale three- or four-field blueprint definition and fail on
- * the field count: `ForcedInclusionTxSchema`, `L2TransactionSourceSchema`,
+ * the field count: `ForcedInclusionTxV1Schema`, `L2TransactionSourceSchema`,
  * `ValidationSourceMembershipSchema` and `ValidationClaimWitnessSchema`.
  *
  * #587 then retired the counted publication receipt chain, which took
@@ -191,10 +191,10 @@ const ABI_MAPPINGS = [
   ["ProofStepSchema", "aiken/merkle_patricia_forestry/ProofStep"],
   ["NeighborSchema", "aiken/merkle_patricia_forestry/Neighbor"],
   ["HeaderSchema", "midgard/ledger_state/HeaderV1"],
-  ["TransitionStepSchema", "midgard/ledger_state/TransitionStep"],
+  ["TransitionStepSchema", "midgard/ledger_state/TransitionStepV1"],
   ["EventKeySchema", "midgard/ledger_state/EventKey"],
   ["EventToStepValueSchema", "midgard/ledger_state/EventToStepValue"],
-  ["ForcedInclusionTxSchema", "midgard/ledger_state/ForcedInclusionTxV1"],
+  ["ForcedInclusionTxV1Schema", "midgard/ledger_state/ForcedInclusionTxV1"],
   ["L2TransactionSourceSchema", "midgard/ledger_state/L2TransactionSourceV1"],
   ["NativeTxProofSourceSchema", "midgard/ledger_state/NativeTxProofSourceV1"],
   ["TxOrderPayloadSchema", "midgard/ledger_state/TxOrderPayloadV1"],
@@ -322,7 +322,7 @@ const VALIDITY_VECTORS = [
 describe("SDK/Aiken canonical V1 schema parity", () => {
   it("has no retired transaction-order validator, export, or parser", () => {
     const retiredName =
-      /(?:TxOrder(?:Datum|Event|Payload)|ForcedInclusionTx)V(?:2|3)/u;
+      /(?:TxOrder(?:Datum|Event|Payload)|ForcedInclusionTxV1)V(?:2|3)/u;
     expect(Object.keys(SDK).filter((name) => retiredName.test(name))).toEqual(
       [],
     );

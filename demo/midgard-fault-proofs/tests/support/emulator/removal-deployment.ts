@@ -10,7 +10,7 @@ import { type Script, type UTxO } from "@lucid-evolution/lucid";
 import { type CanonicalDecodabilityContracts } from "../../../src/canonical-decodability/index.js";
 import { type CommittedFieldShapeContracts } from "../../../src/committed-field-shape/index.js";
 import { type CrossBlockDuplicateEventContracts } from "../../../src/cross-block-duplicate-event/index.js";
-import type { DoubleWithdrawContracts } from "../../../src/double-withdraw/contracts-v1.js";
+import type { DoubleWithdrawContracts } from "../../../src/double-withdraw/contracts.js";
 import {
   FRAUD_PROOF_DEPLOYMENT_ENTRIES_BY_CATEGORY,
   VALIDATION_CANONICAL_DECODE_PREPARE_REFERENCE_SCRIPT_DEPLOYMENT_ENTRY,
@@ -20,7 +20,7 @@ import {
 } from "../../../src/index.js";
 import { type InputSetUniquenessContracts } from "../../../src/input-set-uniqueness/index.js";
 import { type L2TxMistagContracts } from "../../../src/l2-tx-mistag/index.js";
-import { type MinFeeContracts } from "../../../src/min-fee-contracts-v1.js";
+import { type MinFeeContracts } from "../../../src/min-fee-contracts.js";
 import { type MintAuthorizationContracts } from "../../../src/mint-authorization/index.js";
 import { type MissingNativeScriptTxContracts } from "../../../src/missing-native-script-tx/index.js";
 import { type MissingSignatureContracts } from "../../../src/missing-signature/index.js";

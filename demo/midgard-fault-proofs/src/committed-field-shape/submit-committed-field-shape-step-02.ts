@@ -28,20 +28,20 @@ import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
-} from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+} from "../witness-reference-scripts.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary-v1.js";
-import type { CommittedFieldShapeContracts } from "./contracts-v1.js";
+} from "../workflow/transaction-boundary.js";
+import type { CommittedFieldShapeContracts } from "./contracts.js";
 import {
   committedFieldShapeStepLabel,
   committedFieldShapeSubmitError,
   requireCommittedFieldShapeReferenceScript,
   requireCommittedFieldShapeStepState,
   requireCommittedFieldShapeThreadUtxo,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 const STEP_LABEL = committedFieldShapeStepLabel(1);
 

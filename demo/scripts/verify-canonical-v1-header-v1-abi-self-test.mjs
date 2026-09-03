@@ -56,7 +56,7 @@ for (const [label, path, remedy] of [
 
 const registry = JSON.parse(readFileSync(registryPath, "utf8"));
 const blueprint = JSON.parse(readFileSync(blueprintPath, "utf8"));
-const HEADER_DEFINITION = "midgard/ledger_state/Header";
+const HEADER_DEFINITION = "midgard/ledger_state/HeaderV1";
 
 const workspace = mkdtempSync(resolve(tmpdir(), "header-v1-abi-self-test-"));
 const candidateRegistryPath = resolve(workspace, "registry.json");

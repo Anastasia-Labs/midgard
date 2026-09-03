@@ -187,7 +187,7 @@ Missing: roles, yields, stake registration, journey.
 2. Roles: four entries in `REFERENCE_SCRIPT_AUTH_TOKEN_NAMES`
    (`demo/midgard-sdk/src/reference-scripts.ts`) and the mirror in
    `DEPLOYMENT_MANIFEST_V1_REFERENCE_SCRIPT_TOKEN_NAMES`
-   (`demo/midgard-core/src/deployment-manifest-identity-v1.ts`, moving the
+   (`demo/midgard-core/src/deployment-manifest-identity.ts`, moving the
    pinned manifest id with an audit note as #477 did); Aiken constants in the
    new `cek_selection_yield.ak`; node `contract-deployment-info.ts`
    `withdrawalDescriptor` rows and `transactions/reference-scripts.ts`
@@ -264,8 +264,8 @@ node -e 'const b=require("./plutus.json");let n=0,bad=0;for(const v of b.validat
 /home/gumbo/.aiken/versions/v1.1.23-org-5adf7837/bin/aiken check -m midgard/validation_resolver_v1
 cd /home/gumbo/midgard-hub/midgard
 pnpm --filter @al-ft/midgard-sdk test -- tests/validation-resolver-applied-hashes.test.ts
-pnpm --filter @al-ft/midgard-core test -- src/deployment-manifest-identity-v1.test.ts   # manifest id re-pin
-pnpm --filter @al-ft/midgard-fault-proofs test -- tests/zz605-semantic-resolver-arity.test.ts tests/validation-dispute-submit.test.ts tests/submit-init-emulator-validation-dispute.test.ts tests/submit-init-emulator-cek-execution-selection-v1.test.ts
+pnpm --filter @al-ft/midgard-core test -- src/deployment-manifest-identity.test.ts   # manifest id re-pin
+pnpm --filter @al-ft/midgard-fault-proofs test -- tests/semantic-resolver-arity-gate.test.ts tests/validation-dispute-submit.test.ts tests/submit-init-emulator-validation-dispute.test.ts tests/submit-init-emulator-cek-execution-selection-v1.test.ts
 ```
 
 ## 10. Ordering and dependencies

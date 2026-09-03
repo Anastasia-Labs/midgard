@@ -10,7 +10,7 @@ const terminal_control =
 /// Terminal control emitted by the TypeScript producer for the exact
 /// 5,000-byte maximum nested Cardano Value (1,592 assets across seven
 /// policies). Pinned from `maximumNestedValueTerminalVectorV1` in
-/// `demo/midgard-validation/tests/nested-value-boundary-v1.test.ts`
+/// `demo/midgard-validation/tests/nested-value-boundary.test.ts`
 /// (`terminalControlCborHex`); regenerate with
 /// `MIDGARD_PRINT_AIKEN_VECTOR=1`.
 const typescript_maximum_value_terminal_control =

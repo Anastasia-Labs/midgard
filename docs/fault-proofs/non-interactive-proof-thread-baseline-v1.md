@@ -31,9 +31,9 @@ These paths were dirty before Wave 0 and are not cleanup targets:
 - `demo/midgard-fault-proofs/tests/submit-init-emulator-withdrawal-mistag-cancel-resume.test.ts`
 - `demo/midgard-fault-proofs/tests/submit-init-emulator-withdrawal-mistag-invalid-marked-valid.test.ts`
 - `demo/midgard-fault-proofs/tests/submit-init-emulator-withdrawal-mistag-valid-marked-invalid.test.ts`
-- `demo/midgard-fault-proofs/tests/support/withdrawal-mistag-emulator-v1.ts`
+- `demo/midgard-fault-proofs/tests/support/withdrawal-mistag-emulator.ts`
 - `demo/midgard-fault-proofs/tests/withdrawal-mistag.test.ts`
-- `demo/midgard-sdk/src/fraud-proof/withdrawal-mistag-v1.ts`
+- `demo/midgard-sdk/src/fraud-proof/withdrawal-mistag.ts`
 - `docs/fault-proofs/architecture.md`
 - `docs/fault-proofs/catalogue-status.md`
 - `docs/fault-proofs/coverage-matrix.md`
@@ -115,18 +115,18 @@ The baseline contains one raised positive emulator configuration:
 sets `maxTxSize: 262_144` and publishes oversized resolvers. Explicit
 `oversized: true` call sites also exist in:
 
-- `demo/midgard-fault-proofs/tests/resolver-proof-fit-sweep-generate-v1.test.ts`
-- `demo/midgard-fault-proofs/tests/support/canonical-decodability-emulator-v1.ts`
-- `demo/midgard-fault-proofs/tests/support/committed-field-shape-emulator-v1.ts`
+- `demo/midgard-fault-proofs/tests/resolver-proof-fit-sweep-generate.test.ts`
+- `demo/midgard-fault-proofs/tests/support/canonical-decodability-emulator.ts`
+- `demo/midgard-fault-proofs/tests/support/committed-field-shape-emulator.ts`
 - `demo/midgard-fault-proofs/tests/support/emulator/dispute-scenario.ts`
-- `demo/midgard-fault-proofs/tests/support/input-set-uniqueness-emulator-v1.ts`
-- `demo/midgard-fault-proofs/tests/support/mint-authorization-emulator-v1.ts`
-- `demo/midgard-fault-proofs/tests/support/missing-native-script-tx-emulator-v1.ts`
-- `demo/midgard-fault-proofs/tests/support/native-script-decoding-emulator-v1.ts`
-- `demo/midgard-fault-proofs/tests/support/network-id-emulator-v1.ts`
-- `demo/midgard-fault-proofs/tests/support/no-reference-input-emulator-v1.ts`
-- `demo/midgard-fault-proofs/tests/support/value-not-preserved-emulator-v1.ts`
-- `demo/midgard-fault-proofs/tests/support/withdrawn-reference-input-emulator-v1.ts`
+- `demo/midgard-fault-proofs/tests/support/input-set-uniqueness-emulator.ts`
+- `demo/midgard-fault-proofs/tests/support/mint-authorization-emulator.ts`
+- `demo/midgard-fault-proofs/tests/support/missing-native-script-tx-emulator.ts`
+- `demo/midgard-fault-proofs/tests/support/native-script-decoding-emulator.ts`
+- `demo/midgard-fault-proofs/tests/support/network-id-emulator.ts`
+- `demo/midgard-fault-proofs/tests/support/no-reference-input-emulator.ts`
+- `demo/midgard-fault-proofs/tests/support/value-not-preserved-emulator.ts`
+- `demo/midgard-fault-proofs/tests/support/withdrawn-reference-input-emulator.ts`
 
 No `localUPLCEval: false` call site exists in the fault-proof package. Wave 0
 does not claim these paths are acceptable; the closure scan must remove them

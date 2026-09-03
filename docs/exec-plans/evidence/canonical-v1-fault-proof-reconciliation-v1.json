@@ -43,8 +43,8 @@
     "preprodComplete": 0,
     "focusedChecksPassed": 45,
     "focusedChecksTotal": 45,
-    "focusedCheckName": "family-scaffold-v1.test.ts strict scanner",
-    "focusedCommand": "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/family-scaffold-v1.test.ts"
+    "focusedCheckName": "family-scaffold.test.ts strict scanner",
+    "focusedCommand": "pnpm --dir demo/midgard-fault-proofs exec vitest run tests/family-scaffold.test.ts"
   },
   "bindingInventory": {
     "compiledStandaloneFamilies": 13,

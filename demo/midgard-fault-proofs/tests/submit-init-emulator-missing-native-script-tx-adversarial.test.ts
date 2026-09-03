@@ -22,8 +22,8 @@ import {
   submitRawMissingNativeScriptTxStep04,
   submitRawMissingNativeScriptTxStep05,
   submitRawMissingNativeScriptTxStep06,
-} from "./support/missing-native-script-tx-emulator-v1.js";
-import { expectOnchainRefusal } from "./support/native-script-decoding-emulator-v1.js";
+} from "./support/missing-native-script-tx-emulator.js";
+import { expectOnchainRefusal } from "./support/native-script-decoding-emulator.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 
 describe("missing-native-script-tx adversarial emulator", () => {

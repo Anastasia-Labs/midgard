@@ -1,6 +1,6 @@
 import { blake2b } from "@noble/hashes/blake2.js";
 
-import { buildMidgardBoundedItem } from "./bounded-item-v1.js";
+import { buildMidgardBoundedItem } from "./bounded-item.js";
 import {
   decodeMidgardCekProgramEnvelope,
   type MidgardCekProgramEnvelope,
@@ -11,8 +11,8 @@ import {
   decodeMidgardNativeByteListPreimage,
   type MidgardNativeTxCanonical,
 } from "./codec/native.js";
-import { decodeMidgardSpendInputItem } from "./codec/native-tx-field-item-decoders-v1.js";
-import { encodeMidgardSpendInputItem } from "./codec/native-tx-field-items-v1.js";
+import { decodeMidgardSpendInputItem } from "./codec/native-tx-field-item-decoders.js";
+import { encodeMidgardSpendInputItem } from "./codec/native-tx-field-items.js";
 import { decodeMidgardTxOutput } from "./codec/output.js";
 import {
   decodeMidgardVersionedScriptListPreimage,

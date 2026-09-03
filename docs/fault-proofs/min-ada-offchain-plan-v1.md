@@ -29,7 +29,7 @@ snapshot as the validation machine. Its five steps authenticate transaction or
 post-UTxO evidence, apply exact field/descriptor carriage, prove predecessor
 non-membership where required, and finalize only an adjudicated violation.
 
-The existing `submit-init-emulator-min-ada-v1.test.ts` tests the interactive
+The existing `submit-init-emulator-min-ada.test.ts` tests the interactive
 `validationTraceDispute` route to `E_MIN_ADA`; it does not test this standalone
 category.
 

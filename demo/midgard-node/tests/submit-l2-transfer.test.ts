@@ -15,7 +15,7 @@ import {
   midgardValueToCmlValue,
   protectMidgardAddress,
 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import {
   type QueuedTx,
   runPhaseAValidation,

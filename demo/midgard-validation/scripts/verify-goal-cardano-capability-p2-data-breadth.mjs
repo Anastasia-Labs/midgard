@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 // redeemer projection, and one complete-Data carriage-fit case per kind that
 // measures direct and reference carriage before any bounded fallback.
 const EXPECTED_TEST_COUNT = 7;
-const REQUIRED_SUITE = "tests/data-breadth-boundary-v1.test.ts";
+const REQUIRED_SUITE = "tests/data-breadth-boundary.test.ts";
 const packageDirectory = fileURLToPath(new URL("../", import.meta.url));
 const reportDirectory = mkdtempSync(
   join(tmpdir(), "midgard-data-breadth-report-"),

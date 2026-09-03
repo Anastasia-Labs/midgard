@@ -2,7 +2,7 @@ import { runDaZstdStartupSelfTest } from "@al-ft/midgard-core/da-compression";
 import {
   assertDeploymentMarkerMatches,
   makeDeploymentMarker,
-} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { Effect } from "effect";
 
 import {

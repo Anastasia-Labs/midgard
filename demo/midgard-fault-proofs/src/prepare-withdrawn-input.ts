@@ -19,7 +19,7 @@ import { Effect } from "effect";
 import {
   blockTransactionsFromCanonicalEvidence,
   type CanonicalBlockEvidence,
-} from "./evidence/canonical-block-evidence-v1.js";
+} from "./evidence/canonical-block-evidence.js";
 import { stringifyJson } from "./json-file.js";
 import {
   buildTrieView,
@@ -35,7 +35,7 @@ import {
   WITHDRAWN_INPUT_EVIDENCE_SCHEMA_VERSION,
   withdrawnInputEvidenceReject,
   WithdrawnInputEvidenceRejection,
-} from "./withdrawn-input/evidence-v1.js";
+} from "./withdrawn-input/evidence.js";
 
 export type WithdrawnInputWithdrawalEntry = {
   readonly key: OutputReference;

@@ -28,13 +28,13 @@ import {
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
-} from "../witness-reference-scripts-v1.js";
-import type { DoubleWithdrawContracts } from "./contracts-v1.js";
+} from "../witness-reference-scripts.js";
+import type { DoubleWithdrawContracts } from "./contracts.js";
 import {
   doubleWithdrawStepLabel,
   doubleWithdrawSubmitError,
   requireDoubleWithdrawReferenceScript,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 const CancelSpendRedeemerSchema = faultProofStepRedeemerSchema(Data.Any());
 type CancelSpendRedeemer = Data.Static<typeof CancelSpendRedeemerSchema>;

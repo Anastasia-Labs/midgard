@@ -155,7 +155,7 @@ describe("phase B validation", () => {
   // ever lifts the floor above the fixture funding, this one test fails with a
   // clear message instead of scattering `E_MIN_ADA` across every unrelated
   // assertion in the file. The adjacent boundary itself is pinned in
-  // min-ada-twin-cross-check-v1.test.ts and in the Aiken wiring vectors.
+  // min-ada-twin-cross-check.test.ts and in the Aiken wiring vectors.
   it("funds every produced fixture output above the minimum-Ada floor", () => {
     const shapes: readonly (readonly [string, Buffer])[] = [
       ["plain enterprise output", makeOutput(FUNDED_OUTPUT_LOVELACE)],

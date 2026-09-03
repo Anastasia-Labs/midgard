@@ -14,7 +14,7 @@ import {
   acceptedVerdictSubject,
   AddressData,
   addressDataFromBech32,
-  ForcedInclusionTxSchema,
+  ForcedInclusionTxV1Schema,
   forcedVerdictSubject,
   hashBlockHeader,
   OutputReference,
@@ -30,26 +30,26 @@ import {
   certifyFaultProofFieldCarriage,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
-} from "../src/field-opening-v1.js";
+} from "../src/field-opening.js";
+import { createObserverOrderInvalidActuator } from "../src/observer-order-invalid/actuator.js";
+import { buildObserverOrderInvalidArtifact } from "../src/observer-order-invalid/artifact.js";
 import {
   applyObserverOrderInvalidScripts,
   type ObserverOrderInvalidContracts,
-} from "../src/observer-order-invalid/contracts-v1.js";
-import { prepareObserverOrderInvalidEvidence } from "../src/observer-order-invalid/family-v1.js";
-import { createObserverOrderInvalidActuator } from "../src/observer-order-invalid/production-actuator-v1.js";
-import { buildObserverOrderInvalidArtifact } from "../src/observer-order-invalid/production-artifact-v1.js";
-import { planObserverOrderInvalidStagedWalk } from "../src/observer-order-invalid/staged-plan-v1.js";
-import { submitObserverOrderInvalidCancel } from "../src/observer-order-invalid/submit-cancel-v1.js";
+} from "../src/observer-order-invalid/contracts.js";
+import { prepareObserverOrderInvalidEvidence } from "../src/observer-order-invalid/family.js";
+import { planObserverOrderInvalidStagedWalk } from "../src/observer-order-invalid/staged-plan.js";
+import { submitObserverOrderInvalidCancel } from "../src/observer-order-invalid/submit-cancel.js";
 import {
   submitObserverOrderInvalidStep01Accepted,
   submitObserverOrderInvalidStep01Forced,
-} from "../src/observer-order-invalid/submit-step-01-v1.js";
-import { submitObserverOrderInvalidStep02 } from "../src/observer-order-invalid/submit-step-02-v1.js";
-import { submitObserverOrderInvalidStep03 } from "../src/observer-order-invalid/submit-step-03-v1.js";
-import { submitObserverOrderInvalidStep04 } from "../src/observer-order-invalid/submit-step-04-v1.js";
+} from "../src/observer-order-invalid/submit-step-01.js";
+import { submitObserverOrderInvalidStep02 } from "../src/observer-order-invalid/submit-step-02.js";
+import { submitObserverOrderInvalidStep03 } from "../src/observer-order-invalid/submit-step-03.js";
+import { submitObserverOrderInvalidStep04 } from "../src/observer-order-invalid/submit-step-04.js";
 import { nativeTxFromCoreCompact } from "../src/submit-step-01.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
-import { submitCapturedTransaction } from "../src/workflow/transaction-boundary-v1.js";
+import { submitCapturedTransaction } from "../src/workflow/transaction-boundary.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
 import { alignUnixTimeToEmulatorSlotBoundary } from "./support/emulator/emulator-context.js";
 import { makeFaultProofEmulatorHarness } from "./support/emulator/harness.js";
@@ -622,7 +622,7 @@ describe("observerOrderInvalid local-catalogue maximum lifecycle", () => {
       baseFixture.eventKey.ForcedTransactionEventKey.tx_order_id;
     const keyBytes = Buffer.from(Data.to(sourceKey, OutputReference), "hex");
     const valueBytes = Buffer.from(
-      Data.to(forcedTransaction as never, ForcedInclusionTxSchema as never),
+      Data.to(forcedTransaction as never, ForcedInclusionTxV1Schema as never),
       "hex",
     );
     const root = await buildCountedRoot(ROOT_DOMAINS.forcedTransactionsV1, [

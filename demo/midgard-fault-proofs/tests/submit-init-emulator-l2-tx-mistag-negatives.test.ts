@@ -15,7 +15,7 @@ import {
   buildL2TxMistagBlockFixture,
   l2TxMistagCategory,
   publishL2TxMistagReferenceScripts,
-} from "./support/l2-tx-mistag-emulator-v1.js";
+} from "./support/l2-tx-mistag-emulator.js";
 import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
 
 describe("l2-tx-mistag cancellation and resume controls", () => {

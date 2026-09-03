@@ -1,6 +1,6 @@
 import type { MidgardValidationPhaseName } from "@al-ft/midgard-core";
 import type { MidgardValue } from "@al-ft/midgard-core/codec";
-import type { MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile-v1";
+import type { MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
 import type { Effect } from "effect";
 
 import type { LedgerEntry } from "./ledger.js";

@@ -29,21 +29,21 @@ import {
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
-} from "../witness-reference-scripts-v1.js";
+} from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
-} from "../workflow/transaction-boundary-v1.js";
+} from "../workflow/transaction-boundary.js";
 import {
   CANONICAL_DECODABILITY_CATEGORY_LABEL,
   type CanonicalDecodabilityContracts,
-} from "./contracts-v1.js";
+} from "./contracts.js";
 import {
   canonicalDecodabilityStepLabel,
   canonicalDecodabilitySubmitError,
   requireCanonicalDecodabilityReferenceScript,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 const CancelSpendRedeemerSchema = faultProofStepRedeemerSchema(Data.Any());
 type CancelSpendRedeemer = Data.Static<typeof CancelSpendRedeemerSchema>;

@@ -21,7 +21,7 @@ import {
   decodeSingleCbor,
   protectMidgardAddress,
 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
+import { MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES } from "@al-ft/midgard-core/codec/native-tx-field-access";
 import {
   encodeValidationSemanticResolutionRedeemer,
   parseExactAikenDataCbor,
@@ -60,7 +60,7 @@ import {
   validationSemanticResolverIndex,
   valueAndMintKind,
 } from "../src/index.js";
-import { exerciseMidgardRetainedDaCanonicalBoundary } from "./helpers/retained-da-boundary-v1.js";
+import { exerciseMidgardRetainedDaCanonicalBoundary } from "./helpers/retained-da-boundary.js";
 import {
   FUNDED_OUTPUT_LOVELACE,
   hashScriptWitness,

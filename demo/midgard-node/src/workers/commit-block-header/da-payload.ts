@@ -2,7 +2,7 @@ import {
   encodeMidgardCekProgramMaterialDaValue,
   mergeMidgardCekProgramMaterialSidecars,
 } from "@al-ft/midgard-core/cek-proof";
-import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import { wrapDaPayload } from "@al-ft/midgard-core/da-payload-envelope";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Data as LucidData } from "@lucid-evolution/lucid";

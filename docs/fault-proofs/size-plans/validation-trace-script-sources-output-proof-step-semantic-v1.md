@@ -249,7 +249,7 @@ node -e 'const b=require("./plutus.json");for(const v of b.validators)if(/(scrip
 aiken check -m ledger_output_proof            # expected: existing 447-line suite + ≥ 12 new tests, 0 failures
 aiken check -m ledger_output_proof_yields     # expected: ≥ 22 tests, 0 failures
 cd ../../demo
-pnpm --filter @al-ft/midgard-fault-proofs test -- tests/zz605-semantic-resolver-arity.test.ts tests/validation-dispute-submit.test.ts tests/inspect-contracts.test.ts
+pnpm --filter @al-ft/midgard-fault-proofs test -- tests/semantic-resolver-arity-gate.test.ts tests/validation-dispute-submit.test.ts tests/inspect-contracts.test.ts
 pnpm --filter @al-ft/midgard-fault-proofs test -- tests/submit-init-emulator-script-sources-output-proof-v1.test.ts
 ```
 

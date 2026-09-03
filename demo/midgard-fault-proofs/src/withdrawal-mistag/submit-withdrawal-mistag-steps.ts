@@ -33,14 +33,14 @@ import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary-v1.js";
-import type { WithdrawalMistagContracts } from "./contracts-v1.js";
+} from "../workflow/transaction-boundary.js";
+import type { WithdrawalMistagContracts } from "./contracts.js";
 import {
   requireWithdrawalMistagReferenceScript,
   requireWithdrawalMistagThreadUtxo,
   withdrawalMistagError,
   withdrawalMistagStepLabel,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 type IntermediateStepIndex = 0 | 1 | 2 | 3;
 

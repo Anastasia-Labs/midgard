@@ -14,18 +14,18 @@ import { describe, expect, it } from "vitest";
 
 import { makeNativeTx } from "../../midgard-validation/tests/validation-fixtures.js";
 import { submitCommittedFieldShapeInit } from "../src/committed-field-shape/submit-committed-field-shape-init.js";
+import { detectDistinctAssetAccumulationCanonicalViolations } from "../src/distinct-asset-accumulation-limit/authenticated-replay.js";
 import {
   DISTINCT_ASSET_ACCUMULATION_LIMIT_CATEGORY_ID,
   prepareDistinctAssetAccumulationEvidence,
-} from "../src/distinct-asset-accumulation-limit/family-v1.js";
-import { detectDistinctAssetAccumulationCanonicalViolations } from "../src/distinct-asset-accumulation-limit/production-replay-v1.js";
-import { buildDistinctAssetAuthenticationFromRetainedDa } from "../src/distinct-asset-accumulation-limit/retained-value-and-mint-v1.js";
-import { submitDistinctAssetAccumulationCancel } from "../src/distinct-asset-accumulation-limit/submit-cancel-v1.js";
-import { submitDistinctAssetAccumulationFold } from "../src/distinct-asset-accumulation-limit/submit-fold-v1.js";
-import { submitDistinctAssetAccumulationStep01Accepted } from "../src/distinct-asset-accumulation-limit/submit-step-01-v1.js";
-import { submitDistinctAssetAccumulationStep02 } from "../src/distinct-asset-accumulation-limit/submit-step-02-v1.js";
-import { submitDistinctAssetAccumulationStep06 } from "../src/distinct-asset-accumulation-limit/submit-step-06-v1.js";
-import { requireLinearFaultThreadUtxo } from "../src/linear-fault-family-v1.js";
+} from "../src/distinct-asset-accumulation-limit/family.js";
+import { buildDistinctAssetAuthenticationFromRetainedDa } from "../src/distinct-asset-accumulation-limit/retained-value-and-mint.js";
+import { submitDistinctAssetAccumulationCancel } from "../src/distinct-asset-accumulation-limit/submit-cancel.js";
+import { submitDistinctAssetAccumulationFold } from "../src/distinct-asset-accumulation-limit/submit-fold.js";
+import { submitDistinctAssetAccumulationStep01Accepted } from "../src/distinct-asset-accumulation-limit/submit-step-01.js";
+import { submitDistinctAssetAccumulationStep02 } from "../src/distinct-asset-accumulation-limit/submit-step-02.js";
+import { submitDistinctAssetAccumulationStep06 } from "../src/distinct-asset-accumulation-limit/submit-step-06.js";
+import { requireLinearFaultThreadUtxo } from "../src/linear-fault-family.js";
 import { submitRemoveFraudulentBlock } from "../src/remove-fraudulent-block.js";
 import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import { buildCatalogueDeploymentInfo } from "./support/emulator/catalogue.js";
@@ -34,7 +34,7 @@ import { captureEmulatorSubmission } from "./support/emulator/measurement.js";
 import { publishPlainReferenceScriptUtxo } from "./support/emulator/reference-scripts.js";
 import { buildRemovalDeploymentInfo } from "./support/emulator/removal-deployment.js";
 import { submitSetupTx } from "./support/emulator/setup-tx.js";
-import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator-v1.js";
+import { buildDecodingBlockFixture } from "./support/native-script-decoding-emulator.js";
 import {
   alignUnixTimeToEmulatorSlotBoundary,
   funderPaymentKeyHash,

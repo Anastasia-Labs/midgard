@@ -141,7 +141,7 @@ export const spendInputsWitnessFromCbors = (
  * directly, located by *content* rather than by out-ref (§8.7), and the
  * `tx1_spend_inputs_ref_input_index`/`tx2_spend_inputs_ref_input_index` redeemer
  * fields it fed no longer exist on-chain. Publishing is now
- * `publishFaultProofFieldCarriageV1` in `field-opening-v1.ts`, which is one
+ * `publishFaultProofFieldCarriageV1` in `field-opening.ts`, which is one
  * mechanism for all nine families instead of one per family.
  *
  * What survives here is what was never about that publication: the canonical

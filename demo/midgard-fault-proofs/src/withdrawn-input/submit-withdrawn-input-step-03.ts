@@ -29,22 +29,22 @@ import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
-} from "../witness-reference-scripts-v1.js";
+} from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary-v1.js";
+} from "../workflow/transaction-boundary.js";
 import {
   WITHDRAWN_INPUT_CATEGORY_LABEL,
   type WithdrawnInputContracts,
-} from "./contracts-v1.js";
+} from "./contracts.js";
 import {
   requireWithdrawnInputReferenceScript,
   requireWithdrawnInputStepState,
   requireWithdrawnInputThreadUtxo,
   withdrawnInputSubmitError,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 export type SubmitWithdrawnInputStep03Result = {
   readonly txHash: string;

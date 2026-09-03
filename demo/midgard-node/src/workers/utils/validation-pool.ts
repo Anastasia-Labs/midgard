@@ -1,7 +1,7 @@
 import type {
   PhaseAConfig,
   RejectCode,
-  WirePhaseACandidate,
+  WirePhaseACandidateV1,
 } from "@al-ft/midgard-validation";
 
 export type ValidationWorkerInit = {
@@ -55,7 +55,7 @@ export type PhaseAJobResponse = {
   readonly publicKeyCache: ValidationCacheStats;
   readonly addressCache: ValidationCacheStats;
   readonly results: ReadonlyArray<
-    | { readonly ok: true; readonly candidate: WirePhaseACandidate }
+    | { readonly ok: true; readonly candidate: WirePhaseACandidateV1 }
     | {
         readonly ok: false;
         readonly txId: Uint8Array;

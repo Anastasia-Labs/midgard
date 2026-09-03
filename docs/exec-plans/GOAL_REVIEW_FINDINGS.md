@@ -142,7 +142,7 @@ both direct and streamed witnesses.
 
 `demo/midgard-validation/src/cek-data-tree.ts:235-342` recursively traverses
 data. The protocol test at
-`demo/midgard-validation/tests/plutus-data-unary-depth-boundary-v1.test.ts:36-64`
+`demo/midgard-validation/tests/plutus-data-unary-depth-boundary.test.ts:36-64`
 admits depth 4,043, which can exhaust the JavaScript stack. The implementation
 also recalculates subtree summaries repeatedly.
 
@@ -328,7 +328,7 @@ surface.
 
 `demo/midgard-validation/scripts/verify-goal-cardano-capability-p2-data-breadth.mjs:7-8`
 and `:75-91` require two cases. The test suite has four at
-`demo/midgard-validation/tests/data-breadth-boundary-v1.test.ts:623-626` and
+`demo/midgard-validation/tests/data-breadth-boundary.test.ts:623-626` and
 `:803`; the retained-DA verifier independently hardcodes two.
 
 **Smallest repair:** derive the exact expected set from one manifest or update
@@ -339,7 +339,7 @@ both gates to four.
 `onchain/aiken/lib/midgard/validation-controls-v1-abi.test.ak:166-168` expects
 arity one. The TypeScript encoder at
 `demo/midgard-validation/src/validation-machine-data.ts:1356-1360`, SDK schema
-at `demo/midgard-sdk/src/validation-auxiliary-witness-v1.ts:1140-1143`, and
+at `demo/midgard-sdk/src/validation-auxiliary-witness.ts:1140-1143`, and
 actual Aiken type at
 `onchain/aiken/lib/midgard/validation-machine-v1.ak:272-275` use arity two.
 
@@ -410,26 +410,26 @@ state queue consumes this partial validation.
 
 ### RF-037 — Invalid confirmation depths fail open
 
-`demo/midgard-sdk/src/evidence-source-v1.ts:262-301` does not require
+`demo/midgard-sdk/src/evidence-source.ts:262-301` does not require
 `minimumConfirmationDepth` to be a nonnegative safe integer. `-1`, `NaN`, and
 other invalid values can bypass the intended delay.
 
 ### RF-038 — SDK validation proof items are not bound to collection proofs
 
-`demo/midgard-sdk/src/validation-proof-item-v1.ts:81-109` does not verify item
+`demo/midgard-sdk/src/validation-proof-item.ts:81-109` does not verify item
 length or commitment against the supplied collection proof. A test intentionally
 combines a 14,396-byte item with proof length two without resolving the datum.
 
 ### RF-039 — Fault-proof scaffolding drops `outputState`
 
-`demo/midgard-fault-proofs/src/family-scaffold/spec-v1.ts:204-229` carries an
-output state, but `emit-v1.ts:120-255` and `:544-609` do not enforce it against
+`demo/midgard-fault-proofs/src/family-scaffold/spec.ts:204-229` carries an
+output state, but `emit.ts:120-255` and `:544-609` do not enforce it against
 the next input or emitted witness.
 
 ### RF-040 — One-step scaffold specifications are accepted but cannot be emitted
 
-`demo/midgard-fault-proofs/src/family-scaffold/spec-v1.ts:318-324` accepts
-fewer than two states, while `emit-v1.ts:446-506` requires a transition.
+`demo/midgard-fault-proofs/src/family-scaffold/spec.ts:318-324` accepts
+fewer than two states, while `emit.ts:446-506` requires a transition.
 
 **Repair direction for RF-039/RF-040:** reject specifications with fewer than
 two states and validate every emitted output state against the following input.
@@ -597,8 +597,8 @@ input/output contract; avoid a broad framework rewrite.
 
 ### RF-062 — BLAKE2b trace implementations are almost identical
 
-`demo/midgard-core/src/blake2b-224-trace-v1.ts` and
-`blake2b-256-trace-v1.ts` each contain about 468 lines of duplicated state
+`demo/midgard-core/src/blake2b-224-trace.ts` and
+`blake2b-256-trace.ts` each contain about 468 lines of duplicated state
 machine logic.
 
 **Recommendation:** implement one private parameterized engine and retain thin
@@ -635,7 +635,7 @@ or throws, but callers at `:549-555`, `:897-945`, `:1059-1064`, and
 
 ### RF-068 — SDK compatibility branch has identical outcomes
 
-`demo/midgard-sdk/src/state-queue-production.ts:573-584` selects between two
+`demo/midgard-sdk/src/state-queue-transactions.ts:573-584` selects between two
 branches that perform the same operation.
 
 ### RF-069 — Reconcile CLI passes unread options
@@ -679,7 +679,7 @@ command outside the default test glob.
 
 Examples include:
 
-- `demo/midgard-node/tests/canonical-v1-commit-profile.test.ts:24-158`;
+- `demo/midgard-node/tests/canonical-commit-profile.test.ts:24-158`;
 - `demo/midgard-node/tests/commit-source-completeness.test.ts:47-69`;
 - `demo/midgard-node/tests/pipeline-status-route.test.ts:31-45`;
 - `demo/midgard-node/tests/reconcile-da-attested.test.ts:133-140`.
@@ -734,7 +734,7 @@ produces an artifact accepted by the validator.
 
 ### RF-080 — Canonical double-spend “valid control” fails too early
 
-`demo/midgard-fault-proofs/tests/canonical-evidence-source-v1.test.ts:518-532`
+`demo/midgard-fault-proofs/tests/canonical-evidence-source.test.ts:518-532`
 expects an unauthenticated-root error and never reaches double-spend detection.
 Its input flattening is also incorrect.
 

@@ -36,7 +36,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { prepareNativeTxInclusionCarriage } from "./native-inclusion-carriage-v1.js";
+import { prepareNativeTxInclusionCarriage } from "./native-inclusion-carriage.js";
 import {
   type PublishedProofChunk,
   walletInputsExcludingChunks,
@@ -67,12 +67,12 @@ import { computationThreadOutputPredicate } from "./tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessSpendingValidatorCarriage,
-} from "./witness-reference-scripts-v1.js";
+} from "./witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "./workflow/transaction-boundary-v1.js";
+} from "./workflow/transaction-boundary.js";
 
 export type SubmitReferenceInputNoIdxStep01CliConfig = SubmitProviderConfig & {
   readonly blueprintPath: string;

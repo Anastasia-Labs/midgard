@@ -50,24 +50,24 @@ import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessWithdrawalValidatorCarriage,
-} from "../witness-reference-scripts-v1.js";
+} from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
-} from "../workflow/transaction-boundary-v1.js";
-import type { NetworkIdContracts } from "./contracts-v1.js";
+} from "../workflow/transaction-boundary.js";
+import type { NetworkIdContracts } from "./contracts.js";
 import {
   findNetworkIdFaults,
   type RetainedDaNetworkIdEvidence,
-} from "./evidence-v1.js";
-import type { PreparedNetworkIdProof } from "./prepare-v1.js";
+} from "./evidence.js";
+import type { PreparedNetworkIdProof } from "./prepare.js";
 import {
   networkIdStepLabel,
   networkIdSubmitError,
   requireNetworkIdReferenceScript,
   requireNetworkIdThreadUtxo,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 const STEP_LABEL = networkIdStepLabel(0);
 

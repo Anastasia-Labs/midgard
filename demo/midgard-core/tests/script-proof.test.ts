@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildMidgardBoundedItem } from "../src/bounded-item-v1.js";
+import { buildMidgardBoundedItem } from "../src/bounded-item.js";
 import { encodeMidgardCekProgramEnvelope } from "../src/cek-proof.js";
 import { encodeCbor } from "../src/codec/cbor.js";
 import {

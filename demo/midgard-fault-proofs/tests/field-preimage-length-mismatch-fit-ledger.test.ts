@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-import { buildVanRossemFitLedger } from "../src/proof-fit/van-rossem-fit-ledger-v1.js";
+import { buildVanRossemFitLedger } from "../src/proof-fit/van-rossem-fit-ledger.js";
 
 const maximum = "32,768-byte certified field preimage";
 // Emulator signing keys affect a few byte-comparison execution paths. For a

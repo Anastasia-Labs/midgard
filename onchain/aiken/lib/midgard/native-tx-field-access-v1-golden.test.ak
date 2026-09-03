@@ -7,7 +7,7 @@
 // chunk split and §8.6's certificate asset name.
 //
 // Every constant below was produced by the TypeScript twin
-// (`demo/midgard-core/src/codec/native-tx-field-access-v1.ts`) and is recomputed
+// (`demo/midgard-core/src/codec/native-tx-field-access.ts`) and is recomputed
 // here by the Aiken producers, so the two encoders cannot silently diverge. The
 // nine per-field item encodings of §5.3 fan out over this same module in #569.
 

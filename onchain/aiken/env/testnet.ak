@@ -43,12 +43,12 @@ pub const max_validity_range_length: PosixTimeDuration = 8 * 60 * 1000
 ///
 /// Provenance: the C70 target-parameter snapshot, preprod epoch 303, pinned as
 /// `PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.coinsPerUtxoByte == 4_310n`
-/// (demo/midgard-validation/tests/helpers/ordered-collection-boundary-v1.ts).
+/// (demo/midgard-validation/tests/helpers/ordered-collection-boundary.ts).
 /// The TypeScript mirror of this very constant is
 /// `MIDGARD_CONSENSUS_LIMITS_V1.coinsPerUtxoByte`
-/// (demo/midgard-core/src/consensus-profile-v1.ts); the two are held equal, and
+/// (demo/midgard-core/src/consensus-profile.ts); the two are held equal, and
 /// held equal to the snapshot, by
-/// demo/midgard-validation/tests/min-ada-twin-cross-check-v1.test.ts, which
+/// demo/midgard-validation/tests/min-ada-twin-cross-check.test.ts, which
 /// reads both production pins as source text.
 ///
 /// A COMPILED DEPLOYMENT CONSTANT, NOT A DECLARED FIELD (owner ruling

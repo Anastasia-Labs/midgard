@@ -15,15 +15,15 @@ import {
   MIDGARD_EMPTY_FIELD_COMMITMENT,
   midgardFieldReadRange,
   midgardFieldTotalLength,
-} from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
+} from "@al-ft/midgard-core/codec/native-tx-field-access";
 import {
   isMidgardConsensusProfile,
   type MidgardConsensusProfile,
-} from "@al-ft/midgard-core/consensus-profile-v1";
+} from "@al-ft/midgard-core/consensus-profile";
 import {
   midgardTxFieldCommitmentsFromSource,
   reconstructMidgardTransaction,
-} from "@al-ft/midgard-core/consensus-validation-v1";
+} from "@al-ft/midgard-core/consensus-validation";
 import { collectMidgardAttachedProgramEnvelopes } from "@al-ft/midgard-core/script-proof";
 import * as SDK from "@al-ft/midgard-sdk";
 import { LucidEvolution, type UTxO } from "@lucid-evolution/lucid";
@@ -38,7 +38,7 @@ import {
   observeTxOrderMaterialCarriageProgram,
   type TxOrderCarriageReadOptions,
   type TxOrderMaterialCarriage,
-} from "../l1-tx-order-carriage-v1.js";
+} from "../l1-tx-order-carriage.js";
 import {
   ContractDeploymentIdentity,
   Database,
@@ -214,7 +214,7 @@ const forcedOrderMaterialFieldCount = (payload: TxOrderPayload): number =>
  * durable availability and what §8.11 names as the ingestion walk's source: once
  * the order mint has authenticated a field's preimage against its committed hash,
  * those bytes are permanent history and nothing afterwards depends on the carriage
- * UTxO surviving. `l1-tx-order-carriage-v1.ts` reads that history for the caller
+ * UTxO surviving. `l1-tx-order-carriage.ts` reads that history for the caller
  * below — Kupo for the order's creating chain point and for the carriage datums,
  * Ogmios chain-sync for the creating transaction's mint redeemer, and no other
  * dependency (#599's owner ruling makes the Ogmios + Kupo boundary binding).
@@ -437,20 +437,20 @@ const txOrderUTxOToEntry = (
     // The verdict recorded at ingest is provisional: the operator has not run
     // Phase A/B yet. Admission requires the submitted bytes to claim
     // TxIsValid (`E_IS_VALID_FALSE_FORBIDDEN`, enforced inside
-    // `encodeForcedInclusionValue`), so the only verdict an unadjudicated
+    // `encodeForcedInclusionValueV1`), so the only verdict an unadjudicated
     // admitted preimage can carry is `ForcedTxValid`; block commitment
     // recomputes and overwrites both this row's verdict and its
     // `forced_inclusion_value`, and the encoder stamps the committed leaf's
     // validity scalar from whatever verdict it is given (`ForcedTxValid` ⇔
     // code 0, `ForcedTxInvalid { _ }` ⇔ code 1).
-    const encoded = yield* ForcedTransactionsDB.encodeForcedInclusionValue({
+    const encoded = yield* ForcedTransactionsDB.encodeForcedInclusionValueV1({
       nativeTxCbor,
       verdict: "ForcedTxValid",
       consensusProfile: consensusProfile satisfies MidgardConsensusProfile,
     });
     // The two identity columns this row carries are **recomputed** from the
     // reconstructed canonical bytes, not copied out of the datum:
-    // `encodeForcedInclusionValue` re-derives the proof source from
+    // `encodeForcedInclusionValueV1` re-derives the proof source from
     // `nativeTxCbor` and hashes it. The datum's own values are already bound —
     // `reconstructTxOrderMaterial` fed both to `reconstructMidgardTransaction`,
     // whose per-field `verifyMidgardV1TxFieldPreimage` refuses a source that does

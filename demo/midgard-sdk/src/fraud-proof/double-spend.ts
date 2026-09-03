@@ -9,7 +9,7 @@
 import { Data } from "@lucid-evolution/lucid";
 
 import { H32Schema } from "../common.js";
-import { FieldOpeningSchema } from "./field-opening-v1.js";
+import { FieldOpeningSchema } from "./field-opening.js";
 import {
   FaultProofStepCancel,
   FaultProofStepCancelSchema,

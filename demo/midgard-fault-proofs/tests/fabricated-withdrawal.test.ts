@@ -10,7 +10,7 @@
  * Every committed-leaf, commitment, nonce and handoff constant below is the
  * value **measured out of the Aiken family modules**
  * `onchain/aiken/lib/midgard/fraud-proofs/fabricated-withdrawal/step-0{1,2,3,4}.ak`
- * and pinned in `demo/midgard-sdk/tests/fabricated-withdrawal-v1.test.ts`. The
+ * and pinned in `demo/midgard-sdk/tests/fabricated-withdrawal.test.ts`. The
  * committed `withdrawals_root`s and the step-04 handoff bytes asserted here are
  * therefore Aiken-measured absolutes, not one TypeScript derivation compared
  * against another.
@@ -26,7 +26,7 @@
  *   valid block this family must refuse to convict.
  *
  * All three are re-committed into a real `DaPayload` here, because
- * `tests/helpers/canonical-block-evidence-fixture-v1.ts` hard-wires an empty
+ * `tests/helpers/canonical-block-evidence-fixture.ts` hard-wires an empty
  * withdrawal source set (`withdrawals: []`, `withdrawalCount: 0n`).
  *
  * Unlike the deposit twin, a withdrawal leaf value embeds a `Value` map, so the
@@ -50,7 +50,7 @@ import {
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence-v1.js";
+import type { CanonicalBlockEvidence } from "../src/evidence/canonical-block-evidence.js";
 import {
   classifyFabricatedWithdrawalFault,
   fabricatedWithdrawalBlockEvidenceFromVerifiedPayload,
@@ -69,7 +69,7 @@ import { buildCountedRoot } from "../src/transition-trace/phas.js";
 import {
   createFabricatedWithdrawalEvidenceAuthority,
   requireFabricatedWithdrawalArtifact,
-} from "../src/workflow/production-fabricated-withdrawal-evidence-v1.js";
+} from "../src/workflow/fabricated-withdrawal-evidence.js";
 import {
   authenticatedHeaderObservation,
   buildCanonicalBlockFixture,
@@ -78,7 +78,7 @@ import {
   h32,
   outRefCbor,
   reencodeFixturePayload,
-} from "./helpers/canonical-block-evidence-fixture-v1.js";
+} from "./helpers/canonical-block-evidence-fixture.js";
 
 // ## Aiken-measured fixture twins
 //

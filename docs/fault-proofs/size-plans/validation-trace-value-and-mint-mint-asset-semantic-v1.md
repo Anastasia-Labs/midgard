@@ -143,7 +143,7 @@ Shared items as replay-asset §6. Specific to this arm:
 - `submit.ts` `semanticActionFieldsV1` (semantic 8): `[claim, input_index, output_index, transition, mint_index, siblings, yield_to_ref_input_index]` with `claim.descriptor = None`; `claim.outcome` is the off-chain mutation replay with the signed quantity.
 - `submitValidationDisputeSemanticResolution`: `.readFrom([yieldUtxo])` + zero `.withdraw` for semantic 8.
 - `VALIDATION_VALUE_AND_MINT_AUXILIARY_SHAPES_V1[8]` (`valueMintAsset`) unchanged.
-- `rejection-reason-v1.ts` unchanged (`MintDeclaredAssetLimit`/`MintAssetAccumulationLimit` → `E_ASSET_COUNT` already exist).
+- `rejection-reason.ts` unchanged (`MintDeclaredAssetLimit`/`MintAssetAccumulationLimit` → `E_ASSET_COUNT` already exist).
 
 ## 7. Emulator scenario tests
 

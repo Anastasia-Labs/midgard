@@ -11,7 +11,7 @@ import {
   MIDGARD_POSIX_TIME_NONE,
   type MidgardNativeTxCanonical,
 } from "@al-ft/midgard-core/codec";
-import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import { it } from "@effect/vitest";
 import { Data } from "@lucid-evolution/lucid";
@@ -82,7 +82,7 @@ const forcedEntry = ({
     const nativeTxCbor = encodeMidgardNativeTxCanonical(
       materializeMidgardNativeTxFromCanonical(canonicalTransaction()),
     );
-    const encoded = yield* ForcedTransactionsDB.encodeForcedInclusionValue({
+    const encoded = yield* ForcedTransactionsDB.encodeForcedInclusionValueV1({
       nativeTxCbor,
       verdict,
       consensusProfile: MIDGARD_CONSENSUS_PROFILE,
@@ -185,8 +185,8 @@ describe("forced transaction source roots", () => {
         invalid[ForcedTransactionsDB.Columns.FORCED_INCLUSION_VALUE].toString(
           "hex",
         ),
-        SDK.ForcedInclusionTx,
-      ) as SDK.ForcedInclusionTx;
+        SDK.ForcedInclusionTxV1,
+      ) as SDK.ForcedInclusionTxV1;
       const membership = yield* buildRootMembershipProof({
         root: {
           ...built,
@@ -200,7 +200,7 @@ describe("forced transaction source roots", () => {
         key: txOrderId,
         value: decodedValue,
         keySchema: SDK.OutputReferenceSchema,
-        valueSchema: SDK.ForcedInclusionTxSchema,
+        valueSchema: SDK.ForcedInclusionTxV1Schema,
       });
 
       expect(decodedValue.verdict).toEqual({
@@ -217,7 +217,7 @@ describe("forced transaction source roots", () => {
       yield* verifyRootMembershipProof({
         witness: membership,
         keySchema: SDK.OutputReferenceSchema,
-        valueSchema: SDK.ForcedInclusionTxSchema,
+        valueSchema: SDK.ForcedInclusionTxV1Schema,
         options: {
           expectedDomain: SDK.ROOT_DOMAINS.forcedTransactionsV1,
           expectedRoot: built.root,

@@ -11,7 +11,7 @@ import { Data } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { fetchFraudProofEvidence } from "../src/evidence/production-fraud-proof-evidence-v1.js";
+import { fetchFraudProofEvidence } from "../src/evidence/fraud-proof-evidence.js";
 import {
   classifyCommittedTransactionsLeaves,
   daHashPreimageBlockEvidenceFromVerifiedPayload,
@@ -26,7 +26,7 @@ import {
   buildFixtureTransaction,
   type CanonicalBlockFixture,
   outRefCbor,
-} from "./helpers/canonical-block-evidence-fixture-v1.js";
+} from "./helpers/canonical-block-evidence-fixture.js";
 
 const FOREIGN_COMMITTED_KEY =
   "9999999999999999999999999999999999999999999999999999999999999999";

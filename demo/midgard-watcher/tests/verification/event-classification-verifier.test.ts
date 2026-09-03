@@ -34,21 +34,21 @@ import {
 } from "../../src/verification/event-classification-verifier.js";
 import { WATCHER_PHASE_A_VERIFIER_SCHEMA_VERSION } from "../../src/verification/phase-a-verifier.js";
 import {
+  type GenuineReplayPublicReplayFixture,
+  makeGenuineReplayPublicReplayFixture,
+} from "../support/replay-authority-fixtures.js";
+import {
+  createGenuineSettlementAuthorities,
+  type GenuineSettlementAuthority,
+  type GenuineSettlementAuthorityFixtureSet,
+} from "../support/settlement-authority-scenarios.js";
+import {
   createGenuineUserEventDepositWithdrawalAuthorities,
   type GenuineUserEventAuthorityFixtureSet,
   genuineUserEventForcedPayloadForCanonicalTx,
   type UserEventAcceptedAuthorityScenario,
   userEventForcedOperatorVerdictForClassification,
-} from "../support/w15-authority-scenarios.js";
-import {
-  createGenuineSettlementAuthorities,
-  type GenuineSettlementAuthority,
-  type GenuineSettlementAuthorityFixtureSet,
-} from "../support/w16-authority-scenarios.js";
-import {
-  type GenuineReplayPublicReplayFixture,
-  makeGenuineReplayPublicReplayFixture,
-} from "../support/w25-authority-fixtures.js";
+} from "../support/user-event-authority-scenarios.js";
 
 const source = (
   overrides: Partial<

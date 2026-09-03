@@ -14,7 +14,7 @@ import {
   assertDeploymentMarkerMatches,
   type DeploymentMarker,
   parseDeploymentMarker,
-} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 
 import type {
   DaAttestationCandidateRecord,

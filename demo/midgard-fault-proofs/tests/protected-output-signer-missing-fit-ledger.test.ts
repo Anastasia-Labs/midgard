@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-import { buildVanRossemFitLedger } from "../src/proof-fit/van-rossem-fit-ledger-v1.js";
+import { buildVanRossemFitLedger } from "../src/proof-fit/van-rossem-fit-ledger.js";
 
 const lifecycle = "318 address witnesses; three-chunk Certified field 7";
 const measurements = [

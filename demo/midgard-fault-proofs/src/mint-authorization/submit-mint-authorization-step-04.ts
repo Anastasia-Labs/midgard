@@ -48,7 +48,7 @@ import {
   faultProofFieldOpening,
   planFaultProofFieldOpening,
   publishFaultProofFieldCarriage,
-} from "../field-opening-v1.js";
+} from "../field-opening.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
   type ResolvedProverSigner,
@@ -56,24 +56,24 @@ import {
 import { excludeUtxo } from "../spend-input-witness.js";
 import { selectFeeInput } from "../submit-step-01.js";
 import { computationThreadOutputPredicate } from "../tx-layout.js";
-import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts-v1.js";
+import { witnessSpendingValidatorCarriage } from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary-v1.js";
-import type { MintAuthorizationContracts } from "./contracts-v1.js";
+} from "../workflow/transaction-boundary.js";
+import type { MintAuthorizationContracts } from "./contracts.js";
 import {
   buildMintAuthorizationLedgerMembership,
   type MintAuthorizationLedgerTrieHandle,
-} from "./evidence-v1.js";
+} from "./evidence.js";
 import {
   mintAuthorizationStepLabel,
   mintAuthorizationSubmitError,
   requireMintAuthorizationReferenceScript,
   requireMintAuthorizationStepState,
   requireMintAuthorizationThreadUtxo,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 const STEP_LABEL = mintAuthorizationStepLabel(3);
 

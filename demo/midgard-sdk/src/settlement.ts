@@ -36,7 +36,7 @@ import {
 import { fetchHubOracleUTxOProgram, HubOracleError } from "./hub-oracle.js";
 import { AuthenticUTxO } from "./internals.js";
 import { WithdrawalValiditySchema } from "./ledger-state.js";
-import { OperatorVerdictSchema } from "./rejection-reason-v1.js";
+import { OperatorVerdictSchema } from "./rejection-reason.js";
 import {
   FetchRetiredOperatorParams,
   fetchRetiredOperatorUTxOs,

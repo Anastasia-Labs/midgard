@@ -1,5 +1,5 @@
 import type { MidgardCekProgramMaterialEntry } from "@al-ft/midgard-core/cek-proof";
-import type { MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile-v1";
+import type { MidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
 
 import type { Assets } from "../core/assets.js";
 import {

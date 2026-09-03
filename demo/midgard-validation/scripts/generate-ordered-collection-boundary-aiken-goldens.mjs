@@ -5,13 +5,13 @@
  * ordered-collection boundary suites:
  *
  *   * C20-7 — field 4/7, the coupled signer/vkey-witness maximum
- *     (`tests/ordered-collection-signer-witness-boundary-v1.test.ts`);
+ *     (`tests/ordered-collection-signer-witness-boundary.test.ts`);
  *   * C20-6 — field 3/6, the observer/native-script maximum
- *     (`tests/ordered-collection-observer-native-script-boundary-v1.test.ts`);
+ *     (`tests/ordered-collection-observer-native-script-boundary.test.ts`);
  *   * the field-8 spend-redeemer maximum
- *     (`tests/ordered-collection-redeemer-boundary-v1.test.ts`);
+ *     (`tests/ordered-collection-redeemer-boundary.test.ts`);
  *   * the field-2 inline-datum blob maximum
- *     (`tests/blob-chunk-boundary-v1.test.ts`).
+ *     (`tests/blob-chunk-boundary.test.ts`).
  *
  * All four were hand-mirrored families before #588: the suites search for the
  * exact transaction that sits on the Cardano envelope, and the Aiken modules then
@@ -23,7 +23,7 @@
  * **Why this generator runs the suites instead of recomputing the boundary.**
  * The boundary is not a value that can be recomputed from a short declaration: it
  * is the result of a binary search over signed Cardano transactions built through
- * an emulator, and that search lives in `tests/helpers/ordered-collection-boundary-v1.ts`
+ * an emulator, and that search lives in `tests/helpers/ordered-collection-boundary.ts`
  * — 2,600 lines that reach into four sibling packages' `src/`. There is exactly
  * one implementation of it and it is only loadable under vitest. So the suites
  * remain the producers, and they publish their vectors on the
@@ -66,17 +66,17 @@ const { checkOnly } = parseGoldenChannelArguments(
 const writeOrCheck = goldenChannelEmitter({ repositoryRoot, checkOnly });
 
 const PRODUCING_SUITES = [
-  "tests/ordered-collection-signer-witness-boundary-v1.test.ts",
-  "tests/ordered-collection-observer-native-script-boundary-v1.test.ts",
-  "tests/ordered-collection-redeemer-boundary-v1.test.ts",
-  "tests/blob-chunk-boundary-v1.test.ts",
+  "tests/ordered-collection-signer-witness-boundary.test.ts",
+  "tests/ordered-collection-observer-native-script-boundary.test.ts",
+  "tests/ordered-collection-redeemer-boundary.test.ts",
+  "tests/blob-chunk-boundary.test.ts",
   // Added by #592. These four gained a write channel (#590 scope item 0) because
   // the machine's terminal-fold fixtures now carry §8's carriage — the field's
   // whole §5.1 preimage — and a preimage is not a value a human mirrors.
-  "tests/ordered-collection-spend-inputs-boundary-v1.test.ts",
-  "tests/ordered-collection-reference-inputs-boundary-v1.test.ts",
-  "tests/ordered-collection-mint-boundary-v1.test.ts",
-  "tests/ordered-collection-boundary-v1.test.ts",
+  "tests/ordered-collection-spend-inputs-boundary.test.ts",
+  "tests/ordered-collection-reference-inputs-boundary.test.ts",
+  "tests/ordered-collection-mint-boundary.test.ts",
+  "tests/ordered-collection-boundary.test.ts",
 ];
 
 const runProducingSuites = (vectorDirectory) => {

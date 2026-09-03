@@ -7,7 +7,7 @@ import {
   isMidgardConsensusProfile,
   MIDGARD_CONSENSUS_LIMITS,
   type MidgardConsensusProfile,
-} from "@al-ft/midgard-core/consensus-profile-v1";
+} from "@al-ft/midgard-core/consensus-profile";
 import {
   type DaLibp2pRuntimeManifest,
   parseDaLibp2pRuntimeManifest,
@@ -16,7 +16,7 @@ import {
   type DeploymentManifestAvailabilityChallenge,
   parseDeploymentManifestAvailabilityChallenge,
   verifyFinalizedDeploymentManifest,
-} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import { multiaddr } from "@multiformats/multiaddr";
 import { blake2b } from "@noble/hashes/blake2.js";
 

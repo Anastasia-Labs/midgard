@@ -46,7 +46,7 @@ const FORCED_VALUE_CBOR = Data.to(
     },
     verdict: "ForcedTxValid",
   },
-  SDK.ForcedInclusionTx,
+  SDK.ForcedInclusionTxV1,
 );
 
 type Variant = "deposit" | "withdrawal" | "forced-transaction";
@@ -119,7 +119,7 @@ const makeProof = async (variant: Variant) => {
                 phas_root: counted.phasRoot,
                 count: counted.count,
                 key,
-                value: Data.from(valueCbor, SDK.ForcedInclusionTx),
+                value: Data.from(valueCbor, SDK.ForcedInclusionTxV1),
                 proof,
               },
             },

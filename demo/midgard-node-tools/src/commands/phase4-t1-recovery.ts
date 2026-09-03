@@ -1,4 +1,4 @@
-import { isMidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile-v1";
+import { isMidgardConsensusProfile } from "@al-ft/midgard-core/consensus-profile";
 import * as SDK from "@al-ft/midgard-sdk";
 import { Effect } from "effect";
 import { positiveSafeInteger } from "midgard-node/artifact-schema";

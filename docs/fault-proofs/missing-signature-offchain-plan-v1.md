@@ -29,7 +29,7 @@ fraud-proof token. Cancellation is explicit at every step.
 
 ## Off-chain surfaces
 
-- SDK schema: `demo/midgard-sdk/src/fraud-proof/missing-signature-v1.ts`
+- SDK schema: `demo/midgard-sdk/src/fraud-proof/missing-signature.ts`
 - family package: `demo/midgard-fault-proofs/src/missing-signature/`
 - catalogue: `demo/midgard-sdk/src/fraud-proof/catalogue.ts`
 

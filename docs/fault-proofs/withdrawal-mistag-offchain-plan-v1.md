@@ -38,7 +38,7 @@ explicit at every step.
 
 ## Off-chain surfaces
 
-- SDK schema: `demo/midgard-sdk/src/fraud-proof/withdrawal-mistag-v1.ts`
+- SDK schema: `demo/midgard-sdk/src/fraud-proof/withdrawal-mistag.ts`
 - family package: `demo/midgard-fault-proofs/src/withdrawal-mistag/`
 - catalogue: `demo/midgard-sdk/src/fraud-proof/catalogue.ts`
 

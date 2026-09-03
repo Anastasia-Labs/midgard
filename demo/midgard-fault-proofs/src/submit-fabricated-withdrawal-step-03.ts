@@ -59,7 +59,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 
-import { requireFabricatedReferenceScript } from "./fabricated-reference-script-v1.js";
+import { requireFabricatedReferenceScript } from "./fabricated-reference-script.js";
 import { parseHex, readJsonFile, requireRecord } from "./json-file.js";
 import {
   DEFAULT_CONFIRMATION_POLL_MS,
@@ -84,7 +84,7 @@ import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
-} from "./workflow/transaction-boundary-v1.js";
+} from "./workflow/transaction-boundary.js";
 
 /** The step-03 handoff: the opening the redeemer carries and the fault it yields. */
 export type FabricatedWithdrawalStep03Handoff = {

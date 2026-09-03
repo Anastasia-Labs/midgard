@@ -20,7 +20,7 @@ import {
   buildNativeScriptInvalidEmulatorFixture,
   makeNativeScriptInvalidEmulatorHarness,
   publishFinalFamilyReferenceScripts,
-} from "./support/final-catalogue-emulator-v1.js";
+} from "./support/final-catalogue-emulator.js";
 import { setupFraudulentBlock } from "./support/submit-init-emulator-fixtures.js";
 import {
   buildRemovalDeploymentInfo,

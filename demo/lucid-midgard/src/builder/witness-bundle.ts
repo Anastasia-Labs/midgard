@@ -25,7 +25,7 @@ import {
 
 export type VKeyWitnessInput = VKeyWitness | Uint8Array | string;
 
-export type MidgardPartialWitnessBundle = {
+export type MidgardPartialWitnessBundleV1 = {
   readonly kind: "MidgardPartialWitnessBundleV1";
   readonly version: 1;
   readonly midgardNativeTxVersion: 1;
@@ -36,7 +36,7 @@ export type MidgardPartialWitnessBundle = {
 };
 
 export type PartialWitnessBundleInput =
-  | MidgardPartialWitnessBundle
+  | MidgardPartialWitnessBundleV1
   | Uint8Array
   | string
   | { readonly cbor: Uint8Array | string }
@@ -278,8 +278,8 @@ export const signMidgardNativeTx = async (
 };
 
 const normalizePartialWitnessBundle = (
-  bundle: MidgardPartialWitnessBundle,
-): MidgardPartialWitnessBundle => {
+  bundle: MidgardPartialWitnessBundleV1,
+): MidgardPartialWitnessBundleV1 => {
   if (typeof bundle !== "object" || bundle === null) {
     throw new SigningError("Partial witness bundle must be an object");
   }
@@ -383,7 +383,7 @@ const normalizePartialWitnessBundle = (
 export const partialWitnessBundleFromWitnesses = (
   tx: MidgardNativeTxFull,
   witnesses: readonly VKeyWitness[],
-): MidgardPartialWitnessBundle => {
+): MidgardPartialWitnessBundleV1 => {
   const bodyHash = computeMidgardNativeTxId(tx);
   const canonical = canonicalizeAddrWitnesses(bodyHash, witnesses);
   if (canonical.length === 0) {
@@ -409,7 +409,7 @@ export const partialWitnessBundleFromWitnesses = (
 };
 
 const encodeNormalizedPartialWitnessBundle = (
-  normalized: MidgardPartialWitnessBundle,
+  normalized: MidgardPartialWitnessBundleV1,
 ): Buffer =>
   encodeCbor([
     normalized.kind,
@@ -422,7 +422,7 @@ const encodeNormalizedPartialWitnessBundle = (
   ]);
 
 export const encodePartialWitnessBundle = (
-  bundle: MidgardPartialWitnessBundle,
+  bundle: MidgardPartialWitnessBundleV1,
 ): Buffer =>
   encodeNormalizedPartialWitnessBundle(normalizePartialWitnessBundle(bundle));
 
@@ -479,7 +479,7 @@ const canonicalPartialBundleHexString = (
 
 export const decodePartialWitnessBundle = (
   input: Uint8Array | string,
-): MidgardPartialWitnessBundle => {
+): MidgardPartialWitnessBundleV1 => {
   const bytes =
     typeof input === "string"
       ? nonEmptyBytesFromHex(input, "partial witness bundle CBOR")
@@ -536,7 +536,7 @@ export const decodePartialWitnessBundle = (
 
 export const parsePartialWitnessBundle = (
   input: PartialWitnessBundleInput,
-): MidgardPartialWitnessBundle => {
+): MidgardPartialWitnessBundleV1 => {
   if (input instanceof Uint8Array || typeof input === "string") {
     return decodePartialWitnessBundle(input);
   }
@@ -572,12 +572,12 @@ export const parsePartialWitnessBundle = (
     }
     return decodePartialWitnessBundle(record.cborHex);
   }
-  return normalizePartialWitnessBundle(input as MidgardPartialWitnessBundle);
+  return normalizePartialWitnessBundle(input as MidgardPartialWitnessBundleV1);
 };
 
 export const assertPartialBundleMatchesTx = (
   tx: MidgardNativeTxFull,
-  bundle: MidgardPartialWitnessBundle,
+  bundle: MidgardPartialWitnessBundleV1,
 ): void => {
   const txId = computeMidgardNativeTxId(tx).toString("hex");
   if (bundle.txId !== txId || bundle.bodyHash !== txId) {

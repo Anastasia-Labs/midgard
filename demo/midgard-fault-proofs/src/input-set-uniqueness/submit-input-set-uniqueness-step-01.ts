@@ -67,19 +67,19 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessSpendingValidatorCarriage,
   witnessWithdrawalValidatorCarriage,
-} from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+} from "../witness-reference-scripts.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary-v1.js";
-import type { InputSetUniquenessContracts } from "./contracts-v1.js";
+} from "../workflow/transaction-boundary.js";
+import type { InputSetUniquenessContracts } from "./contracts.js";
 import {
   inputSetUniquenessStepLabel,
   inputSetUniquenessSubmitError,
   requireInputSetUniquenessReferenceScript,
   requireInputSetUniquenessThreadUtxo,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 const STEP_LABEL = inputSetUniquenessStepLabel(0);
 

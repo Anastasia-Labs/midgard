@@ -4,7 +4,7 @@ import { submitWithdrawnInputStep03 } from "../src/index.js";
 import {
   advanceWithdrawnInputToStep03,
   makeWithdrawnInputEmulatorScenario,
-} from "./support/withdrawn-input-emulator-v1.js";
+} from "./support/withdrawn-input-emulator.js";
 
 describe("withdrawn-input invalid-withdrawal refusal", () => {
   it("refuses on-chain even when the invalid leaf targets the spend input", async () => {

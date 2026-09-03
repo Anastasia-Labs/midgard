@@ -29,8 +29,8 @@
 import { MIDGARD_MAX_TIER1_REDEEMER_PREIMAGE_BYTES } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
-import { submitValueNotPreservedStep03 } from "../src/value-not-preserved/submit-value-not-preserved-step-03-v1.js";
-import { submitValueNotPreservedStep04 } from "../src/value-not-preserved/submit-value-not-preserved-step-04-v1.js";
+import { submitValueNotPreservedStep03 } from "../src/value-not-preserved/submit-value-not-preserved-step-03.js";
+import { submitValueNotPreservedStep04 } from "../src/value-not-preserved/submit-value-not-preserved-step-04.js";
 import { expectSingleUtxoWithUnit } from "./support/submit-init-emulator-shared.js";
 import {
   buildValueNotPreservedFixture,
@@ -44,7 +44,7 @@ import {
   vnpOutput,
   vnpOutRef,
   vnpValue,
-} from "./support/value-not-preserved-emulator-v1.js";
+} from "./support/value-not-preserved-emulator.js";
 
 const POLICY_ID_HEX = "cd".repeat(28);
 const ASSET_NAME_HEX = "746f6b32"; // "tok2"

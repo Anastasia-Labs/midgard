@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyDistinctAssetAccumulationLimitScripts,
   DISTINCT_ASSET_ACCUMULATION_LIMIT_BLUEPRINT_TITLES,
-} from "../src/distinct-asset-accumulation-limit/contracts-v1.js";
+} from "../src/distinct-asset-accumulation-limit/contracts.js";
 import {
   makeFaultProofEmulatorHarness,
   publishPlainReferenceScriptUtxo,

@@ -84,7 +84,7 @@ use midgard/native_tx_field_access_v1.{
 // than a sum type for §12.7's reason one level out — they travel in computation
 // thread state between two transactions and a thread datum is a wire form, so an
 // off-chain twin has to write and read the value, and `demo/midgard-sdk`'s
-// `committed-field-shape-v1.ts` mirrors these constants by name.
+// `committed-field-shape.ts` mirrors these constants by name.
 //
 // Unlike §12.7's, **these codes are load-bearing in one place**: the two
 // non-convicting codes are non-convicting for different reasons, and the second

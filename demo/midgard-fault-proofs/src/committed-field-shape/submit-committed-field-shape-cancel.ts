@@ -28,21 +28,21 @@ import {
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
-} from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
+} from "../witness-reference-scripts.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
 import {
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary-v1.js";
+} from "../workflow/transaction-boundary.js";
 import {
   COMMITTED_FIELD_SHAPE_CATEGORY_LABEL,
   type CommittedFieldShapeContracts,
-} from "./contracts-v1.js";
+} from "./contracts.js";
 import {
   committedFieldShapeStepLabel,
   committedFieldShapeSubmitError,
   requireCommittedFieldShapeReferenceScript,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 const CancelSpendRedeemerSchema = faultProofStepRedeemerSchema(Data.Any());
 type CancelSpendRedeemer = Data.Static<typeof CancelSpendRedeemerSchema>;

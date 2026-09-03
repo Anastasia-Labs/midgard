@@ -35,8 +35,7 @@ const inputPath = (flag, environmentVariable, fallback) =>
 const isRecord = (value) =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 
-const contractError = (message) =>
-  new Error(`Header ABI contract: ${message}`);
+const contractError = (message) => new Error(`Header ABI contract: ${message}`);
 
 const requireRecord = (value, label) => {
   if (!isRecord(value)) throw contractError(`${label} must be an object`);
@@ -81,9 +80,9 @@ export const assertHeaderV1AbiContract = (value) => {
   if (contract.version !== 1) {
     throw contractError("contract.version must be 1");
   }
-  if (contract.blueprintDefinition !== "midgard/ledger_state/Header") {
+  if (contract.blueprintDefinition !== "midgard/ledger_state/HeaderV1") {
     throw contractError(
-      "contract.blueprintDefinition must be midgard/ledger_state/Header",
+      "contract.blueprintDefinition must be midgard/ledger_state/HeaderV1",
     );
   }
 
@@ -251,20 +250,17 @@ export const extractHeaderV1Blueprint = (blueprint) => {
   const value = requireRecord(blueprint, "blueprint");
   const definitions = requireRecord(value.definitions, "blueprint.definitions");
   const definition = requireRecord(
-    definitions["midgard/ledger_state/Header"],
+    definitions["midgard/ledger_state/HeaderV1"],
     "blueprint Header definition",
   );
-  const variants = requireArray(
-    definition.anyOf,
-    "blueprint Header variants",
-  );
+  const variants = requireArray(definition.anyOf, "blueprint Header variants");
   const constructor = variants.find((candidate) => candidate?.index === 0);
   if (constructor === undefined) {
     throw new Error("blueprint Header constructor 0 is missing");
   }
   const fields = requireArray(constructor.fields, "blueprint Header fields");
   return {
-    definition: "midgard/ledger_state/Header",
+    definition: "midgard/ledger_state/HeaderV1",
     constructorTag: constructor.index,
     constructorArity: fields.length,
     fields: fields.map((field, index) => {
@@ -320,10 +316,7 @@ export const extractHeaderV1SdkSchema = (schema) => {
       constructorArity: entries.length,
       fields: entries.map(([name, field], index) => ({
         index,
-        name: requireString(
-          name,
-          `SDK Header field ${index.toString()}.name`,
-        ),
+        name: requireString(name, `SDK Header field ${index.toString()}.name`),
         type: schemaKind(field),
       })),
     };
@@ -503,9 +496,7 @@ if (invokedDirectly) {
   try {
     await run();
   } catch (error) {
-    process.stderr.write(
-      `Header ABI verification failed: ${error.message}\n`,
-    );
+    process.stderr.write(`Header ABI verification failed: ${error.message}\n`);
     process.exitCode = 1;
   }
 }

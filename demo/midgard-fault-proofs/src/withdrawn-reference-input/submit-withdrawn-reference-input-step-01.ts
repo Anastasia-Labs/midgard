@@ -76,18 +76,18 @@ import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessWithdrawalValidatorCarriage,
-} from "../witness-reference-scripts-v1.js";
+} from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary-v1.js";
-import type { WithdrawnReferenceInputContracts } from "./contracts-v1.js";
+} from "../workflow/transaction-boundary.js";
+import type { WithdrawnReferenceInputContracts } from "./contracts.js";
 import {
   requireWithdrawnReferenceInputReferenceScript,
   requireWithdrawnReferenceInputThreadUtxo,
   withdrawnReferenceInputSubmitError,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 // The withdrawn-reference-input proof commits the bad transaction by the node's native
 // transaction root (the same inclusion path as double-spend and

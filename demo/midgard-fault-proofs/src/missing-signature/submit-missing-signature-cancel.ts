@@ -42,16 +42,16 @@ import {
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
-} from "../witness-reference-scripts-v1.js";
+} from "../witness-reference-scripts.js";
 import {
   MISSING_SIGNATURE_CATEGORY_LABEL,
   type MissingSignatureContracts,
-} from "./contracts-v1.js";
+} from "./contracts.js";
 import {
   missingSignatureStepLabel,
   missingSignatureSubmitError,
   requireMissingSignatureReferenceScript,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 /**
  * Every step's spend redeemer shares the `Cancel` head; the `Continue` arm

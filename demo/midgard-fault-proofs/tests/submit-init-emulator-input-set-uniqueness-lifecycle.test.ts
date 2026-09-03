@@ -40,7 +40,7 @@ import {
   makeInputSetUniquenessEmulatorHarness,
   publishInputSetUniquenessReferenceScripts,
   setupInputSetUniquenessScenario,
-} from "./support/input-set-uniqueness-emulator-v1.js";
+} from "./support/input-set-uniqueness-emulator.js";
 import { expectStateQueueHeaderOrder } from "./support/submit-init-emulator-fixtures.js";
 import {
   buildRemovalDeploymentInfo,

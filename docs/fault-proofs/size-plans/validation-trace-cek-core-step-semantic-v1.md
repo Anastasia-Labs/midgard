@@ -271,7 +271,7 @@ node -e 'const b=require("./plutus.json");let n=0,bad=0;for(const v of b.validat
 /home/gumbo/.aiken/versions/v1.1.23-org-5adf7837/bin/aiken check -m midgard/cek_builtin_v1          # today 34 checks
 /home/gumbo/.aiken/versions/v1.1.23-org-5adf7837/bin/aiken check -m "midgard/validation_machine_v1.{cek_core_chain_agrees_with_the_aggregate, cek_core_step_route_agrees_with_the_aggregate}"
 cd /home/gumbo/midgard-hub/midgard
-pnpm --filter @al-ft/midgard-fault-proofs test -- tests/zz605-semantic-resolver-arity.test.ts tests/validation-dispute-submit.test.ts
+pnpm --filter @al-ft/midgard-fault-proofs test -- tests/semantic-resolver-arity-gate.test.ts tests/validation-dispute-submit.test.ts
 pnpm --filter @al-ft/midgard-fault-proofs test -- tests/submit-init-emulator-cek-core-step-v1.test.ts
 ```
 

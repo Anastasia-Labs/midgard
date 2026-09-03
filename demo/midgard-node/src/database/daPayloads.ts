@@ -1,4 +1,4 @@
-import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile-v1";
+import { MIDGARD_CONSENSUS_PROFILE_ID } from "@al-ft/midgard-core/consensus-profile";
 import { SqlClient } from "@effect/sql";
 import { Effect, Option } from "effect";
 

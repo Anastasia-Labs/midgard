@@ -45,20 +45,20 @@ import { outputWithDatumAndUnitPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
-} from "../witness-reference-scripts-v1.js";
+} from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScriptsUsedByTransaction,
-} from "../workflow/transaction-boundary-v1.js";
-import type { NativeScriptDecodingContracts } from "./contracts-v1.js";
+} from "../workflow/transaction-boundary.js";
+import type { NativeScriptDecodingContracts } from "./contracts.js";
 import {
   nativeScriptDecodingStepLabel,
   nativeScriptDecodingSubmitError,
   requireNativeScriptDecodingReferenceScript,
   requireNativeScriptDecodingStepState,
   requireNativeScriptDecodingThreadUtxo,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 const STEP_LABEL = nativeScriptDecodingStepLabel(5);
 

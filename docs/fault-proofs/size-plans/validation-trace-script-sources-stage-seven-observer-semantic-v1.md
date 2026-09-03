@@ -17,7 +17,7 @@ module). This plan defines the **two stage-seven observer yields**.
 | Semantic index (arm) | 25 of 29; global slot `validationSemanticResolverGlobalIndexV1(8, 25) = 57` |
 | Library entry point | `verify_script_sources_stage_seven_observer_semantics_v1` → `script_sources_stage_seven_control_from_witness`, `verify_native_tx_proof_source_v1`, `field_door.open_machine_field_item(door, verified, witness_set, 3, seen, carriage)`, `script_sources_stage_seven_control_is_bound` (**`exact_script_sources_control`**), `script_sources_stage_seven_observer_successor_is_exact` (**`script_sources_control_successor_is_exact` → `exact_script_sources_control`**), `rejected_successor_is_exact(reject_invalid_field_type)` |
 | Redeemer action | `VerifyObserver { input_index, output_index, transition, field_index, item_index, carriage: FieldCarriageV1 }`; auxiliary rebuilt as `TransactionFieldChunkWitness { field_index, item_index, carriage }` (constructor 1, 3 fields) |
-| Rejection reached | `reject_invalid_field_type` (`E_INVALID_FIELD_TYPE`, `ObserverOrderInvalid` in `rejection-reason-v1.ts:298`) |
+| Rejection reached | `reject_invalid_field_type` (`E_INVALID_FIELD_TYPE`, `ObserverOrderInvalid` in `rejection-reason.ts:298`) |
 | Role / deployment entry today | none (anchor §1) |
 
 What the step proves (C45/C50): with a non-empty `required_observers_hash`

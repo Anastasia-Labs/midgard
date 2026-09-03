@@ -8,7 +8,7 @@ import {
 import {
   MIDGARD_CONSENSUS_PROFILE_DIGEST,
   MIDGARD_RELEASE_EVIDENCE_DIGEST,
-} from "@al-ft/midgard-core/consensus-profile-v1";
+} from "@al-ft/midgard-core/consensus-profile";
 import {
   assertDeploymentMarkerMatches,
   computeDeploymentManifestId,
@@ -24,7 +24,7 @@ import {
   parseDeploymentManifestEconomics,
   verifyDeploymentManifestIdentity,
   verifyFinalizedDeploymentManifest,
-} from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+} from "@al-ft/midgard-core/deployment-manifest-identity";
 import {
   computeFraudProofReleaseEconomicsPolicyDigest,
   computeFraudProofReleaseFinalityPolicyDigest,

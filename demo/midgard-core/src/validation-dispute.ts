@@ -1,7 +1,7 @@
 import {
   MIDGARD_CONSENSUS_LIMITS,
   MIDGARD_VALIDATION_DISPUTE_VERSION,
-} from "./consensus-profile-v1.js";
+} from "./consensus-profile.js";
 import {
   encodeMidgardValidationTraceDescriptor,
   type MidgardValidationTraceDescriptor,

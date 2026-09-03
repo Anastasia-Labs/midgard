@@ -234,7 +234,7 @@ transaction envelope. No fee or exunit result is invented for an
 unconstructible complete-graph transaction. The order-4 figures are the
 repository's executable per-publication/receipt measurements in
 `MIDGARD_V1_ENVELOPE_MEASUREMENTS`, pinned by
-`demo/midgard-sdk/tests/tx-order-v1.test.ts`; they are not one-shot graph
+`demo/midgard-sdk/tests/tx-order.test.ts`; they are not one-shot graph
 measurements.
 
 The production submission path in

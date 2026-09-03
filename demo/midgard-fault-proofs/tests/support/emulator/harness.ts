@@ -47,7 +47,7 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
   witnessWithdrawalValidatorCarriage,
-} from "../../../src/witness-reference-scripts-v1.js";
+} from "../../../src/witness-reference-scripts.js";
 import {
   alwaysSucceedsBlueprintPath,
   type Blueprint,

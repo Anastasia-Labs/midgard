@@ -314,7 +314,7 @@ const canonicalAbsenceScans = [
     id: "V05-V18-retired-validation-identities",
     paths: [
       "demo/midgard-sdk/src/fraud-proof/validation-dispute.ts",
-      "demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness-v1.ts",
+      "demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness.ts",
       "demo/midgard-validation/src/validation-machine-data.ts",
       "demo/midgard-validation/src/validation-machine",
       "onchain/aiken/lib/midgard/validation-claim-v1.ak",
@@ -1156,7 +1156,7 @@ const verifyCrossLanguageNotApplicable = (row, label) => {
 
 const exactFieldPinDeficits = new Map([
   [
-    "D16/DaAttestationsByHeaderRequest / DaAttestationsByHeaderResponse",
+    "D16/DaAttestationsByHeaderRequestV1 / DaAttestationsByHeaderResponseV1",
     "one form carries the request and response layouts together, so its eight labels cannot index a single four-member arity",
   ],
   [

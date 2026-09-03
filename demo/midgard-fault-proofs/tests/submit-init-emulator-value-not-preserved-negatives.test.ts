@@ -30,11 +30,11 @@ import { describe, expect, it } from "vitest";
 import {
   buildSpentInputValueWitness,
   spendInputsOpening as spendInputsOpeningV1,
-} from "../src/value-not-preserved/evidence-v1.js";
-import { submitValueNotPreservedInit } from "../src/value-not-preserved/submit-value-not-preserved-init-v1.js";
-import { submitValueNotPreservedStep01 } from "../src/value-not-preserved/submit-value-not-preserved-step-01-v1.js";
-import { submitValueNotPreservedStep02Fold } from "../src/value-not-preserved/submit-value-not-preserved-step-02-v1.js";
-import type { FaultProofWitnessReferenceScripts } from "../src/witness-reference-scripts-v1.js";
+} from "../src/value-not-preserved/evidence.js";
+import { submitValueNotPreservedInit } from "../src/value-not-preserved/submit-value-not-preserved-init.js";
+import { submitValueNotPreservedStep01 } from "../src/value-not-preserved/submit-value-not-preserved-step-01.js";
+import { submitValueNotPreservedStep02Fold } from "../src/value-not-preserved/submit-value-not-preserved-step-02.js";
+import type { FaultProofWitnessReferenceScripts } from "../src/witness-reference-scripts.js";
 import { network } from "./support/submit-init-emulator-shared.js";
 import {
   buildValueNotPreservedFixture,
@@ -47,7 +47,7 @@ import {
   vnpOutput,
   vnpOutRef,
   vnpValue,
-} from "./support/value-not-preserved-emulator-v1.js";
+} from "./support/value-not-preserved-emulator.js";
 
 const POLICY_ID_HEX = "ef".repeat(28);
 const ASSET_NAME_HEX = "746f6b33"; // "tok3"

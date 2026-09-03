@@ -46,7 +46,7 @@ import { Data, toUnit } from "@lucid-evolution/lucid";
 import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 
-import { planFaultProofFieldOpening } from "../src/field-opening-v1.js";
+import { planFaultProofFieldOpening } from "../src/field-opening.js";
 import {
   submitNoReferenceInputStep01,
   submitNoReferenceInputStep02,
@@ -64,7 +64,7 @@ import {
   publishNoReferenceInputReferenceScripts,
   requireNoReferenceInputTxsMembershipProof,
   requireNoReferenceInputTxsNonMembershipProof,
-} from "./support/no-reference-input-emulator-v1.js";
+} from "./support/no-reference-input-emulator.js";
 import {
   expectStateQueueHeaderOrder,
   registerPexcludesExclusionRewardAccount,

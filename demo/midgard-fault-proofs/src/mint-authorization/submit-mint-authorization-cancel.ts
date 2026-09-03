@@ -42,17 +42,17 @@ import {
   type FaultProofWitnessReferenceScripts,
   witnessMintingPolicyCarriage,
   witnessSpendingValidatorCarriage,
-} from "../witness-reference-scripts-v1.js";
+} from "../witness-reference-scripts.js";
 import {
   MINT_AUTHORIZATION_CATEGORY_LABEL,
   type MintAuthorizationContracts,
-} from "./contracts-v1.js";
+} from "./contracts.js";
 import {
   type MintAuthorizationStepIndex,
   mintAuthorizationStepLabel,
   mintAuthorizationSubmitError,
   requireMintAuthorizationReferenceScript,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 
 /**
  * Every step's spend redeemer shares the `Cancel` head; the `Continue` arm

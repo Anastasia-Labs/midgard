@@ -24,7 +24,7 @@ import {
   buildMissingNativeScriptUtxoEmulatorFixture,
   makeMissingNativeScriptUtxoEmulatorHarness,
   publishFinalFamilyReferenceScripts,
-} from "./support/final-catalogue-emulator-v1.js";
+} from "./support/final-catalogue-emulator.js";
 import {
   countedTransactionsRoot,
   EMULATOR_HEADER_CLOCK_HEADROOM_MS,

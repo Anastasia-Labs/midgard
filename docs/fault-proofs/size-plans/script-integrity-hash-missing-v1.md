@@ -109,22 +109,22 @@ acceptance route.
 The protected central catalogue is not edited by this slice. Registration can
 wire the family without inference through these direct modules:
 
-- `contracts-v1.ts` validates the seven ordered applied titles, hashes,
+- `contracts.ts` validates the seven ordered applied titles, hashes,
   addresses, and reference out-refs plus the computation-thread, permanent
   proof, and field-certificate policies;
-- `schemas-v1.ts` is the exact datum/redeemer wire twin for every physical
+- `schemas.ts` is the exact datum/redeemer wire twin for every physical
   script and self-loop;
-- `submitters-v1.ts` supplies concrete Lucid submissions for step 01, step 02,
+- `submitters.ts` supplies concrete Lucid submissions for step 01, step 02,
   step 03, script grammar, script scan, redeemer grammar, terminal mint, and
   cancellation. Each uses reference scripts, resolves input/output indices at
   transaction construction, performs local UPLC evaluation, and admits staged
   evidence only as reference inputs containing the configured field-certificate
   policy token;
-- `family-v1.ts` supplies retained-evidence preparation, exact accepted/forced
+- `family.ts` supplies retained-evidence preparation, exact accepted/forced
   source binding, semantic parity, carriage selection, classifier, durable
   journal reconciliation, and the precise central wiring manifest;
-- `production-artifact-v1.ts`, `staged-plan-v1.ts`,
-  `production-actuator-v1.ts`, and `production-v1.ts` reconstruct the selected
+- `artifact.ts`, `staged-plan.ts`,
+  `actuator.ts`, and `v1.ts` reconstruct the selected
   contradiction from complete authenticated replay, persist a digest-bound
   JSON-safe artifact, derive every direct/staged checkpoint action, and expose
   the manifest-bound create/execute and standard runner surfaces. The runner

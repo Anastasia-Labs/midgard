@@ -154,7 +154,7 @@ shared and land once). Specific to this arm:
 
 ## 7. Emulator scenario tests
 
-Exists today: only the `begin` journey (`tests/submit-init-emulator-value-and-mint-v1.test.ts`) and the oversized publication path in `dispute-scenario.ts:352–425`.
+Exists today: only the `begin` journey (`tests/submit-init-emulator-value-and-mint.test.ts`) and the oversized publication path in `dispute-scenario.ts:352–425`.
 
 Add `tests/submit-init-emulator-value-and-mint-output-asset-v1.test.ts`
 (one journey per file): fixture selects the first honest state with `stage ==

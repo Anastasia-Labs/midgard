@@ -64,11 +64,11 @@ import { expect } from "vitest";
 import {
   CANONICAL_DECODABILITY_BLUEPRINT_TITLES,
   type CanonicalDecodabilityContracts,
-} from "../../../src/canonical-decodability/contracts-v1.js";
+} from "../../../src/canonical-decodability/contracts.js";
 import {
   COMMITTED_FIELD_SHAPE_BLUEPRINT_TITLES,
   type CommittedFieldShapeContracts,
-} from "../../../src/committed-field-shape/contracts-v1.js";
+} from "../../../src/committed-field-shape/contracts.js";
 import {
   CROSS_BLOCK_DUPLICATE_EVENT_BLUEPRINT_TITLES,
   type CrossBlockDuplicateEventContracts,
@@ -76,54 +76,54 @@ import {
 import {
   DISTINCT_ASSET_ACCUMULATION_LIMIT_BLUEPRINT_TITLES,
   type DistinctAssetAccumulationContracts,
-} from "../../../src/distinct-asset-accumulation-limit/contracts-v1.js";
+} from "../../../src/distinct-asset-accumulation-limit/contracts.js";
 import {
   DOUBLE_WITHDRAW_BLUEPRINT_TITLES,
   type DoubleWithdrawContracts,
-} from "../../../src/double-withdraw/contracts-v1.js";
+} from "../../../src/double-withdraw/contracts.js";
 import {
   INPUT_SET_UNIQUENESS_BLUEPRINT_TITLES,
   type InputSetUniquenessContracts,
-} from "../../../src/input-set-uniqueness/contracts-v1.js";
-import { type L2TxMistagContracts } from "../../../src/l2-tx-mistag/contracts-v1.js";
-import { type MinAdaContracts } from "../../../src/min-ada/contracts-v1.js";
-import { type MinFeeContracts } from "../../../src/min-fee-contracts-v1.js";
+} from "../../../src/input-set-uniqueness/contracts.js";
+import { type L2TxMistagContracts } from "../../../src/l2-tx-mistag/contracts.js";
+import { type MinAdaContracts } from "../../../src/min-ada/contracts.js";
+import { type MinFeeContracts } from "../../../src/min-fee-contracts.js";
 import {
   MINT_AUTHORIZATION_BLUEPRINT_TITLES,
   type MintAuthorizationContracts,
-} from "../../../src/mint-authorization/contracts-v1.js";
+} from "../../../src/mint-authorization/contracts.js";
 import {
   MISSING_NATIVE_SCRIPT_TX_BLUEPRINT_TITLES,
   type MissingNativeScriptTxContracts,
-} from "../../../src/missing-native-script-tx/contracts-v1.js";
-import { type MissingNativeScriptUtxoContracts } from "../../../src/missing-native-script-utxo/contracts-v1.js";
+} from "../../../src/missing-native-script-tx/contracts.js";
+import { type MissingNativeScriptUtxoContracts } from "../../../src/missing-native-script-utxo/contracts.js";
 import {
   MISSING_SIGNATURE_BLUEPRINT_TITLES,
   type MissingSignatureContracts,
-} from "../../../src/missing-signature/contracts-v1.js";
+} from "../../../src/missing-signature/contracts.js";
 import {
   NATIVE_SCRIPT_DECODING_BLUEPRINT_TITLES,
   type NativeScriptDecodingContracts,
-} from "../../../src/native-script-decoding/contracts-v1.js";
-import { type NativeScriptInvalidContracts } from "../../../src/native-script-invalid/contracts-v1.js";
+} from "../../../src/native-script-decoding/contracts.js";
+import { type NativeScriptInvalidContracts } from "../../../src/native-script-invalid/contracts.js";
 import { type FabricatedDepositContracts } from "../../../src/submit-fabricated-deposit-step-01.js";
 import { type FabricatedWithdrawalContracts } from "../../../src/submit-fabricated-withdrawal-step-01.js";
 import {
   VALUE_NOT_PRESERVED_BLUEPRINT_TITLES,
   type ValueNotPreservedContracts,
-} from "../../../src/value-not-preserved/contracts-v1.js";
+} from "../../../src/value-not-preserved/contracts.js";
 import {
   WITHDRAWAL_MISTAG_BLUEPRINT_TITLES,
   type WithdrawalMistagContracts,
-} from "../../../src/withdrawal-mistag/contracts-v1.js";
+} from "../../../src/withdrawal-mistag/contracts.js";
 import {
   WITHDRAWN_INPUT_BLUEPRINT_TITLES,
   type WithdrawnInputContracts,
-} from "../../../src/withdrawn-input/contracts-v1.js";
+} from "../../../src/withdrawn-input/contracts.js";
 import {
   WITHDRAWN_REFERENCE_INPUT_BLUEPRINT_TITLES,
   type WithdrawnReferenceInputContracts,
-} from "../../../src/withdrawn-reference-input/contracts-v1.js";
+} from "../../../src/withdrawn-reference-input/contracts.js";
 import {
   applyCompiledScript,
   type Blueprint,

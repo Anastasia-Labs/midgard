@@ -58,20 +58,20 @@ import { computationThreadOutputPredicate } from "../tx-layout.js";
 import {
   type FaultProofWitnessReferenceScripts,
   witnessWithdrawalValidatorCarriage,
-} from "../witness-reference-scripts-v1.js";
+} from "../witness-reference-scripts.js";
 import {
   type FraudProofPreSubmitBoundary,
   reachFraudProofPreSubmitBoundary,
   workflowReferenceScript,
-} from "../workflow/transaction-boundary-v1.js";
-import type { NetworkIdContracts } from "./contracts-v1.js";
-import type { PreparedNetworkIdPostUtxoProof } from "./prepare-v1.js";
+} from "../workflow/transaction-boundary.js";
+import type { NetworkIdContracts } from "./contracts.js";
+import type { PreparedNetworkIdPostUtxoProof } from "./prepare.js";
 import {
   networkIdStepLabel,
   networkIdSubmitError,
   requireNetworkIdReferenceScript,
   requireNetworkIdThreadUtxo,
-} from "./submit-common-v1.js";
+} from "./submit-common.js";
 import type { SubmitNetworkIdStep01Result } from "./submit-network-id-step-01.js";
 
 const STEP_LABEL = `${networkIdStepLabel(0)} post-UTxO`;

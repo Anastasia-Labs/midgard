@@ -45,7 +45,7 @@
   the measurement deployment (`hub_oracle=11…11`, `catalogue=22…22`, semantic
   resolver 1 of 76). Producing run: `pins the applied §3.2 necessity
   identities on the measurement deployment` in
-  `demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts`,
+  `demo/midgard-validation/tests/complete-item-proof-fit-emulator.test.ts`,
   which now gates both identities instead of arguing them. Every hash pinned
   above is therefore current under `605c8b8d…` and the measurement tables
   below stay bound; the C21-AUDIT "fresh applied re-measurement owed before
@@ -85,7 +85,7 @@
   gain #592's `field_preimage_certificate_policy_id`. The gate named in the
   bullet above — `pins the applied §3.2 necessity identities on the measurement
   deployment` in
-  `demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts` —
+  `demo/midgard-validation/tests/complete-item-proof-fit-emulator.test.ts` —
   re-derives both identities at runtime rather than hardcoding them, and is
   **green against this blueprint** (suite 5/5, 2026-08-15), so it gates the new
   values as it gated the old. Full record, commands and the
@@ -142,7 +142,7 @@
   capability floor per
   `docs/midgard/decisions/0001-cardano-l1-transaction-capability-floor.md`.
 - Fixture: exact-size canonical output items generated in
-  `demo/midgard-validation/tests/complete-item-proof-fit-v1.test.ts`
+  `demo/midgard-validation/tests/complete-item-proof-fit.test.ts`
   (deterministically regenerable).
 
 ## Measurements — flat `FieldCarriageV1` scheme (current; §3.2 order — stop at the first tier that fits)
@@ -194,12 +194,12 @@ refresh needed, the last bullet above was already current) by running six
 suites with `MIDGARD_PRINT_PROOF_FIT=1`, one file at a time
 (`pnpm --config.verifyDepsBeforeRun=false --dir midgard-validation exec
 vitest run tests/<file> --pool=forks --no-file-parallelism --bail=0` from
-`demo/`): `complete-item-proof-fit-v1.test.ts` (5/5),
-`complete-item-proof-fit-emulator-v1.test.ts` (6/6),
-`field-preimage-carriage-fit-emulator-v1.test.ts` (16/16),
-`complete-item-carriage-tiers-emulator-v1.test.ts` (5/5),
-`complete-item-carriage-policy-v1.test.ts` (6/6), and
-`complete-item-equivalence-v1.test.ts` (2/2) — all green. The Aiken-level
+`demo/`): `complete-item-proof-fit.test.ts` (5/5),
+`complete-item-proof-fit-emulator.test.ts` (6/6),
+`field-preimage-carriage-fit-emulator.test.ts` (16/16),
+`complete-item-carriage-tiers-emulator.test.ts` (5/5),
+`complete-item-carriage-policy.test.ts` (6/6), and
+`complete-item-equivalence.test.ts` (2/2) — all green. The Aiken-level
 unit test this family's own "Preserved complete-item path" cites,
 `script_sources_rejects_a_forged_output_item_commitment` /
 `_length`, is an `.ak` test, not a vitest suite; per this pass's
@@ -224,7 +224,7 @@ re-priced here)**; tier-2 `K` = 15,148 reliable / 15,644 exact, unmoved by
 #606 welded `field_hash` into the certificate datum,
 `docs/spec/midgard-tx.md` §8.10). `maxLedgerOutputPreimageBytes` itself is
 unmoved at 16,384 (confirmed live this pass in
-`complete-item-proof-fit-v1.test.ts`'s printed receipt:
+`complete-item-proof-fit.test.ts`'s printed receipt:
 `"maxLedgerOutputPreimageBytes": 16384`); it is the tier-1/tier-2/tier-3
 *route* to that 16,384-byte ceiling that changed, not the ceiling. The
 begin/step/finalize per-step receipt ceilings this family's own
@@ -275,14 +275,14 @@ separately.
 Ledger outputs that fit tier 1 (signed inline frontier 14,004 bytes; the 14,336-byte cap itself stages by reference) or tier 2
 (`K` = 15,148) reach the machine as a complete preimage in one carriage step
 through the canonical-decode complete-item route — the same
-`TransactionFieldItemWitness` guard `complete-item-carriage-policy-v1.test.ts`
+`TransactionFieldItemWitness` guard `complete-item-carriage-policy.test.ts`
 pins (6/6 this pass), now gated by the flat door rather than a per-item wire
 commitment. Both representations still bind the same bounded-item
 commitment; equivalence and
 omission/duplication/reorder/substitution/trailing rejection are still
-exercised by `demo/midgard-validation/tests/complete-item-equivalence-v1.test.ts`
+exercised by `demo/midgard-validation/tests/complete-item-equivalence.test.ts`
 (2/2 this pass) and the deployed-route rejection tests in
-`demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts`
+`demo/midgard-validation/tests/complete-item-proof-fit-emulator.test.ts`
 (6/6 this pass). The stage-4/stage-5 hand-off — the proof-only tag-29
 witness that makes stage-4 evidence O(1) in output size, described in the
 "Residual gap: CLOSED" paragraph below — is untouched by the flat
@@ -351,12 +351,12 @@ flat variant would duplicate the chunk machinery without removing any step.
 Every output at or below `maxSinglePublicationCompleteItemBytes` (14,396)
 keeps its complete-item carriage: the canonical-decode producer emits
 `TransactionFieldItemWitness` for it (guard pinned by
-`complete-item-carriage-policy-v1.test.ts`). Both representations bind the
+`complete-item-carriage-policy.test.ts`). Both representations bind the
 same bounded-item commitment; equivalence and
 omission/duplication/reorder/substitution/trailing rejection are exercised
-by `demo/midgard-validation/tests/complete-item-equivalence-v1.test.ts` and
+by `demo/midgard-validation/tests/complete-item-equivalence.test.ts` and
 the deployed-route rejection tests in
-`demo/midgard-validation/tests/complete-item-proof-fit-emulator-v1.test.ts`.
+`demo/midgard-validation/tests/complete-item-proof-fit-emulator.test.ts`.
 
 Residual gap: CLOSED (2026-08-01, owner decision C21-STAGE4 Option A —
 see `docs/exec-plans/evidence/c21-stage4-analysis.md` and the GOAL_PROGRESS
@@ -382,7 +382,7 @@ canonical decode (chunk and complete carriage) and this artifact's stage-5
 `script_sources_rejects_a_forged_output_item_commitment` /
 `_length` (forged-tuple rejection via `verify_item` alone) and the
 "builds output-size-independent stage-4 one-step evidence up to the
-16,384-byte ledger maximum" case in `complete-item-proof-fit-v1.test.ts`.
+16,384-byte ledger maximum" case in `complete-item-proof-fit.test.ts`.
 
 ## Re-measurement 2026-08-03 (task C21-AUDIT)
 
@@ -406,7 +406,7 @@ likely a collection-proof-shape difference (see the basis-mismatch note in
 Independent consistency check on the stage-4 closure paragraph above: its
 "practical gap near (8,769, 16,384]" now coincides exactly with
 `MIDGARD_V1_ENVELOPE_MEASUREMENTS.maxExactDirectCompleteItemBytes` = 8,769 in
-`demo/midgard-core/src/consensus-profile-v1.ts`, whose reliable counterpart
+`demo/midgard-core/src/consensus-profile.ts`, whose reliable counterpart
 8,273 is the deployed direct-carriage selector bound. The two records agree.
 
 Conclusion still supported: YES. A maximum ledger output still equals the

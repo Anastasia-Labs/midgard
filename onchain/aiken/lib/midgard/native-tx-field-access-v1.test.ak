@@ -1461,8 +1461,8 @@ test whole_and_chunked_views_agree_on_the_same_bytes() {
 // ---------------------------------------------------------------------------
 
 /// Pins the Plutus-data layout of the two frozen sum types against the
-/// TypeScript wire twin, `demo/midgard-sdk/src/native-tx-field-access-v1.ts`.
-/// Its `tests/native-tx-field-access-v1.test.ts` asserts the same hex strings
+/// TypeScript wire twin, `demo/midgard-sdk/src/native-tx-field-access.ts`.
+/// Its `tests/native-tx-field-access.test.ts` asserts the same hex strings
 /// from `Data.to`, so the two sides agree on the tag *and* on the field
 /// nesting.
 ///

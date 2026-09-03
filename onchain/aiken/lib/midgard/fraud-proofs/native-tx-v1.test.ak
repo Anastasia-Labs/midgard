@@ -654,10 +654,10 @@ test v1_transaction_field_chunk_is_bound_to_the_exact_proof_source() {
 // canonical-form, and accepted-Cardano-maximum coverage for the complete
 // full-preimage verification path. Maximum-fixture constants are derived by
 // the genuine Cardano boundary fixtures in
-// demo/midgard-validation/tests/ordered-collection-signer-witness-boundary-v1.test.ts
+// demo/midgard-validation/tests/ordered-collection-signer-witness-boundary.test.ts
 // (fields 4/7, accepted 124 vkey witnesses, adjacent 125 rejected at
 // 16,482 > 16,384 signed Cardano bytes) and
-// demo/midgard-validation/tests/ordered-collection-observer-native-script-boundary-v1.test.ts
+// demo/midgard-validation/tests/ordered-collection-observer-native-script-boundary.test.ts
 // (fields 3/6, accepted 224 native-script witnesses, adjacent 225 rejected at
 // 16,410 > 16,384 signed Cardano bytes).
 

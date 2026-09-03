@@ -7,7 +7,7 @@ import {
   DA_TRANSPORT_LIMITS,
   DA_TRANSPORT_PROTOCOL_VERSION,
 } from "@al-ft/midgard-core/da-transport";
-import { DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
+import { DEPLOYMENT_MANIFEST_ECONOMICS_BY_PROFILE } from "@al-ft/midgard-core/deployment-manifest-identity";
 import { REFERENCE_SCRIPT_AUTH_TOKEN_NAMES } from "@al-ft/midgard-sdk";
 import { it } from "@effect/vitest";
 import {
@@ -27,7 +27,7 @@ import {
   computeDeploymentManifestJsonDigest,
   DEPLOYMENT_MANIFEST_REFERENCE_SCRIPT_CONTRACT_BY_ROLE,
   normalizeDeploymentManifestJsonValue,
-} from "../src/deployment-manifest-v1.js";
+} from "../src/deployment-manifest.js";
 import { AlwaysSucceedsContract } from "../src/services/always-succeeds.js";
 import {
   assertDeploymentManifestMatchesConfig,
@@ -53,8 +53,8 @@ import {
 import {
   TEST_AVAILABILITY_CHALLENGE,
   TEST_AVAILABILITY_PARAMETERS,
-} from "./helpers/availability-challenge-v1.js";
-import { TEST_CARDANO_PROTOCOL_PARAMETERS } from "./helpers/cardano-protocol-parameters-v1.js";
+} from "./helpers/availability-challenge.js";
+import { TEST_CARDANO_PROTOCOL_PARAMETERS } from "./helpers/cardano-protocol-parameters.js";
 
 describe("midgard contracts registry", () => {
   const oneShotOutRef = {

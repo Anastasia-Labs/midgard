@@ -21,7 +21,7 @@ import {
   makeCommittedFieldShapeEmulatorHarness,
   publishCommittedFieldShapeReferenceScripts,
   setupCommittedFieldShapeScenario,
-} from "./support/committed-field-shape-emulator-v1.js";
+} from "./support/committed-field-shape-emulator.js";
 import {
   buildRemovalDeploymentInfo,
   captureEmulatorSubmission,

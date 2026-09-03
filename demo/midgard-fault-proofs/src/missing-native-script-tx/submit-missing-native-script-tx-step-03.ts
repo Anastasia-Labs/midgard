@@ -14,15 +14,15 @@ import {
 
 import { type ResolvedProverSigner } from "../runtime.js";
 import { type SubmitStep01TxInclusion } from "../submit-step-01.js";
-import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts-v1.js";
-import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary-v1.js";
-import type { MissingNativeScriptTxContracts } from "./contracts-v1.js";
+import type { FaultProofWitnessReferenceScripts } from "../witness-reference-scripts.js";
+import type { FraudProofPreSubmitBoundary } from "../workflow/transaction-boundary.js";
+import type { MissingNativeScriptTxContracts } from "./contracts.js";
 import {
   missingNativeScriptTxSubmitError,
   requireMissingNativeScriptTxStepState,
   requireMissingNativeScriptTxThreadUtxo,
-} from "./submit-common-v1.js";
-import { submitMissingNativeScriptTxBinding } from "./submit-native-binding-v1.js";
+} from "./submit-common.js";
+import { submitMissingNativeScriptTxBinding } from "./submit-native-binding.js";
 
 export type SubmitMissingNativeScriptTxStep03Result = {
   readonly txHash: string;

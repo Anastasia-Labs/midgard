@@ -123,7 +123,7 @@ const validation_context_cbor =
 
 // C49 (#540). The C70 target snapshot: the preprod epoch-303 protocol
 // parameters pinned by `PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1`
-// (demo/midgard-validation/tests/helpers/ordered-collection-boundary-v1.ts:78),
+// (demo/midgard-validation/tests/helpers/ordered-collection-boundary.ts:78),
 // which is the same snapshot every TypeScript Cardano boundary corpus is built
 // against. These three numbers are the only free parameters in the min-fee and
 // min-Ada formulas; a C70 parameter change re-derives both.
@@ -10457,7 +10457,7 @@ test cek_context_output_item_uses_authenticated_descriptor_frontier() {
 // ---------------------------------------------------------------------------
 
 // Derived by the genuine Cardano boundary fixture in
-// demo/midgard-validation/tests/ordered-collection-spend-inputs-boundary-v1.test.ts
+// demo/midgard-validation/tests/ordered-collection-spend-inputs-boundary.test.ts
 // (accepted 434 spend inputs at 16,379 signed bytes; adjacent 435 at 16,417).
 const maximum_spend_input_terminal_transaction_id =
   #"1a24788b66a39ec3a980f70999a30cb532f8dbdd9e86d427666f1c710c821da2"
@@ -10492,7 +10492,7 @@ const maximum_spend_input_terminal_post_work_root =
   #"09dae6637ffa736e9bad178b60ad59a1572e6817d27d92b74a66602b423be606"
 
 // Derived by the genuine Cardano boundary fixture in
-// demo/midgard-validation/tests/ordered-collection-reference-inputs-boundary-v1.test.ts
+// demo/midgard-validation/tests/ordered-collection-reference-inputs-boundary.test.ts
 // (accepted 433 reference inputs at 16,380 signed bytes; adjacent 434 at
 // 16,418), sharing one spend input disjoint from every reference input.
 const maximum_reference_input_terminal_transaction_id =
@@ -10528,7 +10528,7 @@ const maximum_reference_input_terminal_post_work_root =
   #"bdc0a9fd3ee84b6e458a9f3c61552e89c41ae213a78893a73679a0336c476305"
 
 // Derived by the genuine Cardano boundary fixture in
-// demo/midgard-validation/tests/ordered-collection-observer-native-script-boundary-v1.test.ts
+// demo/midgard-validation/tests/ordered-collection-observer-native-script-boundary.test.ts
 // (accepted 224 observers at 16,338 signed bytes; adjacent 225 at 16,410). This
 // is the same signed transaction replayed by
 // cek_context_observer_cardano_maximum_224_first_item_and_terminal_agree, so
@@ -10566,7 +10566,7 @@ const maximum_observer_terminal_post_work_root =
   #"5e98b6a8a98432b486d068899b3dad627f8c41dd6ae8afef51976b88fa0d84d4"
 
 // Derived by the genuine Cardano boundary fixture in
-// demo/midgard-validation/tests/ordered-collection-boundary-v1.test.ts
+// demo/midgard-validation/tests/ordered-collection-boundary.test.ts
 // (accepted 438 outputs; the field-2 maximum without a Midgard count cap).
 const maximum_output_terminal_transaction_id =
   #"1faba3bc592fac6c30165c2789e08a18357deb9b449f5d0ceea1b3e6aa40ee1e"
@@ -10601,7 +10601,7 @@ const maximum_output_terminal_post_work_root =
   #"b39febf97e07ab5bd85330521e7205f074b12e8e20e0dd2e39a40e5868fdfce1"
 
 // Derived by the genuine Cardano boundary fixture in
-// demo/midgard-validation/tests/ordered-collection-signer-witness-boundary-v1.test.ts
+// demo/midgard-validation/tests/ordered-collection-signer-witness-boundary.test.ts
 // (field 4 of the coupled signer/vkey-witness maximum, 124 witnesses).
 const maximum_required_signer_terminal_transaction_id =
   #"7b4e4657e0083544359f4398fb092c482766220cd53ad99b598239297d1e9813"
@@ -10636,7 +10636,7 @@ const maximum_required_signer_terminal_post_work_root =
   #"f34d2c3452c0168fc935a7a0c9de927311c8bfd372a53d83d7df8e0c5effec37"
 
 // Derived by the genuine Cardano boundary fixture in
-// demo/midgard-validation/tests/ordered-collection-mint-boundary-v1.test.ts
+// demo/midgard-validation/tests/ordered-collection-mint-boundary.test.ts
 // (130 mint policies packed under maxValueSize, every policy authorized by a
 // field-6 native script).
 const maximum_mint_terminal_transaction_id =
@@ -14369,7 +14369,7 @@ test parameterized_min_ada_boundary_matches_target_snapshot() {
 // ignored altogether (a hard-coded `4_310 *` passes it), and it binds nothing
 // to the TypeScript side. The vectors below are the same seven
 // the TypeScript twin pins in
-// demo/midgard-validation/tests/min-ada-twin-cross-check-v1.test.ts, carried
+// demo/midgard-validation/tests/min-ada-twin-cross-check.test.ts, carried
 // here as ABSOLUTE lovelace literals: nothing in this module derives them, so
 // they can only agree with the TypeScript side or fail.
 //

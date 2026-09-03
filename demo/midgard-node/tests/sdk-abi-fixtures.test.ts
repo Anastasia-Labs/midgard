@@ -162,7 +162,7 @@ const headerFixture: SDK.Header = {
   protocolVersion: 1n,
 };
 
-const forcedInclusionTxFixture: SDK.ForcedInclusionTx = {
+const forcedInclusionTxFixture: SDK.ForcedInclusionTxV1 = {
   tx_id: h32,
   source: {
     compact_cbor: "80",
@@ -717,7 +717,7 @@ const buildTransitionTraceAbiFixtures = (): Record<string, AbiFixtureValue> => {
     ForcedInclusionTxV1: {
       schemaName: "ForcedInclusionTxV1",
       value: forcedInclusionTxFixture,
-      schema: SDK.ForcedInclusionTx,
+      schema: SDK.ForcedInclusionTxV1,
     },
     TransitionStep: {
       schemaName: "TransitionStep",
@@ -1354,13 +1354,13 @@ describe("SDK canonical ABI fixtures", () => {
       },
       SDK.Header,
     );
-    const forcedInclusionTx: SDK.ForcedInclusionTx = {
+    const forcedInclusionTx: SDK.ForcedInclusionTxV1 = {
       ...forcedInclusionTxFixture,
       verdict: "ForcedTxValid",
     };
-    expectRoundTrip(forcedInclusionTx, SDK.ForcedInclusionTx);
+    expectRoundTrip(forcedInclusionTx, SDK.ForcedInclusionTxV1);
     expect(
-      Object.keys(roundTrip(forcedInclusionTx, SDK.ForcedInclusionTx)),
+      Object.keys(roundTrip(forcedInclusionTx, SDK.ForcedInclusionTxV1)),
     ).toEqual(["tx_id", "source", "verdict"]);
     for (const phase of transitionPhases) {
       expectRoundTrip(phase, SDK.TransitionPhase);

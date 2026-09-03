@@ -5,7 +5,7 @@ import type {
   MidgardNativeTxWitnessSetCompact,
 } from "./native.js";
 import { MIDGARD_NATIVE_TX_VERSION } from "./native-constants.js";
-import { midgardFieldCommitment } from "./native-tx-field-access-v1.js";
+import { midgardFieldCommitment } from "./native-tx-field-access.js";
 import { asFixedArray, bytesItem, hashItem } from "./native-validation.js";
 
 type NativeTxWitnessSetCompactValue = readonly [Hash32, Hash32, Hash32];

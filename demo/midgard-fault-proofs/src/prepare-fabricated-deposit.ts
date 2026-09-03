@@ -30,7 +30,7 @@
  * leaf convention. Requiring it would refuse a legitimate fabricated-deposit
  * proof whenever the block's unrelated transaction leaves use the payload-source
  * convention. The same reasoning is recorded at
- * `src/evidence/prepare-from-evidence-v1.ts:145-150`.
+ * `src/evidence/prepare-from-evidence.ts:145-150`.
  *
  * The L1 side of the argument is authenticated, never asserted: absence of a
  * deposit identity is established by exhibiting the committed `DepositId` in an

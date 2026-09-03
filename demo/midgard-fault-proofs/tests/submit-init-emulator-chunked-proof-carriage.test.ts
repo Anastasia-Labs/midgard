@@ -30,7 +30,7 @@
  * 3. The publication transaction itself fits, and its cost is paid once.
  *
  * The depth is synthesised rather than grinded — see
- * `tests/support/synthetic-deep-proof-v1.ts` for why that is the honest
+ * `tests/support/synthetic-deep-proof.ts` for why that is the honest
  * construction for a carriage measurement and what it does and does not claim.
  *
  * Lives in its own file for the same reason its siblings do: `@lucid-evolution/uplc`
@@ -93,7 +93,7 @@ import {
 import {
   syntheticDeepMembershipProof,
   syntheticDeepSharedRootProofs,
-} from "./support/synthetic-deep-proof-v1.js";
+} from "./support/synthetic-deep-proof.js";
 
 /**
  * The depth this file drives. 22 is past the envelope-exhaustion level of every

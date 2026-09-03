@@ -21,7 +21,7 @@ export * from "./plutus-data.js";
 export * from "./script-context.js";
 export * from "./script-context-proof.js";
 export * from "./script-source.js";
-export * from "./transition-effect-v1.js";
+export * from "./transition-effect.js";
 export * from "./tx-out-ref.js";
 export * from "./types.js";
 export * from "./validation-candidate.js";

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { TRANSACTION_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES } from "../src/transaction-output-non-canonical/contracts-v1.js";
+import { TRANSACTION_OUTPUT_NON_CANONICAL_BLUEPRINT_TITLES } from "../src/transaction-output-non-canonical/contracts.js";
 import {
   applyCompiledScript,
   readBlueprint,

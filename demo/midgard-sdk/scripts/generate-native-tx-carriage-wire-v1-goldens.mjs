@@ -11,7 +11,7 @@
  * chunk splits — and their producer is the CML-free codec twin in
  * midgard-core. What this channel pins is Plutus **Data** encoding, and the
  * off-chain producer of that is `Data.to` against the schemas in
- * `src/native-tx-field-access-v1.ts`. A vector is only worth having if it is
+ * `src/native-tx-field-access.ts`. A vector is only worth having if it is
  * emitted by the thing that will really emit it in production, so the generator
  * sits beside that producer. The shared channel plumbing is imported from
  * midgard-core rather than copied, so the `--check` contract is the same one
@@ -20,7 +20,7 @@
  * Two artifacts, the same pair every channel emits:
  *
  *   * `demo/midgard-sdk/tests/fixtures/native-tx-carriage-wire-v1.generated.json`
- *     — recomputed by `tests/native-tx-carriage-wire-v1-goldens.test.ts`, so a
+ *     — recomputed by `tests/native-tx-carriage-wire-goldens.test.ts`, so a
  *     drifting schema fails on the TypeScript side; and
  *   * `onchain/aiken/lib/midgard/native-tx-carriage-wire-v1-golden.test.ak`
  *     — which both **decodes** each vector into the Aiken type and re-**serialises**
