@@ -1,6 +1,6 @@
 use midgard/computation_thread as ct
 use midgard/native_tx_script_pushdown_v1.{NativeScriptFrameV1}
-use midgard/validation_machine_v1.{SignerSetProofV1}
+use midgard/validation_machine/machine_types.{SignerSetProofV1}
 use midgard/validation_merkle_v1.{FrontierPeak}
 
 pub const staged_node_batch_limit: Int = 16

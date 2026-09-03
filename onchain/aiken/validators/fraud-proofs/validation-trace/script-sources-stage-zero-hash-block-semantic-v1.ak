@@ -4,8 +4,10 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/bounded_item_v1.{ChunkProofV1}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel}
-use midgard/validation_machine_v1.{
+use midgard/validation_machine/machine_types.{
   ScriptSourceHashBlockWitness, ValidationOneStepWitnessV1,
+}
+use midgard/validation_machine/script_sources_early_stages.{
   verify_script_sources_stage_zero_hash_block_semantics_v1,
 }
 use midgard/validation_semantic_v1.{Datum, continue_winning}

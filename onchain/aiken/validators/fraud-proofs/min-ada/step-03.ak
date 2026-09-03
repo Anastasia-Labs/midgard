@@ -12,7 +12,7 @@ use midgard/fraud_proofs/min_ada/step_03.{Args, Datum, SpendRedeemer}
 use midgard/fraud_proofs/min_ada/step_04 as step_04
 use midgard/fraud_proofs/min_ada/step_05 as step_05
 use midgard/ledger_output_commitment_v1
-use midgard/validation_machine_v1
+use midgard/validation_machine/shared as vm_shared
 
 validator main(
   step_04_validator_script_hash: ScriptHash,
@@ -60,7 +60,7 @@ validator main(
             expect output_script_hash == step_05_validator_script_hash
             let expected_output_state: Data = step_05.PredicateAndCulpabilityAuthenticated
             expect output_state_data == expected_output_state
-            !validation_machine_v1.output_meets_min_ada_v1(
+            !vm_shared.output_meets_min_ada_v1(
               env.coins_per_utxo_byte,
               total_length,
               lovelace,
@@ -78,7 +78,7 @@ validator main(
             }
             expect output_state_data == expected_output_state
             let descriptor = ledger_output_commitment_v1.decode(descriptor_cbor)
-            !validation_machine_v1.output_meets_min_ada_v1(
+            !vm_shared.output_meets_min_ada_v1(
               env.coins_per_utxo_byte,
               descriptor.total_length,
               descriptor.lovelace,

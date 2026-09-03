@@ -513,14 +513,14 @@ const validateBoundaryAbiAndCollectAuxiliaryKinds = (
       movedDoorConstructors.has(auxiliaryConstructorIndex);
     for (const [definitionName, cbor] of [
       [
-        "midgard/validation_machine_v1/ValidationOneStepWitnessV1",
+        "midgard/validation_machine/machine_types/ValidationOneStepWitnessV1",
         oneStepArgument.transitionCbor,
       ],
       ...(auxiliaryIsFrozenStale
         ? []
         : ([
             [
-              "midgard/validation_machine_v1/ValidationAuxiliaryWitnessV1",
+              "midgard/validation_machine/machine_types/ValidationAuxiliaryWitnessV1",
               oneStepArgument.auxiliaryCbor,
             ],
           ] as const)),

@@ -20,8 +20,10 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardExecutionUnits, MidgardRedeemerWitness, SpendRedeemer,
 }
 use midgard/native_tx_field_access_v1
+use midgard/validation_machine/machine_types as vm_machine_types
+use midgard/validation_machine/one_step as vm_one_step
+use midgard/validation_machine/witness as vm_witness
 use midgard/validation_machine_field_door_v1 as field_door
-use midgard/validation_machine_v1
 use midgard/validation_trace_v1
 
 // Derived by the genuine Cardano boundary fixture in
@@ -142,7 +144,7 @@ test maximum_cardano_spend_redeemer_field_matches_typescript_terminal_commitment
 }
 
 test maximum_cardano_spend_redeemer_terminal_fold_matches_typescript() {
-  let work_witness_cbor = validation_machine_v1.encode_transaction_field_scan_witness(
+  let work_witness_cbor = vm_witness.encode_transaction_field_scan_witness(
     maximum_cardano_compact_cbor,
     maximum_cardano_witness_set_compact_cbor,
     maximum_cardano_field_preimage_lengths_cbor,
@@ -153,7 +155,7 @@ test maximum_cardano_spend_redeemer_terminal_fold_matches_typescript() {
     maximum_cardano_spend_redeemer_count,
     maximum_cardano_terminal_encoded_length_before_item,
   )
-  let compact_binding_witness_cbor = validation_machine_v1.encode_compact_binding_witness(
+  let compact_binding_witness_cbor = vm_witness.encode_compact_binding_witness(
     maximum_cardano_transaction_id,
     maximum_cardano_transaction_commitment,
     maximum_cardano_compact_cbor,
@@ -197,10 +199,10 @@ test maximum_cardano_spend_redeemer_terminal_fold_matches_typescript() {
   and {
     pre.work_root == maximum_cardano_terminal_pre_work_root,
     post.work_root == maximum_cardano_terminal_post_work_root,
-    validation_machine_v1.verify_canonical_decode_one_step_v1(
+    vm_one_step.verify_canonical_decode_one_step_v1(
       pre,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
-        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepEvidenceV1 {
+        transition: vm_machine_types.ValidationOneStepWitnessV1 {
           work_witness_cbor,
           claimed_successor: post,
         },
@@ -210,7 +212,7 @@ test maximum_cardano_spend_redeemer_terminal_fold_matches_typescript() {
         // once against the compact structure's `redeemer_tx_wits_hash` (which
         // `maximum_cardano_spend_redeemer_preimage_hash` pins) and item 295 is
         // then a slice.
-        auxiliary: validation_machine_v1.TransactionFieldChunkWitness {
+        auxiliary: vm_machine_types.TransactionFieldChunkWitness {
           field_index: 8,
           item_index: 295,
           carriage: native_tx_field_access_v1.Inline {

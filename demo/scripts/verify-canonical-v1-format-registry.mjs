@@ -320,7 +320,7 @@ const canonicalAbsenceScans = [
       "onchain/aiken/lib/midgard/validation-claim-v1.ak",
       "onchain/aiken/lib/midgard/validation-dispute-v1.ak",
       "onchain/aiken/lib/midgard/validation-game-v1.ak",
-      "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+      "onchain/aiken/lib/midgard/validation-machine",
     ],
     patterns: [
       "Validation(?:ClaimWitness|Dispute|OneStepWitness|OneStepEvidence|AuxiliaryWitness|SourceMembership)V[2-9][0-9]*",

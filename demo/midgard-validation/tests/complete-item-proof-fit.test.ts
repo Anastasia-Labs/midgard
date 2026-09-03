@@ -467,7 +467,7 @@ describe("complete-item proof fit V1", () => {
     // (a) **Above the cap the assertion is the original ±8 O(1) form.** A
     //     tier-2/3 carriage is reference-input indices and carries no preimage
     //     at all, which is what
-    //     `onchain/aiken/lib/midgard/validation-machine-v1.ak:9189-9192` says in
+    //     `onchain/aiken/lib/midgard/validation-machine/` says in
     //     terms. So the auxiliary stops growing with the output entirely, and
     //     the 14,774 B and 16,384 B probes — the two the closure used to cover
     //     and #597 re-pinned to a refusal — assert a built argument again.

@@ -243,7 +243,7 @@
         "onchain/aiken/lib/midgard/validation-claim-v1.ak",
         "onchain/aiken/lib/midgard/validation-dispute-v1.ak",
         "onchain/aiken/lib/midgard/validation-game-v1.ak",
-        "onchain/aiken/lib/midgard/validation-machine-v1.ak"
+        "onchain/aiken/lib/midgard/validation-machine"
       ],
       "patterns": [
         "Validation(?:ClaimWitness|Dispute|OneStepWitness|OneStepEvidence|AuxiliaryWitness|SourceMembership)V[2-9][0-9]*",
@@ -3175,7 +3175,7 @@
           "symbols": ["expect_network_id"]
         },
         {
-          "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+          "path": "onchain/aiken/lib/midgard/validation-machine/shared.ak",
           "symbols": ["validity_interval_is_malformed"]
         }
       ],
@@ -3204,7 +3204,7 @@
               "symbols": ["assertNativePosixTimeOrNone"]
             },
             {
-              "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+              "path": "onchain/aiken/lib/midgard/validation-machine/shared.ak",
               "symbols": ["validity_interval_is_malformed"]
             }
           ]
@@ -3465,12 +3465,15 @@
           ]
         },
         {
-          "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+          "path": "onchain/aiken/lib/midgard/validation-machine/shared.ak",
           "symbols": [
             "redeemer_tag_for_purpose_kind_v1",
-            "redeemer_pointer_matches_purpose_v1",
-            "redeemer_descriptor_matches_current_purpose"
+            "redeemer_pointer_matches_purpose_v1"
           ]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/validation-machine/script-sources-late-stages.ak",
+          "symbols": ["redeemer_descriptor_matches_current_purpose"]
         }
       ],
       "canonicalForms": [
@@ -3517,7 +3520,7 @@
               "symbols": ["redeemerTagForPurposeKind"]
             },
             {
-              "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+              "path": "onchain/aiken/lib/midgard/validation-machine/shared.ak",
               "symbols": ["redeemer_tag_for_purpose_kind_v1"]
             }
           ],
@@ -3530,7 +3533,7 @@
               ]
             },
             {
-              "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+              "path": "onchain/aiken/lib/midgard/validation-machine/shared.ak",
               "symbols": ["redeemer_pointer_matches_purpose_v1"]
             }
           ]
@@ -6641,7 +6644,7 @@
       "family": "L",
       "sourceOwnerAndCurrentIdentity": "SDK/Aiken HeaderV1",
       "classification": "schema",
-      "canonicalResult": "Header",
+      "canonicalResult": "HeaderV1",
       "boundaryBindingAndPersistence": "State-queue datum, block hash, DA root checks",
       "requiredEvidence": "TS/Aiken datum and hash vector",
       "disposition": "retain",
@@ -6658,7 +6661,7 @@
         },
         {
           "path": "onchain/aiken/lib/midgard/ledger-state.ak",
-          "symbols": ["Header", "header_v1_is_valid"]
+          "symbols": ["HeaderV1", "header_v1_is_valid"]
         }
       ],
       "canonicalForms": [
@@ -6933,7 +6936,7 @@
             },
             {
               "path": "onchain/aiken/lib/midgard/ledger-state.ak",
-              "symbols": ["Header", "header_v1_is_valid"]
+              "symbols": ["HeaderV1", "header_v1_is_valid"]
             }
           ],
           "parsers": [
@@ -7000,7 +7003,7 @@
       "family": "L",
       "sourceOwnerAndCurrentIdentity": "SDK/Aiken HeaderTransitionCommitmentsV1",
       "classification": "nested-schema",
-      "canonicalResult": "HeaderTransitionCommitments",
+      "canonicalResult": "HeaderTransitionCommitmentsV1",
       "boundaryBindingAndPersistence": "Header datum",
       "requiredEvidence": "Complete commitment/count validation",
       "disposition": "reset-to-v1",
@@ -7016,12 +7019,12 @@
         },
         {
           "path": "onchain/aiken/lib/midgard/ledger-state.ak",
-          "symbols": ["HeaderTransitionCommitments"]
+          "symbols": ["HeaderTransitionCommitmentsV1"]
         }
       ],
       "canonicalForms": [
         {
-          "name": "HeaderTransitionCommitments",
+          "name": "HeaderTransitionCommitmentsV1",
           "kind": "nested Plutus Data record",
           "wireRepresentation": "constructor 0 with 11 ordered commitment/count fields",
           "versionPolicy": "unversioned nested V1 shape; missing, reordered, or extra commitments reject",
@@ -7034,7 +7037,7 @@
           ],
           "constructorTags": [
             {
-              "name": "HeaderTransitionCommitments",
+              "name": "HeaderTransitionCommitmentsV1",
               "tag": 0,
               "arity": 11
             }
@@ -7115,7 +7118,7 @@
       "family": "L",
       "sourceOwnerAndCurrentIdentity": "SDK/Aiken StateQueueNodeV1",
       "classification": "schema",
-      "canonicalResult": "StateQueueNode",
+      "canonicalResult": "StateQueueNodeV1",
       "boundaryBindingAndPersistence": "L1 state-queue datum",
       "requiredEvidence": "Topology and datum round trip",
       "disposition": "reset-to-v1",
@@ -7131,19 +7134,19 @@
         },
         {
           "path": "onchain/aiken/lib/midgard/state-queue.ak",
-          "symbols": ["StateQueueNode", "decode_header_view"]
+          "symbols": ["StateQueueNodeV1", "decode_header_view"]
         }
       ],
       "canonicalForms": [
         {
-          "name": "StateQueueNode",
+          "name": "StateQueueNodeV1",
           "kind": "Plutus Data linked-list payload",
           "wireRepresentation": "constructor 0 with [HeaderV1, da_attestation]",
           "versionPolicy": "only the exact V1 header topology is accepted",
           "exactFields": ["header:HeaderV1", "da_attestation:bytes"],
           "constructorTags": [
             {
-              "name": "StateQueueNode",
+              "name": "StateQueueNodeV1",
               "tag": 0,
               "arity": 2
             }
@@ -7574,17 +7577,17 @@
               "arity": 2
             },
             {
-              "name": "NativeTxProofSource",
+              "name": "NativeTxProofSourceV1",
               "tag": 0,
               "arity": 3
             },
             {
-              "name": "TxOrderPayload",
+              "name": "TxOrderPayloadV1",
               "tag": 0,
               "arity": 4
             },
             {
-              "name": "TxOrderEvent",
+              "name": "TxOrderEventV1",
               "tag": 0,
               "arity": 2
             },
@@ -7773,7 +7776,7 @@
       ],
       "canonicalForms": [
         {
-          "name": "CekProgramMaterialDatum",
+          "name": "CekProgramMaterialDatumV1",
           "kind": "content-addressed immutable Plutus Data datum",
           "wireRepresentation": "constructor 0/3 [kind, root, preimage]",
           "versionPolicy": "only V1 material datum/publication/config identities exist",
@@ -7784,7 +7787,7 @@
           ],
           "constructorTags": [
             {
-              "name": "CekProgramMaterialDatum",
+              "name": "CekProgramMaterialDatumV1",
               "tag": 0,
               "arity": 3
             }
@@ -9141,7 +9144,7 @@
           ]
         },
         {
-          "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+          "path": "onchain/aiken/lib/midgard/validation-machine/cek.ak",
           "symbols": ["script_context_v1"]
         },
         {
@@ -9345,7 +9348,7 @@
           ]
         },
         {
-          "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+          "path": "onchain/aiken/lib/midgard/validation-machine/script-integrity.ak",
           "symbols": [
             "script_language_views_v1",
             "expected_script_integrity_hash"
@@ -9393,7 +9396,7 @@
           ],
           "parsers": [
             {
-              "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+              "path": "onchain/aiken/lib/midgard/validation-machine/script-integrity.ak",
               "symbols": ["expected_script_integrity_hash"]
             },
             {
@@ -9483,7 +9486,7 @@
           ]
         },
         {
-          "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+          "path": "onchain/aiken/lib/midgard/validation-machine/cek.ak",
           "symbols": ["script_proof_v1"]
         },
         {
@@ -9552,7 +9555,7 @@
           ],
           "parsers": [
             {
-              "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+              "path": "onchain/aiken/lib/midgard/validation-machine/cek.ak",
               "symbols": ["script_proof_v1"]
             },
             {
@@ -9796,14 +9799,20 @@
           ]
         },
         {
-          "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+          "path": "onchain/aiken/lib/midgard/validation-machine/witness.ak",
           "symbols": [
             "resolution_schedule_node_hash",
             "transaction_resolution_schedule_hash",
-            "resolved_input_accumulator_successor",
-            "replay_source_frontier",
-            "ScriptSourcesControlV1"
+            "resolved_input_accumulator_successor"
           ]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/validation-machine/script-sources-middle-stages.ak",
+          "symbols": ["replay_source_frontier"]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/validation-machine/machine-types.ak",
+          "symbols": ["ScriptSourcesControlV1"]
         },
         {
           "path": "demo/midgard-core/src/script-proof.ts",
@@ -9881,7 +9890,7 @@
           "persistence": "Carried in the on-chain validation-machine control state for the duration of a dispute; the underlying spend and reference input lists are persisted in the canonical transaction body.",
           "encoders": [
             {
-              "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+              "path": "onchain/aiken/lib/midgard/validation-machine/witness.ak",
               "symbols": [
                 "resolution_schedule_node_hash",
                 "resolved_input_accumulator_successor"
@@ -9897,7 +9906,7 @@
           ],
           "parsers": [
             {
-              "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+              "path": "onchain/aiken/lib/midgard/validation-machine/witness.ak",
               "symbols": ["transaction_resolution_schedule_hash"]
             },
             {
@@ -9986,7 +9995,7 @@
       "auditStatus": "PASS",
       "sourceEvidence": [
         {
-          "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+          "path": "onchain/aiken/lib/midgard/validation-machine/shared.ak",
           "symbols": [
             "redeemer_tag_for_purpose_kind_v1",
             "redeemer_pointer_matches_purpose_v1"
@@ -10078,7 +10087,7 @@
           "persistence": "Not persisted directly; the redeemer tag and index are persisted inside the canonical redeemer witness preimage and the purpose kind is recomputed and committed into the purpose leaf during a dispute.",
           "encoders": [
             {
-              "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+              "path": "onchain/aiken/lib/midgard/validation-machine/shared.ak",
               "symbols": ["redeemer_tag_for_purpose_kind_v1"]
             },
             {
@@ -10088,7 +10097,7 @@
           ],
           "parsers": [
             {
-              "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+              "path": "onchain/aiken/lib/midgard/validation-machine/shared.ak",
               "symbols": ["redeemer_pointer_matches_purpose_v1"]
             },
             {
@@ -11891,7 +11900,7 @@
           "path": "onchain/aiken/lib/midgard/validation-trace-v1.ak",
           "symbols": [
             "machine_version",
-            "ValidationMachineState",
+            "ValidationMachineStateV1",
             "encode_machine_state",
             "hash_machine_state"
           ]
@@ -11899,7 +11908,7 @@
       ],
       "canonicalForms": [
         {
-          "name": "ValidationMachineState",
+          "name": "ValidationMachineStateV1",
           "kind": "canonical raw-CBOR and Plutus Data machine-state record",
           "wireRepresentation": "definite array/constructor 0 with 15 ordered fields",
           "versionPolicy": "field 0 machine version is exactly 1; version 9 and adjacent values reject",
@@ -11922,7 +11931,7 @@
           ],
           "constructorTags": [
             {
-              "name": "ValidationMachineState",
+              "name": "ValidationMachineStateV1",
               "tag": 0,
               "arity": 15
             }
@@ -12015,14 +12024,14 @@
           "path": "onchain/aiken/lib/midgard/validation-trace-v1.ak",
           "symbols": [
             "descriptor_version",
-            "ValidationTraceDescriptor",
+            "ValidationTraceDescriptorV1",
             "encode_descriptor"
           ]
         }
       ],
       "canonicalForms": [
         {
-          "name": "ValidationTraceDescriptor",
+          "name": "ValidationTraceDescriptorV1",
           "kind": "canonical trace descriptor",
           "wireRepresentation": "definite array/Plutus constructor 0 with eight ordered fields",
           "versionPolicy": "schemaVersion and machineVersion are both exactly 1",
@@ -12038,7 +12047,7 @@
           ],
           "constructorTags": [
             {
-              "name": "ValidationTraceDescriptor",
+              "name": "ValidationTraceDescriptorV1",
               "tag": 0,
               "arity": 8
             }
@@ -12323,12 +12332,12 @@
         },
         {
           "path": "onchain/aiken/lib/midgard/validation-claim-v1.ak",
-          "symbols": ["ValidationClaimWitness"]
+          "symbols": ["ValidationClaimWitnessV1"]
         }
       ],
       "canonicalForms": [
         {
-          "name": "ValidationClaimWitness",
+          "name": "ValidationClaimWitnessV1",
           "kind": "Plutus Data claim-opening record",
           "wireRepresentation": "constructor 0/10",
           "versionPolicy": "version is exactly 1 and the module/identity is V1 only",
@@ -12346,7 +12355,7 @@
           ],
           "constructorTags": [
             {
-              "name": "ValidationClaimWitness",
+              "name": "ValidationClaimWitnessV1",
               "tag": 0,
               "arity": 10
             }
@@ -12364,7 +12373,7 @@
           "parsers": [
             {
               "path": "onchain/aiken/lib/midgard/validation-claim-v1.ak",
-              "symbols": ["ValidationClaimWitness"]
+              "symbols": ["ValidationClaimWitnessV1"]
             }
           ]
         }
@@ -12443,12 +12452,12 @@
         },
         {
           "path": "onchain/aiken/lib/midgard/validation-dispute-v1.ak",
-          "symbols": ["ValidationDispute"]
+          "symbols": ["ValidationDisputeV1"]
         }
       ],
       "canonicalForms": [
         {
-          "name": "ValidationDispute",
+          "name": "ValidationDisputeV1",
           "kind": "Plutus Data dispute-state record",
           "wireRepresentation": "constructor 0/11",
           "versionPolicy": "version exactly 1; only V1 module and validator identities remain",
@@ -12465,7 +12474,7 @@
           ],
           "constructorTags": [
             {
-              "name": "ValidationDispute",
+              "name": "ValidationDisputeV1",
               "tag": 0,
               "arity": 11
             }
@@ -12483,7 +12492,7 @@
           "parsers": [
             {
               "path": "onchain/aiken/lib/midgard/validation-dispute-v1.ak",
-              "symbols": ["ValidationDispute"]
+              "symbols": ["ValidationDisputeV1"]
             }
           ]
         }
@@ -12838,12 +12847,8 @@
           ]
         },
         {
-          "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
-          "symbols": [
-            "ValidationOneStepWitness",
-            "ValidationOneStepEvidence",
-            "verify_one_step_evidence"
-          ]
+          "path": "onchain/aiken/lib/midgard/validation-machine/one-step.ak",
+          "symbols": ["verify_one_step_evidence"]
         }
       ],
       "canonicalForms": [
@@ -12860,12 +12865,12 @@
           ],
           "constructorTags": [
             {
-              "name": "ValidationOneStepWitness",
+              "name": "ValidationOneStepWitnessV1",
               "tag": 0,
               "arity": 2
             },
             {
-              "name": "ValidationOneStepEvidence",
+              "name": "ValidationOneStepEvidenceV1",
               "tag": 0,
               "arity": 2
             }
@@ -12882,7 +12887,7 @@
           ],
           "parsers": [
             {
-              "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+              "path": "onchain/aiken/lib/midgard/validation-machine/one-step.ak",
               "symbols": ["verify_one_step_evidence"]
             }
           ]
@@ -12951,7 +12956,7 @@
       "family": "V",
       "sourceOwnerAndCurrentIdentity": "Exact SDK/Aiken ValidationAuxiliaryWitnessV1",
       "classification": "nested-schema",
-      "canonicalResult": "ValidationAuxiliaryWitness",
+      "canonicalResult": "ValidationAuxiliaryWitnessV1",
       "boundaryBindingAndPersistence": "One-step work witness",
       "requiredEvidence": "Canonical encode/hash tests",
       "disposition": "reset-to-v1",
@@ -12967,15 +12972,11 @@
         {
           "path": "demo/midgard-validation/src/validation-machine-data.ts",
           "symbols": ["validationAuxiliaryWitnessData"]
-        },
-        {
-          "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
-          "symbols": ["ValidationAuxiliaryWitness"]
         }
       ],
       "canonicalForms": [
         {
-          "name": "ValidationAuxiliaryWitness",
+          "name": "ValidationAuxiliaryWitnessV1",
           "kind": "closed Plutus Data one-step auxiliary enum",
           "wireRepresentation": "40 constructors with exact tags 0..39 and arities",
           "versionPolicy": "only the exact V1 40-constructor descriptor-era bounded-evidence language is accepted; whole-field, whole-output, whole-script, and Data.Any escape hatches are absent",
@@ -13008,12 +13009,7 @@
               "symbols": ["validationAuxiliaryWitnessData"]
             }
           ],
-          "parsers": [
-            {
-              "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
-              "symbols": ["ValidationAuxiliaryWitness"]
-            }
-          ]
+          "parsers": []
         }
       ],
       "positiveEvidence": [
@@ -13086,12 +13082,16 @@
       "auditStatus": "PASS",
       "sourceEvidence": [
         {
-          "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
-          "symbols": [
-            "ResolveInputsControlV1",
-            "encode_resolve_inputs_witness",
-            "verify_resolve_inputs_one_step_v1"
-          ]
+          "path": "onchain/aiken/lib/midgard/validation-machine/machine-types.ak",
+          "symbols": ["ResolveInputsControlV1"]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/validation-machine/witness.ak",
+          "symbols": ["encode_resolve_inputs_witness"]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/validation-machine/one-step.ak",
+          "symbols": ["verify_resolve_inputs_one_step_v1"]
         }
       ],
       "canonicalForms": [
@@ -13120,13 +13120,13 @@
           "persistence": "Carried in ValidationOneStepWitnessV1 work_witness_cbor",
           "encoders": [
             {
-              "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+              "path": "onchain/aiken/lib/midgard/validation-machine/witness.ak",
               "symbols": ["encode_resolve_inputs_witness"]
             }
           ],
           "parsers": [
             {
-              "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+              "path": "onchain/aiken/lib/midgard/validation-machine/one-step.ak",
               "symbols": ["verify_resolve_inputs_one_step_v1"]
             }
           ]
@@ -13197,13 +13197,16 @@
       "auditStatus": "PASS",
       "sourceEvidence": [
         {
-          "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+          "path": "onchain/aiken/lib/midgard/validation-machine/machine-types.ak",
           "symbols": [
             "ScriptSourcesControlV1",
             "MintFoldControlV1",
-            "ScriptDiscoveryControlV1",
-            "verify_script_sources_one_step_v1"
+            "ScriptDiscoveryControlV1"
           ]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/validation-machine/one-step.ak",
+          "symbols": ["verify_script_sources_one_step_v1"]
         }
       ],
       "canonicalForms": [
@@ -13223,7 +13226,7 @@
           "persistence": "Carried in one-step work witness CBOR across the ScriptSources phase",
           "encoders": [
             {
-              "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+              "path": "onchain/aiken/lib/midgard/validation-machine/witness.ak",
               "symbols": [
                 "encode_script_sources_witness",
                 "encode_script_discovery_control"
@@ -13232,7 +13235,7 @@
           ],
           "parsers": [
             {
-              "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+              "path": "onchain/aiken/lib/midgard/validation-machine/one-step.ak",
               "symbols": ["verify_script_sources_one_step_v1"]
             }
           ]
@@ -13304,13 +13307,19 @@
       "auditStatus": "PASS",
       "sourceEvidence": [
         {
-          "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+          "path": "onchain/aiken/lib/midgard/validation-machine/machine-types.ak",
+          "symbols": ["NativeScriptsControlV1"]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/validation-machine/witness.ak",
           "symbols": [
-            "NativeScriptsControlV1",
             "encode_native_scripts_control_v1",
-            "encode_script_integrity_witness_v1",
-            "verify_native_scripts_one_step_v1"
+            "encode_script_integrity_witness_v1"
           ]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/validation-machine/one-step.ak",
+          "symbols": ["verify_native_scripts_one_step_v1"]
         }
       ],
       "canonicalForms": [
@@ -13331,7 +13340,7 @@
           "persistence": "Carried in one-step work witness CBOR",
           "encoders": [
             {
-              "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+              "path": "onchain/aiken/lib/midgard/validation-machine/witness.ak",
               "symbols": [
                 "encode_native_scripts_control_v1",
                 "encode_script_integrity_witness_v1"
@@ -13340,7 +13349,7 @@
           ],
           "parsers": [
             {
-              "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+              "path": "onchain/aiken/lib/midgard/validation-machine/one-step.ak",
               "symbols": ["verify_native_scripts_one_step_v1"]
             }
           ]
@@ -13412,15 +13421,18 @@
       "auditStatus": "PASS",
       "sourceEvidence": [
         {
-          "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+          "path": "onchain/aiken/lib/midgard/validation-machine/machine-types.ak",
           "symbols": [
             "CekRedeemerContextControlV1",
             "CekFinalContextControlV1",
             "CekContextPartsControlV1",
             "CekTxInfoAssemblyControlV1",
-            "CekContextControlV1",
-            "encode_cek_context_control_v1"
+            "CekContextControlV1"
           ]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/validation-machine/witness.ak",
+          "symbols": ["encode_cek_context_control_v1"]
         }
       ],
       "canonicalForms": [
@@ -13440,7 +13452,7 @@
           "persistence": "Carried in one-step work witness CBOR during CEK phase",
           "encoders": [
             {
-              "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+              "path": "onchain/aiken/lib/midgard/validation-machine/witness.ak",
               "symbols": [
                 "encode_cek_context_control_v1",
                 "encode_cek_redeemer_context_control_v1",
@@ -13450,7 +13462,7 @@
           ],
           "parsers": [
             {
-              "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+              "path": "onchain/aiken/lib/midgard/validation-machine/one-step.ak",
               "symbols": ["verify_cek_one_step_v1"]
             }
           ]
@@ -13520,14 +13532,17 @@
       "auditStatus": "PASS",
       "sourceEvidence": [
         {
-          "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+          "path": "onchain/aiken/lib/midgard/validation-machine/machine-types.ak",
           "symbols": [
             "ValueAccumulatorV1",
             "ValueAccumulatorUpdateV1",
             "ValueAssetMutationWitnessV1",
-            "ValueAndMintControlV1",
-            "encode_value_and_mint_control_v1"
+            "ValueAndMintControlV1"
           ]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/validation-machine/witness.ak",
+          "symbols": ["encode_value_and_mint_control_v1"]
         }
       ],
       "canonicalForms": [
@@ -13564,7 +13579,7 @@
           "persistence": "Carried in one-step work witness CBOR and terminal ledger-delta evidence",
           "encoders": [
             {
-              "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+              "path": "onchain/aiken/lib/midgard/validation-machine/witness.ak",
               "symbols": [
                 "encode_value_accumulator_v1",
                 "encode_value_and_mint_control_v1"
@@ -13573,7 +13588,7 @@
           ],
           "parsers": [
             {
-              "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+              "path": "onchain/aiken/lib/midgard/validation-machine/one-step.ak",
               "symbols": ["verify_value_and_mint_one_step_v1"]
             }
           ]
@@ -13653,13 +13668,16 @@
           ]
         },
         {
-          "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
-          "symbols": [
-            "LedgerDeltaControlV1",
-            "LedgerDeltaPendingMutationV1",
-            "ledger_delta_operation_leaf_hash",
-            "encode_ledger_delta_control_v1"
-          ]
+          "path": "onchain/aiken/lib/midgard/validation-machine/machine-types.ak",
+          "symbols": ["LedgerDeltaControlV1", "LedgerDeltaPendingMutationV1"]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/validation-machine/shared.ak",
+          "symbols": ["ledger_delta_operation_leaf_hash"]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/validation-machine/witness.ak",
+          "symbols": ["encode_ledger_delta_control_v1"]
         }
       ],
       "canonicalForms": [
@@ -13688,7 +13706,7 @@
           "persistence": "Delta evidence persists in terminal witness/DA trace and is materialized into confirmed ledger state",
           "encoders": [
             {
-              "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+              "path": "onchain/aiken/lib/midgard/validation-machine/witness.ak",
               "symbols": [
                 "encode_ledger_delta_pending_mutation_v1",
                 "encode_ledger_delta_control_v1"
@@ -13697,7 +13715,7 @@
           ],
           "parsers": [
             {
-              "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+              "path": "onchain/aiken/lib/midgard/validation-machine/one-step.ak",
               "symbols": ["verify_ledger_delta_one_step_v1"]
             }
           ]
@@ -13774,12 +13792,16 @@
       "auditStatus": "PASS",
       "sourceEvidence": [
         {
-          "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
-          "symbols": [
-            "encode_terminal_acceptance_witness_v1",
-            "encode_terminal_rejection_witness",
-            "verify_one_step"
-          ]
+          "path": "onchain/aiken/lib/midgard/validation-machine/witness.ak",
+          "symbols": ["encode_terminal_acceptance_witness_v1"]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/validation-machine/shared.ak",
+          "symbols": ["encode_terminal_rejection_witness"]
+        },
+        {
+          "path": "onchain/aiken/lib/midgard/validation-machine/one-step.ak",
+          "symbols": ["verify_one_step"]
         }
       ],
       "canonicalForms": [
@@ -13801,16 +13823,17 @@
           "persistence": "Terminal work witness persists in the validation trace and descriptor terminal state",
           "encoders": [
             {
-              "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
-              "symbols": [
-                "encode_terminal_acceptance_witness_v1",
-                "encode_terminal_rejection_witness"
-              ]
+              "path": "onchain/aiken/lib/midgard/validation-machine/witness.ak",
+              "symbols": ["encode_terminal_acceptance_witness_v1"]
+            },
+            {
+              "path": "onchain/aiken/lib/midgard/validation-machine/shared.ak",
+              "symbols": ["encode_terminal_rejection_witness"]
             }
           ],
           "parsers": [
             {
-              "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+              "path": "onchain/aiken/lib/midgard/validation-machine/one-step.ak",
               "symbols": ["verify_one_step"]
             }
           ]
@@ -13886,12 +13909,12 @@
         },
         {
           "path": "onchain/aiken/lib/midgard/validation-claim-v1.ak",
-          "symbols": ["ValidationSourceMembership"]
+          "symbols": ["ValidationSourceMembershipV1"]
         }
       ],
       "canonicalForms": [
         {
-          "name": "ValidationSourceMembership",
+          "name": "ValidationSourceMembershipV1",
           "kind": "closed Plutus Data source-membership enum",
           "wireRepresentation": "Forced constructor 0/1 or Normal constructor 1/1, each wrapping its exact root-membership proof",
           "versionPolicy": "only V1 identity; forced/normal semantic tags are preserved",
@@ -13924,7 +13947,7 @@
           "parsers": [
             {
               "path": "onchain/aiken/lib/midgard/validation-claim-v1.ak",
-              "symbols": ["ValidationSourceMembership"]
+              "symbols": ["ValidationSourceMembershipV1"]
             }
           ]
         }

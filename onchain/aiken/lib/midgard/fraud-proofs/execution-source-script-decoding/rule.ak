@@ -17,7 +17,8 @@ use midgard/rejection_reason_v1.{
 }
 use midgard/script_proof_v1
 use midgard/transition_trace
-use midgard/validation_machine_v1.{NativeScriptsControlV1}
+use midgard/validation_machine/machine_types.{NativeScriptsControlV1}
+use midgard/validation_machine/witness as vm_witness
 use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
 
@@ -203,7 +204,7 @@ pub fn authenticate_execution_source_v1(
       machine_state.work_root == validation_trace_v1.hash_work_witness(
         validation_trace_v1.NativeScripts,
         machine_state.program_counter,
-        validation_machine_v1.encode_native_scripts_control_v1(control),
+        vm_witness.encode_native_scripts_control_v1(control),
       ),
       trace_proof.state_hash == validation_trace_v1.hash_machine_state(
         machine_state,

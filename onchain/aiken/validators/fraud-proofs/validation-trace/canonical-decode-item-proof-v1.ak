@@ -4,7 +4,9 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/canonical_decode_item_staging_v1 as staging
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
-use midgard/validation_machine_v1.{verify_canonical_decode_item_observation_v1}
+use midgard/validation_machine/canonical_decode.{
+  verify_canonical_decode_item_observation_v1,
+}
 
 pub type Datum =
   ct.StepDatum<staging.ObservedCanonicalDecodeItemV1>

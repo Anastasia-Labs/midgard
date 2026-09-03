@@ -156,7 +156,7 @@ export const mintDeltaToScriptMintValue = (
 
 // C49 (#540). Mirrors `min_ada_output_overhead_bytes`/`min_ada_lovelace_v1`/
 // `output_meets_min_ada_v1` in
-// onchain/aiken/lib/midgard/validation-machine-v1.ak:2168-2216 verbatim: the
+// onchain/aiken/lib/midgard/validation-machine/ verbatim: the
 // Cardano minimum-Ada floor for one ledger output is linear in its serialized
 // size, with a fixed 160-byte UTxO entry overhead and no additional Midgard
 // margin at any size.
@@ -210,7 +210,7 @@ export const MIDGARD_COINS_PER_UTXO_BYTE = BigInt(
  * `E_MIN_ADA` (MIN-ADA-TX) over one canonical serialized transaction output.
  *
  * The off-chain twin of the ValueAndMint stage-3 output-descriptor conjunct in
- * onchain/aiken/lib/midgard/validation-machine-v1.ak: the on-chain step reads
+ * onchain/aiken/lib/midgard/validation-machine/: the on-chain step reads
  * `descriptor.total_length` and `descriptor.lovelace` off the authenticated
  * output descriptor, and `total_length` is by construction the length of these
  * very bytes (`buildMidgardLedgerOutputMaterialV1` sets it from the canonical

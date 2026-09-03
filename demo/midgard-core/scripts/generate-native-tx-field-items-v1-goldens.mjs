@@ -2,7 +2,7 @@
 
 /**
  * Produces the **per-field** cross-language golden vectors for the nine item
- * encodings of `docs/spec/midgard-tx.md` §5.3 (with §5.5 for outputs and §5.6
+ * encodings of `docs/spec/midgardV1-tx.md` §5.3 (with §5.5 for outputs and §5.6
  * for mint), the §5.1 envelope each field wears, the §4 flat commitment each
  * field commits under, and the §8 carriage each field's preimage selects.
  *
@@ -12,13 +12,13 @@
  * the other half: for every field index 0..8, what `enc_i` actually is.
  *
  * Every value is computed by the TypeScript twins
- * (`demo/midgard-core/src/codec/native-tx-field-items.ts`, plus the reused
+ * (`demo/midgardV1-core/src/codec/native-tx-field-items.ts`, plus the reused
  * canonical encoders for fields 2 and 6) and written to two places:
  *
- *   * `demo/midgard-core/tests/fixtures/native-tx-field-items-v1.generated.json`
+ *   * `demo/midgardV1-core/tests/fixtures/native-tx-field-items-v1.generated.json`
  *     — recomputed by `tests/native-tx-field-items-goldens.test.ts`, so a
  *     drifting twin fails on the TypeScript side; and
- *   * `onchain/aiken/lib/midgard/native-tx-field-items-v1-golden.test.ak`
+ *   * `onchain/aiken/lib/midgardV1/native-tx-field-items-v1-golden.test.ak`
  *     — recomputed by the Aiken producers under the fork runner, so a
  *     divergence between the two encoders fails on the Aiken side.
  *
@@ -95,7 +95,7 @@ import {
   FIELD_VECTORS,
   filler,
   FIXED_INDEX_BOUNDARIES,
-  midgard,
+  midgardV1,
   nativeCardano,
   plutusV3,
   redeemer,
@@ -118,7 +118,7 @@ const generatedJsonPath = join(
 );
 const generatedAikenPath = join(
   repositoryRoot,
-  "onchain/aiken/lib/midgard/native-tx-field-items-v1-golden.test.ak",
+  "onchain/aiken/lib/midgardV1/native-tx-field-items-v1-golden.test.ak",
 );
 
 const { checkOnly } = parseGoldenChannelArguments(
@@ -148,7 +148,7 @@ const LANGUAGE_TAG_VECTORS = [
     language: "MidgardV1",
     aikenConstructor: "MidgardV1Script",
     tag: 128,
-    script: midgard(92, 8),
+    script: midgardV1(92, 8),
   },
 ];
 
@@ -413,11 +413,11 @@ const buildGolden = () => {
   assertCarriageBoundariesStraddleKV1();
 
   return {
-    schema: "midgard-native-tx-field-items-v1-golden",
+    schema: "midgardV1-native-tx-field-items-v1-golden",
     version: 1,
-    specDocument: "docs/spec/midgard-tx.md",
+    specDocument: "docs/spec/midgardV1-tx.md",
     generator:
-      "demo/midgard-core/scripts/generate-native-tx-field-items-v1-goldens.mjs",
+      "demo/midgardV1-core/scripts/generate-native-tx-field-items-v1-goldens.mjs",
     fieldCount: MIDGARD_FIELD_COUNT,
     fields,
     languageTags,
@@ -561,7 +561,7 @@ const renderAiken = (golden) => {
     "// the §8 carriage each preimage selects.",
     "//",
     "// Every constant below was produced by the TypeScript twins",
-    "// (`demo/midgard-core/src/codec/native-tx-field-items.ts`) and is recomputed",
+    "// (`demo/midgardV1-core/src/codec/native-tx-field-items.ts`) and is recomputed",
     "// here by the Aiken producers, so the two encoders cannot silently diverge. The",
     "// shared surface all nine fields agree on is pinned by the sibling module",
     "// `native-tx-field-access-v1-golden.test.ak` (#568); this one is the per-field",
@@ -572,15 +572,15 @@ const renderAiken = (golden) => {
     "use aiken/crypto.{blake2b_256}",
     "use aiken/primitive/bytearray",
     "use cardano/transaction.{OutputReference}",
-    "use midgard/fraud_proofs/native_tx/compact.{",
+    "use midgardV1/fraud_proofs/native_tx/compact.{",
     "  encode_native_tx_field_preimage_lengths_v1,",
     "}",
-    "use midgard/fraud_proofs/native_tx/components.{",
+    "use midgardV1/fraud_proofs/native_tx/components.{",
     "  decode_midgard_tx_input_cbor, encode_fixed_output_index,",
     "  encode_midgard_address_witness, encode_midgard_redeemer_witness,",
     "  encode_midgard_tx_input, encode_midgard_versioned_script,",
     "}",
-    "use midgard/fraud_proofs/native_tx/preimages.{",
+    "use midgardV1/fraud_proofs/native_tx/preimages.{",
     "  decode_midgard_tx_address_witnesses_preimage_cbor,",
     "  decode_midgard_tx_hash28_list_preimage_cbor,",
     "  decode_midgard_tx_inputs_preimage_cbor,",
@@ -593,15 +593,15 @@ const renderAiken = (golden) => {
     "  encode_output_preimage, encode_redeemer_witness_preimage,",
     "  encode_script_witness_preimage,",
     "}",
-    "use midgard/fraud_proofs/native_tx/types.{",
+    "use midgardV1/fraud_proofs/native_tx/types.{",
     "  CertRedeemer, MidgardAddressWitness, MidgardExecutionUnits,",
     "  MidgardRedeemerWitness, MidgardTxInput, MidgardV1Script,",
     "  MidgardVersionedScript, MintRedeemer, NativeCardanoScript,",
     "  NativeTxFieldPreimageLengthsV1, PlutusV3Script, ProposeRedeemer,",
     "  ReceiveRedeemer, RewardRedeemer, SpendRedeemer, VoteRedeemer,",
     "}",
-    "use midgard/fraud_proofs/transition_trace/proof.{ledger_outref_key}",
-    "use midgard/native_tx_field_access_v1.{",
+    "use midgardV1/fraud_proofs/transition_trace/proof.{ledger_outref_key}",
+    "use midgardV1/native_tx_field_access_v1.{",
     "  Chunked, Whole, chunk_bytes_k, decode_field_array_header,",
     "  encode_field_preimage, field_commitment, field_commitment_from_items,",
     "  field_item_at, field_item_extent, field_stride,",
@@ -1046,6 +1046,6 @@ writeOrCheck(
     source: renderAiken(golden),
     fileName: "native-tx-field-items-v1-golden.test.ak",
     repositoryRoot,
-    tmpPrefix: "midgard-569-aiken-format-",
+    tmpPrefix: "midgardV1-569-aiken-format-",
   }),
 );

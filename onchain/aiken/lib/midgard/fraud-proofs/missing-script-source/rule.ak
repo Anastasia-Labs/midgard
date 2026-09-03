@@ -10,7 +10,8 @@ use midgard/ledger_state
 use midgard/rejection_reason_v1.{ScriptSourceMissing}
 use midgard/script_proof_v1
 use midgard/transition_trace
-use midgard/validation_machine_v1
+use midgard/validation_machine/machine_types as vm_machine_types
+use midgard/validation_machine/witness as vm_witness
 use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
 
@@ -190,7 +191,7 @@ pub fn authenticate_trace_state_v1(
 
 pub fn authenticate_purpose_control_v1(
   authenticated_trace: AuthenticatedTraceStateV1,
-  control: validation_machine_v1.ScriptSourcesControlV1,
+  control: vm_machine_types.ScriptSourcesControlV1,
   absolute_purpose_index: Int,
   required_script_hash: ByteArray,
   purpose_subject: ByteArray,
@@ -223,7 +224,7 @@ pub fn authenticate_purpose_control_v1(
       machine_state.work_root == validation_trace_v1.hash_work_witness(
         validation_trace_v1.ScriptSources,
         machine_state.program_counter,
-        validation_machine_v1.encode_script_sources_discovery_witness(
+        vm_witness.encode_script_sources_discovery_witness(
           control,
           9,
           discovery,
@@ -284,7 +285,7 @@ pub fn authenticate_purpose_frontier_v1(
   >,
   machine_state: validation_trace_v1.ValidationMachineStateV1,
   trace_proof: validation_trace_v1.ValidationTraceProof,
-  control: validation_machine_v1.ScriptSourcesControlV1,
+  control: vm_machine_types.ScriptSourcesControlV1,
   absolute_purpose_index: Int,
   required_script_hash: ByteArray,
   purpose_subject: ByteArray,

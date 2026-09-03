@@ -22,8 +22,8 @@ import {
   MIDGARD_CONSENSUS_PROFILE,
   MIDGARD_VALIDATION_DISPUTE_VERSION,
 } from "@al-ft/midgard-core";
-import { planMidgardFieldCarriage } from "@al-ft/midgard-core/codec/native-tx-carriage";
-import { selectMidgardFieldCarriageTier } from "@al-ft/midgard-core/codec/native-tx-field-access";
+import { planMidgardFieldCarriage } from "@al-ft/midgard-core/codec/native-tx-carriage-v1";
+import { selectMidgardFieldCarriageTier } from "@al-ft/midgard-core/codec/native-tx-field-access-v1";
 import {
   deriveFieldPreimageCertification,
   fieldPreimagePublicationDatumCbor,
@@ -297,7 +297,7 @@ if (lowIndex < 0) {
 }
 const highIndex = lowIndex + 1;
 // #597 AC4. The four §8-door constructors are the half of #592's wire change no
-// blueprint gate can measure: `ValidationAuxiliaryWitness` reaches a recursive
+// blueprint gate can measure: `ValidationAuxiliaryWitnessV1` reaches a recursive
 // Aiken definition through its CEK arm, so `sdk-aiken-schema-parity` cannot
 // normalize it (see the note at its `ABI_MAPPINGS`). Publishing one *emitted*
 // `transactionFieldChunk` auxiliary here checks the two language halves against
@@ -577,10 +577,9 @@ use aiken/cbor
 use aiken/primitive/bytearray
 use midgard/native_tx_field_access_v1.{Certified, Inline, RawUtxo}
 use midgard/validation_dispute_v1
-use midgard/validation_machine_v1.{
-  TransactionFieldChunkWitness, TransactionFieldItemWitness,
-  ValidationAuxiliaryWitness,
-}
+use midgard/validation_machine/canonical_decode as vm_canonical_decode
+use midgard/validation_machine/machine_types as vm_machine_types
+use midgard/validation_machine/witness as vm_witness
 use midgard/validation_merkle_v1
 use midgard/validation_resolution_v1
 
@@ -619,10 +618,10 @@ const script_discovery_control_cbor =
 
 test typescript_generated_one_step_boundary_is_authenticated() {
   expect Some(dispute_data) = cbor.deserialise(dispute_cbor)
-  expect dispute: validation_dispute_v1.ValidationDispute = dispute_data
+  expect dispute: validation_dispute_v1.ValidationDisputeV1 = dispute_data
   expect Some(boundary_evidence_data) = cbor.deserialise(boundary_evidence_cbor)
   expect
-      boundary_evidence: validation_resolution_v1.ValidationBoundaryEvidence
+      boundary_evidence: validation_resolution_v1.ValidationBoundaryEvidenceV1
     = boundary_evidence_data
   and {
     bytearray.length(boundary_evidence_cbor) == ${boundaryEvidenceCbor.length.toString()},
@@ -639,22 +638,22 @@ test typescript_generated_one_step_boundary_is_authenticated() {
 test typescript_generated_canonical_decode_step_is_exact() {
   expect Some(boundary_evidence_data) = cbor.deserialise(boundary_evidence_cbor)
   expect
-      boundary_evidence: validation_resolution_v1.ValidationBoundaryEvidence
+      boundary_evidence: validation_resolution_v1.ValidationBoundaryEvidenceV1
     = boundary_evidence_data
   expect Some(transition_data) = cbor.deserialise(transition_cbor)
-  expect transition: validation_machine_v1.ValidationOneStepWitness = transition_data
+  expect transition: vm_machine_types.ValidationOneStepWitnessV1 = transition_data
   expect Some(auxiliary_data) = cbor.deserialise(auxiliary_cbor)
-  expect auxiliary: validation_machine_v1.ValidationAuxiliaryWitness = auxiliary_data
+  expect auxiliary: vm_machine_types.ValidationAuxiliaryWitnessV1 = auxiliary_data
   and {
     bytearray.length(transition_cbor) == ${oneStepArgument.transitionCbor.length.toString()},
     bytearray.length(auxiliary_cbor) == ${oneStepArgument.auxiliaryCbor.length.toString()},
     bytearray.length(transition_cbor) < 16_384,
     bytearray.length(auxiliary_cbor) < 16_384,
-    validation_machine_v1.verify_canonical_decode_empty_semantics_v1(
+    vm_canonical_decode.verify_canonical_decode_empty_semantics_v1(
       boundary_evidence.pre_state,
       transition,
     ),
-    auxiliary == validation_machine_v1.NoAuxiliaryWitness,
+    auxiliary == vm_machine_types.NoAuxiliaryWitness,
     validation_resolution_v1.hash_one_step_evidence(
       transition_data,
       auxiliary_data,
@@ -667,7 +666,7 @@ test typescript_generated_canonical_decode_step_is_exact() {
 ///
 /// This is the cross-language pin for #592's four moved door constructors. It
 /// checks three things a blueprint comparison cannot: that the emitted bytes
-/// deserialise as \`ValidationAuxiliaryWitness\` at all, that they land on
+/// deserialise as \`ValidationAuxiliaryWitnessV1\` at all, that they land on
 /// \`TransactionFieldChunkWitness\` — Constr 1, whose *index* is unchanged while
 /// its shape moved, so a mis-tagged emission decodes as the wrong constructor
 /// rather than failing — and that the three fields carry exactly the values the
@@ -678,7 +677,7 @@ test typescript_generated_canonical_decode_step_is_exact() {
 /// below (#600).
 test typescript_generated_field_chunk_auxiliary_is_exact() {
   expect Some(auxiliary_data) = cbor.deserialise(field_chunk_auxiliary_cbor)
-  expect auxiliary: ValidationAuxiliaryWitness = auxiliary_data
+  expect auxiliary: ValidationAuxiliaryWitnessV1 = auxiliary_data
   expect TransactionFieldChunkWitness { field_index, item_index, carriage } = auxiliary
   and {
     bytearray.length(field_chunk_auxiliary_cbor) == ${fieldChunkArgument.auxiliaryCbor.length.toString()},
@@ -710,7 +709,7 @@ test typescript_generated_field_chunk_auxiliary_is_exact() {
 /// transaction's *whole* reference-input list and not just its carriage.
 test typescript_generated_raw_utxo_carriage_auxiliary_is_exact() {
   expect Some(auxiliary_data) = cbor.deserialise(raw_utxo_auxiliary_cbor)
-  expect auxiliary: ValidationAuxiliaryWitness = auxiliary_data
+  expect auxiliary: ValidationAuxiliaryWitnessV1 = auxiliary_data
   expect TransactionFieldChunkWitness { field_index, item_index, carriage } = auxiliary
   and {
     // O(1) in field size: a tier-2 carriage is one integer.
@@ -733,7 +732,7 @@ test typescript_generated_raw_utxo_carriage_auxiliary_is_exact() {
 /// just the shape.
 test typescript_generated_certified_carriage_auxiliary_is_exact() {
   expect Some(auxiliary_data) = cbor.deserialise(certified_auxiliary_cbor)
-  expect auxiliary: ValidationAuxiliaryWitness = auxiliary_data
+  expect auxiliary: ValidationAuxiliaryWitnessV1 = auxiliary_data
   expect TransactionFieldChunkWitness { field_index, item_index, carriage } = auxiliary
   and {
     // O(1) in field size at the top of the ladder too: at most three indices
@@ -761,10 +760,10 @@ test typescript_generated_certified_carriage_auxiliary_is_exact() {
 /// commitment arithmetic, not delivery.
 test typescript_generated_complete_item_commitment_is_transition_only() {
   expect Some(item_auxiliary_data) = cbor.deserialise(item_auxiliary_cbor)
-  expect item_auxiliary: ValidationAuxiliaryWitness = item_auxiliary_data
+  expect item_auxiliary: ValidationAuxiliaryWitnessV1 = item_auxiliary_data
   expect TransactionFieldItemWitness { carriage } = item_auxiliary
   expect Some(transition_data) = cbor.deserialise(transition_cbor)
-  let no_auxiliary_data: Data = validation_machine_v1.NoAuxiliaryWitness
+  let no_auxiliary_data: Data = vm_machine_types.NoAuxiliaryWitness
   and {
     bytearray.length(item_auxiliary_cbor) == ${itemAuxiliaryCbor.length.toString()},
     carriage == Inline { preimage: field_chunk_preimage },
@@ -781,7 +780,7 @@ test typescript_generated_complete_item_commitment_is_transition_only() {
 }
 
 test typescript_generated_script_discovery_control_wire_is_exact() {
-  let control = validation_machine_v1.ScriptDiscoveryControlV1 {
+  let control = vm_machine_types.ScriptDiscoveryControlV1 {
     purpose_cursor: 1,
     source_cursor: 2,
     redeemer_cursor: 3,
@@ -800,7 +799,7 @@ test typescript_generated_script_discovery_control_wire_is_exact() {
       validation_merkle_v1.FrontierPeak { height: 9, hash: #"ee" },
     ],
   }
-  validation_machine_v1.encode_script_discovery_control(control) == script_discovery_control_cbor
+  vm_witness.encode_script_discovery_control(control) == script_discovery_control_cbor
 }
 `;
 

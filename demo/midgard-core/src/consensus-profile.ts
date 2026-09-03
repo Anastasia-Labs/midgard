@@ -216,7 +216,7 @@ const MAX_REQUIRED_OBSERVER_COUNT = MAX_TX_SIZE_DERIVED_COLLECTION_ITEM_COUNT;
 // (`minAdaLovelaceV1`/`outputMeetsMinAdaV1` in
 // demo/midgard-validation/src/value-accounting.ts, and their Aiken twin
 // `min_ada_lovelace_v1`/`output_meets_min_ada_v1` in
-// onchain/aiken/lib/midgard/validation-machine-v1.ak).
+// onchain/aiken/lib/midgard/validation-machine/).
 //
 // Provenance: the C70 target-parameter snapshot, preprod epoch 303, pinned as
 // `PREPROD_EPOCH_303_BOUNDARY_PARAMETERS_V1.coinsPerUtxoByte === 4_310n`

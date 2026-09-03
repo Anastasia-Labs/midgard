@@ -9,7 +9,8 @@ use midgard/ledger_state
 use midgard/rejection_reason_v1.{RedeemerMissing, rejection_code_of}
 use midgard/script_proof_v1
 use midgard/transition_trace
-use midgard/validation_machine_v1
+use midgard/validation_machine/machine_types as vm_machine_types
+use midgard/validation_machine/witness as vm_witness
 use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
 
@@ -203,7 +204,7 @@ fn stage_ten_authentication(
   let purpose_leaf = script_proof_v1.purpose_leaf_hash(0, 7, h28, #"aa")
   let sources = validation_merkle_v1.build_frontier([source_leaf])
   let purposes = validation_merkle_v1.build_frontier([purpose_leaf])
-  let discovery = validation_machine_v1.ScriptDiscoveryControlV1 {
+  let discovery = vm_machine_types.ScriptDiscoveryControlV1 {
     purpose_cursor: 0,
     source_cursor: 1,
     redeemer_cursor: 0,
@@ -220,7 +221,7 @@ fn stage_ten_authentication(
     execution_count: 0,
     execution_peaks: [],
   }
-  let committed_control = validation_machine_v1.ScriptSourcesControlV1 {
+  let committed_control = vm_machine_types.ScriptSourcesControlV1 {
     compact_cbor: #"",
     witness_set_compact_cbor: #"",
     field_preimage_lengths_cbor: #"",
@@ -245,18 +246,18 @@ fn stage_ten_authentication(
     output_count: 0,
     output_peaks: [],
     output_total_count: 0,
-    receive_scan: validation_machine_v1.empty_receive_purpose_scan_control(),
+    receive_scan: vm_witness.empty_receive_purpose_scan_control(),
     source_total_count: 1,
     redeemer_total_count: 0,
-    observer_scan: validation_machine_v1.empty_observer_purpose_scan_control(),
+    observer_scan: vm_witness.empty_observer_purpose_scan_control(),
     discovery,
     output_proof: None,
     pending_source_cbor: #"",
-    mint_fold: validation_machine_v1.empty_mint_fold_control(),
+    mint_fold: vm_witness.empty_mint_fold_control(),
     resolution_schedule_hash: h32,
   }
   let supplied_control = if malformed_source_frontier {
-    validation_machine_v1.ScriptSourcesControlV1 {
+    vm_machine_types.ScriptSourcesControlV1 {
       ..committed_control,
       source_peaks: [],
     }
@@ -288,7 +289,7 @@ fn stage_ten_authentication(
       validation_trace_v1.hash_work_witness(
         validation_trace_v1.ScriptSources,
         17,
-        validation_machine_v1.encode_script_sources_discovery_witness(
+        vm_witness.encode_script_sources_discovery_witness(
           committed_control,
           10,
           discovery,

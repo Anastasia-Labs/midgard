@@ -1292,7 +1292,7 @@ export const ValidationAuxiliaryWitness =
  * UTxO passing a preimage off as belonging to a different dispute.
  *
  * Aiken source of truth:
- * `onchain/aiken/lib/midgard/validation-machine-v1.ak:421`.
+ * `onchain/aiken/lib/midgard/validation-machine/`.
  */
 export const ValidationProofItemDatumSchema = Data.Object({
   version: Data.Integer(),

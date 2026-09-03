@@ -191,7 +191,7 @@ const ABI_MAPPINGS = [
   ["ProofStepSchema", "aiken/merkle_patricia_forestry/ProofStep"],
   ["NeighborSchema", "aiken/merkle_patricia_forestry/Neighbor"],
   ["HeaderSchema", "midgard/ledger_state/HeaderV1"],
-  ["TransitionStepSchema", "midgard/ledger_state/TransitionStepV1"],
+  ["TransitionStepSchema", "midgard/ledger_state/TransitionStep"],
   ["EventKeySchema", "midgard/ledger_state/EventKey"],
   ["EventToStepValueSchema", "midgard/ledger_state/EventToStepValue"],
   ["ForcedInclusionTxV1Schema", "midgard/ledger_state/ForcedInclusionTxV1"],
@@ -283,14 +283,14 @@ const ABI_MAPPINGS = [
   // both were checked by adding the mapping and running it rather than reasoned
   // about:
   //
-  //   * `midgard/validation_machine_v1/ValidationAuxiliaryWitnessV1` **is** in
+  //   * `midgard/validation_machine/machine_types/ValidationAuxiliaryWitnessV1` **is** in
   //     the blueprint, but `normalizeSchema` fully inlines `$ref`s and refuses a
   //     definition that reappears while resolving. This sum reaches
   //     `midgard/cek_builtin_v1/BlsExpressionWitnessV1` — genuinely recursive in
   //     Aiken — through its `CekCoreStepWitness` arm, so the row fails on
   //     `recursive ABI schema …` before it compares a single field, and would go
   //     on failing after #579 regenerates.
-  //   * `midgard/validation_machine_v1/ValidationProofItemDatumV1` is in **no**
+  //   * `midgard/validation_machine/machine_types/ValidationProofItemDatumV1` is in **no**
   //     blueprint, frozen or regenerated. Measured against a scratch stock build
   //     of this working tree (`MIDGARD_REAL_BLUEPRINT_PATH`), the definition is
   //     still absent: the datum is read as `Data` off an `InlineDatum` inside

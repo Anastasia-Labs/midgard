@@ -4,9 +4,11 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel}
 use midgard/mpf_proof_fold_v1.{ProofFrameV1}
-use midgard/validation_machine_v1.{
-  LedgerDeltaProofFrameWitness, ValidationOneStepWitnessV1,
+use midgard/validation_machine/ledger_delta.{
   verify_ledger_delta_proof_frame_semantics_v1,
+}
+use midgard/validation_machine/machine_types.{
+  LedgerDeltaProofFrameWitness, ValidationOneStepWitnessV1,
 }
 use midgard/validation_semantic_v1.{Datum, continue_winning}
 use midgard/validation_trace_v1.{LedgerDelta}

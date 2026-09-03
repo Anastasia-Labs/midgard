@@ -1,6 +1,6 @@
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/missing_script_source/rule.{AuthenticatedTraceStateV1}
-use midgard/validation_machine_v1.{ScriptSourcesControlV1}
+use midgard/validation_machine/machine_types.{ScriptSourcesControlV1}
 
 pub type Args {
   input_index: Int,

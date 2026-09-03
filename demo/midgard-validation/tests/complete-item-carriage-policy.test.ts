@@ -131,7 +131,7 @@ describe("C21 complete-item carriage production searches", () => {
     expect(sdkWitnessSource).toContain("TransactionFieldItemWitness");
     // #597 landed: the SDK datum now agrees with the Aiken
     // `ValidationProofItemDatumV1`
-    // (`onchain/aiken/lib/midgard/validation-machine-v1.ak:421`) field for field.
+    // (`onchain/aiken/lib/midgard/validation-machine/`) field for field.
     // This row used to pin the *retired* shape deliberately, with a note saying
     // what it would become; it is now the agreement itself. The blueprint rows
     // further down still read the frozen `plutus.json`, so the disagreement that

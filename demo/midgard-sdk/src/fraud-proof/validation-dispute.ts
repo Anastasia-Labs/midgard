@@ -199,7 +199,7 @@ export const CanonicalDecodeItemSource =
  * the counted opening §4 made unsatisfiable. The door derives the count and the
  * length from the preimage it authenticated, so there is nothing for a prover to
  * claim and nothing to open. Aiken source of truth:
- * `onchain/aiken/lib/midgard/validation-machine-v1.ak:1683`.
+ * `onchain/aiken/lib/midgard/validation-machine/`.
  */
 export const CanonicalDecodeItemObservationSchema = Data.Object({
   item_count: Data.Integer(),

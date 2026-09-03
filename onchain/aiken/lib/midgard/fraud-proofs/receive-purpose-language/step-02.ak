@@ -2,7 +2,7 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/receive_purpose_language/rule.{BoundExecutionV1}
 use midgard/ledger_state
 use midgard/transition_trace
-use midgard/validation_machine_v1.{NativeScriptsControlV1}
+use midgard/validation_machine/machine_types.{NativeScriptsControlV1}
 use midgard/validation_trace_v1
 
 pub type Args {

@@ -2939,7 +2939,7 @@ export const buildDeterministicValidationMachineTrace = (
               // What *has* changed is where the size now comes from. The
               // carriage keeps this redeemer O(1) in output size only under
               // tiers 2-3, where the preimage rides reference inputs
-              // (`onchain/aiken/lib/midgard/validation-machine-v1.ak:9189`).
+              // (`onchain/aiken/lib/midgard/validation-machine/`).
               // The step therefore carries the *plan input* — which field, which
               // bytes — and the tier is resolved at evidence commitment, where a
               // transaction exists to index reference inputs into (#600). Above
@@ -5964,7 +5964,7 @@ export const buildDeterministicValidationMachineTrace = (
               // E_MIN_ADA / MIN-ADA-TX (#618 ruling 1; R8 of decision 0005).
               // The mirror of the ValueAndMint stage-3 output-descriptor
               // conjunct in
-              // onchain/aiken/lib/midgard/validation-machine-v1.ak, evaluated
+              // onchain/aiken/lib/midgard/validation-machine/, evaluated
               // in the same place: after the descriptor step's witness is
               // committed, before this output's Ada is folded into the
               // accumulator and before the asset cursor opens. `outputCbor` is

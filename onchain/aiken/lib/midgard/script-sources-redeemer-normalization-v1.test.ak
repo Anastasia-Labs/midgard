@@ -11,7 +11,8 @@ use midgard/fraud_proofs/native_tx/codec.{
 use midgard/fraud_proofs/native_tx/compact
 use midgard/redeemer_item_proof_v1
 use midgard/script_sources_redeemer_normalization_v1 as normalization
-use midgard/validation_machine_v1
+use midgard/validation_machine/machine_types as vm_machine_types
+use midgard/validation_machine/witness as vm_witness
 use midgard/validation_resolution_v1
 use midgard/validation_trace_v1
 
@@ -2233,7 +2234,7 @@ test execution_attestation_settlement_rejects_copied_hash_count_and_output_mutat
 // The raw-envelope route had zero coverage, which is why a reconstruction that
 // trapped on every input survived. These fixtures build a *legitimate* stage-1
 // pending redeemer-item witness with the machine's own canonical encoder
-// (`validation_machine_v1.encode_script_sources_redeemer_item_witness`) and
+// (`vm_witness.encode_script_sources_redeemer_item_witness`) and
 // pair the positive with the two encoding controls GOAL_SPEC §3 invariant 9
 // requires: a Plutus `serialiseData` re-encoding of the very same control, and
 // a mutated successor commitment.
@@ -2251,8 +2252,8 @@ const raw_field_preimage_lengths_cbor =
 const raw_context_cbor =
   #"d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4"
 
-fn raw_envelope_control() -> validation_machine_v1.ScriptSourcesControlV1 {
-  validation_machine_v1.ScriptSourcesControlV1 {
+fn raw_envelope_control() -> vm_machine_types.ScriptSourcesControlV1 {
+  vm_machine_types.ScriptSourcesControlV1 {
     compact_cbor: raw_compact_cbor,
     witness_set_compact_cbor: raw_witness_set_compact_cbor,
     field_preimage_lengths_cbor: raw_field_preimage_lengths_cbor,
@@ -2277,14 +2278,14 @@ fn raw_envelope_control() -> validation_machine_v1.ScriptSourcesControlV1 {
     output_count: 0,
     output_peaks: [],
     output_total_count: 0,
-    receive_scan: validation_machine_v1.empty_receive_purpose_scan_control(),
+    receive_scan: vm_witness.empty_receive_purpose_scan_control(),
     source_total_count: 0,
     redeemer_total_count: 3,
-    observer_scan: validation_machine_v1.empty_observer_purpose_scan_control(),
-    discovery: validation_machine_v1.empty_script_discovery_control(),
+    observer_scan: vm_witness.empty_observer_purpose_scan_control(),
+    discovery: vm_witness.empty_script_discovery_control(),
     output_proof: None,
     pending_source_cbor: hash_a,
-    mint_fold: validation_machine_v1.empty_mint_fold_control(),
+    mint_fold: vm_witness.empty_mint_fold_control(),
     resolution_schedule_hash: zero,
   }
 }
@@ -2293,7 +2294,7 @@ fn raw_envelope_control() -> validation_machine_v1.ScriptSourcesControlV1 {
 /// `encode_definite_array_header(31)` over the thirty base items plus
 /// `encode_definite_bytes(<pending item control hash>)`.
 fn raw_envelope_witness_cbor(pending_item_control_hash: ByteArray) -> ByteArray {
-  validation_machine_v1.encode_script_sources_redeemer_item_witness(
+  vm_witness.encode_script_sources_redeemer_item_witness(
     raw_envelope_control(),
     pending_item_control_hash,
   )
@@ -2333,8 +2334,8 @@ fn raw_envelope_pre_state() -> validation_trace_v1.ValidationMachineStateV1 {
 fn raw_envelope_transition(
   work_witness_cbor: ByteArray,
   successor_work_witness_cbor: ByteArray,
-) -> validation_machine_v1.ValidationOneStepWitnessV1 {
-  validation_machine_v1.ValidationOneStepWitnessV1 {
+) -> vm_machine_types.ValidationOneStepWitnessV1 {
+  vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: validation_trace_v1.ValidationMachineStateV1 {
       ..raw_envelope_pre_state(),
@@ -2372,7 +2373,7 @@ fn raw_envelope_item_control() -> redeemer_item_proof_v1.RedeemerItemProofContro
 fn raw_envelope_auxiliary(
   action: cek_data_traverse_v1.DataTraverseActionV1,
 ) -> Data {
-  let auxiliary: validation_machine_v1.ValidationAuxiliaryWitnessV1 = validation_machine_v1.RedeemerItemStepWitness {
+  let auxiliary: vm_machine_types.ValidationAuxiliaryWitnessV1 = vm_machine_types.RedeemerItemStepWitness {
     redeemer_control: None,
     control: raw_envelope_item_control(),
     witness: redeemer_item_proof_v1.RedeemerItemProofWitnessV1 {
@@ -2438,7 +2439,7 @@ test raw_envelope_rejects_serialise_data_witness_and_mutated_successor() {
   let serialise_data_cbor = raw_envelope_serialise_data_witness_cbor(hash_a)
   let auxiliary = raw_envelope_auxiliary(fold_map_action())
   let verify = fn(
-    transition: validation_machine_v1.ValidationOneStepWitnessV1,
+    transition: vm_machine_types.ValidationOneStepWitnessV1,
     expected_next_item_control_hash: ByteArray,
   ) {
     normalization.verify_raw_envelope_v1(

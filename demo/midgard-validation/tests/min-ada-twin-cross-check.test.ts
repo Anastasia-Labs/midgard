@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -18,7 +18,7 @@ import {
  * D-S4 / C49 (#618). The minimum-Ada floor
  * `coins_per_utxo_byte * (160 + serialized canonical output bytes)` exists as
  * two hand-written copies -- `min_ada_lovelace_v1`/`output_meets_min_ada_v1` in
- * `onchain/aiken/lib/midgard/validation-machine-v1.ak` and
+ * `onchain/aiken/lib/midgard/validation-machine/` and
  * `minAdaLovelace`/`outputMeetsMinAda` in `../src/value-accounting.ts`.
  * Nothing forced them to agree: both sides' existing boundary tests exercise
  * a single rate and a single output shape, state their slope and comparison
@@ -53,9 +53,20 @@ import {
 const read = (path: string): string =>
   readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
 
-const aikenTwinSource = read(
-  "../../../onchain/aiken/lib/midgard/validation-machine-v1.ak",
-);
+const aikenTwinSource = readdirSync(
+  fileURLToPath(
+    new URL(
+      "../../../onchain/aiken/lib/midgard/validation-machine/",
+      import.meta.url,
+    ),
+  ),
+)
+  .filter((name) => name.endsWith(".ak"))
+  .sort()
+  .map((name) =>
+    read(`../../../onchain/aiken/lib/midgard/validation-machine/${name}`),
+  )
+  .join("\n");
 const aikenTwinTestSource = read(
   "../../../onchain/aiken/lib/midgard/validation-machine-v1.test.ak",
 );
@@ -644,7 +655,7 @@ describe("min-Ada twin cross-check (D-S4 / C49)", () => {
     ).toBe(0);
     const scoped = testBody.slice(0, testBody.indexOf("\n}\n"));
     expect(scoped).toContain("output_meets_min_ada_v1(");
-    expect(scoped).toContain("!validation_machine_v1.output_meets_min_ada_v1(");
+    expect(scoped).toContain("!vm_shared.output_meets_min_ada_v1(");
     expect(scoped).toContain("floor - 1");
   });
 });

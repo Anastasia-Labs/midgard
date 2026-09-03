@@ -150,7 +150,9 @@ export const rebindAikenConstants = ({ source, constants }) => {
   let rebound = source;
   for (const [name, value] of Object.entries(constants)) {
     if (typeof value === "number" && !Number.isInteger(value)) {
-      throw new Error(`Aiken constant ${name} must be an integer, not ${value}`);
+      throw new Error(
+        `Aiken constant ${name} must be an integer, not ${value}`,
+      );
     }
     if (typeof value !== "number" && !(value instanceof Uint8Array)) {
       throw new Error(
@@ -203,25 +205,24 @@ export const rebindAikenConstants = ({ source, constants }) => {
  * repaired, because repairing it is exactly the failure mode the channel
  * exists to prevent.
  */
-export const goldenChannelEmitter = ({ repositoryRoot, checkOnly }) => (
-  target,
-  expected,
-) => {
-  const relativePath = relative(repositoryRoot, target);
-  if (checkOnly) {
-    let actual;
-    try {
-      actual = readFileSync(target, "utf8");
-    } catch {
-      throw new Error(`missing generated artifact: ${relativePath}`);
+export const goldenChannelEmitter =
+  ({ repositoryRoot, checkOnly }) =>
+  (target, expected) => {
+    const relativePath = relative(repositoryRoot, target);
+    if (checkOnly) {
+      let actual;
+      try {
+        actual = readFileSync(target, "utf8");
+      } catch {
+        throw new Error(`missing generated artifact: ${relativePath}`);
+      }
+      if (actual !== expected) {
+        throw new Error(`stale generated artifact: ${relativePath}`);
+      }
+      console.log(`checked ${relativePath}`);
+      return;
     }
-    if (actual !== expected) {
-      throw new Error(`stale generated artifact: ${relativePath}`);
-    }
-    console.log(`checked ${relativePath}`);
-    return;
-  }
-  mkdirSync(dirname(target), { recursive: true });
-  writeFileSync(target, expected, "utf8");
-  console.log(`wrote ${relativePath}`);
-};
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, expected, "utf8");
+    console.log(`wrote ${relativePath}`);
+  };

@@ -1,4 +1,4 @@
-use midgard/validation_machine_v1.{
+use midgard/validation_machine/machine_types.{
   CanonicalDecodeItemObservationV1, CanonicalDecodeItemProofV1,
   CanonicalDecodeItemSourceV1, ValidationOneStepWitnessV1,
 }

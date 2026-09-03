@@ -16,8 +16,10 @@ use midgard/fraud_proofs/native_tx/types.{
   MidgardTxInput, TxIsValid, native_tx_version_v1,
 }
 use midgard/ledger_state.{CekProgramMaterialDatumV1}
+use midgard/validation_machine/machine_types as vm_machine_types
+use midgard/validation_machine/one_step as vm_one_step
+use midgard/validation_machine/witness as vm_witness
 use midgard/validation_machine_field_door_v1 as field_door
-use midgard/validation_machine_v1
 use midgard/validation_merkle_v1
 use midgard/validation_resolution_v1
 use midgard/validation_resolver_v1
@@ -726,12 +728,12 @@ fn empty_v1_transaction() -> MidgardTransaction {
 
 fn phase_a_semantic_fixture() -> Pair<
   validation_trace_v1.ValidationMachineStateV1,
-  validation_machine_v1.ValidationOneStepWitnessV1,
+  vm_machine_types.ValidationOneStepWitnessV1,
 > {
   let tx = empty_v1_transaction()
   let compact = native_transaction.midgard_transaction_to_compact(tx)
   let proof_source = native_transaction.midgard_transaction_proof_source_v1(tx)
-  let schedule_hash = validation_machine_v1.transaction_resolution_schedule_hash(
+  let schedule_hash = vm_witness.transaction_resolution_schedule_hash(
     tx.body.inputs,
     tx.body.reference_inputs,
   )
@@ -739,7 +741,7 @@ fn phase_a_semantic_fixture() -> Pair<
     0,
     [],
   )
-  let work_witness_cbor = validation_machine_v1.encode_phase_a_script_preconditions_witness(
+  let work_witness_cbor = vm_witness.encode_phase_a_script_preconditions_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
@@ -787,13 +789,13 @@ fn phase_a_semantic_fixture() -> Pair<
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.ResolveInputs,
       7,
-      validation_machine_v1.encode_resolve_inputs_witness(
+      vm_witness.encode_resolve_inputs_witness(
         proof_source.compact_cbor,
         proof_source.witness_set_compact_cbor,
         proof_source.field_preimage_lengths_cbor,
         validation_context_cbor,
         0,
-        validation_machine_v1.initial_resolution_accumulator(),
+        vm_witness.initial_resolution_accumulator(),
         schedule_hash,
         0,
         signer_frontier_commitment,
@@ -804,7 +806,7 @@ fn phase_a_semantic_fixture() -> Pair<
   }
   Pair(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: post,
     },
@@ -851,7 +853,7 @@ fn successor_state(
 
 fn resolution_state(
   pre: validation_trace_v1.ValidationMachineStateV1,
-  transition: validation_machine_v1.ValidationOneStepWitnessV1,
+  transition: vm_machine_types.ValidationOneStepWitnessV1,
 ) -> validation_resolution_v1.ValidationResolutionStateV1 {
   validation_resolution_v1.ValidationResolutionStateV1 {
     version: validation_resolution_v1.resolution_version,
@@ -870,12 +872,12 @@ fn step_datum(
 }
 
 fn no_auxiliary_data() -> Data {
-  let auxiliary_data: Data = validation_machine_v1.NoAuxiliaryWitness
+  let auxiliary_data: Data = vm_machine_types.NoAuxiliaryWitness
   auxiliary_data
 }
 
-fn script_sources_auxiliary() -> validation_machine_v1.ValidationAuxiliaryWitnessV1 {
-  validation_machine_v1.ScriptPurposeScanWitness {
+fn script_sources_auxiliary() -> vm_machine_types.ValidationAuxiliaryWitnessV1 {
+  vm_machine_types.ScriptPurposeScanWitness {
     purpose_kind: 0,
     purpose_index: 0,
     script_hash: prepare_script_hash,
@@ -891,7 +893,7 @@ fn script_sources_auxiliary_data() -> Data {
 
 fn prepare_redeemer(
   semantic_resolver_index: Int,
-  transition: validation_machine_v1.ValidationOneStepWitnessV1,
+  transition: vm_machine_types.ValidationOneStepWitnessV1,
   auxiliary: Data,
 ) -> validation_resolver_v1.PrepareSelectedSpendRedeemer {
   ct.Continue(
@@ -907,7 +909,7 @@ fn prepare_redeemer(
 
 fn prepare_transaction(
   state: validation_resolution_v1.ValidationResolutionStateV1,
-  transition: validation_machine_v1.ValidationOneStepWitnessV1,
+  transition: vm_machine_types.ValidationOneStepWitnessV1,
   auxiliary: Data,
   output_script_hash: ScriptHash,
 ) -> Transaction {
@@ -1018,7 +1020,7 @@ fn every_route_uses_the_deployed_hash(
   group: List<ScriptHash>,
   count: Int,
   state: validation_resolution_v1.ValidationResolutionStateV1,
-  transition: validation_machine_v1.ValidationOneStepWitnessV1,
+  transition: vm_machine_types.ValidationOneStepWitnessV1,
   auxiliary: Data,
   index: Int,
 ) -> Bool {
@@ -1056,7 +1058,7 @@ test phase_a_applied_group_routes_through_the_production_prepare_path() {
     validation_trace_v1.PhaseAScriptPreconditions,
     work_witness_cbor,
   )
-  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: successor_state(pre, h_b),
   }
@@ -1077,7 +1079,7 @@ test phase_a_applied_group_routes_through_the_production_prepare_path() {
 test script_sources_applied_group_routes_through_the_production_prepare_path() {
   let work_witness_cbor = #"81"
   let pre = pre_state(validation_trace_v1.ScriptSources, work_witness_cbor)
-  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: successor_state(pre, h_b),
   }
@@ -1101,7 +1103,7 @@ test production_prepare_rejects_a_wrong_semantic_resolver_index() fail {
     validation_trace_v1.PhaseAScriptPreconditions,
     work_witness_cbor,
   )
-  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: successor_state(pre, h_b),
   }
@@ -1131,7 +1133,7 @@ test production_prepare_rejects_a_wrong_output_script_hash() {
     validation_trace_v1.PhaseAScriptPreconditions,
     work_witness_cbor,
   )
-  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: successor_state(pre, h_b),
   }
@@ -1160,7 +1162,7 @@ test production_prepare_rejects_same_cardinality_group_substitution() {
     validation_trace_v1.PhaseAScriptPreconditions,
     work_witness_cbor,
   )
-  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: successor_state(pre, h_b),
   }
@@ -1187,7 +1189,7 @@ test production_prepare_rejects_same_cardinality_group_substitution() {
 test semantic_handoff_accepts_exact_prepared_phase_a_evidence() {
   let Pair(pre, transition) = phase_a_semantic_fixture()
   let state = resolution_state(pre, transition)
-  let auxiliary = validation_machine_v1.NoAuxiliaryWitness
+  let auxiliary = vm_machine_types.NoAuxiliaryWitness
   let auxiliary_data: Data = auxiliary
   let prepared_state = validation_resolution_v1.prepare_semantic_resolution(
     state,
@@ -1200,12 +1202,12 @@ test semantic_handoff_accepts_exact_prepared_phase_a_evidence() {
     validation_resolver_v1.phase_a_script_preconditions_semantic_resolver_count,
     0,
   )
-  let evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
+  let evidence = vm_machine_types.ValidationOneStepEvidenceV1 {
     transition,
     auxiliary,
   }
   and {
-    validation_machine_v1.verify_phase_a_script_preconditions_semantics_v1(
+    vm_one_step.verify_phase_a_script_preconditions_semantics_v1(
       pre,
       evidence,
       inline_field_door(),
@@ -1219,7 +1221,7 @@ test semantic_handoff_accepts_exact_prepared_phase_a_evidence() {
       0,
       transition,
       auxiliary_data,
-      validation_machine_v1.verify_phase_a_script_preconditions_semantics_v1(
+      vm_one_step.verify_phase_a_script_preconditions_semantics_v1(
         pre,
         evidence,
         inline_field_door(),
@@ -1233,7 +1235,7 @@ test semantic_handoff_accepts_exact_prepared_phase_a_evidence() {
 test semantic_handoff_rejects_script_sources_auxiliary_substitution() {
   let Pair(pre, transition) = phase_a_semantic_fixture()
   let state = resolution_state(pre, transition)
-  let committed_auxiliary = validation_machine_v1.NoAuxiliaryWitness
+  let committed_auxiliary = vm_machine_types.NoAuxiliaryWitness
   let committed_auxiliary_data: Data = committed_auxiliary
   let prepared_state = validation_resolution_v1.prepare_semantic_resolution(
     state,
@@ -1245,16 +1247,16 @@ test semantic_handoff_rejects_script_sources_auxiliary_substitution() {
     validation_resolver_v1.phase_a_script_preconditions_semantic_resolver_count,
     0,
   )
-  let committed_evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
+  let committed_evidence = vm_machine_types.ValidationOneStepEvidenceV1 {
     transition,
     auxiliary: committed_auxiliary,
   }
-  let cross_family_evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
+  let cross_family_evidence = vm_machine_types.ValidationOneStepEvidenceV1 {
     transition,
     auxiliary: script_sources_auxiliary(),
   }
   and {
-    validation_machine_v1.verify_phase_a_script_preconditions_semantics_v1(
+    vm_one_step.verify_phase_a_script_preconditions_semantics_v1(
       pre,
       committed_evidence,
       inline_field_door(),
@@ -1268,7 +1270,7 @@ test semantic_handoff_rejects_script_sources_auxiliary_substitution() {
       0,
       transition,
       committed_auxiliary_data,
-      validation_machine_v1.verify_phase_a_script_preconditions_semantics_v1(
+      vm_one_step.verify_phase_a_script_preconditions_semantics_v1(
         pre,
         cross_family_evidence,
         inline_field_door(),
@@ -1281,7 +1283,7 @@ test semantic_handoff_rejects_script_sources_auxiliary_substitution() {
 
 test semantic_handoff_rejects_cross_family_action_substitution() {
   let Pair(pre, committed_transition) = phase_a_semantic_fixture()
-  let committed_auxiliary = validation_machine_v1.NoAuxiliaryWitness
+  let committed_auxiliary = vm_machine_types.NoAuxiliaryWitness
   let committed_auxiliary_data: Data = committed_auxiliary
   let cross_family_post = validation_trace_v1.ValidationMachineStateV1 {
     ..committed_transition.claimed_successor,
@@ -1292,7 +1294,7 @@ test semantic_handoff_rejects_cross_family_action_substitution() {
       committed_transition.work_witness_cbor,
     ),
   }
-  let cross_family_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let cross_family_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     ..committed_transition,
     claimed_successor: cross_family_post,
   }
@@ -1307,16 +1309,16 @@ test semantic_handoff_rejects_cross_family_action_substitution() {
     validation_resolver_v1.phase_a_script_preconditions_semantic_resolver_count,
     0,
   )
-  let committed_evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
+  let committed_evidence = vm_machine_types.ValidationOneStepEvidenceV1 {
     transition: committed_transition,
     auxiliary: committed_auxiliary,
   }
-  let cross_family_evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
+  let cross_family_evidence = vm_machine_types.ValidationOneStepEvidenceV1 {
     transition: cross_family_transition,
     auxiliary: committed_auxiliary,
   }
   and {
-    validation_machine_v1.verify_phase_a_script_preconditions_semantics_v1(
+    vm_one_step.verify_phase_a_script_preconditions_semantics_v1(
       pre,
       committed_evidence,
       inline_field_door(),
@@ -1330,7 +1332,7 @@ test semantic_handoff_rejects_cross_family_action_substitution() {
       0,
       committed_transition,
       committed_auxiliary_data,
-      validation_machine_v1.verify_phase_a_script_preconditions_semantics_v1(
+      vm_one_step.verify_phase_a_script_preconditions_semantics_v1(
         pre,
         cross_family_evidence,
         inline_field_door(),

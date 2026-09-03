@@ -2,7 +2,8 @@ use aiken/cbor
 use aiken/crypto.{blake2b_256}
 use aiken/primitive/bytearray
 use midgard/validation_dispute_v1
-use midgard/validation_machine_v1
+use midgard/validation_machine/machine_types as vm_machine_types
+use midgard/validation_machine/shared as vm_shared
 use midgard/validation_trace_v1
 
 pub const resolution_version: Int = 1
@@ -162,17 +163,13 @@ pub fn challenger_wins_with_valid_successor(
 
 pub fn prepare_semantic_resolution(
   state: ValidationResolutionStateV1,
-  transition: validation_machine_v1.ValidationOneStepWitnessV1,
+  transition: vm_machine_types.ValidationOneStepWitnessV1,
   auxiliary: Data,
 ) -> PreparedValidationResolutionStateV1 {
   expect state_is_well_formed(state)
   expect
     validation_trace_v1.hash_machine_state(transition.claimed_successor) == state.challenger_successor_hash
-  expect
-    validation_machine_v1.structural_transition_is_valid(
-      state.pre_state,
-      transition,
-    )
+  expect vm_shared.structural_transition_is_valid(state.pre_state, transition)
   let transition_data: Data = transition
   PreparedValidationResolutionStateV1 {
     version: prepared_resolution_version,

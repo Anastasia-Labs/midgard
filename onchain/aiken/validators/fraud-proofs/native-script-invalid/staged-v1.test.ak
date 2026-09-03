@@ -27,7 +27,7 @@ use midgard/native_tx_script_pushdown_v1 as pushdown
 use midgard/q34_max_fixture_chunk_0 as chunk_0
 use midgard/q34_max_fixture_chunk_1 as chunk_1
 use midgard/q34_max_fixture_chunk_2 as chunk_2
-use midgard/validation_machine_v1.{SignerAboveLastProof}
+use midgard/validation_machine/machine_types.{SignerAboveLastProof}
 use midgard/validation_merkle_v1.{FrontierPeak}
 
 const tx_id =

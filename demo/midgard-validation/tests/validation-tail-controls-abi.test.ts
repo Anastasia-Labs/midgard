@@ -549,7 +549,20 @@ describe("canonical V1 validation tail controls", () => {
         .sort()
         .map((name) => `../src/validation-machine/${name}`),
       "../src/validation-machine-data.ts",
-      "../../../onchain/aiken/lib/midgard/validation-machine-v1.ak",
+      ...readdirSync(
+        fileURLToPath(
+          new URL(
+            "../../../onchain/aiken/lib/midgard/validation-machine/",
+            import.meta.url,
+          ),
+        ),
+      )
+        .filter((name) => name.endsWith(".ak"))
+        .sort()
+        .map(
+          (name) =>
+            `../../../onchain/aiken/lib/midgard/validation-machine/${name}`,
+        ),
     ].map((path) =>
       readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8"),
     );

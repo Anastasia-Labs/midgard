@@ -12,7 +12,8 @@ use midgard/ledger_state
 use midgard/rejection_reason_v1.{RedeemerMissing, rejection_code_of}
 use midgard/script_proof_v1
 use midgard/transition_trace
-use midgard/validation_machine_v1
+use midgard/validation_machine/machine_types as vm_machine_types
+use midgard/validation_machine/witness as vm_witness
 use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
 
@@ -45,7 +46,7 @@ pub type AuthenticatedStageTenV1 {
   source_peaks: List<validation_merkle_v1.FrontierPeak>,
   purpose_count: Int,
   purpose_peaks: List<validation_merkle_v1.FrontierPeak>,
-  discovery: validation_machine_v1.ScriptDiscoveryControlV1,
+  discovery: vm_machine_types.ScriptDiscoveryControlV1,
 }
 
 pub type AuthenticatedDescriptorV1 {
@@ -191,12 +192,12 @@ pub fn authenticate_stage_ten_trace_v1(
   authenticated_descriptor: AuthenticatedDescriptorV1,
   machine_state: validation_trace_v1.ValidationMachineStateV1,
   trace_proof: validation_trace_v1.ValidationTraceProof,
-  control: validation_machine_v1.ScriptSourcesControlV1,
+  control: vm_machine_types.ScriptSourcesControlV1,
 ) -> AuthenticatedStageTenV1 {
   let bound = authenticated_descriptor.bound
   let descriptor = authenticated_descriptor.descriptor
   let discovery = control.discovery
-  let exact_control = validation_machine_v1.encode_script_sources_discovery_witness(
+  let exact_control = vm_witness.encode_script_sources_discovery_witness(
     control,
     10,
     discovery,
@@ -340,7 +341,7 @@ pub fn authenticate_stage_ten_purpose_v1(
   >,
   machine_state: validation_trace_v1.ValidationMachineStateV1,
   trace_proof: validation_trace_v1.ValidationTraceProof,
-  control: validation_machine_v1.ScriptSourcesControlV1,
+  control: vm_machine_types.ScriptSourcesControlV1,
   absolute_purpose_index: Int,
   purpose_siblings: List<ByteArray>,
   source_origin_kind: Int,

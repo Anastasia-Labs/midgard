@@ -52,8 +52,23 @@ use midgard/native_tx_field_access_v1
 use midgard/redeemer_item_proof_v1
 use midgard/script_context_v1
 use midgard/script_proof_v1
+use midgard/validation_machine/canonical_decode as vm_canonical_decode
+use midgard/validation_machine/cek as vm_cek
+use midgard/validation_machine/input_sets as vm_input_sets
+use midgard/validation_machine/ledger_delta as vm_ledger_delta
+use midgard/validation_machine/machine_types as vm_machine_types
+use midgard/validation_machine/native_scripts as vm_native_scripts
+use midgard/validation_machine/one_step as vm_one_step
+use midgard/validation_machine/phase_a_native_scripts as vm_phase_a_native_scripts
+use midgard/validation_machine/resolve_inputs as vm_resolve_inputs
+use midgard/validation_machine/script_sources as vm_script_sources
+use midgard/validation_machine/script_sources_early_stages as vm_script_sources_early_stages
+use midgard/validation_machine/script_sources_late_stages as vm_script_sources_late_stages
+use midgard/validation_machine/shared as vm_shared
+use midgard/validation_machine/signatures as vm_signatures
+use midgard/validation_machine/value_and_mint as vm_value_and_mint
+use midgard/validation_machine/witness as vm_witness
 use midgard/validation_machine_field_door_v1 as field_door
-use midgard/validation_machine_v1
 use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
 
@@ -161,38 +176,38 @@ const reject_value_not_preserved_code =
 
 test native_v1_optional_posix_time_sentinel_and_adjacent_invalid_are_exact() {
   and {
-    !validation_machine_v1.validity_interval_is_malformed(-1, -1),
-    !validation_machine_v1.validity_interval_is_malformed(0, 0),
-    !validation_machine_v1.validity_interval_is_malformed(0, 1),
-    validation_machine_v1.validity_interval_is_malformed(-2, -1),
-    validation_machine_v1.validity_interval_is_malformed(-1, -2),
-    validation_machine_v1.validity_interval_is_malformed(1, 0),
+    !vm_shared.validity_interval_is_malformed(-1, -1),
+    !vm_shared.validity_interval_is_malformed(0, 0),
+    !vm_shared.validity_interval_is_malformed(0, 1),
+    vm_shared.validity_interval_is_malformed(-2, -1),
+    vm_shared.validity_interval_is_malformed(-1, -2),
+    vm_shared.validity_interval_is_malformed(1, 0),
   }
 }
 
 test purpose_kind_to_redeemer_pointer_mapping_is_exact() {
   and {
-    validation_machine_v1.redeemer_tag_for_purpose_kind_v1(0) == Some(0),
-    validation_machine_v1.redeemer_tag_for_purpose_kind_v1(1) == Some(1),
-    validation_machine_v1.redeemer_tag_for_purpose_kind_v1(2) == Some(3),
-    validation_machine_v1.redeemer_tag_for_purpose_kind_v1(3) == Some(6),
-    validation_machine_v1.redeemer_tag_for_purpose_kind_v1(-1) == None,
-    validation_machine_v1.redeemer_tag_for_purpose_kind_v1(4) == None,
-    validation_machine_v1.redeemer_pointer_matches_purpose_v1(0, 7, 0, 7),
-    validation_machine_v1.redeemer_pointer_matches_purpose_v1(1, 7, 1, 7),
-    validation_machine_v1.redeemer_pointer_matches_purpose_v1(2, 7, 3, 7),
-    validation_machine_v1.redeemer_pointer_matches_purpose_v1(3, 7, 6, 7),
-    !validation_machine_v1.redeemer_pointer_matches_purpose_v1(0, 7, 0, 8),
-    !validation_machine_v1.redeemer_pointer_matches_purpose_v1(1, 7, 1, 8),
-    !validation_machine_v1.redeemer_pointer_matches_purpose_v1(2, 7, 3, 8),
-    !validation_machine_v1.redeemer_pointer_matches_purpose_v1(3, 7, 6, 8),
-    !validation_machine_v1.redeemer_pointer_matches_purpose_v1(-1, 7, 0, 7),
-    !validation_machine_v1.redeemer_pointer_matches_purpose_v1(4, 7, 6, 7),
-    !validation_machine_v1.redeemer_pointer_matches_purpose_v1(0, 7, -1, 7),
-    !validation_machine_v1.redeemer_pointer_matches_purpose_v1(0, 7, 2, 7),
-    !validation_machine_v1.redeemer_pointer_matches_purpose_v1(0, 7, 4, 7),
-    !validation_machine_v1.redeemer_pointer_matches_purpose_v1(0, 7, 5, 7),
-    !validation_machine_v1.redeemer_pointer_matches_purpose_v1(0, 7, 7, 7),
+    vm_shared.redeemer_tag_for_purpose_kind_v1(0) == Some(0),
+    vm_shared.redeemer_tag_for_purpose_kind_v1(1) == Some(1),
+    vm_shared.redeemer_tag_for_purpose_kind_v1(2) == Some(3),
+    vm_shared.redeemer_tag_for_purpose_kind_v1(3) == Some(6),
+    vm_shared.redeemer_tag_for_purpose_kind_v1(-1) == None,
+    vm_shared.redeemer_tag_for_purpose_kind_v1(4) == None,
+    vm_shared.redeemer_pointer_matches_purpose_v1(0, 7, 0, 7),
+    vm_shared.redeemer_pointer_matches_purpose_v1(1, 7, 1, 7),
+    vm_shared.redeemer_pointer_matches_purpose_v1(2, 7, 3, 7),
+    vm_shared.redeemer_pointer_matches_purpose_v1(3, 7, 6, 7),
+    !vm_shared.redeemer_pointer_matches_purpose_v1(0, 7, 0, 8),
+    !vm_shared.redeemer_pointer_matches_purpose_v1(1, 7, 1, 8),
+    !vm_shared.redeemer_pointer_matches_purpose_v1(2, 7, 3, 8),
+    !vm_shared.redeemer_pointer_matches_purpose_v1(3, 7, 6, 8),
+    !vm_shared.redeemer_pointer_matches_purpose_v1(-1, 7, 0, 7),
+    !vm_shared.redeemer_pointer_matches_purpose_v1(4, 7, 6, 7),
+    !vm_shared.redeemer_pointer_matches_purpose_v1(0, 7, -1, 7),
+    !vm_shared.redeemer_pointer_matches_purpose_v1(0, 7, 2, 7),
+    !vm_shared.redeemer_pointer_matches_purpose_v1(0, 7, 4, 7),
+    !vm_shared.redeemer_pointer_matches_purpose_v1(0, 7, 5, 7),
+    !vm_shared.redeemer_pointer_matches_purpose_v1(0, 7, 7, 7),
   }
 }
 
@@ -291,12 +306,12 @@ fn signatures_scan_witness(
   invalid_signature_seen: Int,
 ) -> ByteArray {
   let proof_source = midgard_transaction_proof_source_v1(tx)
-  validation_machine_v1.encode_signatures_scan_witness(
+  vm_witness.encode_signatures_scan_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
-    validation_machine_v1.transaction_resolution_schedule_hash(
+    vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
@@ -389,12 +404,12 @@ fn phase_a_native_step_fixture(
   } else {
     -1
   }
-  let work_witness_cbor = validation_machine_v1.encode_phase_a_native_scripts_scan_witness(
+  let work_witness_cbor = vm_witness.encode_phase_a_native_scripts_scan_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
-    validation_machine_v1.transaction_resolution_schedule_hash(
+    vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
@@ -444,12 +459,12 @@ fn phase_a_native_scan_witness(
 ) -> ByteArray {
   let proof_source = midgard_transaction_proof_source_v1(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
-  validation_machine_v1.encode_phase_a_native_scripts_scan_witness(
+  vm_witness.encode_phase_a_native_scripts_scan_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
-    validation_machine_v1.transaction_resolution_schedule_hash(
+    vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
@@ -583,7 +598,7 @@ fn input_sets_scan_witness(
   schedule_hash: ByteArray,
 ) -> ByteArray {
   let proof_source = midgard_transaction_proof_source_v1(tx)
-  validation_machine_v1.encode_input_sets_scan_witness(
+  vm_witness.encode_input_sets_scan_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
@@ -650,7 +665,7 @@ fn exact_rejection_post(
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.Terminal,
       pre.program_counter + 1,
-      validation_machine_v1.encode_terminal_rejection_witness(
+      vm_shared.encode_terminal_rejection_witness(
         rejection_code,
         pre.prior_ledger_root,
       ),
@@ -670,13 +685,13 @@ fn exact_rejection_post(
 // invisible.
 fn non_empty_claimed_delta_root() -> ByteArray {
   let descriptor = empty_mpf_proof_descriptor()
-  let deletion = validation_machine_v1.ledger_delta_operation_leaf_hash(
+  let deletion = vm_shared.ledger_delta_operation_leaf_hash(
     0,
     #"010203",
     #"",
     descriptor,
   )
-  let insertion = validation_machine_v1.ledger_delta_operation_leaf_hash(
+  let insertion = vm_shared.ledger_delta_operation_leaf_hash(
     1,
     #"0405",
     #"060708",
@@ -696,12 +711,12 @@ fn phase_a_script_preconditions_fixture(
   )
   let proof_source = midgard_transaction_proof_source_v1(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
-  let work_witness_cbor = validation_machine_v1.encode_phase_a_script_preconditions_witness(
+  let work_witness_cbor = vm_witness.encode_phase_a_script_preconditions_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
-    validation_machine_v1.transaction_resolution_schedule_hash(
+    vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
@@ -831,14 +846,14 @@ fn resolve_inputs_step_fixture(
     native_tx_version_v1,
     encode_native_tx_body_compact(compact.body),
   )
-  let work_witness_cbor = validation_machine_v1.encode_resolve_inputs_witness(
+  let work_witness_cbor = vm_witness.encode_resolve_inputs_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
     cursor,
     accumulator,
-    validation_machine_v1.transaction_resolution_schedule_hash(
+    vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
@@ -848,7 +863,7 @@ fn resolve_inputs_step_fixture(
       signer_frontier.peaks,
     ),
     None,
-    validation_machine_v1.transaction_resolution_schedule_hash(
+    vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
@@ -899,8 +914,8 @@ fn script_sources_output_step_fixture_with_resolved_items(
   output_cursor: Int,
   output_frontier: validation_merkle_v1.BuiltFrontier,
   output_total_count: Int,
-  receive_scan: validation_machine_v1.ReceivePurposeScanControlV1,
-  observer_scan: validation_machine_v1.ObserverPurposeScanControlV1,
+  receive_scan: vm_machine_types.ReceivePurposeScanControlV1,
+  observer_scan: vm_machine_types.ObserverPurposeScanControlV1,
   program_counter: Int,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
   let proof_source = midgard_transaction_proof_source_v1(tx)
@@ -919,14 +934,14 @@ fn script_sources_output_step_fixture_with_resolved_items(
   // reject the sentinel from stage 7 on. Fixtures at stage >= 7 must therefore
   // use the settled fold, matching `script_discovery_step_fixture_with_output_frontier`.
   let mint_fold = if stage >= 7 {
-    validation_machine_v1.MintFoldControlV1 {
-      ..validation_machine_v1.empty_mint_fold_control(),
+    vm_machine_types.MintFoldControlV1 {
+      ..vm_witness.empty_mint_fold_control(),
       policy_count: 0,
     }
   } else {
-    validation_machine_v1.empty_mint_fold_control()
+    vm_witness.empty_mint_fold_control()
   }
-  let work_witness_cbor = validation_machine_v1.encode_script_sources_witness(
+  let work_witness_cbor = vm_witness.encode_script_sources_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
@@ -959,7 +974,7 @@ fn script_sources_output_step_fixture_with_resolved_items(
     redeemer_frontier.count,
     observer_scan,
     mint_fold,
-    validation_machine_v1.transaction_resolution_schedule_hash(
+    vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
@@ -993,8 +1008,8 @@ fn script_sources_output_step_fixture_with_resolved_items(
 }
 
 test observer_purpose_scan_control_cbor_is_canonical() {
-  let encoded = validation_machine_v1.encode_observer_purpose_scan_control(
-    validation_machine_v1.empty_observer_purpose_scan_control(),
+  let encoded = vm_witness.encode_observer_purpose_scan_control(
+    vm_witness.empty_observer_purpose_scan_control(),
   )
   and {
     encoded == #"83004000",
@@ -1006,8 +1021,8 @@ test observer_purpose_scan_control_cbor_is_canonical() {
 }
 
 test receive_purpose_scan_control_cbor_is_canonical() {
-  let encoded = validation_machine_v1.encode_receive_purpose_scan_control(
-    validation_machine_v1.empty_receive_purpose_scan_control(),
+  let encoded = vm_witness.encode_receive_purpose_scan_control(
+    vm_witness.empty_receive_purpose_scan_control(),
   )
   encoded == #"86008000404080"
 }
@@ -1044,8 +1059,8 @@ fn script_sources_output_step_fixture(
     output_cursor,
     output_frontier,
     output_frontier.count,
-    validation_machine_v1.empty_receive_purpose_scan_control(),
-    validation_machine_v1.empty_observer_purpose_scan_control(),
+    vm_witness.empty_receive_purpose_scan_control(),
+    vm_witness.empty_observer_purpose_scan_control(),
     program_counter,
   )
 }
@@ -1053,7 +1068,7 @@ fn script_sources_output_step_fixture(
 fn script_sources_mint_fold_fixture(
   tx: MidgardTransaction,
   purpose_frontier: validation_merkle_v1.BuiltFrontier,
-  mint_fold: validation_machine_v1.MintFoldControlV1,
+  mint_fold: vm_machine_types.MintFoldControlV1,
   stage: Int,
   program_counter: Int,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
@@ -1065,13 +1080,13 @@ fn script_sources_mint_fold_fixture(
     encode_native_tx_body_compact(compact.body),
   )
   let empty_frontier = validation_merkle_v1.build_frontier([])
-  let work_witness_cbor = validation_machine_v1.encode_script_sources_witness(
+  let work_witness_cbor = vm_witness.encode_script_sources_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
     0,
-    validation_machine_v1.initial_resolution_accumulator(),
+    vm_witness.initial_resolution_accumulator(),
     signer_frontier.count,
     validation_merkle_v1.frontier_commitment(
       signer_frontier.count,
@@ -1084,8 +1099,8 @@ fn script_sources_mint_fold_fixture(
     0,
     empty_frontier.peaks,
     0,
-    validation_machine_v1.initial_resolution_accumulator(),
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.initial_resolution_accumulator(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     purpose_frontier.count,
     purpose_frontier.peaks,
@@ -1093,12 +1108,12 @@ fn script_sources_mint_fold_fixture(
     0,
     empty_frontier.peaks,
     0,
-    validation_machine_v1.empty_receive_purpose_scan_control(),
+    vm_witness.empty_receive_purpose_scan_control(),
     0,
     0,
-    validation_machine_v1.empty_observer_purpose_scan_control(),
+    vm_witness.empty_observer_purpose_scan_control(),
     mint_fold,
-    validation_machine_v1.transaction_resolution_schedule_hash(
+    vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
@@ -1249,7 +1264,7 @@ fn script_sources_active_output_proof_fixture(
   tx: MidgardTransaction,
   output_cursor: Int,
   output_frontier: validation_merkle_v1.BuiltFrontier,
-  receive_scan: validation_machine_v1.ReceivePurposeScanControlV1,
+  receive_scan: vm_machine_types.ReceivePurposeScanControlV1,
   output_proof: ledger_output_proof_v1.LedgerOutputProofControlV1,
   program_counter: Int,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
@@ -1260,13 +1275,13 @@ fn script_sources_active_output_proof_fixture(
     native_tx_version_v1,
     encode_native_tx_body_compact(compact.body),
   )
-  let control = validation_machine_v1.ScriptSourcesControlV1 {
+  let control = vm_machine_types.ScriptSourcesControlV1 {
     compact_cbor: proof_source.compact_cbor,
     witness_set_compact_cbor: proof_source.witness_set_compact_cbor,
     field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
     context_cbor: validation_context_cbor,
     resolved_input_count: 0,
-    resolved_inputs_accumulator: validation_machine_v1.initial_resolution_accumulator(),
+    resolved_inputs_accumulator: vm_witness.initial_resolution_accumulator(),
     signer_count: signer_frontier.count,
     signer_frontier_commitment: validation_merkle_v1.frontier_commitment(
       signer_frontier.count,
@@ -1279,8 +1294,8 @@ fn script_sources_active_output_proof_fixture(
     redeemer_count: 0,
     redeemer_peaks: validation_merkle_v1.empty_frontier(),
     replay_cursor: 0,
-    replay_accumulator: validation_machine_v1.initial_resolution_accumulator(),
-    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_accumulator: vm_witness.initial_resolution_accumulator(),
+    replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     spend_index: 0,
     purpose_count: 0,
     purpose_peaks: validation_merkle_v1.empty_frontier(),
@@ -1291,17 +1306,17 @@ fn script_sources_active_output_proof_fixture(
     receive_scan,
     source_total_count: 0,
     redeemer_total_count: 0,
-    observer_scan: validation_machine_v1.empty_observer_purpose_scan_control(),
-    discovery: validation_machine_v1.empty_script_discovery_control(),
+    observer_scan: vm_witness.empty_observer_purpose_scan_control(),
+    discovery: vm_witness.empty_script_discovery_control(),
     output_proof: Some(output_proof),
     pending_source_cbor: #"",
-    mint_fold: validation_machine_v1.empty_mint_fold_control(),
-    resolution_schedule_hash: validation_machine_v1.transaction_resolution_schedule_hash(
+    mint_fold: vm_witness.empty_mint_fold_control(),
+    resolution_schedule_hash: vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
   }
-  let work_witness_cbor = validation_machine_v1.encode_script_sources_output_proof_witness(
+  let work_witness_cbor = vm_witness.encode_script_sources_output_proof_witness(
     control,
     output_proof,
   )
@@ -1364,8 +1379,8 @@ fn script_sources_step_fixture_with_resolved_items(
     0,
     validation_merkle_v1.build_frontier([]),
     0,
-    validation_machine_v1.empty_receive_purpose_scan_control(),
-    validation_machine_v1.empty_observer_purpose_scan_control(),
+    vm_witness.empty_receive_purpose_scan_control(),
+    vm_witness.empty_observer_purpose_scan_control(),
     program_counter,
   )
 }
@@ -1375,10 +1390,10 @@ fn script_sources_receive_scan_step_fixture(
   purpose_frontier: validation_merkle_v1.BuiltFrontier,
   output_cursor: Int,
   output_frontier: validation_merkle_v1.BuiltFrontier,
-  receive_scan: validation_machine_v1.ReceivePurposeScanControlV1,
+  receive_scan: vm_machine_types.ReceivePurposeScanControlV1,
   program_counter: Int,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
-  let accumulator = validation_machine_v1.initial_resolution_accumulator()
+  let accumulator = vm_witness.initial_resolution_accumulator()
   script_sources_output_step_fixture_with_resolved_items(
     tx,
     0,
@@ -1389,14 +1404,14 @@ fn script_sources_receive_scan_step_fixture(
     0,
     validation_merkle_v1.build_frontier([]),
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     purpose_frontier,
     output_cursor,
     output_frontier,
     output_frontier.count,
     receive_scan,
-    validation_machine_v1.empty_observer_purpose_scan_control(),
+    vm_witness.empty_observer_purpose_scan_control(),
     program_counter,
   )
 }
@@ -1451,13 +1466,13 @@ fn script_sources_pending_redeemer_item_fixture(
     encode_native_tx_body_compact(compact.body),
   )
   let empty_frontier = validation_merkle_v1.build_frontier([])
-  let control = validation_machine_v1.ScriptSourcesControlV1 {
+  let control = vm_machine_types.ScriptSourcesControlV1 {
     compact_cbor: proof_source.compact_cbor,
     witness_set_compact_cbor: proof_source.witness_set_compact_cbor,
     field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
     context_cbor: validation_context_cbor,
     resolved_input_count: 0,
-    resolved_inputs_accumulator: validation_machine_v1.initial_resolution_accumulator(),
+    resolved_inputs_accumulator: vm_witness.initial_resolution_accumulator(),
     signer_count: signer_frontier.count,
     signer_frontier_commitment: validation_merkle_v1.frontier_commitment(
       signer_frontier.count,
@@ -1470,8 +1485,8 @@ fn script_sources_pending_redeemer_item_fixture(
     redeemer_count: redeemer_frontier.count,
     redeemer_peaks: redeemer_frontier.peaks,
     replay_cursor: 0,
-    replay_accumulator: validation_machine_v1.initial_resolution_accumulator(),
-    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_accumulator: vm_witness.initial_resolution_accumulator(),
+    replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     spend_index: 0,
     purpose_count: 0,
     purpose_peaks: empty_frontier.peaks,
@@ -1479,20 +1494,20 @@ fn script_sources_pending_redeemer_item_fixture(
     output_count: 0,
     output_peaks: empty_frontier.peaks,
     output_total_count: 0,
-    receive_scan: validation_machine_v1.empty_receive_purpose_scan_control(),
+    receive_scan: vm_witness.empty_receive_purpose_scan_control(),
     source_total_count: 0,
     redeemer_total_count,
-    observer_scan: validation_machine_v1.empty_observer_purpose_scan_control(),
-    discovery: validation_machine_v1.empty_script_discovery_control(),
+    observer_scan: vm_witness.empty_observer_purpose_scan_control(),
+    discovery: vm_witness.empty_script_discovery_control(),
     output_proof: None,
     pending_source_cbor: redeemer_item_control_hash,
-    mint_fold: validation_machine_v1.empty_mint_fold_control(),
-    resolution_schedule_hash: validation_machine_v1.transaction_resolution_schedule_hash(
+    mint_fold: vm_witness.empty_mint_fold_control(),
+    resolution_schedule_hash: vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
   }
-  let work_witness_cbor = validation_machine_v1.encode_script_sources_redeemer_item_witness(
+  let work_witness_cbor = vm_witness.encode_script_sources_redeemer_item_witness(
     control,
     redeemer_item_control_hash,
   )
@@ -1533,7 +1548,7 @@ fn script_discovery_step_fixture_with_output_frontier(
   output_cursor: Int,
   output_frontier: validation_merkle_v1.BuiltFrontier,
   output_descriptor_frontier: validation_merkle_v1.BuiltFrontier,
-  discovery: validation_machine_v1.ScriptDiscoveryControlV1,
+  discovery: vm_machine_types.ScriptDiscoveryControlV1,
   program_counter: Int,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
   let proof_source = midgard_transaction_proof_source_v1(tx)
@@ -1543,13 +1558,13 @@ fn script_discovery_step_fixture_with_output_frontier(
     native_tx_version_v1,
     encode_native_tx_body_compact(compact.body),
   )
-  let base_control = validation_machine_v1.ScriptSourcesControlV1 {
+  let base_control = vm_machine_types.ScriptSourcesControlV1 {
     compact_cbor: proof_source.compact_cbor,
     witness_set_compact_cbor: proof_source.witness_set_compact_cbor,
     field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
     context_cbor: validation_context_cbor,
     resolved_input_count: 0,
-    resolved_inputs_accumulator: validation_machine_v1.initial_resolution_accumulator(),
+    resolved_inputs_accumulator: vm_witness.initial_resolution_accumulator(),
     resolved_item_peaks: validation_merkle_v1.empty_frontier(),
     signer_count: signer_frontier.count,
     signer_frontier_commitment: validation_merkle_v1.frontier_commitment(
@@ -1562,8 +1577,8 @@ fn script_discovery_step_fixture_with_output_frontier(
     redeemer_count: redeemer_frontier.count,
     redeemer_peaks: redeemer_frontier.peaks,
     replay_cursor: 0,
-    replay_accumulator: validation_machine_v1.initial_resolution_accumulator(),
-    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_accumulator: vm_witness.initial_resolution_accumulator(),
+    replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     spend_index: 0,
     purpose_count: purpose_frontier.count,
     purpose_peaks: purpose_frontier.peaks,
@@ -1571,26 +1586,26 @@ fn script_discovery_step_fixture_with_output_frontier(
     output_count: output_frontier.count,
     output_peaks: output_frontier.peaks,
     output_total_count: output_frontier.count,
-    receive_scan: validation_machine_v1.ReceivePurposeScanControlV1 {
-      ..validation_machine_v1.empty_receive_purpose_scan_control(),
+    receive_scan: vm_machine_types.ReceivePurposeScanControlV1 {
+      ..vm_witness.empty_receive_purpose_scan_control(),
       descriptor_peaks: output_descriptor_frontier.peaks,
     },
     source_total_count: source_frontier.count,
     redeemer_total_count: redeemer_frontier.count,
-    observer_scan: validation_machine_v1.empty_observer_purpose_scan_control(),
+    observer_scan: vm_witness.empty_observer_purpose_scan_control(),
     discovery,
     output_proof: None,
     pending_source_cbor: #"",
-    mint_fold: validation_machine_v1.MintFoldControlV1 {
-      ..validation_machine_v1.empty_mint_fold_control(),
+    mint_fold: vm_machine_types.MintFoldControlV1 {
+      ..vm_witness.empty_mint_fold_control(),
       policy_count: 0,
     },
-    resolution_schedule_hash: validation_machine_v1.transaction_resolution_schedule_hash(
+    resolution_schedule_hash: vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
   }
-  let work_witness_cbor = validation_machine_v1.encode_script_sources_discovery_witness(
+  let work_witness_cbor = vm_witness.encode_script_sources_discovery_witness(
     base_control,
     stage,
     discovery,
@@ -1629,7 +1644,7 @@ fn script_discovery_step_fixture(
   source_frontier: validation_merkle_v1.BuiltFrontier,
   redeemer_frontier: validation_merkle_v1.BuiltFrontier,
   purpose_frontier: validation_merkle_v1.BuiltFrontier,
-  discovery: validation_machine_v1.ScriptDiscoveryControlV1,
+  discovery: vm_machine_types.ScriptDiscoveryControlV1,
   program_counter: Int,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
   script_discovery_step_fixture_with_output_frontier(
@@ -1663,13 +1678,13 @@ fn native_scripts_step_fixture(
     native_tx_version_v1,
     encode_native_tx_body_compact(compact.body),
   )
-  let control = validation_machine_v1.NativeScriptsControlV1 {
+  let control = vm_machine_types.NativeScriptsControlV1 {
     compact_cbor: proof_source.compact_cbor,
     witness_set_compact_cbor: proof_source.witness_set_compact_cbor,
     field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
     context_cbor: validation_context_cbor,
     resolved_input_count: 0,
-    resolved_inputs_accumulator: validation_machine_v1.initial_resolution_accumulator(),
+    resolved_inputs_accumulator: vm_witness.initial_resolution_accumulator(),
     spend_input_count: 0,
     resolved_item_peaks: validation_merkle_v1.empty_frontier(),
     signer_count: signer_frontier.count,
@@ -1692,14 +1707,12 @@ fn native_scripts_step_fixture(
     execution_peaks: execution_frontier.peaks,
     execution_cursor,
     language_bitmap,
-    resolution_schedule_hash: validation_machine_v1.transaction_resolution_schedule_hash(
+    resolution_schedule_hash: vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
   }
-  let work_witness_cbor = validation_machine_v1.encode_native_scripts_control_v1(
-    control,
-  )
+  let work_witness_cbor = vm_witness.encode_native_scripts_control_v1(control)
   Pair(
     validation_trace_v1.ValidationMachineStateV1 {
       machine_version: validation_trace_v1.machine_version,
@@ -1730,16 +1743,16 @@ fn native_scripts_step_fixture(
 
 fn empty_native_control_fixture(
   tx: MidgardTransaction,
-) -> validation_machine_v1.NativeScriptsControlV1 {
+) -> vm_machine_types.NativeScriptsControlV1 {
   let proof_source = midgard_transaction_proof_source_v1(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
-  validation_machine_v1.NativeScriptsControlV1 {
+  vm_machine_types.NativeScriptsControlV1 {
     compact_cbor: proof_source.compact_cbor,
     witness_set_compact_cbor: proof_source.witness_set_compact_cbor,
     field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
     context_cbor: validation_context_cbor,
     resolved_input_count: 0,
-    resolved_inputs_accumulator: validation_machine_v1.initial_resolution_accumulator(),
+    resolved_inputs_accumulator: vm_witness.initial_resolution_accumulator(),
     spend_input_count: 0,
     resolved_item_peaks: validation_merkle_v1.empty_frontier(),
     signer_count: signer_frontier.count,
@@ -1762,7 +1775,7 @@ fn empty_native_control_fixture(
     execution_peaks: validation_merkle_v1.empty_frontier(),
     execution_cursor: 0,
     language_bitmap: 0,
-    resolution_schedule_hash: validation_machine_v1.transaction_resolution_schedule_hash(
+    resolution_schedule_hash: vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
@@ -1771,7 +1784,7 @@ fn empty_native_control_fixture(
 
 fn cek_state_fixture(
   tx: MidgardTransaction,
-  control: validation_machine_v1.NativeScriptsControlV1,
+  control: vm_machine_types.NativeScriptsControlV1,
   context_control_cbor: ByteArray,
   execution_cursor: Int,
   program_counter: Int,
@@ -1786,7 +1799,7 @@ fn cek_state_fixture(
   } else {
     h_b
   }
-  let work_witness_cbor = validation_machine_v1.encode_cek_witness_v1(
+  let work_witness_cbor = vm_witness.encode_cek_witness_v1(
     control,
     context_control_cbor,
     execution_cursor,
@@ -1827,9 +1840,9 @@ fn cek_state_fixture(
 
 fn empty_cek_context_control_fixture(
   stage: Int,
-) -> validation_machine_v1.CekContextControlV1 {
-  let redeemer_context = validation_machine_v1.initial_cek_redeemer_context_control_v1()
-  validation_machine_v1.CekContextControlV1 {
+) -> vm_machine_types.CekContextControlV1 {
+  let redeemer_context = vm_witness.initial_cek_redeemer_context_control_v1()
+  vm_machine_types.CekContextControlV1 {
     stage,
     language_tag: 3,
     program_term_root: h_a,
@@ -1842,9 +1855,7 @@ fn empty_cek_context_control_fixture(
     redeemer_context_control_hash: if stage == 0 {
       #""
     } else {
-      validation_machine_v1.hash_cek_redeemer_context_control_v1(
-        redeemer_context,
-      )
+      vm_witness.hash_cek_redeemer_context_control_v1(redeemer_context)
     },
     execution_memory_limit: 10,
     execution_cpu_limit: 20,
@@ -1874,29 +1885,29 @@ fn empty_cek_context_control_fixture(
 
 fn verify_cek_context_transition_fixture(
   tx: MidgardTransaction,
-  native_control: validation_machine_v1.NativeScriptsControlV1,
-  context_control: validation_machine_v1.CekContextControlV1,
-  successor_control: validation_machine_v1.CekContextControlV1,
-  auxiliary: validation_machine_v1.ValidationAuxiliaryWitnessV1,
+  native_control: vm_machine_types.NativeScriptsControlV1,
+  context_control: vm_machine_types.CekContextControlV1,
+  successor_control: vm_machine_types.CekContextControlV1,
+  auxiliary: vm_machine_types.ValidationAuxiliaryWitnessV1,
   program_counter: Int,
 ) -> Bool {
   let Pair(pre, work_witness_cbor) = cek_state_fixture(
     tx,
     native_control,
-    validation_machine_v1.encode_cek_context_control_v1(context_control),
+    vm_witness.encode_cek_context_control_v1(context_control),
     0,
     program_counter,
   )
   let Pair(post, _) = cek_state_fixture(
     tx,
     native_control,
-    validation_machine_v1.encode_cek_context_control_v1(successor_control),
+    vm_witness.encode_cek_context_control_v1(successor_control),
     0,
     program_counter + 1,
   )
-  validation_machine_v1.verify_cek_observer_context_step(
+  vm_cek.verify_cek_observer_context_step(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: post,
     },
@@ -1913,24 +1924,24 @@ fn verify_cek_context_transition_fixture(
 fn verify_cek_context_source_transition_fixture(
   transaction_id: ByteArray,
   transaction_commitment: ByteArray,
-  native_control: validation_machine_v1.NativeScriptsControlV1,
-  context_control: validation_machine_v1.CekContextControlV1,
-  successor_control: validation_machine_v1.CekContextControlV1,
-  auxiliary: validation_machine_v1.ValidationAuxiliaryWitnessV1,
+  native_control: vm_machine_types.NativeScriptsControlV1,
+  context_control: vm_machine_types.CekContextControlV1,
+  successor_control: vm_machine_types.CekContextControlV1,
+  auxiliary: vm_machine_types.ValidationAuxiliaryWitnessV1,
   program_counter: Int,
 ) -> Bool {
   let base = empty_v1_transaction()
   let Pair(base_pre, work_witness_cbor) = cek_state_fixture(
     base,
     native_control,
-    validation_machine_v1.encode_cek_context_control_v1(context_control),
+    vm_witness.encode_cek_context_control_v1(context_control),
     0,
     program_counter,
   )
   let Pair(base_post, _) = cek_state_fixture(
     base,
     native_control,
-    validation_machine_v1.encode_cek_context_control_v1(successor_control),
+    vm_witness.encode_cek_context_control_v1(successor_control),
     0,
     program_counter + 1,
   )
@@ -1944,9 +1955,9 @@ fn verify_cek_context_source_transition_fixture(
     transaction_id,
     transaction_commitment,
   }
-  validation_machine_v1.verify_cek_observer_context_step(
+  vm_cek.verify_cek_observer_context_step(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: post,
     },
@@ -1962,9 +1973,9 @@ fn verify_cek_context_source_transition_fixture(
 
 fn cek_context_native_control_fixture(
   tx: MidgardTransaction,
-) -> validation_machine_v1.NativeScriptsControlV1 {
+) -> vm_machine_types.NativeScriptsControlV1 {
   let singleton = validation_merkle_v1.build_frontier([h_a])
-  validation_machine_v1.NativeScriptsControlV1 {
+  vm_machine_types.NativeScriptsControlV1 {
     ..empty_native_control_fixture(tx),
     purpose_count: 1,
     purpose_peaks: singleton.peaks,
@@ -1985,7 +1996,7 @@ fn test_power_of_two(exponent: Int) -> Int {
 
 fn maximum_mint_subtree_root(start: Int, size: Int) -> ByteArray {
   if size == 1 {
-    validation_machine_v1.mint_asset_leaf_hash(
+    vm_shared.mint_asset_leaf_hash(
       h_28_a,
       bytearray.from_int_big_endian(start, 32),
       1,
@@ -2017,7 +2028,7 @@ fn singleton_root(key: ByteArray, value: ByteArray) -> ByteArray {
 
 fn canonical_step_fixture() -> Pair<
   validation_trace_v1.ValidationMachineStateV1,
-  validation_machine_v1.ValidationOneStepEvidenceV1,
+  vm_machine_types.ValidationOneStepEvidenceV1,
 > {
   let tx = empty_v1_transaction()
   let context_cbor = validation_context_cbor
@@ -2029,7 +2040,7 @@ fn canonical_step_fixture() -> Pair<
   let proof_source = midgard_transaction_proof_source_v1(tx)
   // A field scan that has not yet counted the field's items carries the
   // `item_count == -1` sentinel; `verify_canonical_decode_empty` requires it.
-  let work_witness_cbor = validation_machine_v1.encode_transaction_field_scan_witness(
+  let work_witness_cbor = vm_witness.encode_transaction_field_scan_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
@@ -2070,7 +2081,7 @@ fn canonical_step_fixture() -> Pair<
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.CanonicalDecode,
       1,
-      validation_machine_v1.encode_transaction_field_scan_witness(
+      vm_witness.encode_transaction_field_scan_witness(
         proof_source.compact_cbor,
         proof_source.witness_set_compact_cbor,
         proof_source.field_preimage_lengths_cbor,
@@ -2085,19 +2096,19 @@ fn canonical_step_fixture() -> Pair<
   }
   Pair(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+      auxiliary: vm_machine_types.NoAuxiliaryWitness,
     },
   )
 }
 
 test canonical_v1_decode_is_independently_verified_on_l1() {
   let Pair(pre, evidence) = canonical_step_fixture()
-  validation_machine_v1.verify_canonical_decode_one_step_v1(
+  vm_one_step.verify_canonical_decode_one_step_v1(
     pre,
     evidence,
     inline_field_door(),
@@ -2124,7 +2135,7 @@ test canonical_decode_authenticates_one_bounded_script_item() {
   )
   let proof_source = midgard_transaction_proof_source_v1(tx)
   let item_cbor = encode_midgard_versioned_script(script)
-  let work_witness_cbor = validation_machine_v1.encode_transaction_field_scan_witness(
+  let work_witness_cbor = vm_witness.encode_transaction_field_scan_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
@@ -2165,7 +2176,7 @@ test canonical_decode_authenticates_one_bounded_script_item() {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.CanonicalDecode,
       8,
-      validation_machine_v1.encode_transaction_field_scan_witness(
+      vm_witness.encode_transaction_field_scan_witness(
         proof_source.compact_cbor,
         proof_source.witness_set_compact_cbor,
         proof_source.field_preimage_lengths_cbor,
@@ -2178,10 +2189,10 @@ test canonical_decode_authenticates_one_bounded_script_item() {
       ),
     ),
   }
-  validation_machine_v1.verify_canonical_decode_one_step_v1(
+  vm_one_step.verify_canonical_decode_one_step_v1(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
@@ -2189,7 +2200,7 @@ test canonical_decode_authenticates_one_bounded_script_item() {
       // hashes it once against `script_tx_wits_hash`. The retired form asserted
       // a per-item collection opening against that same flat hash, which is the
       // unsatisfiable predicate #592 is about.
-      auxiliary: validation_machine_v1.TransactionFieldChunkWitness {
+      auxiliary: vm_machine_types.TransactionFieldChunkWitness {
         field_index: 6,
         item_index: 0,
         carriage: inline_field_carriage([item_cbor]),
@@ -2219,7 +2230,7 @@ test canonical_decode_rejects_a_legacy_field_seven_script_proof() {
   )
   let proof_source = midgard_transaction_proof_source_v1(tx)
   let item_cbor = encode_midgard_versioned_script(script)
-  let work_witness_cbor = validation_machine_v1.encode_transaction_field_scan_witness(
+  let work_witness_cbor = vm_witness.encode_transaction_field_scan_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
@@ -2260,7 +2271,7 @@ test canonical_decode_rejects_a_legacy_field_seven_script_proof() {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.CanonicalDecode,
       8,
-      validation_machine_v1.encode_transaction_field_scan_witness(
+      vm_witness.encode_transaction_field_scan_witness(
         proof_source.compact_cbor,
         proof_source.witness_set_compact_cbor,
         proof_source.field_preimage_lengths_cbor,
@@ -2273,7 +2284,7 @@ test canonical_decode_rejects_a_legacy_field_seven_script_proof() {
       ),
     ),
   }
-  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: post,
   }
@@ -2296,7 +2307,7 @@ test canonical_decode_rejects_a_legacy_field_seven_script_proof() {
     ) != native_tx_field_access_v1.empty_field_commitment,
     // Field-7-flavoured evidence does not authenticate a field-6 item on the
     // semantic path ...
-    !validation_machine_v1.verify_canonical_decode_chunk_semantics_v1(
+    !vm_canonical_decode.verify_canonical_decode_chunk_semantics_v1(
       pre,
       transition,
       inline_field_door(),
@@ -2305,11 +2316,11 @@ test canonical_decode_rejects_a_legacy_field_seven_script_proof() {
       honest_carriage,
     ),
     // ... nor on the deployed one-step path.
-    !validation_machine_v1.verify_canonical_decode_one_step_v1(
+    !vm_one_step.verify_canonical_decode_one_step_v1(
       pre,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
+      vm_machine_types.ValidationOneStepEvidenceV1 {
         transition,
-        auxiliary: validation_machine_v1.TransactionFieldChunkWitness {
+        auxiliary: vm_machine_types.TransactionFieldChunkWitness {
           field_index: 7,
           item_index: 0,
           carriage: honest_carriage,
@@ -2320,7 +2331,7 @@ test canonical_decode_rejects_a_legacy_field_seven_script_proof() {
     // And an item index the authenticated field does not have is refused for
     // the same reason: the index is checked against the control's cursor, never
     // taken from the evidence.
-    !validation_machine_v1.verify_canonical_decode_chunk_semantics_v1(
+    !vm_canonical_decode.verify_canonical_decode_chunk_semantics_v1(
       pre,
       transition,
       inline_field_door(),
@@ -2379,7 +2390,7 @@ test canonical_decode_rejects_a_wrong_claimed_successor() {
   )
   let proof_source = midgard_transaction_proof_source_v1(tx)
   let item_cbor = encode_midgard_versioned_script(script)
-  let work_witness_cbor = validation_machine_v1.encode_transaction_field_scan_witness(
+  let work_witness_cbor = vm_witness.encode_transaction_field_scan_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
@@ -2421,7 +2432,7 @@ test canonical_decode_rejects_a_wrong_claimed_successor() {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.Terminal,
       8,
-      validation_machine_v1.encode_terminal_rejection_witness(
+      vm_shared.encode_terminal_rejection_witness(
         rejection_code,
         pre.prior_ledger_root,
       ),
@@ -2438,7 +2449,7 @@ test canonical_decode_rejects_a_wrong_claimed_successor() {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.CanonicalDecode,
       8,
-      validation_machine_v1.encode_transaction_field_scan_witness(
+      vm_witness.encode_transaction_field_scan_witness(
         proof_source.compact_cbor,
         proof_source.witness_set_compact_cbor,
         proof_source.field_preimage_lengths_cbor,
@@ -2452,16 +2463,16 @@ test canonical_decode_rejects_a_wrong_claimed_successor() {
     ),
   }
   let carriage = inline_field_carriage([item_cbor])
-  let auxiliary = validation_machine_v1.TransactionFieldChunkWitness {
+  let auxiliary = vm_machine_types.TransactionFieldChunkWitness {
     field_index: 6,
     item_index: 0,
     carriage,
   }
-  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: terminal,
   }
-  let correct_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let correct_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: correct_successor,
   }
@@ -2472,17 +2483,14 @@ test canonical_decode_rejects_a_wrong_claimed_successor() {
     // successor state, so nothing about well-formedness, the work-root
     // binding, the program counter, the immutable context, the phase
     // succession, or the budget is what rejects it.
-    validation_machine_v1.structural_transition_is_valid(pre, transition),
+    vm_shared.structural_transition_is_valid(pre, transition),
     // Conjunct 3 is the sole falsifier, and it falsifies through the chunk arm.
-    !validation_machine_v1.verify_canonical_decode_semantics_v1(
+    !vm_one_step.verify_canonical_decode_semantics_v1(
       pre,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
-        transition,
-        auxiliary,
-      },
+      vm_machine_types.ValidationOneStepEvidenceV1 { transition, auxiliary },
       inline_field_door(),
     ),
-    !validation_machine_v1.verify_canonical_decode_chunk_semantics_v1(
+    !vm_canonical_decode.verify_canonical_decode_chunk_semantics_v1(
       pre,
       transition,
       inline_field_door(),
@@ -2490,20 +2498,17 @@ test canonical_decode_rejects_a_wrong_claimed_successor() {
       0,
       carriage,
     ),
-    !validation_machine_v1.verify_canonical_decode_one_step_v1(
+    !vm_one_step.verify_canonical_decode_one_step_v1(
       pre,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
-        transition,
-        auxiliary,
-      },
+      vm_machine_types.ValidationOneStepEvidenceV1 { transition, auxiliary },
       inline_field_door(),
     ),
     // Differential: the identical pre, work witness and §8 carriage authenticate
     // once the claimed successor is the exact one, so the claimed successor is
     // the only thing this vector rejects.
-    validation_machine_v1.verify_canonical_decode_one_step_v1(
+    vm_one_step.verify_canonical_decode_one_step_v1(
       pre,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
+      vm_machine_types.ValidationOneStepEvidenceV1 {
         transition: correct_transition,
         auxiliary,
       },
@@ -2522,7 +2527,7 @@ test compact_binding_is_independently_verified_on_l1() {
   let transaction_commitment = midgard_transaction_proof_commitment_v1(tx)
   let proof_source = midgard_transaction_proof_source_v1(tx)
   let context_cbor = validation_context_cbor
-  let compact_witness_cbor = validation_machine_v1.encode_compact_binding_witness(
+  let compact_witness_cbor = vm_witness.encode_compact_binding_witness(
     tx_id,
     transaction_commitment,
     proof_source.compact_cbor,
@@ -2560,7 +2565,7 @@ test compact_binding_is_independently_verified_on_l1() {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.StaticLedgerRules,
       compact_pre.program_counter + 1,
-      validation_machine_v1.encode_static_rules_witness(
+      vm_witness.encode_static_rules_witness(
         proof_source.compact_cbor,
         proof_source.witness_set_compact_cbor,
         proof_source.field_preimage_lengths_cbor,
@@ -2568,9 +2573,9 @@ test compact_binding_is_independently_verified_on_l1() {
       ),
     ),
   }
-  validation_machine_v1.verify_one_step(
+  vm_one_step.verify_one_step(
     compact_pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor: compact_witness_cbor,
       claimed_successor: input_post,
     },
@@ -2586,7 +2591,7 @@ test static_rules_accept_the_exact_proof_context_and_advance_to_input_sets() {
     native_tx_version_v1,
     encode_native_tx_body_compact(compact.body),
   )
-  let work_witness_cbor = validation_machine_v1.encode_static_rules_witness(
+  let work_witness_cbor = vm_witness.encode_static_rules_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
@@ -2622,7 +2627,7 @@ test static_rules_accept_the_exact_proof_context_and_advance_to_input_sets() {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.InputSets,
       3,
-      validation_machine_v1.encode_input_sets_scan_witness(
+      vm_witness.encode_input_sets_scan_witness(
         proof_source.compact_cbor,
         proof_source.witness_set_compact_cbor,
         proof_source.field_preimage_lengths_cbor,
@@ -2632,18 +2637,18 @@ test static_rules_accept_the_exact_proof_context_and_advance_to_input_sets() {
         0,
         0,
         #"",
-        validation_machine_v1.empty_resolution_schedule_hash(),
+        vm_witness.empty_resolution_schedule_hash(),
       ),
     ),
   }
-  validation_machine_v1.verify_static_ledger_rules_semantics_v1(
+  vm_one_step.verify_static_ledger_rules_semantics_v1(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+      auxiliary: vm_machine_types.NoAuxiliaryWitness,
     },
   )
 }
@@ -2660,7 +2665,7 @@ test static_rules_prove_a_network_mismatch_is_an_exact_no_op() {
     native_tx_version_v1,
     encode_native_tx_body_compact(compact.body),
   )
-  let work_witness_cbor = validation_machine_v1.encode_static_rules_witness(
+  let work_witness_cbor = vm_witness.encode_static_rules_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
@@ -2705,9 +2710,9 @@ test static_rules_prove_a_network_mismatch_is_an_exact_no_op() {
   // An exact rejection carries the claimed ledger delta forward unchanged;
   // `exact_rejection_post` is the canonical successor shape.
   let terminal = exact_rejection_post(pre, rejection_code)
-  validation_machine_v1.verify_one_step(
+  vm_one_step.verify_one_step(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: terminal,
     },
@@ -2738,7 +2743,7 @@ fn static_rules_delta_root_fixture(
     native_tx_version_v1,
     encode_native_tx_body_compact(compact.body),
   )
-  let work_witness_cbor = validation_machine_v1.encode_static_rules_witness(
+  let work_witness_cbor = vm_witness.encode_static_rules_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
@@ -2792,9 +2797,9 @@ test rejection_is_provable_from_a_non_empty_claimed_delta_root() {
   and {
     claimed != validation_merkle_v1.frontier_commitment(0, []),
     terminal.ledger_delta_root == claimed,
-    validation_machine_v1.verify_one_step(
+    vm_one_step.verify_one_step(
       pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: terminal,
       },
@@ -2817,9 +2822,9 @@ test rejection_successor_that_clears_the_claimed_delta_is_rejected() {
     ..exact_rejection_post(pre, network_mismatch_rejection_code),
     ledger_delta_root: validation_merkle_v1.frontier_commitment(0, []),
   }
-  !validation_machine_v1.verify_one_step(
+  !vm_one_step.verify_one_step(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: cleared_terminal,
     },
@@ -2838,9 +2843,9 @@ test rejection_successor_that_rewrites_the_claimed_delta_is_rejected() {
     ..exact_rejection_post(pre, network_mismatch_rejection_code),
     ledger_delta_root: h_b,
   }
-  !validation_machine_v1.verify_one_step(
+  !vm_one_step.verify_one_step(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: rewritten_terminal,
     },
@@ -2860,9 +2865,9 @@ test a_valid_static_rules_transition_cannot_be_proven_rejected() {
     True,
     non_empty_claimed_delta_root(),
   )
-  !validation_machine_v1.verify_one_step(
+  !vm_one_step.verify_one_step(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: exact_rejection_post(
         pre,
@@ -2890,9 +2895,9 @@ test an_honest_forced_invalid_trace_may_carry_an_empty_claimed_delta() {
   and {
     pre.source_kind == validation_trace_v1.Forced,
     terminal.ledger_delta_root == empty_claim,
-    validation_machine_v1.verify_one_step(
+    vm_one_step.verify_one_step(
       pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: terminal,
       },
@@ -2910,7 +2915,7 @@ test input_sets_rejects_a_successor_in_the_wrong_phase() {
     0,
     0,
     #"",
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
   )
   let input_pre = input_sets_pre(tx, 2, work_witness_cbor)
   let static_post = validation_trace_v1.ValidationMachineStateV1 {
@@ -2919,9 +2924,9 @@ test input_sets_rejects_a_successor_in_the_wrong_phase() {
     program_counter: 3,
     work_root: h_c,
   }
-  !validation_machine_v1.verify_input_sets_empty_semantics_v1(
+  !vm_input_sets.verify_input_sets_empty_semantics_v1(
     input_pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: static_post,
     },
@@ -2937,13 +2942,13 @@ test input_sets_proves_an_empty_input_forced_transaction_is_an_exact_no_op() {
     0,
     0,
     #"",
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
   )
   let input_pre = input_sets_pre(tx, 2, work_witness_cbor)
   let rejection_code = #"455f454d5054595f494e50555453"
-  validation_machine_v1.verify_input_sets_empty_semantics_v1(
+  vm_input_sets.verify_input_sets_empty_semantics_v1(
     input_pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: exact_rejection_post(input_pre, rejection_code),
     },
@@ -2964,13 +2969,13 @@ test input_sets_accepts_bounded_disjoint_spend_and_reference_inputs() {
       reference_inputs: [reference_input],
     },
   }
-  let initial_schedule = validation_machine_v1.empty_resolution_schedule_hash()
-  let first_schedule = validation_machine_v1.resolution_schedule_node_hash(
+  let initial_schedule = vm_witness.empty_resolution_schedule_hash()
+  let first_schedule = vm_witness.resolution_schedule_node_hash(
     1,
     reference_key,
     initial_schedule,
   )
-  let full_schedule = validation_machine_v1.resolution_schedule_node_hash(
+  let full_schedule = vm_witness.resolution_schedule_node_hash(
     0,
     spend_key,
     first_schedule,
@@ -3004,9 +3009,9 @@ test input_sets_accepts_bounded_disjoint_spend_and_reference_inputs() {
     ),
   }
   let reference_carriage = inline_field_carriage([reference_key])
-  let first_is_valid = validation_machine_v1.verify_input_sets_item_semantics_v1(
+  let first_is_valid = vm_input_sets.verify_input_sets_item_semantics_v1(
     first_pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor: first_witness_cbor,
       claimed_successor: second_pre,
     },
@@ -3029,9 +3034,9 @@ test input_sets_accepts_bounded_disjoint_spend_and_reference_inputs() {
   let spend_carriage = inline_field_carriage([spend_key])
   and {
     first_is_valid,
-    validation_machine_v1.verify_input_sets_item_semantics_v1(
+    vm_input_sets.verify_input_sets_item_semantics_v1(
       second_pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: second_witness_cbor,
         claimed_successor: signatures_post,
       },
@@ -3040,7 +3045,7 @@ test input_sets_accepts_bounded_disjoint_spend_and_reference_inputs() {
       0,
       spend_carriage,
     ),
-    full_schedule == validation_machine_v1.transaction_resolution_schedule_hash(
+    full_schedule == vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
@@ -3059,8 +3064,8 @@ test input_sets_proves_spend_reference_overlap_unilaterally() {
       reference_inputs: [input],
     },
   }
-  let initial_schedule = validation_machine_v1.empty_resolution_schedule_hash()
-  let first_schedule = validation_machine_v1.resolution_schedule_node_hash(
+  let initial_schedule = vm_witness.empty_resolution_schedule_hash()
+  let first_schedule = vm_witness.resolution_schedule_node_hash(
     1,
     key,
     initial_schedule,
@@ -3095,9 +3100,9 @@ test input_sets_proves_spend_reference_overlap_unilaterally() {
   }
   let reference_carriage = inline_field_carriage([key])
   let spend_carriage = inline_field_carriage([key])
-  let first_is_valid = validation_machine_v1.verify_input_sets_item_semantics_v1(
+  let first_is_valid = vm_input_sets.verify_input_sets_item_semantics_v1(
     first_pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor: first_witness_cbor,
       claimed_successor: second_pre,
     },
@@ -3109,9 +3114,9 @@ test input_sets_proves_spend_reference_overlap_unilaterally() {
   let rejection_code = #"455f4455504c49434154455f494e5055545f494e5f5458"
   and {
     first_is_valid,
-    validation_machine_v1.verify_input_sets_item_semantics_v1(
+    vm_input_sets.verify_input_sets_item_semantics_v1(
       second_pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: second_witness_cbor,
         claimed_successor: exact_rejection_post(second_pre, rejection_code),
       },
@@ -3143,14 +3148,14 @@ test input_sets_proves_a_malformed_validity_interval_after_the_final_item() {
     0,
     0,
     #"",
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
   )
   let pre = input_sets_pre(tx, 2, work_witness_cbor)
   let carriage = inline_field_carriage([key])
   let rejection_code = #"455f494e56414c49445f56414c49444954595f494e54455256414c5f464f524d4154"
-  validation_machine_v1.verify_input_sets_item_semantics_v1(
+  vm_input_sets.verify_input_sets_item_semantics_v1(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: exact_rejection_post(pre, rejection_code),
     },
@@ -3215,12 +3220,12 @@ test signatures_accepts_an_empty_required_signer_and_witness_set() {
       handoff_witness_cbor,
     ),
   }
-  let next_work_witness_cbor = validation_machine_v1.encode_phase_a_native_scripts_scan_witness(
+  let next_work_witness_cbor = vm_witness.encode_phase_a_native_scripts_scan_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
-    validation_machine_v1.transaction_resolution_schedule_hash(
+    vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
@@ -3259,23 +3264,23 @@ test signatures_accepts_an_empty_required_signer_and_witness_set() {
     ),
   }
   and {
-    validation_machine_v1.verify_signatures_advance_semantics_v1(
+    vm_signatures.verify_signatures_advance_semantics_v1(
       pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: required_pre,
       },
     ),
-    validation_machine_v1.verify_signatures_advance_semantics_v1(
+    vm_signatures.verify_signatures_advance_semantics_v1(
       required_pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: required_witness_cbor,
         claimed_successor: handoff_pre,
       },
     ),
-    validation_machine_v1.verify_signatures_handoff_semantics_v1(
+    vm_signatures.verify_signatures_handoff_semantics_v1(
       handoff_pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: handoff_witness_cbor,
         claimed_successor: post,
       },
@@ -3318,12 +3323,12 @@ fn signatures_handoff_with_claimed_result(result: Int) -> Bool {
       handoff_witness_cbor,
     ),
   }
-  let next_work_witness_cbor = validation_machine_v1.encode_phase_a_native_scripts_scan_witness(
+  let next_work_witness_cbor = vm_witness.encode_phase_a_native_scripts_scan_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
-    validation_machine_v1.transaction_resolution_schedule_hash(
+    vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
@@ -3352,9 +3357,9 @@ fn signatures_handoff_with_claimed_result(result: Int) -> Bool {
       next_work_witness_cbor,
     ),
   }
-  validation_machine_v1.verify_signatures_handoff_semantics_v1(
+  vm_signatures.verify_signatures_handoff_semantics_v1(
     handoff_pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor: handoff_witness_cbor,
       claimed_successor: post,
     },
@@ -3420,22 +3425,22 @@ test signatures_proves_a_missing_required_signer_is_an_exact_no_op() {
   }
   let rejection_code = #"455f4d495353494e475f52455155495245445f5749544e455353"
   and {
-    validation_machine_v1.verify_signatures_advance_semantics_v1(
+    vm_signatures.verify_signatures_advance_semantics_v1(
       pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: required_pre,
       },
     ),
-    validation_machine_v1.verify_required_signer_item_semantics_v1(
+    vm_signatures.verify_required_signer_item_semantics_v1(
       required_pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: required_witness_cbor,
         claimed_successor: exact_rejection_post(required_pre, rejection_code),
       },
       inline_field_door(),
       inline_field_carriage([h_28_a]),
-      validation_machine_v1.EmptySignerSetProof { peaks: [] },
+      vm_machine_types.EmptySignerSetProof { peaks: [] },
     ),
   }
 }
@@ -3495,9 +3500,9 @@ test signatures_proves_an_invalid_address_signature_is_an_exact_no_op() {
   let carriage = inline_field_carriage([address_witness_cbor])
   let rejection_code = #"455f494e56414c49445f5349474e4154555245"
   and {
-    validation_machine_v1.verify_signature_address_item_semantics_v1(
+    vm_signatures.verify_signature_address_item_semantics_v1(
       pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: required_pre,
       },
@@ -3506,9 +3511,9 @@ test signatures_proves_an_invalid_address_signature_is_an_exact_no_op() {
       0,
       carriage,
     ),
-    validation_machine_v1.verify_signatures_advance_semantics_v1(
+    vm_signatures.verify_signatures_advance_semantics_v1(
       required_pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: required_witness_cbor,
         claimed_successor: exact_rejection_post(required_pre, rejection_code),
       },
@@ -3597,12 +3602,12 @@ test phase_a_native_scripts_evaluates_a_valid_timelock_on_l1() {
   )
   let proof_source = midgard_transaction_proof_source_v1(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
-  let next_work_witness_cbor = validation_machine_v1.encode_phase_a_script_preconditions_witness(
+  let next_work_witness_cbor = vm_witness.encode_phase_a_script_preconditions_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
-    validation_machine_v1.transaction_resolution_schedule_hash(
+    vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
@@ -3627,9 +3632,9 @@ test phase_a_native_scripts_evaluates_a_valid_timelock_on_l1() {
     ),
   }
   and {
-    validation_machine_v1.verify_phase_a_native_item_semantics_v1(
+    vm_phase_a_native_scripts.verify_phase_a_native_item_semantics_v1(
       pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: token_pre,
       },
@@ -3638,27 +3643,27 @@ test phase_a_native_scripts_evaluates_a_valid_timelock_on_l1() {
       0,
       carriage,
     ),
-    validation_machine_v1.verify_phase_a_native_token_head_semantics_v1(
+    vm_phase_a_native_scripts.verify_phase_a_native_token_head_semantics_v1(
       token_pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: token_work_witness_cbor,
         claimed_successor: payload_pre,
       },
       chunk_proof,
       None,
     ),
-    validation_machine_v1.verify_phase_a_native_timelock_payload_semantics_v1(
+    vm_phase_a_native_scripts.verify_phase_a_native_timelock_payload_semantics_v1(
       payload_pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: payload_work_witness_cbor,
         claimed_successor: finalize_pre,
       },
       chunk_proof,
       None,
     ),
-    validation_machine_v1.verify_phase_a_native_advance_semantics_v1(
+    vm_phase_a_native_scripts.verify_phase_a_native_advance_semantics_v1(
       finalize_pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: finalize_work_witness_cbor,
         claimed_successor: post,
       },
@@ -3822,36 +3827,36 @@ test phase_a_native_scripts_resolves_a_nested_signature_one_step_at_a_time() {
   )
   let signer_frontier = signer_frontier_for_tx(tx)
   and {
-    validation_machine_v1.verify_phase_a_native_token_head_semantics_v1(
+    vm_phase_a_native_scripts.verify_phase_a_native_token_head_semantics_v1(
       container_pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: container_work_witness_cbor,
         claimed_successor: container_payload_pre,
       },
       chunk_proof,
       None,
     ),
-    validation_machine_v1.verify_phase_a_native_all_or_any_container_frame_payload_semantics_v1(
+    vm_phase_a_native_scripts.verify_phase_a_native_all_or_any_container_frame_payload_semantics_v1(
       container_payload_pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: container_payload_work_witness_cbor,
         claimed_successor: signature_pre,
       },
       chunk_proof,
       None,
     ),
-    validation_machine_v1.verify_phase_a_native_token_head_semantics_v1(
+    vm_phase_a_native_scripts.verify_phase_a_native_token_head_semantics_v1(
       signature_pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: signature_work_witness_cbor,
         claimed_successor: signature_payload_pre,
       },
       chunk_proof,
       None,
     ),
-    validation_machine_v1.verify_phase_a_native_signature_membership_payload_semantics_v1(
+    vm_phase_a_native_scripts.verify_phase_a_native_signature_membership_payload_semantics_v1(
       signature_payload_pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: signature_payload_work_witness_cbor,
         claimed_successor: frame_pre,
       },
@@ -3861,9 +3866,9 @@ test phase_a_native_scripts_resolves_a_nested_signature_one_step_at_a_time() {
       0,
       [],
     ),
-    validation_machine_v1.verify_phase_a_native_frame_semantics_v1(
+    vm_phase_a_native_scripts.verify_phase_a_native_frame_semantics_v1(
       frame_pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: frame_work_witness_cbor,
         claimed_successor: complete_pre,
       },
@@ -3960,9 +3965,9 @@ test phase_a_native_scripts_proves_an_unsatisfied_script_is_an_exact_no_op() {
   // commitment; `exact_rejection_post` is the canonical successor shape.
   let terminal = exact_rejection_post(finalize_pre, rejection_code)
   and {
-    validation_machine_v1.verify_phase_a_native_item_semantics_v1(
+    vm_phase_a_native_scripts.verify_phase_a_native_item_semantics_v1(
       pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: token_pre,
       },
@@ -3971,18 +3976,18 @@ test phase_a_native_scripts_proves_an_unsatisfied_script_is_an_exact_no_op() {
       0,
       carriage,
     ),
-    validation_machine_v1.verify_phase_a_native_token_head_semantics_v1(
+    vm_phase_a_native_scripts.verify_phase_a_native_token_head_semantics_v1(
       token_pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: token_work_witness_cbor,
         claimed_successor: payload_pre,
       },
       chunk_proof,
       None,
     ),
-    validation_machine_v1.verify_phase_a_native_signature_empty_payload_semantics_v1(
+    vm_phase_a_native_scripts.verify_phase_a_native_signature_empty_payload_semantics_v1(
       payload_pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: payload_work_witness_cbor,
         claimed_successor: finalize_pre,
       },
@@ -3990,9 +3995,9 @@ test phase_a_native_scripts_proves_an_unsatisfied_script_is_an_exact_no_op() {
       None,
       [],
     ),
-    validation_machine_v1.verify_phase_a_native_advance_semantics_v1(
+    vm_phase_a_native_scripts.verify_phase_a_native_advance_semantics_v1(
       finalize_pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: finalize_work_witness_cbor,
         claimed_successor: terminal,
       },
@@ -4022,14 +4027,14 @@ test phase_a_script_preconditions_advances_an_empty_bundle_to_resolution() {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.ResolveInputs,
       7,
-      validation_machine_v1.encode_resolve_inputs_witness(
+      vm_witness.encode_resolve_inputs_witness(
         proof_source.compact_cbor,
         proof_source.witness_set_compact_cbor,
         proof_source.field_preimage_lengths_cbor,
         validation_context_cbor,
         0,
-        validation_machine_v1.initial_resolution_accumulator(),
-        validation_machine_v1.transaction_resolution_schedule_hash(
+        vm_witness.initial_resolution_accumulator(),
+        vm_witness.transaction_resolution_schedule_hash(
           tx.body.inputs,
           tx.body.reference_inputs,
         ),
@@ -4039,21 +4044,21 @@ test phase_a_script_preconditions_advances_an_empty_bundle_to_resolution() {
           signer_frontier.peaks,
         ),
         None,
-        validation_machine_v1.transaction_resolution_schedule_hash(
+        vm_witness.transaction_resolution_schedule_hash(
           tx.body.inputs,
           tx.body.reference_inputs,
         ),
       ),
     ),
   }
-  validation_machine_v1.verify_one_step_evidence(
+  vm_one_step.verify_one_step_evidence(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+      auxiliary: vm_machine_types.NoAuxiliaryWitness,
     },
     inline_field_door(),
   )
@@ -4075,12 +4080,12 @@ test phase_a_script_preconditions_proves_duplicate_observers_are_a_no_op() {
   )
   let proof_source = midgard_transaction_proof_source_v1(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
-  let next_work_witness_cbor = validation_machine_v1.encode_phase_a_script_preconditions_witness(
+  let next_work_witness_cbor = vm_witness.encode_phase_a_script_preconditions_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
-    validation_machine_v1.transaction_resolution_schedule_hash(
+    vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
@@ -4110,35 +4115,35 @@ test phase_a_script_preconditions_proves_duplicate_observers_are_a_no_op() {
   // openings over one frontier, and which of its two identical items a step
   // reads is the `item_index` it names.
   let observers_carriage = duplicate_observer_field_carriage()
-  let first_evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
-    transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+  let first_evidence = vm_machine_types.ValidationOneStepEvidenceV1 {
+    transition: vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: next,
     },
-    auxiliary: validation_machine_v1.TransactionFieldChunkWitness {
+    auxiliary: vm_machine_types.TransactionFieldChunkWitness {
       field_index: 3,
       item_index: 0,
       carriage: observers_carriage,
     },
   }
-  let second_evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
-    transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+  let second_evidence = vm_machine_types.ValidationOneStepEvidenceV1 {
+    transition: vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor: next_work_witness_cbor,
       claimed_successor: terminal,
     },
-    auxiliary: validation_machine_v1.TransactionFieldChunkWitness {
+    auxiliary: vm_machine_types.TransactionFieldChunkWitness {
       field_index: 3,
       item_index: 1,
       carriage: observers_carriage,
     },
   }
   and {
-    validation_machine_v1.verify_one_step_evidence(
+    vm_one_step.verify_one_step_evidence(
       pre,
       first_evidence,
       inline_field_door(),
     ),
-    validation_machine_v1.verify_one_step_evidence(
+    vm_one_step.verify_one_step_evidence(
       next,
       second_evidence,
       inline_field_door(),
@@ -4173,14 +4178,14 @@ test phase_a_script_preconditions_require_integrity_for_plutus_bytes() {
   // forward. See the note on
   // `static_rules_prove_a_network_mismatch_is_an_exact_no_op`.
   let terminal = exact_rejection_post(pre, rejection_code)
-  validation_machine_v1.verify_one_step_evidence(
+  vm_one_step.verify_one_step_evidence(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: terminal,
       },
-      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+      auxiliary: vm_machine_types.NoAuxiliaryWitness,
     },
     inline_field_door(),
   )
@@ -4195,7 +4200,7 @@ test resolve_inputs_checks_validity_before_ledger_lookups() {
       inputs: [MidgardTxInput { tx_id: h_a, output_index: 0 }],
     },
   }
-  let accumulator = validation_machine_v1.initial_resolution_accumulator()
+  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = resolve_inputs_step_fixture(
     tx,
     h_c,
@@ -4205,11 +4210,11 @@ test resolve_inputs_checks_validity_before_ledger_lookups() {
   )
   let proof_source = midgard_transaction_proof_source_v1(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
-  let resolution_schedule_hash = validation_machine_v1.transaction_resolution_schedule_hash(
+  let resolution_schedule_hash = vm_witness.transaction_resolution_schedule_hash(
     tx.body.inputs,
     tx.body.reference_inputs,
   )
-  let next_work_witness_cbor = validation_machine_v1.encode_resolve_inputs_witness(
+  let next_work_witness_cbor = vm_witness.encode_resolve_inputs_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
@@ -4234,14 +4239,14 @@ test resolve_inputs_checks_validity_before_ledger_lookups() {
       next_work_witness_cbor,
     ),
   }
-  validation_machine_v1.verify_one_step_evidence(
+  vm_one_step.verify_one_step_evidence(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+      auxiliary: vm_machine_types.NoAuxiliaryWitness,
     },
     inline_field_door(),
   )
@@ -4259,7 +4264,7 @@ fn resolve_inputs_authenticated_membership_step(step_to_verify: Int) -> Bool {
     ..base,
     body: MidgardTransactionBody { ..base.body, inputs: [input] },
   }
-  let accumulator = validation_machine_v1.initial_resolution_accumulator()
+  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = resolve_inputs_step_fixture(
     tx,
     root,
@@ -4269,33 +4274,33 @@ fn resolve_inputs_authenticated_membership_step(step_to_verify: Int) -> Bool {
   )
   let proof_source = midgard_transaction_proof_source_v1(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
-  let empty_schedule_hash = validation_machine_v1.empty_resolution_schedule_hash()
+  let empty_schedule_hash = vm_witness.empty_resolution_schedule_hash()
   let signer_frontier_commitment = validation_merkle_v1.frontier_commitment(
     signer_frontier.count,
     signer_frontier.peaks,
   )
-  let pending_initial = validation_machine_v1.ResolveInputOutputProofV1 {
+  let pending_initial = vm_machine_types.ResolveInputOutputProofV1 {
     source_kind: 0,
     key,
     next_schedule_hash: empty_schedule_hash,
     descriptor_cbor,
     output_proof: material.initial,
   }
-  let begin_post_cbor = validation_machine_v1.encode_resolve_inputs_witness(
+  let begin_post_cbor = vm_witness.encode_resolve_inputs_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
     1,
     accumulator,
-    validation_machine_v1.transaction_resolution_schedule_hash(
+    vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
     signer_frontier.count,
     signer_frontier_commitment,
     Some(pending_initial),
-    validation_machine_v1.transaction_resolution_schedule_hash(
+    vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
@@ -4309,25 +4314,25 @@ fn resolve_inputs_authenticated_membership_step(step_to_verify: Int) -> Bool {
       begin_post_cbor,
     ),
   }
-  let pending_first_successor = validation_machine_v1.ResolveInputOutputProofV1 {
+  let pending_first_successor = vm_machine_types.ResolveInputOutputProofV1 {
     ..pending_initial,
     output_proof: material.first_successor,
   }
-  let step_post_cbor = validation_machine_v1.encode_resolve_inputs_witness(
+  let step_post_cbor = vm_witness.encode_resolve_inputs_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
     1,
     accumulator,
-    validation_machine_v1.transaction_resolution_schedule_hash(
+    vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
     signer_frontier.count,
     signer_frontier_commitment,
     Some(pending_first_successor),
-    validation_machine_v1.transaction_resolution_schedule_hash(
+    vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
@@ -4341,25 +4346,25 @@ fn resolve_inputs_authenticated_membership_step(step_to_verify: Int) -> Bool {
       step_post_cbor,
     ),
   }
-  let pending_terminal = validation_machine_v1.ResolveInputOutputProofV1 {
+  let pending_terminal = vm_machine_types.ResolveInputOutputProofV1 {
     ..pending_initial,
     output_proof: material.terminal,
   }
-  let finalize_pre_cbor = validation_machine_v1.encode_resolve_inputs_witness(
+  let finalize_pre_cbor = vm_witness.encode_resolve_inputs_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
     validation_context_cbor,
     1,
     accumulator,
-    validation_machine_v1.transaction_resolution_schedule_hash(
+    vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
     signer_frontier.count,
     signer_frontier_commitment,
     Some(pending_terminal),
-    validation_machine_v1.transaction_resolution_schedule_hash(
+    vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
@@ -4372,13 +4377,13 @@ fn resolve_inputs_authenticated_membership_step(step_to_verify: Int) -> Bool {
       finalize_pre_cbor,
     ),
   }
-  let next_accumulator = validation_machine_v1.resolved_input_accumulator_successor(
+  let next_accumulator = vm_witness.resolved_input_accumulator_successor(
     accumulator,
     0,
     key,
     descriptor_cbor,
   )
-  let finalize_post_cbor = validation_machine_v1.encode_resolve_inputs_witness(
+  let finalize_post_cbor = vm_witness.encode_resolve_inputs_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
@@ -4389,7 +4394,7 @@ fn resolve_inputs_authenticated_membership_step(step_to_verify: Int) -> Bool {
     signer_frontier.count,
     signer_frontier_commitment,
     None,
-    validation_machine_v1.transaction_resolution_schedule_hash(
+    vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
@@ -4404,9 +4409,9 @@ fn resolve_inputs_authenticated_membership_step(step_to_verify: Int) -> Bool {
     ),
   }
   if step_to_verify == 0 {
-    validation_machine_v1.verify_resolve_inputs_membership_begin_semantics_v1(
+    vm_resolve_inputs.verify_resolve_inputs_membership_begin_semantics_v1(
       pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: begin_post,
       },
@@ -4415,12 +4420,12 @@ fn resolve_inputs_authenticated_membership_step(step_to_verify: Int) -> Bool {
       empty_schedule_hash,
       descriptor_cbor,
       [],
-      validation_machine_v1.NoSignerSetProof,
+      vm_machine_types.NoSignerSetProof,
     )
   } else if step_to_verify == 1 {
-    validation_machine_v1.verify_resolve_inputs_membership_step_semantics_v1(
+    vm_resolve_inputs.verify_resolve_inputs_membership_step_semantics_v1(
       begin_post,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: begin_post_cbor,
         claimed_successor: step_post,
       },
@@ -4432,14 +4437,14 @@ fn resolve_inputs_authenticated_membership_step(step_to_verify: Int) -> Bool {
   } else {
     and {
       step_to_verify == 2,
-      validation_machine_v1.verify_resolve_inputs_membership_finalize_semantics_v1(
+      vm_resolve_inputs.verify_resolve_inputs_membership_finalize_semantics_v1(
         finalize_pre,
-        validation_machine_v1.ValidationOneStepWitnessV1 {
+        vm_machine_types.ValidationOneStepWitnessV1 {
           work_witness_cbor: finalize_pre_cbor,
           claimed_successor: finalize_post,
         },
         descriptor_cbor,
-        validation_machine_v1.NoSignerSetProof,
+        vm_machine_types.NoSignerSetProof,
       ),
     }
   }
@@ -4460,7 +4465,7 @@ test resolve_inputs_empty_pending_witness_decodes_as_exact_array_11() {
     tx,
     null_hash,
     1,
-    validation_machine_v1.initial_resolution_accumulator(),
+    vm_witness.initial_resolution_accumulator(),
     8,
   )
   expect Some(data) = cbor.deserialise(work_witness_cbor)
@@ -4470,7 +4475,7 @@ test resolve_inputs_empty_pending_witness_decodes_as_exact_array_11() {
   and {
     list.length(fields) == 11,
     builtin.un_b_data(pending_data) == #"00",
-    builtin.un_b_data(schedule_data) == validation_machine_v1.transaction_resolution_schedule_hash(
+    builtin.un_b_data(schedule_data) == vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
@@ -4493,7 +4498,7 @@ test resolve_inputs_proves_non_membership_as_an_exact_no_op() {
     ..base,
     body: MidgardTransactionBody { ..base.body, inputs: [input] },
   }
-  let accumulator = validation_machine_v1.initial_resolution_accumulator()
+  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = resolve_inputs_step_fixture(
     tx,
     null_hash,
@@ -4506,17 +4511,17 @@ test resolve_inputs_proves_non_membership_as_an_exact_no_op() {
   // (supplied by `resolve_inputs_step_fixture`) forward. See the note on
   // `static_rules_prove_a_network_mismatch_is_an_exact_no_op`.
   let terminal = exact_rejection_post(pre, rejection_code)
-  validation_machine_v1.verify_one_step_evidence(
+  vm_one_step.verify_one_step_evidence(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: terminal,
       },
-      auxiliary: validation_machine_v1.ScheduledLedgerNonMembershipWitness {
+      auxiliary: vm_machine_types.ScheduledLedgerNonMembershipWitness {
         source_kind: 0,
         key,
-        next_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+        next_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
         proof: [],
       },
     },
@@ -4534,7 +4539,7 @@ test resolve_inputs_rejects_an_invalid_validity_interval_exactly() {
       validity_interval_start: 101,
     },
   }
-  let accumulator = validation_machine_v1.initial_resolution_accumulator()
+  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = resolve_inputs_step_fixture(
     tx,
     h_c,
@@ -4550,7 +4555,7 @@ test resolve_inputs_rejects_an_invalid_validity_interval_exactly() {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.Terminal,
       8,
-      validation_machine_v1.encode_terminal_rejection_witness(
+      vm_shared.encode_terminal_rejection_witness(
         rejection_code,
         pre.prior_ledger_root,
       ),
@@ -4558,14 +4563,14 @@ test resolve_inputs_rejects_an_invalid_validity_interval_exactly() {
     verdict: validation_trace_v1.Rejected,
     rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
   }
-  validation_machine_v1.verify_one_step_evidence(
+  vm_one_step.verify_one_step_evidence(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: terminal,
       },
-      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+      auxiliary: vm_machine_types.NoAuxiliaryWitness,
     },
     inline_field_door(),
   )
@@ -4573,7 +4578,7 @@ test resolve_inputs_rejects_an_invalid_validity_interval_exactly() {
 
 test resolve_inputs_finalizes_into_script_source_resolution() {
   let tx = empty_v1_transaction()
-  let accumulator = validation_machine_v1.initial_resolution_accumulator()
+  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = resolve_inputs_step_fixture(
     tx,
     h_c,
@@ -4590,7 +4595,7 @@ test resolve_inputs_finalizes_into_script_source_resolution() {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.ScriptSources,
       9,
-      validation_machine_v1.encode_script_sources_witness(
+      vm_witness.encode_script_sources_witness(
         proof_source.compact_cbor,
         proof_source.witness_set_compact_cbor,
         proof_source.field_preimage_lengths_cbor,
@@ -4609,8 +4614,8 @@ test resolve_inputs_finalizes_into_script_source_resolution() {
         0,
         validation_merkle_v1.empty_frontier(),
         0,
-        validation_machine_v1.initial_resolution_accumulator(),
-        validation_machine_v1.empty_resolution_schedule_hash(),
+        vm_witness.initial_resolution_accumulator(),
+        vm_witness.empty_resolution_schedule_hash(),
         0,
         0,
         validation_merkle_v1.empty_frontier(),
@@ -4618,26 +4623,26 @@ test resolve_inputs_finalizes_into_script_source_resolution() {
         0,
         validation_merkle_v1.empty_frontier(),
         0,
-        validation_machine_v1.empty_receive_purpose_scan_control(),
+        vm_witness.empty_receive_purpose_scan_control(),
         0,
         0,
-        validation_machine_v1.empty_observer_purpose_scan_control(),
-        validation_machine_v1.empty_mint_fold_control(),
-        validation_machine_v1.transaction_resolution_schedule_hash(
+        vm_witness.empty_observer_purpose_scan_control(),
+        vm_witness.empty_mint_fold_control(),
+        vm_witness.transaction_resolution_schedule_hash(
           tx.body.inputs,
           tx.body.reference_inputs,
         ),
       ),
     ),
   }
-  validation_machine_v1.verify_one_step_evidence(
+  vm_one_step.verify_one_step_evidence(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+      auxiliary: vm_machine_types.NoAuxiliaryWitness,
     },
     inline_field_door(),
   )
@@ -4663,7 +4668,7 @@ test script_sources_commits_inline_reference_script_candidates() {
   )
   let item_cbor = encode_midgard_versioned_script(script)
   let carriage = inline_field_carriage([item_cbor])
-  let pending = validation_machine_v1.InlineSourceHashControlV1 {
+  let pending = vm_machine_types.InlineSourceHashControlV1 {
     version: 1,
     source_index: 0,
     source_total_count: 1,
@@ -4682,10 +4687,10 @@ test script_sources_commits_inline_reference_script_candidates() {
     0,
     #"",
   )
-  let pending_control = validation_machine_v1.ScriptSourcesControlV1 {
+  let pending_control = vm_machine_types.ScriptSourcesControlV1 {
     ..initial_control,
     source_total_count: 1,
-    pending_source_cbor: validation_machine_v1.encode_inline_source_hash_control_v1(
+    pending_source_cbor: vm_witness.encode_inline_source_hash_control_v1(
       pending,
     ),
   }
@@ -4695,7 +4700,7 @@ test script_sources_commits_inline_reference_script_candidates() {
     1,
     #"",
   )
-  let final_control = validation_machine_v1.ScriptSourcesControlV1 {
+  let final_control = vm_machine_types.ScriptSourcesControlV1 {
     ..committed_control,
     stage: 1,
   }
@@ -4704,9 +4709,9 @@ test script_sources_commits_inline_reference_script_candidates() {
   let committed_pre = stage_zero_script_sources_state(tx, committed_control, 10)
   let final_post = stage_zero_script_sources_state(tx, final_control, 11)
   and {
-    validation_machine_v1.verify_script_sources_stage_zero_begin_semantics_v1(
+    vm_script_sources_early_stages.verify_script_sources_stage_zero_begin_semantics_v1(
       pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: stage_zero_script_sources_work_witness(
           initial_control,
         ),
@@ -4717,9 +4722,9 @@ test script_sources_commits_inline_reference_script_candidates() {
       0,
       carriage,
     ),
-    validation_machine_v1.verify_script_sources_stage_zero_finish_semantics_v1(
+    vm_script_sources_early_stages.verify_script_sources_stage_zero_finish_semantics_v1(
       committed_pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: stage_zero_script_sources_work_witness(
           committed_control,
         ),
@@ -4779,7 +4784,7 @@ test script_sources_commits_unique_supported_redeemers() {
         control: tail_control,
       })
     = redeemer_item_proof_v1.step_v1(item_control, header_witness)
-  let accumulator = validation_machine_v1.initial_resolution_accumulator()
+  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = script_sources_step_fixture(
     tx,
     0,
@@ -4789,7 +4794,7 @@ test script_sources_commits_unique_supported_redeemers() {
     empty_frontier,
     0,
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
     10,
@@ -4819,7 +4824,7 @@ test script_sources_commits_unique_supported_redeemers() {
     redeemer_frontier,
     0,
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
     11,
@@ -4833,43 +4838,43 @@ test script_sources_commits_unique_supported_redeemers() {
     redeemer_frontier,
     0,
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
     12,
   )
-  let begin_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let begin_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: begin_post,
   }
-  let header_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let header_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor: begin_work_witness_cbor,
     claimed_successor: header_post,
   }
-  let final_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let final_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor: item_work_witness_cbor,
     claimed_successor: final_post,
   }
   and {
-    validation_machine_v1.verify_script_sources_stage_one_finish_raw_semantics_v1(
+    vm_script_sources_early_stages.verify_script_sources_stage_one_finish_raw_semantics_v1(
       item_post,
       final_transition,
     ),
-    validation_machine_v1.verify_one_step_evidence(
+    vm_one_step.verify_one_step_evidence(
       pre,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
+      vm_machine_types.ValidationOneStepEvidenceV1 {
         transition: begin_transition,
-        auxiliary: validation_machine_v1.TransactionRedeemerItemBeginWitness {
+        auxiliary: vm_machine_types.TransactionRedeemerItemBeginWitness {
           carriage,
         },
       },
       inline_field_door(),
     ),
-    validation_machine_v1.verify_one_step_evidence(
+    vm_one_step.verify_one_step_evidence(
       begin_post,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
+      vm_machine_types.ValidationOneStepEvidenceV1 {
         transition: header_transition,
-        auxiliary: validation_machine_v1.RedeemerItemStepWitness {
+        auxiliary: vm_machine_types.RedeemerItemStepWitness {
           redeemer_control: None,
           control: item_control,
           witness: header_witness,
@@ -4877,11 +4882,11 @@ test script_sources_commits_unique_supported_redeemers() {
       },
       inline_field_door(),
     ),
-    validation_machine_v1.verify_one_step_evidence(
+    vm_one_step.verify_one_step_evidence(
       item_post,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
+      vm_machine_types.ValidationOneStepEvidenceV1 {
         transition: final_transition,
-        auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+        auxiliary: vm_machine_types.NoAuxiliaryWitness,
       },
       inline_field_door(),
     ),
@@ -4930,7 +4935,7 @@ test script_sources_stage_one_redeemer_family_guard() {
         control: tail_control,
       })
     = redeemer_item_proof_v1.step_v1(item_control, header_witness)
-  let accumulator = validation_machine_v1.initial_resolution_accumulator()
+  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = script_sources_step_fixture(
     tx,
     0,
@@ -4940,7 +4945,7 @@ test script_sources_stage_one_redeemer_family_guard() {
     empty_frontier,
     0,
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
     10,
@@ -4968,7 +4973,7 @@ test script_sources_stage_one_redeemer_family_guard() {
     redeemer_frontier,
     0,
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
     11,
@@ -4982,54 +4987,54 @@ test script_sources_stage_one_redeemer_family_guard() {
     redeemer_frontier,
     0,
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
     12,
   )
-  let begin_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let begin_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: begin_post,
   }
-  let header_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let header_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor: begin_work_witness_cbor,
     claimed_successor: header_post,
   }
-  let final_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let final_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor: item_work_witness_cbor,
     claimed_successor: final_post,
   }
-  let begin_auxiliary = validation_machine_v1.TransactionRedeemerItemBeginWitness {
+  let begin_auxiliary = vm_machine_types.TransactionRedeemerItemBeginWitness {
     carriage,
   }
-  let header_auxiliary = validation_machine_v1.RedeemerItemStepWitness {
+  let header_auxiliary = vm_machine_types.RedeemerItemStepWitness {
     redeemer_control: None,
     control: item_control,
     witness: header_witness,
   }
   and {
-    validation_machine_v1.verify_script_sources_stage_one_redeemer_semantics_v1(
+    vm_script_sources.verify_script_sources_stage_one_redeemer_semantics_v1(
       pre,
       begin_transition,
       begin_auxiliary,
       inline_field_door(),
     ),
-    validation_machine_v1.verify_script_sources_stage_one_redeemer_semantics_v1(
+    vm_script_sources.verify_script_sources_stage_one_redeemer_semantics_v1(
       begin_post,
       header_transition,
       header_auxiliary,
       inline_field_door(),
     ),
-    validation_machine_v1.verify_script_sources_stage_one_semantics_v1(
+    vm_script_sources.verify_script_sources_stage_one_semantics_v1(
       item_post,
       final_transition,
-      validation_machine_v1.NoAuxiliaryWitness,
+      vm_machine_types.NoAuxiliaryWitness,
       inline_field_door(),
     ),
-    !validation_machine_v1.verify_script_sources_stage_one_redeemer_semantics_v1(
+    !vm_script_sources.verify_script_sources_stage_one_redeemer_semantics_v1(
       item_post,
       final_transition,
-      validation_machine_v1.NoAuxiliaryWitness,
+      vm_machine_types.NoAuxiliaryWitness,
       inline_field_door(),
     ),
   }
@@ -5052,7 +5057,7 @@ test script_sources_stage_one_accepts_more_than_sixteen_sources() {
     indexed_inline_source_leaves(script, 0, 17),
   )
   let empty_frontier = validation_merkle_v1.build_frontier([])
-  let accumulator = validation_machine_v1.initial_resolution_accumulator()
+  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = script_sources_step_fixture(
     tx,
     0,
@@ -5062,7 +5067,7 @@ test script_sources_stage_one_accepts_more_than_sixteen_sources() {
     empty_frontier,
     0,
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
     10,
@@ -5076,25 +5081,25 @@ test script_sources_stage_one_accepts_more_than_sixteen_sources() {
     empty_frontier,
     0,
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
     11,
   )
-  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: post,
   }
   and {
-    validation_machine_v1.verify_script_sources_stage_one_finish_raw_semantics_v1(
+    vm_script_sources_early_stages.verify_script_sources_stage_one_finish_raw_semantics_v1(
       pre,
       transition,
     ),
-    validation_machine_v1.verify_one_step_evidence(
+    vm_one_step.verify_one_step_evidence(
       pre,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
+      vm_machine_types.ValidationOneStepEvidenceV1 {
         transition,
-        auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+        auxiliary: vm_machine_types.NoAuxiliaryWitness,
       },
       inline_field_door(),
     ),
@@ -5109,8 +5114,8 @@ test script_sources_binds_resolved_input_replay_schedule() {
     body: MidgardTransactionBody { ..base.body, inputs: [input] },
   }
   let empty_frontier = validation_merkle_v1.build_frontier([])
-  let accumulator = validation_machine_v1.initial_resolution_accumulator()
-  let schedule = validation_machine_v1.transaction_resolution_schedule_hash(
+  let accumulator = vm_witness.initial_resolution_accumulator()
+  let schedule = vm_witness.transaction_resolution_schedule_hash(
     tx.body.inputs,
     tx.body.reference_inputs,
   )
@@ -5123,7 +5128,7 @@ test script_sources_binds_resolved_input_replay_schedule() {
     empty_frontier,
     0,
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
     11,
@@ -5142,14 +5147,14 @@ test script_sources_binds_resolved_input_replay_schedule() {
     empty_frontier,
     12,
   )
-  validation_machine_v1.verify_one_step_evidence(
+  vm_one_step.verify_one_step_evidence(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+      auxiliary: vm_machine_types.NoAuxiliaryWitness,
     },
     inline_field_door(),
   )
@@ -5248,14 +5253,14 @@ fn maximum_reference_input_schedule_terminal_vector() -> ResolutionScheduleTermi
 
 fn resolution_schedule_terminal_control(
   vector: ResolutionScheduleTerminalVectorV1,
-) -> validation_machine_v1.ScriptSourcesControlV1 {
+) -> vm_machine_types.ScriptSourcesControlV1 {
   let base = stage_zero_script_sources_control(
     empty_v1_transaction(),
     validation_merkle_v1.build_frontier([]),
     0,
     #"",
   )
-  validation_machine_v1.ScriptSourcesControlV1 {
+  vm_machine_types.ScriptSourcesControlV1 {
     ..base,
     resolved_input_count: 434,
     resolved_inputs_accumulator: vector.terminal_accumulator,
@@ -5270,7 +5275,7 @@ fn resolution_schedule_terminal_control(
 }
 
 fn resolution_schedule_terminal_state(
-  control: validation_machine_v1.ScriptSourcesControlV1,
+  control: vm_machine_types.ScriptSourcesControlV1,
   program_counter: Int,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
   let tx = empty_v1_transaction()
@@ -5312,7 +5317,7 @@ fn verify_maximum_input_schedule_terminal_vector(
   vector: ResolutionScheduleTerminalVectorV1,
 ) -> Bool {
   let pre_control = resolution_schedule_terminal_control(vector)
-  let terminal_accumulator = validation_machine_v1.resolved_input_accumulator_successor(
+  let terminal_accumulator = vm_witness.resolved_input_accumulator_successor(
     pre_control.replay_accumulator,
     vector.last_source_kind,
     vector.last_key,
@@ -5329,15 +5334,15 @@ fn verify_maximum_input_schedule_terminal_vector(
     ),
   )
   let terminal_spend_index = pre_control.spend_index + 1 - vector.last_source_kind
-  let terminal_control = validation_machine_v1.ScriptSourcesControlV1 {
+  let terminal_control = vm_machine_types.ScriptSourcesControlV1 {
     ..pre_control,
     resolved_item_peaks: terminal_resolved_item_peaks,
     replay_cursor: 434,
     replay_accumulator: terminal_accumulator,
-    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     spend_index: terminal_spend_index,
   }
-  let finish_control = validation_machine_v1.ScriptSourcesControlV1 {
+  let finish_control = vm_machine_types.ScriptSourcesControlV1 {
     ..terminal_control,
     stage: 4,
   }
@@ -5350,28 +5355,28 @@ fn verify_maximum_input_schedule_terminal_vector(
     13,
   )
   let Pair(finish, _) = resolution_schedule_terminal_state(finish_control, 14)
-  let replay_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let replay_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor: pre_work_witness_cbor,
     claimed_successor: terminal,
   }
-  let replay_evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
+  let replay_evidence = vm_machine_types.ValidationOneStepEvidenceV1 {
     transition: replay_transition,
-    auxiliary: validation_machine_v1.ResolvedInputReplayWitness {
+    auxiliary: vm_machine_types.ResolvedInputReplayWitness {
       source_kind: vector.last_source_kind,
       key: vector.last_key,
-      next_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+      next_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
       value: vector.last_value,
     },
   }
-  let finish_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let finish_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor: terminal_work_witness_cbor,
     claimed_successor: finish,
   }
-  let finish_evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
+  let finish_evidence = vm_machine_types.ValidationOneStepEvidenceV1 {
     transition: finish_transition,
-    auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+    auxiliary: vm_machine_types.NoAuxiliaryWitness,
   }
-  let premature_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let premature_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor: pre_work_witness_cbor,
     claimed_successor: finish,
   }
@@ -5380,12 +5385,12 @@ fn verify_maximum_input_schedule_terminal_vector(
     terminal_resolved_item_peaks,
     h_a,
   )
-  let malformed_terminal_cursor_control = validation_machine_v1.ScriptSourcesControlV1 {
+  let malformed_terminal_cursor_control = vm_machine_types.ScriptSourcesControlV1 {
     ..terminal_control,
     resolved_item_peaks: malformed_terminal_cursor_peaks,
     replay_cursor: 435,
   }
-  let malformed_terminal_cursor_finish_control = validation_machine_v1.ScriptSourcesControlV1 {
+  let malformed_terminal_cursor_finish_control = vm_machine_types.ScriptSourcesControlV1 {
     ..malformed_terminal_cursor_control,
     stage: 4,
   }
@@ -5397,15 +5402,15 @@ fn verify_maximum_input_schedule_terminal_vector(
     malformed_terminal_cursor_finish_control,
     14,
   )
-  let malformed_terminal_cursor_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let malformed_terminal_cursor_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor: malformed_terminal_cursor_work_witness_cbor,
     claimed_successor: malformed_terminal_cursor_finish,
   }
-  let malformed_terminal_accumulator_control = validation_machine_v1.ScriptSourcesControlV1 {
+  let malformed_terminal_accumulator_control = vm_machine_types.ScriptSourcesControlV1 {
     ..terminal_control,
     replay_accumulator: h_a,
   }
-  let malformed_terminal_accumulator_finish_control = validation_machine_v1.ScriptSourcesControlV1 {
+  let malformed_terminal_accumulator_finish_control = vm_machine_types.ScriptSourcesControlV1 {
     ..malformed_terminal_accumulator_control,
     stage: 4,
   }
@@ -5420,25 +5425,25 @@ fn verify_maximum_input_schedule_terminal_vector(
     malformed_terminal_accumulator_finish_control,
     14,
   )
-  let malformed_terminal_accumulator_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let malformed_terminal_accumulator_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor: malformed_terminal_accumulator_work_witness_cbor,
     claimed_successor: malformed_terminal_accumulator_finish,
   }
-  let stage_two_control = validation_machine_v1.ScriptSourcesControlV1 {
+  let stage_two_control = vm_machine_types.ScriptSourcesControlV1 {
     ..pre_control,
     resolved_item_peaks: [],
     stage: 2,
     replay_cursor: 0,
-    replay_accumulator: validation_machine_v1.initial_resolution_accumulator(),
-    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_accumulator: vm_witness.initial_resolution_accumulator(),
+    replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     spend_index: 0,
   }
-  let stage_three_control = validation_machine_v1.ScriptSourcesControlV1 {
+  let stage_three_control = vm_machine_types.ScriptSourcesControlV1 {
     ..stage_two_control,
     stage: 3,
     replay_remaining_schedule_hash: vector.original_schedule_hash,
   }
-  let altered_head_control = validation_machine_v1.ScriptSourcesControlV1 {
+  let altered_head_control = vm_machine_types.ScriptSourcesControlV1 {
     ..stage_three_control,
     resolution_schedule_hash: h_a,
   }
@@ -5454,11 +5459,11 @@ fn verify_maximum_input_schedule_terminal_vector(
     altered_head_control,
     11,
   )
-  let stage_two_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let stage_two_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor: stage_two_work_witness_cbor,
     claimed_successor: stage_three,
   }
-  let altered_head_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let altered_head_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor: stage_two_work_witness_cbor,
     claimed_successor: altered_head,
   }
@@ -5476,41 +5481,41 @@ fn verify_maximum_input_schedule_terminal_vector(
     validation_merkle_v1.frontier_commitment(434, terminal_resolved_item_peaks) == vector.terminal_frontier_commitment,
     bytearray.length(cbor.serialise(replay_evidence)) < 16_384,
     bytearray.length(cbor.serialise(finish_evidence)) < 16_384,
-    validation_machine_v1.verify_script_sources_stage_two_semantics_v1(
+    vm_script_sources.verify_script_sources_stage_two_semantics_v1(
       stage_two,
       stage_two_transition,
-      validation_machine_v1.NoAuxiliaryWitness,
+      vm_machine_types.NoAuxiliaryWitness,
     ),
-    !validation_machine_v1.verify_script_sources_stage_two_semantics_v1(
+    !vm_script_sources.verify_script_sources_stage_two_semantics_v1(
       stage_two,
       altered_head_transition,
-      validation_machine_v1.NoAuxiliaryWitness,
+      vm_machine_types.NoAuxiliaryWitness,
     ),
-    validation_machine_v1.verify_script_sources_stage_three_replay_semantics_v1(
+    vm_script_sources.verify_script_sources_stage_three_replay_semantics_v1(
       pre,
       replay_transition,
       vector.last_source_kind,
       vector.last_key,
-      validation_machine_v1.empty_resolution_schedule_hash(),
+      vm_witness.empty_resolution_schedule_hash(),
       vector.last_value,
     ),
-    !validation_machine_v1.verify_script_sources_stage_three_replay_semantics_v1(
+    !vm_script_sources.verify_script_sources_stage_three_replay_semantics_v1(
       pre,
       replay_transition,
       mutated_source_kind,
       vector.last_key,
-      validation_machine_v1.empty_resolution_schedule_hash(),
+      vm_witness.empty_resolution_schedule_hash(),
       vector.last_value,
     ),
-    !validation_machine_v1.verify_script_sources_stage_three_replay_semantics_v1(
+    !vm_script_sources.verify_script_sources_stage_three_replay_semantics_v1(
       pre,
       replay_transition,
       vector.last_source_kind,
       mutated_key,
-      validation_machine_v1.empty_resolution_schedule_hash(),
+      vm_witness.empty_resolution_schedule_hash(),
       vector.last_value,
     ),
-    !validation_machine_v1.verify_script_sources_stage_three_replay_semantics_v1(
+    !vm_script_sources.verify_script_sources_stage_three_replay_semantics_v1(
       pre,
       replay_transition,
       vector.last_source_kind,
@@ -5518,19 +5523,19 @@ fn verify_maximum_input_schedule_terminal_vector(
       h_a,
       vector.last_value,
     ),
-    !validation_machine_v1.verify_script_sources_stage_three_finish_semantics_v1(
+    !vm_script_sources.verify_script_sources_stage_three_finish_semantics_v1(
       pre,
       premature_transition,
     ),
-    !validation_machine_v1.verify_script_sources_stage_three_finish_semantics_v1(
+    !vm_script_sources.verify_script_sources_stage_three_finish_semantics_v1(
       malformed_terminal_cursor,
       malformed_terminal_cursor_transition,
     ),
-    !validation_machine_v1.verify_script_sources_stage_three_finish_semantics_v1(
+    !vm_script_sources.verify_script_sources_stage_three_finish_semantics_v1(
       malformed_terminal_accumulator,
       malformed_terminal_accumulator_transition,
     ),
-    validation_machine_v1.verify_script_sources_stage_three_finish_semantics_v1(
+    vm_script_sources.verify_script_sources_stage_three_finish_semantics_v1(
       terminal,
       finish_transition,
     ),
@@ -5648,14 +5653,14 @@ test script_sources_replay_appends_reference_scripts() {
   let resolved_item_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.resolved_context_item_leaf_hash(1, 0, key, value)],
   )
-  let accumulator = validation_machine_v1.initial_resolution_accumulator()
-  let next_accumulator = validation_machine_v1.resolved_input_accumulator_successor(
+  let accumulator = vm_witness.initial_resolution_accumulator()
+  let next_accumulator = vm_witness.resolved_input_accumulator_successor(
     accumulator,
     1,
     key,
     value,
   )
-  let schedule = validation_machine_v1.transaction_resolution_schedule_hash(
+  let schedule = vm_witness.transaction_resolution_schedule_hash(
     tx.body.inputs,
     tx.body.reference_inputs,
   )
@@ -5683,22 +5688,22 @@ test script_sources_replay_appends_reference_scripts() {
     1,
     resolved_item_frontier,
     next_accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
     13,
   )
-  validation_machine_v1.verify_one_step_evidence(
+  vm_one_step.verify_one_step_evidence(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.ResolvedInputReplayWitness {
+      auxiliary: vm_machine_types.ResolvedInputReplayWitness {
         source_kind: 1,
         key,
-        next_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+        next_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
         value,
       },
     },
@@ -5738,14 +5743,14 @@ test script_sources_replay_appends_script_credential_spend_purposes() {
   let resolved_item_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.resolved_context_item_leaf_hash(0, 0, key, value)],
   )
-  let accumulator = validation_machine_v1.initial_resolution_accumulator()
-  let next_accumulator = validation_machine_v1.resolved_input_accumulator_successor(
+  let accumulator = vm_witness.initial_resolution_accumulator()
+  let next_accumulator = vm_witness.resolved_input_accumulator_successor(
     accumulator,
     0,
     key,
     value,
   )
-  let schedule = validation_machine_v1.transaction_resolution_schedule_hash(
+  let schedule = vm_witness.transaction_resolution_schedule_hash(
     tx.body.inputs,
     tx.body.reference_inputs,
   )
@@ -5773,22 +5778,22 @@ test script_sources_replay_appends_script_credential_spend_purposes() {
     1,
     resolved_item_frontier,
     next_accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     1,
     purpose_frontier,
     13,
   )
-  validation_machine_v1.verify_one_step_evidence(
+  vm_one_step.verify_one_step_evidence(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.ResolvedInputReplayWitness {
+      auxiliary: vm_machine_types.ResolvedInputReplayWitness {
         source_kind: 0,
         key,
-        next_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+        next_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
         value,
       },
     },
@@ -5848,7 +5853,7 @@ fn canonical_output_commitment_step_with_successor(
   let output_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.output_leaf_hash(0, output_cbor)],
   )
-  let accumulator = validation_machine_v1.initial_resolution_accumulator()
+  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = script_sources_step_fixture(
     tx,
     0,
@@ -5858,7 +5863,7 @@ fn canonical_output_commitment_step_with_successor(
     empty_frontier,
     0,
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
     14,
@@ -5876,14 +5881,14 @@ fn canonical_output_commitment_step_with_successor(
     0,
     validation_merkle_v1.build_frontier([]),
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
     0,
     claimed_output_frontier,
     claimed_output_total_count,
-    validation_machine_v1.empty_receive_purpose_scan_control(),
-    validation_machine_v1.empty_observer_purpose_scan_control(),
+    vm_witness.empty_receive_purpose_scan_control(),
+    vm_witness.empty_observer_purpose_scan_control(),
     15,
   )
   let Pair(post, _) = script_sources_output_step_fixture(
@@ -5895,7 +5900,7 @@ fn canonical_output_commitment_step_with_successor(
     empty_frontier,
     0,
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
     0,
@@ -5903,13 +5908,13 @@ fn canonical_output_commitment_step_with_successor(
     16,
   )
   if step_to_verify == 0 {
-    validation_machine_v1.verify_script_sources_stage_four_semantics_v1(
+    vm_script_sources.verify_script_sources_stage_four_semantics_v1(
       pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: after_item,
       },
-      validation_machine_v1.TransactionRedeemerItemBeginWitness {
+      vm_machine_types.TransactionRedeemerItemBeginWitness {
         carriage: inline_field_carriage([output_cbor]),
       },
       inline_field_door(),
@@ -5917,13 +5922,13 @@ fn canonical_output_commitment_step_with_successor(
   } else {
     and {
       step_to_verify == 1,
-      validation_machine_v1.verify_script_sources_stage_four_semantics_v1(
+      vm_script_sources.verify_script_sources_stage_four_semantics_v1(
         after_item,
-        validation_machine_v1.ValidationOneStepWitnessV1 {
+        vm_machine_types.ValidationOneStepWitnessV1 {
           work_witness_cbor: after_item_work_witness_cbor,
           claimed_successor: post,
         },
-        validation_machine_v1.NoAuxiliaryWitness,
+        vm_machine_types.NoAuxiliaryWitness,
         inline_field_door(),
       ),
     }
@@ -6027,7 +6032,7 @@ test script_sources_rejects_an_output_total_count_the_field_denies() {
   let output_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.output_leaf_hash(0, output_cbor)],
   )
-  let accumulator = validation_machine_v1.initial_resolution_accumulator()
+  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = script_sources_output_step_fixture_with_resolved_items(
     tx,
     0,
@@ -6038,14 +6043,14 @@ test script_sources_rejects_an_output_total_count_the_field_denies() {
     0,
     validation_merkle_v1.build_frontier([]),
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
     0,
     empty_frontier,
     2,
-    validation_machine_v1.empty_receive_purpose_scan_control(),
-    validation_machine_v1.empty_observer_purpose_scan_control(),
+    vm_witness.empty_receive_purpose_scan_control(),
+    vm_witness.empty_observer_purpose_scan_control(),
     14,
   )
   let Pair(successor, _) = script_sources_output_step_fixture_with_resolved_items(
@@ -6058,23 +6063,23 @@ test script_sources_rejects_an_output_total_count_the_field_denies() {
     0,
     validation_merkle_v1.build_frontier([]),
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
     0,
     output_frontier,
     2,
-    validation_machine_v1.empty_receive_purpose_scan_control(),
-    validation_machine_v1.empty_observer_purpose_scan_control(),
+    vm_witness.empty_receive_purpose_scan_control(),
+    vm_witness.empty_observer_purpose_scan_control(),
     15,
   )
-  !validation_machine_v1.verify_script_sources_stage_four_semantics_v1(
+  !vm_script_sources.verify_script_sources_stage_four_semantics_v1(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: successor,
     },
-    validation_machine_v1.TransactionRedeemerItemBeginWitness {
+    vm_machine_types.TransactionRedeemerItemBeginWitness {
       carriage: inline_field_carriage([output_cbor]),
     },
     inline_field_door(),
@@ -6108,7 +6113,7 @@ fn authenticated_output_proof_step(step_to_verify: Int) -> Bool {
   let output_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.output_leaf_hash(0, output_cbor)],
   )
-  let accumulator = validation_machine_v1.initial_resolution_accumulator()
+  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(before_begin, before_begin_work_witness_cbor) = script_sources_output_step_fixture(
     tx,
     0,
@@ -6118,7 +6123,7 @@ fn authenticated_output_proof_step(step_to_verify: Int) -> Bool {
     empty_frontier,
     0,
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
     0,
@@ -6129,7 +6134,7 @@ fn authenticated_output_proof_step(step_to_verify: Int) -> Bool {
     tx,
     0,
     output_frontier,
-    validation_machine_v1.empty_receive_purpose_scan_control(),
+    vm_witness.empty_receive_purpose_scan_control(),
     material.initial,
     17,
   )
@@ -6137,22 +6142,22 @@ fn authenticated_output_proof_step(step_to_verify: Int) -> Bool {
     tx,
     0,
     output_frontier,
-    validation_machine_v1.empty_receive_purpose_scan_control(),
+    vm_witness.empty_receive_purpose_scan_control(),
     material.first_successor,
     18,
   )
-  let begin_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let begin_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor: before_begin_work_witness_cbor,
     claimed_successor: before_step,
   }
-  let begin_auxiliary = validation_machine_v1.LedgerOutputProofBeginWitness {
+  let begin_auxiliary = vm_machine_types.LedgerOutputProofBeginWitness {
     output_index: 0,
     total_length: bytearray.length(output_cbor),
     item_commitment: material.item_commitment,
     siblings: [],
   }
   if step_to_verify == 0 {
-    validation_machine_v1.verify_script_sources_output_proof_begin_semantics_v1(
+    vm_script_sources.verify_script_sources_output_proof_begin_semantics_v1(
       before_begin,
       begin_transition,
       0,
@@ -6161,9 +6166,9 @@ fn authenticated_output_proof_step(step_to_verify: Int) -> Bool {
       [],
     )
   } else if step_to_verify == 2 {
-    !validation_machine_v1.verify_script_sources_non_output_semantics_v1(
+    !vm_script_sources.verify_script_sources_non_output_semantics_v1(
       before_begin,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
+      vm_machine_types.ValidationOneStepEvidenceV1 {
         transition: begin_transition,
         auxiliary: begin_auxiliary,
       },
@@ -6172,9 +6177,9 @@ fn authenticated_output_proof_step(step_to_verify: Int) -> Bool {
   } else {
     and {
       step_to_verify == 1,
-      validation_machine_v1.verify_script_sources_output_proof_step_semantics_v1(
+      vm_script_sources.verify_script_sources_output_proof_step_semantics_v1(
         before_step,
-        validation_machine_v1.ValidationOneStepWitnessV1 {
+        vm_machine_types.ValidationOneStepWitnessV1 {
           work_witness_cbor: before_step_work_witness_cbor,
           claimed_successor: after_step,
         },
@@ -6228,12 +6233,12 @@ test script_sources_collects_protected_receive_source() {
   let output_descriptor_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.output_descriptor_leaf_hash(0, material.descriptor_cbor)],
   )
-  let accumulator = validation_machine_v1.initial_resolution_accumulator()
+  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = script_sources_active_output_proof_fixture(
     tx,
     0,
     output_frontier,
-    validation_machine_v1.empty_receive_purpose_scan_control(),
+    vm_witness.empty_receive_purpose_scan_control(),
     material.terminal,
     22,
   )
@@ -6247,13 +6252,13 @@ test script_sources_collects_protected_receive_source() {
     0,
     empty_frontier,
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
     1,
     output_frontier,
     1,
-    validation_machine_v1.ReceivePurposeScanControlV1 {
+    vm_machine_types.ReceivePurposeScanControlV1 {
       source_count: receive_source_frontier.count,
       source_peaks: receive_source_frontier.peaks,
       receive_count: 0,
@@ -6261,17 +6266,17 @@ test script_sources_collects_protected_receive_source() {
       candidate_hash: #"",
       descriptor_peaks: output_descriptor_frontier.peaks,
     },
-    validation_machine_v1.empty_observer_purpose_scan_control(),
+    vm_witness.empty_observer_purpose_scan_control(),
     23,
   )
-  validation_machine_v1.verify_script_sources_output_proof_finalize_semantics_v1(
+  vm_script_sources.verify_script_sources_output_proof_finalize_semantics_v1(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: post,
     },
     material.descriptor_cbor,
-    validation_machine_v1.NoSignerSetProof,
+    vm_machine_types.NoSignerSetProof,
   )
 }
 
@@ -6304,7 +6309,7 @@ fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
   let output_descriptor_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.output_descriptor_leaf_hash(0, material.descriptor_cbor)],
   )
-  let empty_receive_scan = validation_machine_v1.ReceivePurposeScanControlV1 {
+  let empty_receive_scan = vm_machine_types.ReceivePurposeScanControlV1 {
     source_count: receive_source_frontier.count,
     source_peaks: receive_source_frontier.peaks,
     receive_count: 0,
@@ -6312,7 +6317,7 @@ fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
     candidate_hash: #"",
     descriptor_peaks: output_descriptor_frontier.peaks,
   }
-  let selected_receive_scan = validation_machine_v1.ReceivePurposeScanControlV1 {
+  let selected_receive_scan = vm_machine_types.ReceivePurposeScanControlV1 {
     source_count: receive_source_frontier.count,
     source_peaks: receive_source_frontier.peaks,
     receive_count: 0,
@@ -6320,7 +6325,7 @@ fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
     candidate_hash: h_28_a,
     descriptor_peaks: output_descriptor_frontier.peaks,
   }
-  let committed_receive_scan = validation_machine_v1.ReceivePurposeScanControlV1 {
+  let committed_receive_scan = vm_machine_types.ReceivePurposeScanControlV1 {
     source_count: receive_source_frontier.count,
     source_peaks: receive_source_frontier.peaks,
     receive_count: 1,
@@ -6372,28 +6377,28 @@ fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
     1,
     output_frontier,
     output_descriptor_frontier,
-    validation_machine_v1.empty_script_discovery_control(),
+    vm_witness.empty_script_discovery_control(),
     19,
   )
-  let select_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let select_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: after_candidate,
   }
-  let append_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let append_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor: after_candidate_work_witness_cbor,
     claimed_successor: after_append,
   }
-  let rescan_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let rescan_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor: after_append_work_witness_cbor,
     claimed_successor: after_rescan,
   }
-  let finish_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let finish_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor: after_rescan_work_witness_cbor,
     claimed_successor: post,
   }
   if step_to_verify == 0 {
     and {
-      validation_machine_v1.verify_script_sources_stage_seven_receive_semantics_v1(
+      vm_script_sources_late_stages.verify_script_sources_stage_seven_receive_semantics_v1(
         pre,
         select_transition,
         3,
@@ -6402,11 +6407,11 @@ fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
         h_28_a,
         [],
       ),
-      validation_machine_v1.verify_one_step_evidence(
+      vm_one_step.verify_one_step_evidence(
         pre,
-        validation_machine_v1.ValidationOneStepEvidenceV1 {
+        vm_machine_types.ValidationOneStepEvidenceV1 {
           transition: select_transition,
-          auxiliary: validation_machine_v1.ScriptPurposeScanWitness {
+          auxiliary: vm_machine_types.ScriptPurposeScanWitness {
             purpose_kind: 3,
             purpose_index: 0,
             script_hash: h_28_a,
@@ -6419,22 +6424,22 @@ fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
     }
   } else if step_to_verify == 1 {
     and {
-      validation_machine_v1.verify_script_sources_stage_seven_finish_semantics_v1(
+      vm_script_sources_late_stages.verify_script_sources_stage_seven_finish_semantics_v1(
         after_candidate,
         append_transition,
       ),
-      validation_machine_v1.verify_one_step_evidence(
+      vm_one_step.verify_one_step_evidence(
         after_candidate,
-        validation_machine_v1.ValidationOneStepEvidenceV1 {
+        vm_machine_types.ValidationOneStepEvidenceV1 {
           transition: append_transition,
-          auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+          auxiliary: vm_machine_types.NoAuxiliaryWitness,
         },
         inline_field_door(),
       ),
     }
   } else if step_to_verify == 2 {
     and {
-      validation_machine_v1.verify_script_sources_stage_seven_receive_semantics_v1(
+      vm_script_sources_late_stages.verify_script_sources_stage_seven_receive_semantics_v1(
         after_append,
         rescan_transition,
         3,
@@ -6443,11 +6448,11 @@ fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
         h_28_a,
         [],
       ),
-      validation_machine_v1.verify_one_step_evidence(
+      vm_one_step.verify_one_step_evidence(
         after_append,
-        validation_machine_v1.ValidationOneStepEvidenceV1 {
+        vm_machine_types.ValidationOneStepEvidenceV1 {
           transition: rescan_transition,
-          auxiliary: validation_machine_v1.ScriptPurposeScanWitness {
+          auxiliary: vm_machine_types.ScriptPurposeScanWitness {
             purpose_kind: 3,
             purpose_index: 0,
             script_hash: h_28_a,
@@ -6461,15 +6466,15 @@ fn protected_receive_purpose_step(step_to_verify: Int) -> Bool {
   } else {
     and {
       step_to_verify == 3,
-      validation_machine_v1.verify_script_sources_stage_seven_finish_semantics_v1(
+      vm_script_sources_late_stages.verify_script_sources_stage_seven_finish_semantics_v1(
         after_rescan,
         finish_transition,
       ),
-      validation_machine_v1.verify_one_step_evidence(
+      vm_one_step.verify_one_step_evidence(
         after_rescan,
-        validation_machine_v1.ValidationOneStepEvidenceV1 {
+        vm_machine_types.ValidationOneStepEvidenceV1 {
           transition: finish_transition,
-          auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+          auxiliary: vm_machine_types.NoAuxiliaryWitness,
         },
         inline_field_door(),
       ),
@@ -6522,13 +6527,13 @@ fn script_sources_rejects_wrong_output_network(
     tx,
     0,
     output_frontier,
-    validation_machine_v1.empty_receive_purpose_scan_control(),
+    vm_witness.empty_receive_purpose_scan_control(),
     material.terminal,
     15,
   )
-  validation_machine_v1.verify_script_sources_output_proof_finalize_semantics_v1(
+  vm_script_sources.verify_script_sources_output_proof_finalize_semantics_v1(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: exact_rejection_post(
         pre,
@@ -6536,7 +6541,7 @@ fn script_sources_rejects_wrong_output_network(
       ),
     },
     material.descriptor_cbor,
-    validation_machine_v1.NoSignerSetProof,
+    vm_machine_types.NoSignerSetProof,
   )
 }
 
@@ -6575,7 +6580,7 @@ test script_sources_rejects_an_unsigned_protected_pubkey_output() {
     tx,
     0,
     output_frontier,
-    validation_machine_v1.empty_receive_purpose_scan_control(),
+    vm_witness.empty_receive_purpose_scan_control(),
     material.terminal,
     15,
   )
@@ -6583,14 +6588,14 @@ test script_sources_rejects_an_unsigned_protected_pubkey_output() {
   // An exact rejection also clears the ledger delta to the empty frontier
   // commitment; `exact_rejection_post` is the canonical successor shape.
   let terminal = exact_rejection_post(pre, rejection_code)
-  validation_machine_v1.verify_script_sources_output_proof_finalize_semantics_v1(
+  vm_script_sources.verify_script_sources_output_proof_finalize_semantics_v1(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: terminal,
     },
     material.descriptor_cbor,
-    validation_machine_v1.EmptySignerSetProof { peaks: [] },
+    vm_machine_types.EmptySignerSetProof { peaks: [] },
   )
 }
 
@@ -6641,12 +6646,12 @@ test script_sources_streams_mint_and_burn_into_authenticated_frontiers() {
     [script_proof_v1.purpose_leaf_hash(1, 0, h_28_a, h_28_a)],
   )
   let mint_asset_frontier = validation_merkle_v1.build_frontier(
-    [validation_machine_v1.mint_asset_leaf_hash(h_28_a, #"01", -5)],
+    [vm_shared.mint_asset_leaf_hash(h_28_a, #"01", -5)],
   )
   let carriage = inline_field_carriage([policy_item_cbor])
   let chunk_proof = singleton_field_item_chunk_proof(5, policy_item_cbor)
-  let initial_fold = validation_machine_v1.empty_mint_fold_control()
-  let active_fold = validation_machine_v1.MintFoldControlV1 {
+  let initial_fold = vm_witness.empty_mint_fold_control()
+  let active_fold = vm_machine_types.MintFoldControlV1 {
     policy_count: 1,
     policy_cursor: 0,
     previous_policy: #"",
@@ -6660,7 +6665,7 @@ test script_sources_streams_mint_and_burn_into_authenticated_frontiers() {
     asset_count: 0,
     asset_peaks: empty_frontier.peaks,
   }
-  let completed_fold = validation_machine_v1.MintFoldControlV1 {
+  let completed_fold = vm_machine_types.MintFoldControlV1 {
     policy_count: 1,
     policy_cursor: 1,
     previous_policy: h_28_a,
@@ -6688,13 +6693,13 @@ test script_sources_streams_mint_and_burn_into_authenticated_frontiers() {
     6,
     18,
   )
-  let begin_step = validation_machine_v1.verify_script_sources_stage_six_semantics_v1(
+  let begin_step = vm_script_sources.verify_script_sources_stage_six_semantics_v1(
     begin_pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor: begin_work_witness_cbor,
       claimed_successor: begin_post,
     },
-    validation_machine_v1.TransactionFieldChunkWitness {
+    vm_machine_types.TransactionFieldChunkWitness {
       field_index: 5,
       item_index: 0,
       carriage,
@@ -6715,13 +6720,13 @@ test script_sources_streams_mint_and_burn_into_authenticated_frontiers() {
     6,
     19,
   )
-  let asset_step = validation_machine_v1.verify_script_sources_stage_six_semantics_v1(
+  let asset_step = vm_script_sources.verify_script_sources_stage_six_semantics_v1(
     asset_pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor: asset_work_witness_cbor,
       claimed_successor: asset_post,
     },
-    validation_machine_v1.MintFoldAssetWitness {
+    vm_machine_types.MintFoldAssetWitness {
       chunk_proof,
       next_chunk_proof: None,
     },
@@ -6741,13 +6746,13 @@ test script_sources_streams_mint_and_burn_into_authenticated_frontiers() {
     7,
     20,
   )
-  let finish_step = validation_machine_v1.verify_script_sources_stage_six_semantics_v1(
+  let finish_step = vm_script_sources.verify_script_sources_stage_six_semantics_v1(
     finish_pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor: finish_work_witness_cbor,
       claimed_successor: finish_post,
     },
-    validation_machine_v1.NoAuxiliaryWitness,
+    vm_machine_types.NoAuxiliaryWitness,
     inline_field_door(),
   )
   and {
@@ -6774,7 +6779,7 @@ fn maximum_mint_asset_leaves(
     []
   } else {
     [
-      validation_machine_v1.mint_asset_leaf_hash(
+      vm_shared.mint_asset_leaf_hash(
         h_28_a,
         bytearray.from_int_big_endian(asset_index, 32),
         1,
@@ -6844,7 +6849,7 @@ fn crossing_mint_fold_step(withhold_next_chunk: Bool) -> Bool {
   let next_asset_frontier = validation_merkle_v1.build_frontier(
     maximum_mint_asset_leaves(0, 117),
   )
-  let pre_fold = validation_machine_v1.MintFoldControlV1 {
+  let pre_fold = vm_machine_types.MintFoldControlV1 {
     policy_count: 1,
     policy_cursor: 0,
     previous_policy: #"",
@@ -6858,7 +6863,7 @@ fn crossing_mint_fold_step(withhold_next_chunk: Bool) -> Bool {
     asset_count: 116,
     asset_peaks: prior_asset_frontier.peaks,
   }
-  let post_fold = validation_machine_v1.MintFoldControlV1 {
+  let post_fold = vm_machine_types.MintFoldControlV1 {
     ..pre_fold,
     item_cursor: 4_128,
     assets_remaining: 11,
@@ -6881,13 +6886,13 @@ fn crossing_mint_fold_step(withhold_next_chunk: Bool) -> Bool {
     6,
     52,
   )
-  validation_machine_v1.verify_script_sources_stage_six_semantics_v1(
+  vm_script_sources.verify_script_sources_stage_six_semantics_v1(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: post,
     },
-    validation_machine_v1.MintFoldAssetWitness {
+    vm_machine_types.MintFoldAssetWitness {
       chunk_proof: current_chunk_proof,
       next_chunk_proof: if withhold_next_chunk {
         None
@@ -6920,7 +6925,7 @@ fn canonical_observer_purpose_step(step_to_verify: Int) -> Bool {
   let final_purpose_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.purpose_leaf_hash(2, 0, h_28_a, h_28_a)],
   )
-  let accumulator = validation_machine_v1.initial_resolution_accumulator()
+  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = script_sources_output_step_fixture(
     tx,
     0,
@@ -6930,7 +6935,7 @@ fn canonical_observer_purpose_step(step_to_verify: Int) -> Bool {
     empty_frontier,
     0,
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
     0,
@@ -6947,14 +6952,14 @@ fn canonical_observer_purpose_step(step_to_verify: Int) -> Bool {
     0,
     empty_frontier,
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     observer_purpose_frontier,
     0,
     empty_frontier,
     0,
-    validation_machine_v1.empty_receive_purpose_scan_control(),
-    validation_machine_v1.ObserverPurposeScanControlV1 {
+    vm_witness.empty_receive_purpose_scan_control(),
+    vm_machine_types.ObserverPurposeScanControlV1 {
       total_count: 1,
       seen: 1,
       previous_hash: h_28_a,
@@ -6967,21 +6972,21 @@ fn canonical_observer_purpose_step(step_to_verify: Int) -> Bool {
     empty_frontier,
     empty_frontier,
     final_purpose_frontier,
-    validation_machine_v1.empty_script_discovery_control(),
+    vm_witness.empty_script_discovery_control(),
     20,
   )
   let carriage = inline_field_carriage([h_28_a])
-  let observer_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let observer_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: after_observer,
   }
-  let finish_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let finish_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor: after_observer_work_witness_cbor,
     claimed_successor: post,
   }
   if step_to_verify == 0 {
     and {
-      validation_machine_v1.verify_script_sources_stage_seven_observer_semantics_v1(
+      vm_script_sources_late_stages.verify_script_sources_stage_seven_observer_semantics_v1(
         pre,
         observer_transition,
         inline_field_door(),
@@ -6989,11 +6994,11 @@ fn canonical_observer_purpose_step(step_to_verify: Int) -> Bool {
         0,
         carriage,
       ),
-      validation_machine_v1.verify_one_step_evidence(
+      vm_one_step.verify_one_step_evidence(
         pre,
-        validation_machine_v1.ValidationOneStepEvidenceV1 {
+        vm_machine_types.ValidationOneStepEvidenceV1 {
           transition: observer_transition,
-          auxiliary: validation_machine_v1.TransactionFieldChunkWitness {
+          auxiliary: vm_machine_types.TransactionFieldChunkWitness {
             field_index: 3,
             item_index: 0,
             carriage,
@@ -7005,15 +7010,15 @@ fn canonical_observer_purpose_step(step_to_verify: Int) -> Bool {
   } else {
     and {
       step_to_verify == 1,
-      validation_machine_v1.verify_script_sources_stage_seven_finish_semantics_v1(
+      vm_script_sources_late_stages.verify_script_sources_stage_seven_finish_semantics_v1(
         after_observer,
         finish_transition,
       ),
-      validation_machine_v1.verify_one_step_evidence(
+      vm_one_step.verify_one_step_evidence(
         after_observer,
-        validation_machine_v1.ValidationOneStepEvidenceV1 {
+        vm_machine_types.ValidationOneStepEvidenceV1 {
           transition: finish_transition,
-          auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+          auxiliary: vm_machine_types.NoAuxiliaryWitness,
         },
         inline_field_door(),
       ),
@@ -7094,7 +7099,7 @@ fn script_sources_state_for_work_witness(
 test script_sources_stage_seven_finish_binds_canonical_successor_encoding() {
   let tx = empty_v1_transaction()
   let empty_frontier = validation_merkle_v1.build_frontier([])
-  let accumulator = validation_machine_v1.initial_resolution_accumulator()
+  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = script_sources_output_step_fixture(
     tx,
     0,
@@ -7104,7 +7109,7 @@ test script_sources_stage_seven_finish_binds_canonical_successor_encoding() {
     empty_frontier,
     0,
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
     0,
@@ -7117,7 +7122,7 @@ test script_sources_stage_seven_finish_binds_canonical_successor_encoding() {
     empty_frontier,
     empty_frontier,
     empty_frontier,
-    validation_machine_v1.empty_script_discovery_control(),
+    vm_witness.empty_script_discovery_control(),
     19,
   )
   // Same successor state, but committed in the `serialiseData` encoding.
@@ -7133,10 +7138,10 @@ test script_sources_stage_seven_finish_binds_canonical_successor_encoding() {
     empty_frontier,
     empty_frontier,
     empty_frontier,
-    validation_machine_v1.empty_script_discovery_control(),
+    vm_witness.empty_script_discovery_control(),
     19,
   )
-  let canonical_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let canonical_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: post,
   }
@@ -7145,41 +7150,41 @@ test script_sources_stage_seven_finish_binds_canonical_successor_encoding() {
     bytearray.take(post_witness_cbor, 1) == #"98",
     bytearray.take(serialise_data_reencoding(post_witness_cbor), 1) == #"9f",
     // Positive: both proof paths accept the canonical successor.
-    validation_machine_v1.verify_script_sources_stage_seven_finish_semantics_v1(
+    vm_script_sources_late_stages.verify_script_sources_stage_seven_finish_semantics_v1(
       pre,
       canonical_transition,
     ),
-    validation_machine_v1.verify_one_step_evidence(
+    vm_one_step.verify_one_step_evidence(
       pre,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
+      vm_machine_types.ValidationOneStepEvidenceV1 {
         transition: canonical_transition,
-        auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+        auxiliary: vm_machine_types.NoAuxiliaryWitness,
       },
       inline_field_door(),
     ),
     // Control: the `serialiseData` successor is still rejected.
-    !validation_machine_v1.verify_script_sources_stage_seven_finish_semantics_v1(
+    !vm_script_sources_late_stages.verify_script_sources_stage_seven_finish_semantics_v1(
       pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: reencoded_post,
       },
     ),
-    !validation_machine_v1.verify_one_step_evidence(
+    !vm_one_step.verify_one_step_evidence(
       pre,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
-        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepEvidenceV1 {
+        transition: vm_machine_types.ValidationOneStepWitnessV1 {
           work_witness_cbor,
           claimed_successor: reencoded_post,
         },
-        auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+        auxiliary: vm_machine_types.NoAuxiliaryWitness,
       },
       inline_field_door(),
     ),
     // Control: a mutated successor stage is still rejected.
-    !validation_machine_v1.verify_script_sources_stage_seven_finish_semantics_v1(
+    !vm_script_sources_late_stages.verify_script_sources_stage_seven_finish_semantics_v1(
       pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: mutated_post,
       },
@@ -7197,7 +7202,7 @@ test script_sources_stage_seven_observer_binds_canonical_successor_encoding() {
   let observer_purpose_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.purpose_leaf_hash(2, 0, h_28_a, h_28_a)],
   )
-  let accumulator = validation_machine_v1.initial_resolution_accumulator()
+  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = script_sources_output_step_fixture(
     tx,
     0,
@@ -7207,7 +7212,7 @@ test script_sources_stage_seven_observer_binds_canonical_successor_encoding() {
     empty_frontier,
     0,
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
     0,
@@ -7224,14 +7229,14 @@ test script_sources_stage_seven_observer_binds_canonical_successor_encoding() {
     0,
     empty_frontier,
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     observer_purpose_frontier,
     0,
     empty_frontier,
     0,
-    validation_machine_v1.empty_receive_purpose_scan_control(),
-    validation_machine_v1.ObserverPurposeScanControlV1 {
+    vm_witness.empty_receive_purpose_scan_control(),
+    vm_machine_types.ObserverPurposeScanControlV1 {
       total_count: 1,
       seen: 1,
       previous_hash: h_28_a,
@@ -7255,14 +7260,14 @@ test script_sources_stage_seven_observer_binds_canonical_successor_encoding() {
     0,
     empty_frontier,
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
     0,
     empty_frontier,
     0,
-    validation_machine_v1.empty_receive_purpose_scan_control(),
-    validation_machine_v1.ObserverPurposeScanControlV1 {
+    vm_witness.empty_receive_purpose_scan_control(),
+    vm_machine_types.ObserverPurposeScanControlV1 {
       total_count: 1,
       seen: 1,
       previous_hash: h_28_a,
@@ -7271,9 +7276,9 @@ test script_sources_stage_seven_observer_binds_canonical_successor_encoding() {
   )
   let carriage = inline_field_carriage([h_28_a])
   and {
-    validation_machine_v1.verify_script_sources_stage_seven_observer_semantics_v1(
+    vm_script_sources_late_stages.verify_script_sources_stage_seven_observer_semantics_v1(
       pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: after_observer,
       },
@@ -7282,9 +7287,9 @@ test script_sources_stage_seven_observer_binds_canonical_successor_encoding() {
       0,
       carriage,
     ),
-    !validation_machine_v1.verify_script_sources_stage_seven_observer_semantics_v1(
+    !vm_script_sources_late_stages.verify_script_sources_stage_seven_observer_semantics_v1(
       pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: reencoded_after_observer,
       },
@@ -7293,9 +7298,9 @@ test script_sources_stage_seven_observer_binds_canonical_successor_encoding() {
       0,
       carriage,
     ),
-    !validation_machine_v1.verify_script_sources_stage_seven_observer_semantics_v1(
+    !vm_script_sources_late_stages.verify_script_sources_stage_seven_observer_semantics_v1(
       pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: mutated_after_observer,
       },
@@ -7336,7 +7341,7 @@ test script_sources_stage_seven_receive_binds_canonical_successor_encoding() {
   let output_descriptor_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.output_descriptor_leaf_hash(0, material.descriptor_cbor)],
   )
-  let empty_receive_scan = validation_machine_v1.ReceivePurposeScanControlV1 {
+  let empty_receive_scan = vm_machine_types.ReceivePurposeScanControlV1 {
     source_count: receive_source_frontier.count,
     source_peaks: receive_source_frontier.peaks,
     receive_count: 0,
@@ -7344,7 +7349,7 @@ test script_sources_stage_seven_receive_binds_canonical_successor_encoding() {
     candidate_hash: #"",
     descriptor_peaks: output_descriptor_frontier.peaks,
   }
-  let selected_receive_scan = validation_machine_v1.ReceivePurposeScanControlV1 {
+  let selected_receive_scan = vm_machine_types.ReceivePurposeScanControlV1 {
     ..empty_receive_scan,
     candidate_hash: h_28_a,
   }
@@ -7380,9 +7385,9 @@ test script_sources_stage_seven_receive_binds_canonical_successor_encoding() {
     16,
   )
   and {
-    validation_machine_v1.verify_script_sources_stage_seven_receive_semantics_v1(
+    vm_script_sources_late_stages.verify_script_sources_stage_seven_receive_semantics_v1(
       pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: after_candidate,
       },
@@ -7392,9 +7397,9 @@ test script_sources_stage_seven_receive_binds_canonical_successor_encoding() {
       h_28_a,
       [],
     ),
-    !validation_machine_v1.verify_script_sources_stage_seven_receive_semantics_v1(
+    !vm_script_sources_late_stages.verify_script_sources_stage_seven_receive_semantics_v1(
       pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: reencoded_after_candidate,
       },
@@ -7404,9 +7409,9 @@ test script_sources_stage_seven_receive_binds_canonical_successor_encoding() {
       h_28_a,
       [],
     ),
-    !validation_machine_v1.verify_script_sources_stage_seven_receive_semantics_v1(
+    !vm_script_sources_late_stages.verify_script_sources_stage_seven_receive_semantics_v1(
       pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: mutated_after_candidate,
       },
@@ -7436,7 +7441,7 @@ test script_sources_stage_one_finish_raw_binds_canonical_successor_encoding() {
     indexed_inline_source_leaves(script, 0, 1),
   )
   let empty_frontier = validation_merkle_v1.build_frontier([])
-  let accumulator = validation_machine_v1.initial_resolution_accumulator()
+  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = script_sources_step_fixture(
     tx,
     0,
@@ -7446,7 +7451,7 @@ test script_sources_stage_one_finish_raw_binds_canonical_successor_encoding() {
     empty_frontier,
     0,
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
     10,
@@ -7460,7 +7465,7 @@ test script_sources_stage_one_finish_raw_binds_canonical_successor_encoding() {
     empty_frontier,
     0,
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
     11,
@@ -7481,7 +7486,7 @@ test script_sources_stage_one_finish_raw_binds_canonical_successor_encoding() {
     empty_frontier,
     0,
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
     11,
@@ -7490,23 +7495,23 @@ test script_sources_stage_one_finish_raw_binds_canonical_successor_encoding() {
     // The witness carries a bytestring past the 64-byte `serialiseData`
     // chunking threshold, which is what made the rebuilt prefix unmatchable.
     bytearray.length(midgard_transaction_proof_source_v1(tx).compact_cbor) > 64,
-    validation_machine_v1.verify_script_sources_stage_one_finish_raw_semantics_v1(
+    vm_script_sources_early_stages.verify_script_sources_stage_one_finish_raw_semantics_v1(
       pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
     ),
-    !validation_machine_v1.verify_script_sources_stage_one_finish_raw_semantics_v1(
+    !vm_script_sources_early_stages.verify_script_sources_stage_one_finish_raw_semantics_v1(
       pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: reencoded_post,
       },
     ),
-    !validation_machine_v1.verify_script_sources_stage_one_finish_raw_semantics_v1(
+    !vm_script_sources_early_stages.verify_script_sources_stage_one_finish_raw_semantics_v1(
       pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: mutated_post,
       },
@@ -7520,7 +7525,7 @@ test script_sources_prepares_more_than_sixteen_purposes_for_discovery() {
   let purpose_frontier = validation_merkle_v1.build_frontier(
     indexed_spend_purpose_leaves(0, 17),
   )
-  let accumulator = validation_machine_v1.initial_resolution_accumulator()
+  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = script_sources_output_step_fixture(
     tx,
     0,
@@ -7530,7 +7535,7 @@ test script_sources_prepares_more_than_sixteen_purposes_for_discovery() {
     empty_frontier,
     0,
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     purpose_frontier,
     0,
@@ -7543,17 +7548,17 @@ test script_sources_prepares_more_than_sixteen_purposes_for_discovery() {
     empty_frontier,
     empty_frontier,
     purpose_frontier,
-    validation_machine_v1.empty_script_discovery_control(),
+    vm_witness.empty_script_discovery_control(),
     19,
   )
-  validation_machine_v1.verify_one_step_evidence(
+  vm_one_step.verify_one_step_evidence(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+      auxiliary: vm_machine_types.NoAuxiliaryWitness,
     },
     inline_field_door(),
   )
@@ -7566,8 +7571,8 @@ test script_sources_discovers_more_than_sixteen_purposes() {
   let purpose_frontier = validation_merkle_v1.build_frontier(
     indexed_spend_purpose_leaves(0, 17),
   )
-  let empty_discovery = validation_machine_v1.empty_script_discovery_control()
-  let selected_purpose = validation_machine_v1.ScriptDiscoveryControlV1 {
+  let empty_discovery = vm_witness.empty_script_discovery_control()
+  let selected_purpose = vm_machine_types.ScriptDiscoveryControlV1 {
     ..empty_discovery,
     current_purpose_kind: 0,
     current_purpose_index: 0,
@@ -7592,13 +7597,13 @@ test script_sources_discovers_more_than_sixteen_purposes() {
     selected_purpose,
     20,
   )
-  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor: stage_eight_cbor,
     claimed_successor: stage_nine,
   }
   let siblings = first_leaf_power_of_two_siblings(first_peak_leaves)
   and {
-    validation_machine_v1.verify_script_sources_stage_eight_purpose_semantics_v1(
+    vm_script_sources_late_stages.verify_script_sources_stage_eight_purpose_semantics_v1(
       stage_eight,
       transition,
       0,
@@ -7607,11 +7612,11 @@ test script_sources_discovers_more_than_sixteen_purposes() {
       cbor.serialise(0),
       siblings,
     ),
-    validation_machine_v1.verify_one_step_evidence(
+    vm_one_step.verify_one_step_evidence(
       stage_eight,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
+      vm_machine_types.ValidationOneStepEvidenceV1 {
         transition,
-        auxiliary: validation_machine_v1.ScriptPurposeScanWitness {
+        auxiliary: vm_machine_types.ScriptPurposeScanWitness {
           purpose_kind: 0,
           purpose_index: 0,
           script_hash: h_28_a,
@@ -7627,7 +7632,7 @@ test script_sources_discovers_more_than_sixteen_purposes() {
 test script_sources_stage_eight_finishes_empty_discovery_exactly() {
   let tx = empty_v1_transaction()
   let empty_frontier = validation_merkle_v1.build_frontier([])
-  let empty_discovery = validation_machine_v1.empty_script_discovery_control()
+  let empty_discovery = vm_witness.empty_script_discovery_control()
   let Pair(stage_eight, stage_eight_cbor) = script_discovery_step_fixture(
     tx,
     8,
@@ -7646,9 +7651,9 @@ test script_sources_stage_eight_finishes_empty_discovery_exactly() {
     empty_discovery,
     20,
   )
-  validation_machine_v1.verify_script_sources_stage_eight_finish_semantics_v1(
+  vm_script_sources_late_stages.verify_script_sources_stage_eight_finish_semantics_v1(
     stage_eight,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor: stage_eight_cbor,
       claimed_successor: stage_eleven,
     },
@@ -7695,15 +7700,15 @@ test script_sources_discovers_an_exact_non_native_execution() {
     #"0102",
   )
   let purpose_frontier = validation_merkle_v1.build_frontier([purpose_leaf])
-  let empty_discovery = validation_machine_v1.empty_script_discovery_control()
-  let selected_purpose = validation_machine_v1.ScriptDiscoveryControlV1 {
+  let empty_discovery = vm_witness.empty_script_discovery_control()
+  let selected_purpose = vm_machine_types.ScriptDiscoveryControlV1 {
     ..empty_discovery,
     current_purpose_kind: 0,
     current_purpose_index: 0,
     current_script_hash: script_hash,
     current_subject: #"0102",
   }
-  let selected_source = validation_machine_v1.ScriptDiscoveryControlV1 {
+  let selected_source = vm_machine_types.ScriptDiscoveryControlV1 {
     ..selected_purpose,
     source_cursor: 1,
     matched_source_index: 0,
@@ -7735,13 +7740,13 @@ test script_sources_discovers_an_exact_non_native_execution() {
     chunk_proof: Some(redeemer_chunk_proof),
     next_chunk_proof: None,
   }
-  let selected_item = validation_machine_v1.ScriptDiscoveryControlV1 {
+  let selected_item = vm_machine_types.ScriptDiscoveryControlV1 {
     ..selected_source,
     redeemer_item_control_hash: redeemer_item_proof_v1.hash_control_v1(
       item_control,
     ),
   }
-  let selected_tail = validation_machine_v1.ScriptDiscoveryControlV1 {
+  let selected_tail = vm_machine_types.ScriptDiscoveryControlV1 {
     ..selected_source,
     redeemer_item_control_hash: redeemer_item_proof_v1.hash_control_v1(
       tail_control,
@@ -7757,7 +7762,7 @@ test script_sources_discovers_an_exact_non_native_execution() {
       ),
     ],
   )
-  let completed = validation_machine_v1.ScriptDiscoveryControlV1 {
+  let completed = vm_machine_types.ScriptDiscoveryControlV1 {
     ..empty_discovery,
     purpose_cursor: 1,
     used_inline_bitmap: 1,
@@ -7819,14 +7824,14 @@ test script_sources_discovers_an_exact_non_native_execution() {
     completed,
     25,
   )
-  let stage_ten_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let stage_ten_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor: stage_ten_cbor,
     claimed_successor: stage_ten_item,
   }
   and {
-    validation_machine_v1.verify_script_sources_stage_eight_purpose_semantics_v1(
+    vm_script_sources_late_stages.verify_script_sources_stage_eight_purpose_semantics_v1(
       stage_eight,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: stage_eight_cbor,
         claimed_successor: stage_nine,
       },
@@ -7836,9 +7841,9 @@ test script_sources_discovers_an_exact_non_native_execution() {
       #"0102",
       [],
     ),
-    validation_machine_v1.verify_script_sources_stage_nine_effectful_match_semantics_v1(
+    vm_script_sources_late_stages.verify_script_sources_stage_nine_effectful_match_semantics_v1(
       stage_nine,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: stage_nine_cbor,
         claimed_successor: stage_ten,
       },
@@ -7851,11 +7856,11 @@ test script_sources_discovers_an_exact_non_native_execution() {
       script_item_commitment,
       [],
     ),
-    validation_machine_v1.verify_one_step_evidence(
+    vm_one_step.verify_one_step_evidence(
       stage_ten,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
+      vm_machine_types.ValidationOneStepEvidenceV1 {
         transition: stage_ten_transition,
-        auxiliary: validation_machine_v1.RedeemerScanBeginWitness {
+        auxiliary: vm_machine_types.RedeemerScanBeginWitness {
           item_index: 0,
           item_count: 1,
           total_length: bytearray.length(redeemer_cbor),
@@ -7865,14 +7870,14 @@ test script_sources_discovers_an_exact_non_native_execution() {
       },
       inline_field_door(),
     ),
-    validation_machine_v1.verify_one_step_evidence(
+    vm_one_step.verify_one_step_evidence(
       stage_ten_item,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
-        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepEvidenceV1 {
+        transition: vm_machine_types.ValidationOneStepWitnessV1 {
           work_witness_cbor: stage_ten_item_cbor,
           claimed_successor: stage_ten_tail,
         },
-        auxiliary: validation_machine_v1.RedeemerItemStepWitness {
+        auxiliary: vm_machine_types.RedeemerItemStepWitness {
           redeemer_control: None,
           control: item_control,
           witness: header_witness,
@@ -7880,14 +7885,14 @@ test script_sources_discovers_an_exact_non_native_execution() {
       },
       inline_field_door(),
     ),
-    validation_machine_v1.verify_one_step_evidence(
+    vm_one_step.verify_one_step_evidence(
       stage_ten_tail,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
-        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepEvidenceV1 {
+        transition: vm_machine_types.ValidationOneStepWitnessV1 {
           work_witness_cbor: stage_ten_tail_cbor,
           claimed_successor: stage_eight_done,
         },
-        auxiliary: validation_machine_v1.RedeemerItemStepWitness {
+        auxiliary: vm_machine_types.RedeemerItemStepWitness {
           redeemer_control: None,
           control: tail_control,
           witness: tail_witness,
@@ -7936,15 +7941,15 @@ test script_sources_stage_ten_redeemer_family_guards() {
     #"0102",
   )
   let purpose_frontier = validation_merkle_v1.build_frontier([purpose_leaf])
-  let empty_discovery = validation_machine_v1.empty_script_discovery_control()
-  let selected_purpose = validation_machine_v1.ScriptDiscoveryControlV1 {
+  let empty_discovery = vm_witness.empty_script_discovery_control()
+  let selected_purpose = vm_machine_types.ScriptDiscoveryControlV1 {
     ..empty_discovery,
     current_purpose_kind: 0,
     current_purpose_index: 0,
     current_script_hash: script_hash,
     current_subject: #"0102",
   }
-  let selected_source = validation_machine_v1.ScriptDiscoveryControlV1 {
+  let selected_source = vm_machine_types.ScriptDiscoveryControlV1 {
     ..selected_purpose,
     source_cursor: 1,
     matched_source_index: 0,
@@ -7976,13 +7981,13 @@ test script_sources_stage_ten_redeemer_family_guards() {
     chunk_proof: Some(redeemer_chunk_proof),
     next_chunk_proof: None,
   }
-  let selected_item = validation_machine_v1.ScriptDiscoveryControlV1 {
+  let selected_item = vm_machine_types.ScriptDiscoveryControlV1 {
     ..selected_source,
     redeemer_item_control_hash: redeemer_item_proof_v1.hash_control_v1(
       item_control,
     ),
   }
-  let selected_tail = validation_machine_v1.ScriptDiscoveryControlV1 {
+  let selected_tail = vm_machine_types.ScriptDiscoveryControlV1 {
     ..selected_source,
     redeemer_item_control_hash: redeemer_item_proof_v1.hash_control_v1(
       tail_control,
@@ -7998,7 +8003,7 @@ test script_sources_stage_ten_redeemer_family_guards() {
       ),
     ],
   )
-  let completed = validation_machine_v1.ScriptDiscoveryControlV1 {
+  let completed = vm_machine_types.ScriptDiscoveryControlV1 {
     ..empty_discovery,
     purpose_cursor: 1,
     used_inline_bitmap: 1,
@@ -8042,77 +8047,77 @@ test script_sources_stage_ten_redeemer_family_guards() {
     completed,
     25,
   )
-  let stage_ten_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let stage_ten_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor: stage_ten_cbor,
     claimed_successor: stage_ten_item,
   }
-  let stage_ten_item_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let stage_ten_item_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor: stage_ten_item_cbor,
     claimed_successor: stage_ten_tail,
   }
-  let stage_ten_tail_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let stage_ten_tail_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor: stage_ten_tail_cbor,
     claimed_successor: stage_eight_done,
   }
-  let scan_begin_auxiliary = validation_machine_v1.RedeemerScanBeginWitness {
+  let scan_begin_auxiliary = vm_machine_types.RedeemerScanBeginWitness {
     item_index: 0,
     item_count: 1,
     total_length: bytearray.length(redeemer_cbor),
     item_commitment: redeemer_item_commitment,
     siblings: [],
   }
-  let header_auxiliary = validation_machine_v1.RedeemerItemStepWitness {
+  let header_auxiliary = vm_machine_types.RedeemerItemStepWitness {
     redeemer_control: None,
     control: item_control,
     witness: header_witness,
   }
-  let tail_auxiliary = validation_machine_v1.RedeemerItemStepWitness {
+  let tail_auxiliary = vm_machine_types.RedeemerItemStepWitness {
     redeemer_control: None,
     control: tail_control,
     witness: tail_witness,
   }
   and {
-    validation_machine_v1.verify_script_sources_stage_ten_semantics_v1(
+    vm_script_sources.verify_script_sources_stage_ten_semantics_v1(
       stage_ten,
       stage_ten_transition,
       scan_begin_auxiliary,
     ),
-    validation_machine_v1.verify_script_sources_stage_ten_mismatch_semantics_v1(
+    vm_script_sources.verify_script_sources_stage_ten_mismatch_semantics_v1(
       stage_ten,
       stage_ten_transition,
       scan_begin_auxiliary,
     ),
-    !validation_machine_v1.verify_script_sources_stage_ten_match_semantics_v1(
+    !vm_script_sources.verify_script_sources_stage_ten_match_semantics_v1(
       stage_ten,
       stage_ten_transition,
       scan_begin_auxiliary,
     ),
-    validation_machine_v1.verify_script_sources_stage_ten_semantics_v1(
+    vm_script_sources.verify_script_sources_stage_ten_semantics_v1(
       stage_ten_item,
       stage_ten_item_transition,
       header_auxiliary,
     ),
-    validation_machine_v1.verify_script_sources_stage_ten_mismatch_semantics_v1(
+    vm_script_sources.verify_script_sources_stage_ten_mismatch_semantics_v1(
       stage_ten_item,
       stage_ten_item_transition,
       header_auxiliary,
     ),
-    !validation_machine_v1.verify_script_sources_stage_ten_match_semantics_v1(
+    !vm_script_sources.verify_script_sources_stage_ten_match_semantics_v1(
       stage_ten_item,
       stage_ten_item_transition,
       header_auxiliary,
     ),
-    validation_machine_v1.verify_script_sources_stage_ten_semantics_v1(
+    vm_script_sources.verify_script_sources_stage_ten_semantics_v1(
       stage_ten_tail,
       stage_ten_tail_transition,
       tail_auxiliary,
     ),
-    validation_machine_v1.verify_script_sources_stage_ten_match_semantics_v1(
+    vm_script_sources.verify_script_sources_stage_ten_match_semantics_v1(
       stage_ten_tail,
       stage_ten_tail_transition,
       tail_auxiliary,
     ),
-    !validation_machine_v1.verify_script_sources_stage_ten_mismatch_semantics_v1(
+    !vm_script_sources.verify_script_sources_stage_ten_mismatch_semantics_v1(
       stage_ten_tail,
       stage_ten_tail_transition,
       tail_auxiliary,
@@ -8140,8 +8145,8 @@ test script_sources_stage_ten_proves_mismatch_and_missing_redeemer_exactly() {
   let purpose_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.purpose_leaf_hash(0, 1, h_28_a, #"0102")],
   )
-  let discovery = validation_machine_v1.ScriptDiscoveryControlV1 {
-    ..validation_machine_v1.empty_script_discovery_control(),
+  let discovery = vm_machine_types.ScriptDiscoveryControlV1 {
+    ..vm_witness.empty_script_discovery_control(),
     source_cursor: 1,
     current_purpose_kind: 0,
     current_purpose_index: 1,
@@ -8166,7 +8171,7 @@ test script_sources_stage_ten_proves_mismatch_and_missing_redeemer_exactly() {
     singleton_frontier,
     singleton_frontier,
     purpose_frontier,
-    validation_machine_v1.ScriptDiscoveryControlV1 {
+    vm_machine_types.ScriptDiscoveryControlV1 {
       ..discovery,
       redeemer_cursor: 1,
     },
@@ -8193,8 +8198,8 @@ test script_sources_stage_nine_accepts_an_exact_mismatch() {
   let purpose_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.purpose_leaf_hash(0, 0, h_28_a, #"0102")],
   )
-  let discovery = validation_machine_v1.ScriptDiscoveryControlV1 {
-    ..validation_machine_v1.empty_script_discovery_control(),
+  let discovery = vm_machine_types.ScriptDiscoveryControlV1 {
+    ..vm_witness.empty_script_discovery_control(),
     current_purpose_kind: 0,
     current_purpose_index: 0,
     current_script_hash: h_28_a,
@@ -8215,18 +8220,15 @@ test script_sources_stage_nine_accepts_an_exact_mismatch() {
     source_frontier,
     validation_merkle_v1.build_frontier([]),
     purpose_frontier,
-    validation_machine_v1.ScriptDiscoveryControlV1 {
-      ..discovery,
-      source_cursor: 1,
-    },
+    vm_machine_types.ScriptDiscoveryControlV1 { ..discovery, source_cursor: 1 },
     25,
   )
-  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: post,
   }
   and {
-    validation_machine_v1.verify_script_sources_stage_nine_mismatch_semantics_v1(
+    vm_script_sources_late_stages.verify_script_sources_stage_nine_mismatch_semantics_v1(
       pre,
       transition,
       0,
@@ -8238,7 +8240,7 @@ test script_sources_stage_nine_accepts_an_exact_mismatch() {
       script_item_commitment,
       [],
     ),
-    !validation_machine_v1.verify_script_sources_stage_nine_effectful_match_semantics_v1(
+    !vm_script_sources_late_stages.verify_script_sources_stage_nine_effectful_match_semantics_v1(
       pre,
       transition,
       0,
@@ -8250,7 +8252,7 @@ test script_sources_stage_nine_accepts_an_exact_mismatch() {
       script_item_commitment,
       [],
     ),
-    !validation_machine_v1.verify_script_sources_stage_nine_missing_semantics_v1(
+    !vm_script_sources_late_stages.verify_script_sources_stage_nine_missing_semantics_v1(
       pre,
       transition,
     ),
@@ -8270,8 +8272,8 @@ test script_sources_stage_nine_accepts_an_exact_effectful_match() {
   let purpose_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.purpose_leaf_hash(0, 0, script_hash, #"0102")],
   )
-  let discovery = validation_machine_v1.ScriptDiscoveryControlV1 {
-    ..validation_machine_v1.empty_script_discovery_control(),
+  let discovery = vm_machine_types.ScriptDiscoveryControlV1 {
+    ..vm_witness.empty_script_discovery_control(),
     current_purpose_kind: 0,
     current_purpose_index: 0,
     current_script_hash: script_hash,
@@ -8292,7 +8294,7 @@ test script_sources_stage_nine_accepts_an_exact_effectful_match() {
     source_frontier,
     validation_merkle_v1.build_frontier([]),
     purpose_frontier,
-    validation_machine_v1.ScriptDiscoveryControlV1 {
+    vm_machine_types.ScriptDiscoveryControlV1 {
       ..discovery,
       source_cursor: 1,
       matched_source_index: 0,
@@ -8302,12 +8304,12 @@ test script_sources_stage_nine_accepts_an_exact_effectful_match() {
     },
     27,
   )
-  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: post,
   }
   and {
-    validation_machine_v1.verify_script_sources_stage_nine_effectful_match_semantics_v1(
+    vm_script_sources_late_stages.verify_script_sources_stage_nine_effectful_match_semantics_v1(
       pre,
       transition,
       0,
@@ -8319,7 +8321,7 @@ test script_sources_stage_nine_accepts_an_exact_effectful_match() {
       script_item_commitment,
       [],
     ),
-    !validation_machine_v1.verify_script_sources_stage_nine_mismatch_semantics_v1(
+    !vm_script_sources_late_stages.verify_script_sources_stage_nine_mismatch_semantics_v1(
       pre,
       transition,
       0,
@@ -8331,7 +8333,7 @@ test script_sources_stage_nine_accepts_an_exact_effectful_match() {
       script_item_commitment,
       [],
     ),
-    !validation_machine_v1.verify_script_sources_stage_nine_native_match_semantics_v1(
+    !vm_script_sources_late_stages.verify_script_sources_stage_nine_native_match_semantics_v1(
       pre,
       transition,
       0,
@@ -8365,8 +8367,8 @@ test script_sources_stage_nine_accepts_an_exact_native_match() {
   let execution_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.execution_leaf_hash(0, purpose_leaf, source_leaf, #"")],
   )
-  let discovery = validation_machine_v1.ScriptDiscoveryControlV1 {
-    ..validation_machine_v1.empty_script_discovery_control(),
+  let discovery = vm_machine_types.ScriptDiscoveryControlV1 {
+    ..vm_witness.empty_script_discovery_control(),
     current_purpose_kind: 0,
     current_purpose_index: 0,
     current_script_hash: script_hash,
@@ -8387,8 +8389,8 @@ test script_sources_stage_nine_accepts_an_exact_native_match() {
     source_frontier,
     validation_merkle_v1.build_frontier([]),
     purpose_frontier,
-    validation_machine_v1.ScriptDiscoveryControlV1 {
-      ..validation_machine_v1.empty_script_discovery_control(),
+    vm_machine_types.ScriptDiscoveryControlV1 {
+      ..vm_witness.empty_script_discovery_control(),
       purpose_cursor: 1,
       used_inline_bitmap: 1,
       execution_count: execution_frontier.count,
@@ -8396,12 +8398,12 @@ test script_sources_stage_nine_accepts_an_exact_native_match() {
     },
     29,
   )
-  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: post,
   }
   and {
-    validation_machine_v1.verify_script_sources_stage_nine_native_match_semantics_v1(
+    vm_script_sources_late_stages.verify_script_sources_stage_nine_native_match_semantics_v1(
       pre,
       transition,
       0,
@@ -8412,7 +8414,7 @@ test script_sources_stage_nine_accepts_an_exact_native_match() {
       script_item_commitment,
       [],
     ),
-    !validation_machine_v1.verify_script_sources_stage_nine_mismatch_semantics_v1(
+    !vm_script_sources_late_stages.verify_script_sources_stage_nine_mismatch_semantics_v1(
       pre,
       transition,
       0,
@@ -8424,7 +8426,7 @@ test script_sources_stage_nine_accepts_an_exact_native_match() {
       script_item_commitment,
       [],
     ),
-    !validation_machine_v1.verify_script_sources_stage_nine_effectful_match_semantics_v1(
+    !vm_script_sources_late_stages.verify_script_sources_stage_nine_effectful_match_semantics_v1(
       pre,
       transition,
       0,
@@ -8453,8 +8455,8 @@ test script_sources_stage_eleven_audits_inline_sources_exactly() {
     [script_proof_v1.purpose_leaf_hash(0, 0, script_hash, #"0102")],
   )
   let execution_frontier = validation_merkle_v1.build_frontier([source_leaf])
-  let discovery = validation_machine_v1.ScriptDiscoveryControlV1 {
-    ..validation_machine_v1.empty_script_discovery_control(),
+  let discovery = vm_machine_types.ScriptDiscoveryControlV1 {
+    ..vm_witness.empty_script_discovery_control(),
     purpose_cursor: 1,
     used_inline_bitmap: 1,
     execution_count: 1,
@@ -8476,10 +8478,7 @@ test script_sources_stage_eleven_audits_inline_sources_exactly() {
     source_frontier,
     empty_frontier,
     purpose_frontier,
-    validation_machine_v1.ScriptDiscoveryControlV1 {
-      ..discovery,
-      source_cursor: 1,
-    },
+    vm_machine_types.ScriptDiscoveryControlV1 { ..discovery, source_cursor: 1 },
     31,
   )
   let Pair(after_finish, after_finish_work_witness_cbor) = script_discovery_step_fixture(
@@ -8488,10 +8487,7 @@ test script_sources_stage_eleven_audits_inline_sources_exactly() {
     source_frontier,
     empty_frontier,
     purpose_frontier,
-    validation_machine_v1.ScriptDiscoveryControlV1 {
-      ..discovery,
-      source_cursor: 1,
-    },
+    vm_machine_types.ScriptDiscoveryControlV1 { ..discovery, source_cursor: 1 },
     32,
   )
   let Pair(native_scripts, _) = native_scripts_step_fixture(
@@ -8505,9 +8501,9 @@ test script_sources_stage_eleven_audits_inline_sources_exactly() {
     33,
   )
   and {
-    validation_machine_v1.verify_script_sources_stage_eleven_source_semantics_v1(
+    vm_script_sources_late_stages.verify_script_sources_stage_eleven_source_semantics_v1(
       pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: after_source,
       },
@@ -8520,16 +8516,16 @@ test script_sources_stage_eleven_audits_inline_sources_exactly() {
       script_item_commitment,
       [],
     ),
-    validation_machine_v1.verify_script_sources_stage_eleven_finish_semantics_v1(
+    vm_script_sources_late_stages.verify_script_sources_stage_eleven_finish_semantics_v1(
       after_source,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: after_source_work_witness_cbor,
         claimed_successor: after_finish,
       },
     ),
-    validation_machine_v1.verify_script_sources_stage_twelve_finish_semantics_v1(
+    vm_script_sources_late_stages.verify_script_sources_stage_twelve_finish_semantics_v1(
       after_finish,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: after_finish_work_witness_cbor,
         claimed_successor: native_scripts,
       },
@@ -8554,12 +8550,12 @@ test script_sources_stage_eleven_rejects_an_unused_inline_source_exactly() {
     source_frontier,
     empty_frontier,
     empty_frontier,
-    validation_machine_v1.empty_script_discovery_control(),
+    vm_witness.empty_script_discovery_control(),
     30,
   )
-  validation_machine_v1.verify_script_sources_stage_eleven_source_semantics_v1(
+  vm_script_sources_late_stages.verify_script_sources_stage_eleven_source_semantics_v1(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: exact_rejection_post(
         pre,
@@ -8606,8 +8602,8 @@ test script_sources_stage_twelve_audits_redeemers_exactly() {
       ),
     ],
   )
-  let used_discovery = validation_machine_v1.ScriptDiscoveryControlV1 {
-    ..validation_machine_v1.empty_script_discovery_control(),
+  let used_discovery = vm_machine_types.ScriptDiscoveryControlV1 {
+    ..vm_witness.empty_script_discovery_control(),
     purpose_cursor: 1,
     used_redeemer_bitmap: 1,
     execution_count: 1,
@@ -8629,7 +8625,7 @@ test script_sources_stage_twelve_audits_redeemers_exactly() {
     empty_frontier,
     redeemer_frontier,
     purpose_frontier,
-    validation_machine_v1.ScriptDiscoveryControlV1 {
+    vm_machine_types.ScriptDiscoveryControlV1 {
       ..used_discovery,
       redeemer_cursor: 1,
     },
@@ -8641,7 +8637,7 @@ test script_sources_stage_twelve_audits_redeemers_exactly() {
     empty_frontier,
     redeemer_frontier,
     empty_frontier,
-    validation_machine_v1.empty_script_discovery_control(),
+    vm_witness.empty_script_discovery_control(),
     40,
   )
   and {
@@ -8687,8 +8683,8 @@ test script_sources_stage_twelve_redeemer_family_guard() {
   )
   let redeemer_frontier = validation_merkle_v1.build_frontier([redeemer_leaf])
   let execution_frontier = validation_merkle_v1.build_frontier([source_leaf])
-  let empty_discovery = validation_machine_v1.ScriptDiscoveryControlV1 {
-    ..validation_machine_v1.empty_script_discovery_control(),
+  let empty_discovery = vm_machine_types.ScriptDiscoveryControlV1 {
+    ..vm_witness.empty_script_discovery_control(),
     purpose_cursor: 1,
     source_cursor: 1,
     used_inline_bitmap: 1,
@@ -8730,7 +8726,7 @@ test script_sources_stage_twelve_redeemer_family_guard() {
     source_frontier,
     redeemer_frontier,
     purpose_frontier,
-    validation_machine_v1.ScriptDiscoveryControlV1 {
+    vm_machine_types.ScriptDiscoveryControlV1 {
       ..empty_discovery,
       redeemer_item_control_hash: redeemer_item_proof_v1.hash_control_v1(
         item_control,
@@ -8744,7 +8740,7 @@ test script_sources_stage_twelve_redeemer_family_guard() {
     source_frontier,
     redeemer_frontier,
     purpose_frontier,
-    validation_machine_v1.ScriptDiscoveryControlV1 {
+    vm_machine_types.ScriptDiscoveryControlV1 {
       ..empty_discovery,
       redeemer_item_control_hash: redeemer_item_proof_v1.hash_control_v1(
         tail_control,
@@ -8752,26 +8748,26 @@ test script_sources_stage_twelve_redeemer_family_guard() {
     },
     34,
   )
-  let begin_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let begin_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: begin_post,
   }
-  let item_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let item_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor: begin_work_witness_cbor,
     claimed_successor: item_post,
   }
   let Pair(finish_pre, Pair(finish_work_witness_cbor, Pair(finish_post, _))) = stage_twelve_finish_fixture(
     #"",
   )
-  let finish_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let finish_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor: finish_work_witness_cbor,
     claimed_successor: finish_post,
   }
   and {
-    validation_machine_v1.verify_script_sources_stage_twelve_redeemer_semantics_v1(
+    vm_script_sources.verify_script_sources_stage_twelve_redeemer_semantics_v1(
       pre,
       begin_transition,
-      validation_machine_v1.RedeemerScanBeginWitness {
+      vm_machine_types.RedeemerScanBeginWitness {
         item_index: 0,
         item_count: 1,
         total_length: bytearray.length(redeemer_cbor),
@@ -8779,19 +8775,19 @@ test script_sources_stage_twelve_redeemer_family_guard() {
         siblings: [],
       },
     ),
-    validation_machine_v1.verify_script_sources_stage_twelve_redeemer_semantics_v1(
+    vm_script_sources.verify_script_sources_stage_twelve_redeemer_semantics_v1(
       begin_post,
       item_transition,
-      validation_machine_v1.RedeemerItemStepWitness {
+      vm_machine_types.RedeemerItemStepWitness {
         redeemer_control: None,
         control: item_control,
         witness: header_witness,
       },
     ),
-    !validation_machine_v1.verify_script_sources_stage_twelve_redeemer_semantics_v1(
+    !vm_script_sources.verify_script_sources_stage_twelve_redeemer_semantics_v1(
       finish_pre,
       finish_transition,
-      validation_machine_v1.NoAuxiliaryWitness,
+      vm_machine_types.NoAuxiliaryWitness,
     ),
   }
 }
@@ -8803,8 +8799,8 @@ test script_sources_proves_a_missing_script_source_exactly() {
   let purpose_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.purpose_leaf_hash(3, 0, script_hash, script_hash)],
   )
-  let discovery = validation_machine_v1.ScriptDiscoveryControlV1 {
-    ..validation_machine_v1.empty_script_discovery_control(),
+  let discovery = vm_machine_types.ScriptDiscoveryControlV1 {
+    ..vm_witness.empty_script_discovery_control(),
     current_purpose_kind: 3,
     current_purpose_index: 0,
     current_script_hash: script_hash,
@@ -8827,7 +8823,7 @@ test script_sources_proves_a_missing_script_source_exactly() {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.Terminal,
       25,
-      validation_machine_v1.encode_terminal_rejection_witness(
+      vm_shared.encode_terminal_rejection_witness(
         rejection_code,
         pre.prior_ledger_root,
       ),
@@ -8835,9 +8831,9 @@ test script_sources_proves_a_missing_script_source_exactly() {
     verdict: validation_trace_v1.Rejected,
     rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
   }
-  validation_machine_v1.verify_script_sources_stage_nine_missing_semantics_v1(
+  vm_script_sources_late_stages.verify_script_sources_stage_nine_missing_semantics_v1(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: terminal,
     },
@@ -8856,7 +8852,7 @@ fn late_phase_a_native_scan_witness(
 ) -> ByteArray {
   let proof_source = midgard_transaction_proof_source_v1(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
-  validation_machine_v1.encode_phase_a_native_scripts_scan_witness(
+  vm_witness.encode_phase_a_native_scripts_scan_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
@@ -8989,9 +8985,9 @@ test native_scripts_stream_an_authenticated_execution_and_return_on_l1() {
     finalize_work_witness_cbor,
   )
   and {
-    validation_machine_v1.verify_native_scripts_native_semantics_v1(
+    vm_native_scripts.verify_native_scripts_native_semantics_v1(
       pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: entry_pre,
       },
@@ -9012,27 +9008,27 @@ test native_scripts_stream_an_authenticated_execution_and_return_on_l1() {
       chunk_proof,
       [],
     ),
-    validation_machine_v1.verify_phase_a_native_token_head_semantics_v1(
+    vm_phase_a_native_scripts.verify_phase_a_native_token_head_semantics_v1(
       entry_pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: entry_work_witness_cbor,
         claimed_successor: payload_pre,
       },
       chunk_proof,
       None,
     ),
-    validation_machine_v1.verify_phase_a_native_timelock_payload_semantics_v1(
+    vm_phase_a_native_scripts.verify_phase_a_native_timelock_payload_semantics_v1(
       payload_pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: payload_work_witness_cbor,
         claimed_successor: finalize_pre,
       },
       chunk_proof,
       None,
     ),
-    validation_machine_v1.verify_phase_a_native_advance_semantics_v1(
+    vm_phase_a_native_scripts.verify_phase_a_native_advance_semantics_v1(
       finalize_pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: finalize_work_witness_cbor,
         claimed_successor: post,
       },
@@ -9056,7 +9052,7 @@ test script_integrity_is_recomputed_before_cek() {
   let valid_witness_set = decode_native_tx_witness_set_compact(
     valid_source.witness_set_compact_cbor,
   )
-  let authentication_witness_cbor = validation_machine_v1.encode_script_integrity_witness_v1(
+  let authentication_witness_cbor = vm_witness.encode_script_integrity_witness_v1(
     valid_control,
   )
   let tx_id = native_tx_id_for_version(
@@ -9088,7 +9084,7 @@ test script_integrity_is_recomputed_before_cek() {
     // proofs, so it must carry the realistic non-empty claimed delta.
     ledger_delta_root: non_empty_claimed_delta_root(),
   }
-  let compact_witness_cbor = validation_machine_v1.encode_script_integrity_compact_witness_v1(
+  let compact_witness_cbor = vm_witness.encode_script_integrity_compact_witness_v1(
     valid_control,
   )
   let compact_pre = validation_trace_v1.ValidationMachineStateV1 {
@@ -9100,7 +9096,7 @@ test script_integrity_is_recomputed_before_cek() {
       compact_witness_cbor,
     ),
   }
-  let witness_set_witness_cbor = validation_machine_v1.encode_script_integrity_witness_set_witness_v1(
+  let witness_set_witness_cbor = vm_witness.encode_script_integrity_witness_set_witness_v1(
     valid_control,
     valid_compact.body.script_integrity_hash,
     valid_compact.witness_set_hash,
@@ -9114,7 +9110,7 @@ test script_integrity_is_recomputed_before_cek() {
       witness_set_witness_cbor,
     ),
   }
-  let finalize_witness_cbor = validation_machine_v1.encode_script_integrity_finalize_witness_v1(
+  let finalize_witness_cbor = vm_witness.encode_script_integrity_finalize_witness_v1(
     valid_control,
     valid_compact.body.script_integrity_hash,
     valid_witness_set.redeemer_tx_wits_hash,
@@ -9135,7 +9131,7 @@ test script_integrity_is_recomputed_before_cek() {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.Cek,
       38,
-      validation_machine_v1.encode_cek_witness_v1(
+      vm_witness.encode_cek_witness_v1(
         valid_control,
         #"",
         0,
@@ -9148,19 +9144,19 @@ test script_integrity_is_recomputed_before_cek() {
       ),
     ),
   }
-  let authentication_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let authentication_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor: authentication_witness_cbor,
     claimed_successor: compact_pre,
   }
-  let compact_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let compact_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor: compact_witness_cbor,
     claimed_successor: witness_set_pre,
   }
-  let witness_set_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let witness_set_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor: witness_set_witness_cbor,
     claimed_successor: finalize_pre,
   }
-  let finalize_transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let finalize_transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor: finalize_witness_cbor,
     claimed_successor: valid_post,
   }
@@ -9175,7 +9171,7 @@ test script_integrity_is_recomputed_before_cek() {
     native_tx_version_v1,
     encode_native_tx_body_compact(invalid_compact.body),
   )
-  let invalid_finalize_witness_cbor = validation_machine_v1.encode_script_integrity_finalize_witness_v1(
+  let invalid_finalize_witness_cbor = vm_witness.encode_script_integrity_finalize_witness_v1(
     invalid_control,
     invalid_compact.body.script_integrity_hash,
     invalid_witness_set.redeemer_tx_wits_hash,
@@ -9199,7 +9195,7 @@ test script_integrity_is_recomputed_before_cek() {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.Terminal,
       41,
-      validation_machine_v1.encode_terminal_rejection_witness(
+      vm_shared.encode_terminal_rejection_witness(
         rejection_code,
         invalid_pre.prior_ledger_root,
       ),
@@ -9208,25 +9204,25 @@ test script_integrity_is_recomputed_before_cek() {
     rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
   }
   and {
-    validation_machine_v1.verify_script_integrity_authentication_semantics_v1(
+    vm_one_step.verify_script_integrity_authentication_semantics_v1(
       authentication_pre,
       authentication_transition,
     ),
-    validation_machine_v1.verify_script_integrity_compact_semantics_v1(
+    vm_one_step.verify_script_integrity_compact_semantics_v1(
       compact_pre,
       compact_transition,
     ),
-    validation_machine_v1.verify_script_integrity_witness_set_semantics_v1(
+    vm_one_step.verify_script_integrity_witness_set_semantics_v1(
       witness_set_pre,
       witness_set_transition,
     ),
-    validation_machine_v1.verify_script_integrity_finalize_semantics_v1(
+    vm_one_step.verify_script_integrity_finalize_semantics_v1(
       finalize_pre,
       finalize_transition,
     ),
-    validation_machine_v1.verify_script_integrity_finalize_semantics_v1(
+    vm_one_step.verify_script_integrity_finalize_semantics_v1(
       invalid_pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: invalid_finalize_witness_cbor,
         claimed_successor: terminal,
       },
@@ -9235,10 +9231,10 @@ test script_integrity_is_recomputed_before_cek() {
 }
 
 test resolved_input_accumulator_vector_is_stable() {
-  let initial = validation_machine_v1.initial_resolution_accumulator()
+  let initial = vm_witness.initial_resolution_accumulator()
   and {
     initial == #"07eb401e2f7e5de17444414ec48a5d9dca455dea72f4675cc2b08bf5b4e39979",
-    validation_machine_v1.resolved_input_accumulator_successor(
+    vm_witness.resolved_input_accumulator_successor(
       initial,
       0,
       #"010203",
@@ -9248,7 +9244,7 @@ test resolved_input_accumulator_vector_is_stable() {
 }
 
 test mint_asset_leaf_vector_is_stable() {
-  validation_machine_v1.mint_asset_leaf_hash(
+  vm_shared.mint_asset_leaf_hash(
     #"11111111111111111111111111111111111111111111111111111111",
     #"abcd",
     -7,
@@ -9257,13 +9253,13 @@ test mint_asset_leaf_vector_is_stable() {
 
 test ledger_delta_operation_frontier_vectors_are_stable() {
   let proof_descriptor = empty_mpf_proof_descriptor()
-  let deletion = validation_machine_v1.ledger_delta_operation_leaf_hash(
+  let deletion = vm_shared.ledger_delta_operation_leaf_hash(
     0,
     #"010203",
     #"",
     proof_descriptor,
   )
-  let insertion = validation_machine_v1.ledger_delta_operation_leaf_hash(
+  let insertion = vm_shared.ledger_delta_operation_leaf_hash(
     1,
     #"0405",
     #"060708",
@@ -9295,25 +9291,23 @@ test ledger_delta_terminal_step_binds_more_than_128_operations() {
       },
     ],
   }
-  let control = validation_machine_v1.LedgerDeltaControlV1 {
+  let control = vm_machine_types.LedgerDeltaControlV1 {
     resolved_input_count: 0,
-    resolved_inputs_accumulator: validation_machine_v1.initial_resolution_accumulator(),
+    resolved_inputs_accumulator: vm_witness.initial_resolution_accumulator(),
     output_count: 0,
     output_descriptor_peaks: [],
     stage: 2,
-    replay_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     replay_cursor: 0,
-    replay_accumulator: validation_machine_v1.initial_resolution_accumulator(),
-    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_accumulator: vm_witness.initial_resolution_accumulator(),
+    replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     current_ledger_root: h_b,
     output_cursor: 0,
     operation_count: operation_frontier.count,
     operation_peaks: operation_frontier.peaks,
     pending_mutation_cbor: #"",
   }
-  let work_witness_cbor = validation_machine_v1.encode_ledger_delta_control_v1(
-    control,
-  )
+  let work_witness_cbor = vm_witness.encode_ledger_delta_control_v1(control)
   let pre = validation_trace_v1.ValidationMachineStateV1 {
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: h_a,
@@ -9345,7 +9339,7 @@ test ledger_delta_terminal_step_binds_more_than_128_operations() {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.Terminal,
       47,
-      validation_machine_v1.encode_terminal_acceptance_witness_v1(
+      vm_witness.encode_terminal_acceptance_witness_v1(
         h_b,
         operation_frontier.count,
         operation_frontier.peaks,
@@ -9353,9 +9347,9 @@ test ledger_delta_terminal_step_binds_more_than_128_operations() {
     ),
     verdict: validation_trace_v1.Accepted,
   }
-  validation_machine_v1.verify_ledger_delta_terminal_semantics_v1(
+  vm_ledger_delta.verify_ledger_delta_terminal_semantics_v1(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: post,
     },
@@ -9368,7 +9362,7 @@ test ledger_delta_terminal_step_binds_more_than_128_operations() {
 /// controls at the end of this module.
 type CekSelectionFixtureV1 {
   pre: validation_trace_v1.ValidationMachineStateV1,
-  evidence: validation_machine_v1.ValidationOneStepEvidenceV1,
+  evidence: vm_machine_types.ValidationOneStepEvidenceV1,
   tampered_post: validation_trace_v1.ValidationMachineStateV1,
 }
 
@@ -9422,7 +9416,7 @@ fn maximum_program_envelope_selection_fixture() -> CekSelectionFixtureV1 {
   let source_frontier = validation_merkle_v1.build_frontier([source_leaf])
   let purpose_frontier = validation_merkle_v1.build_frontier([purpose_leaf])
   let execution_frontier = validation_merkle_v1.build_frontier([execution_leaf])
-  let control = validation_machine_v1.NativeScriptsControlV1 {
+  let control = vm_machine_types.NativeScriptsControlV1 {
     ..empty_native_control_fixture(tx),
     source_count: 1,
     source_peaks: source_frontier.peaks,
@@ -9433,7 +9427,7 @@ fn maximum_program_envelope_selection_fixture() -> CekSelectionFixtureV1 {
     execution_cursor: 1,
     language_bitmap: 1,
   }
-  let context_control = validation_machine_v1.CekContextControlV1 {
+  let context_control = vm_machine_types.CekContextControlV1 {
     stage: 0,
     language_tag: 3,
     program_term_root: h_a,
@@ -9472,7 +9466,7 @@ fn maximum_program_envelope_selection_fixture() -> CekSelectionFixtureV1 {
   let Pair(post_base, _) = cek_state_fixture(
     tx,
     control,
-    validation_machine_v1.encode_cek_context_control_v1(context_control),
+    vm_witness.encode_cek_context_control_v1(context_control),
     0,
     41,
   )
@@ -9481,9 +9475,9 @@ fn maximum_program_envelope_selection_fixture() -> CekSelectionFixtureV1 {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.Cek,
       41,
-      validation_machine_v1.encode_cek_witness_v1(
+      vm_witness.encode_cek_witness_v1(
         control,
-        validation_machine_v1.encode_cek_context_control_v1(context_control),
+        vm_witness.encode_cek_context_control_v1(context_control),
         0,
         0,
         0,
@@ -9499,10 +9493,10 @@ fn maximum_program_envelope_selection_fixture() -> CekSelectionFixtureV1 {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.Cek,
       41,
-      validation_machine_v1.encode_cek_witness_v1(
+      vm_witness.encode_cek_witness_v1(
         control,
-        validation_machine_v1.encode_cek_context_control_v1(
-          validation_machine_v1.CekContextControlV1 {
+        vm_witness.encode_cek_context_control_v1(
+          vm_machine_types.CekContextControlV1 {
             ..context_control,
             program_envelope_hash: h_b,
           },
@@ -9517,12 +9511,12 @@ fn maximum_program_envelope_selection_fixture() -> CekSelectionFixtureV1 {
       ),
     ),
   }
-  let evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
-    transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+  let evidence = vm_machine_types.ValidationOneStepEvidenceV1 {
+    transition: vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: post,
     },
-    auxiliary: validation_machine_v1.NativeExecutionScanWitness {
+    auxiliary: vm_machine_types.NativeExecutionScanWitness {
       execution_index: 0,
       language_tag: 3,
       purpose_kind: 0,
@@ -9552,15 +9546,11 @@ fn maximum_program_envelope_selection_is_exact() -> Bool {
   let f = maximum_program_envelope_selection_fixture()
   and {
     bytearray.length(cbor.serialise(f.evidence)) < 16_384,
-    validation_machine_v1.verify_one_step_evidence(
+    vm_one_step.verify_one_step_evidence(f.pre, f.evidence, inline_field_door()),
+    !vm_one_step.verify_one_step_evidence(
       f.pre,
-      f.evidence,
-      inline_field_door(),
-    ),
-    !validation_machine_v1.verify_one_step_evidence(
-      f.pre,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
-        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepEvidenceV1 {
+        transition: vm_machine_types.ValidationOneStepWitnessV1 {
           ..f.evidence.transition,
           claimed_successor: f.tampered_post,
         },
@@ -9700,7 +9690,7 @@ test maximum_native_then_effectful_cek_selection_is_bounded(
   let execution_frontier = validation_merkle_v1.build_frontier(
     [native_execution, effectful_execution],
   )
-  let control = validation_machine_v1.NativeScriptsControlV1 {
+  let control = vm_machine_types.NativeScriptsControlV1 {
     ..empty_native_control_fixture(tx),
     source_count: 2,
     source_peaks: source_frontier.peaks,
@@ -9713,12 +9703,12 @@ test maximum_native_then_effectful_cek_selection_is_bounded(
   }
   let Pair(pre, work_witness_cbor) = cek_state_fixture(tx, control, #"", 0, 43)
   let Pair(post, _) = cek_state_fixture(tx, control, #"", 1, 44)
-  let evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
-    transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+  let evidence = vm_machine_types.ValidationOneStepEvidenceV1 {
+    transition: vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: post,
     },
-    auxiliary: validation_machine_v1.NativeExecutionScanWitness {
+    auxiliary: vm_machine_types.NativeExecutionScanWitness {
       execution_index: 0,
       language_tag: 0,
       purpose_kind: 0,
@@ -9742,7 +9732,7 @@ test maximum_native_then_effectful_cek_selection_is_bounded(
     bytearray.length(native_script_cbor) == 16_384,
     bytearray.length(first_chunk_proof.chunk) == bounded_item_v1.chunk_bytes,
     bytearray.length(cbor.serialise(evidence)) < 16_384,
-    validation_machine_v1.verify_cek_execution_selection(
+    vm_cek.verify_cek_execution_selection(
       pre,
       evidence.transition,
       evidence.auxiliary,
@@ -9755,7 +9745,7 @@ test maximum_native_then_effectful_cek_selection_is_bounded(
 }
 
 test cross_language_cek_context_control_vectors() {
-  let context = validation_machine_v1.CekContextControlV1 {
+  let context = vm_machine_types.CekContextControlV1 {
     stage: 0,
     language_tag: 3,
     program_term_root: h_a,
@@ -9791,9 +9781,9 @@ test cross_language_cek_context_control_vectors() {
     },
   }
   and {
-    validation_machine_v1.encode_cek_context_control_v1(context) == #"981900035820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa5820bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb41005820cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc4000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa5600000000845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba200000040834000000040845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba200000083400000",
-    validation_machine_v1.hash_cek_redeemer_context_control_v1(
-      validation_machine_v1.initial_cek_redeemer_context_control_v1(),
+    vm_witness.encode_cek_context_control_v1(context) == #"981900035820aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa5820bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb0000581cbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb41005820cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc4000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa560000008458208c446a903f125939fd6e036b313c52340c9ac0539e6730f08e95eaec9052fa5600000000845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba200000040834000000040845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba2000000845820bbcb3bff6f87a2005a336b6cb5fe5fbea093815716945279140f31aec8cbaba200000083400000",
+    vm_witness.hash_cek_redeemer_context_control_v1(
+      vm_witness.initial_cek_redeemer_context_control_v1(),
     ) == #"c56f80a85b46a479d9a766ce7050e825484f42da6453a3ec217afc6b03d5f938",
   }
 }
@@ -9831,7 +9821,7 @@ test plutus_v3_receive_selection_rejects_with_an_exact_noop() {
   let source_frontier = validation_merkle_v1.build_frontier([source_leaf])
   let purpose_frontier = validation_merkle_v1.build_frontier([purpose_leaf])
   let execution_frontier = validation_merkle_v1.build_frontier([execution_leaf])
-  let control = validation_machine_v1.NativeScriptsControlV1 {
+  let control = vm_machine_types.NativeScriptsControlV1 {
     ..empty_native_control_fixture(tx),
     source_count: 1,
     source_peaks: source_frontier.peaks,
@@ -9848,14 +9838,14 @@ test plutus_v3_receive_selection_rejects_with_an_exact_noop() {
   // claimed delta forward. See the note on
   // `static_rules_prove_a_network_mismatch_is_an_exact_no_op`.
   let post = exact_rejection_post(pre, rejection_code)
-  validation_machine_v1.verify_one_step_evidence(
+  vm_one_step.verify_one_step_evidence(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.NativeExecutionScanWitness {
+      auxiliary: vm_machine_types.NativeExecutionScanWitness {
         execution_index: 0,
         language_tag: 3,
         purpose_kind: 3,
@@ -9895,7 +9885,7 @@ test cek_redeemer_selection_binds_the_data_scan_initial_state() {
   }
   let redeemer_leaf = script_proof_v1.redeemer_leaf_hash(0, redeemer)
   let redeemer_frontier = validation_merkle_v1.build_frontier([redeemer_leaf])
-  let native_control = validation_machine_v1.NativeScriptsControlV1 {
+  let native_control = vm_machine_types.NativeScriptsControlV1 {
     ..cek_context_native_control_fixture(tx),
     redeemer_count: 1,
     redeemer_peaks: redeemer_frontier.peaks,
@@ -9919,9 +9909,7 @@ test cek_redeemer_selection_binds_the_data_scan_initial_state() {
     8,
     redeemer_item_cbor,
   )
-  expect Some(redeemer_tag) = validation_machine_v1.redeemer_tag_for_purpose_kind_v1(
-    0,
-  )
+  expect Some(redeemer_tag) = vm_shared.redeemer_tag_for_purpose_kind_v1(0)
   let item_control = redeemer_item_proof_v1.initial_control_v1(
     redeemer_item_proof_v1.mode_descriptor,
     0,
@@ -9946,29 +9934,29 @@ test cek_redeemer_selection_binds_the_data_scan_initial_state() {
     chunk_proof: Some(redeemer_chunk_proof),
     next_chunk_proof: None,
   }
-  let initial_context = validation_machine_v1.CekContextControlV1 {
+  let initial_context = vm_machine_types.CekContextControlV1 {
     ..empty_cek_context_control_fixture(0),
     redeemer_leaf,
     execution_memory_limit: 0,
     execution_cpu_limit: 0,
   }
-  let opened_context = validation_machine_v1.CekContextControlV1 {
+  let opened_context = vm_machine_types.CekContextControlV1 {
     ..initial_context,
     redeemer_context_control_hash: redeemer_item_proof_v1.hash_control_v1(
       item_control,
     ),
   }
-  let tail_context = validation_machine_v1.CekContextControlV1 {
+  let tail_context = vm_machine_types.CekContextControlV1 {
     ..initial_context,
     redeemer_context_control_hash: redeemer_item_proof_v1.hash_control_v1(
       tail_control,
     ),
   }
-  let redeemer_context = validation_machine_v1.initial_cek_redeemer_context_control_v1()
-  let selected_context = validation_machine_v1.CekContextControlV1 {
+  let redeemer_context = vm_witness.initial_cek_redeemer_context_control_v1()
+  let selected_context = vm_machine_types.CekContextControlV1 {
     ..initial_context,
     stage: 1,
-    redeemer_context_control_hash: validation_machine_v1.hash_cek_redeemer_context_control_v1(
+    redeemer_context_control_hash: vm_witness.hash_cek_redeemer_context_control_v1(
       redeemer_context,
     ),
     execution_memory_limit: redeemer.execution_units.memory,
@@ -9977,40 +9965,40 @@ test cek_redeemer_selection_binds_the_data_scan_initial_state() {
   let Pair(pre, work_witness_cbor) = cek_state_fixture(
     tx,
     native_control,
-    validation_machine_v1.encode_cek_context_control_v1(initial_context),
+    vm_witness.encode_cek_context_control_v1(initial_context),
     0,
     41,
   )
   let Pair(opened, opened_witness_cbor) = cek_state_fixture(
     tx,
     native_control,
-    validation_machine_v1.encode_cek_context_control_v1(opened_context),
+    vm_witness.encode_cek_context_control_v1(opened_context),
     0,
     42,
   )
   let Pair(tail, tail_work_witness_cbor) = cek_state_fixture(
     tx,
     native_control,
-    validation_machine_v1.encode_cek_context_control_v1(tail_context),
+    vm_witness.encode_cek_context_control_v1(tail_context),
     0,
     43,
   )
   let Pair(post, _) = cek_state_fixture(
     tx,
     native_control,
-    validation_machine_v1.encode_cek_context_control_v1(selected_context),
+    vm_witness.encode_cek_context_control_v1(selected_context),
     0,
     44,
   )
   and {
-    validation_machine_v1.verify_one_step_evidence(
+    vm_one_step.verify_one_step_evidence(
       pre,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
-        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepEvidenceV1 {
+        transition: vm_machine_types.ValidationOneStepWitnessV1 {
           work_witness_cbor,
           claimed_successor: opened,
         },
-        auxiliary: validation_machine_v1.RedeemerScanBeginWitness {
+        auxiliary: vm_machine_types.RedeemerScanBeginWitness {
           item_index: 0,
           item_count: 1,
           total_length: bytearray.length(redeemer_item_cbor),
@@ -10020,14 +10008,14 @@ test cek_redeemer_selection_binds_the_data_scan_initial_state() {
       },
       inline_field_door(),
     ),
-    validation_machine_v1.verify_one_step_evidence(
+    vm_one_step.verify_one_step_evidence(
       opened,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
-        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepEvidenceV1 {
+        transition: vm_machine_types.ValidationOneStepWitnessV1 {
           work_witness_cbor: opened_witness_cbor,
           claimed_successor: tail,
         },
-        auxiliary: validation_machine_v1.RedeemerItemStepWitness {
+        auxiliary: vm_machine_types.RedeemerItemStepWitness {
           redeemer_control: None,
           control: item_control,
           witness: header_witness,
@@ -10035,14 +10023,14 @@ test cek_redeemer_selection_binds_the_data_scan_initial_state() {
       },
       inline_field_door(),
     ),
-    validation_machine_v1.verify_one_step_evidence(
+    vm_one_step.verify_one_step_evidence(
       tail,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
-        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepEvidenceV1 {
+        transition: vm_machine_types.ValidationOneStepWitnessV1 {
           work_witness_cbor: tail_work_witness_cbor,
           claimed_successor: post,
         },
-        auxiliary: validation_machine_v1.RedeemerItemStepWitness {
+        auxiliary: vm_machine_types.RedeemerItemStepWitness {
           redeemer_control: None,
           control: tail_control,
           witness: tail_witness,
@@ -10120,11 +10108,11 @@ test cek_context_spend_item_uses_authenticated_descriptor_frontier() {
   let purpose_leaf = script_proof_v1.purpose_leaf_hash(0, 0, h_28_a, key)
   let purpose_frontier = validation_merkle_v1.build_frontier([purpose_leaf])
   let execution_frontier = validation_merkle_v1.build_frontier([h_a])
-  let control = validation_machine_v1.NativeScriptsControlV1 {
+  let control = vm_machine_types.NativeScriptsControlV1 {
     ..empty_native_control_fixture(tx),
     resolved_input_count: 1,
-    resolved_inputs_accumulator: validation_machine_v1.resolved_input_accumulator_successor(
-      validation_machine_v1.initial_resolution_accumulator(),
+    resolved_inputs_accumulator: vm_witness.resolved_input_accumulator_successor(
+      vm_witness.initial_resolution_accumulator(),
       0,
       key,
       descriptor_cbor,
@@ -10138,7 +10126,7 @@ test cek_context_spend_item_uses_authenticated_descriptor_frontier() {
     execution_cursor: 1,
     language_bitmap: 1,
   }
-  let context_control = validation_machine_v1.CekContextControlV1 {
+  let context_control = vm_machine_types.CekContextControlV1 {
     stage: 2,
     language_tag: 3,
     program_term_root: h_a,
@@ -10148,8 +10136,8 @@ test cek_context_spend_item_uses_authenticated_descriptor_frontier() {
     script_hash: h_28_a,
     subject: key,
     redeemer_leaf: h_c,
-    redeemer_context_control_hash: validation_machine_v1.hash_cek_redeemer_context_control_v1(
-      validation_machine_v1.initial_cek_redeemer_context_control_v1(),
+    redeemer_context_control_hash: vm_witness.hash_cek_redeemer_context_control_v1(
+      vm_witness.initial_cek_redeemer_context_control_v1(),
     ),
     execution_memory_limit: 10,
     execution_cpu_limit: 20,
@@ -10190,15 +10178,15 @@ test cek_context_spend_item_uses_authenticated_descriptor_frontier() {
   let Pair(pre, work_witness_cbor) = cek_state_fixture(
     tx,
     control,
-    validation_machine_v1.encode_cek_context_control_v1(context_control),
+    vm_witness.encode_cek_context_control_v1(context_control),
     0,
     41,
   )
   let Pair(post, _) = cek_state_fixture(
     tx,
     control,
-    validation_machine_v1.encode_cek_context_control_v1(
-      validation_machine_v1.CekContextControlV1 {
+    vm_witness.encode_cek_context_control_v1(
+      vm_machine_types.CekContextControlV1 {
         ..context_control,
         spend_items: next_spend_items,
       },
@@ -10206,12 +10194,12 @@ test cek_context_spend_item_uses_authenticated_descriptor_frontier() {
     0,
     42,
   )
-  let evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
-    transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+  let evidence = vm_machine_types.ValidationOneStepEvidenceV1 {
+    transition: vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: post,
     },
-    auxiliary: validation_machine_v1.CekResolvedContextItemWitness {
+    auxiliary: vm_machine_types.CekResolvedContextItemWitness {
       source_kind: 0,
       item_index: 0,
       key,
@@ -10220,7 +10208,7 @@ test cek_context_spend_item_uses_authenticated_descriptor_frontier() {
     },
   }
   and {
-    validation_machine_v1.verify_cek_spend_context_step(
+    vm_cek.verify_cek_spend_context_step(
       pre,
       evidence.transition,
       evidence.auxiliary,
@@ -10271,11 +10259,11 @@ test cek_context_reference_item_uses_authenticated_descriptor_frontier() {
     descriptor_cbor,
   )
   let resolved_frontier = validation_merkle_v1.build_frontier([resolved_leaf])
-  let control = validation_machine_v1.NativeScriptsControlV1 {
+  let control = vm_machine_types.NativeScriptsControlV1 {
     ..empty_native_control_fixture(tx),
     resolved_input_count: 1,
-    resolved_inputs_accumulator: validation_machine_v1.resolved_input_accumulator_successor(
-      validation_machine_v1.initial_resolution_accumulator(),
+    resolved_inputs_accumulator: vm_witness.resolved_input_accumulator_successor(
+      vm_witness.initial_resolution_accumulator(),
       1,
       key,
       descriptor_cbor,
@@ -10284,7 +10272,7 @@ test cek_context_reference_item_uses_authenticated_descriptor_frontier() {
     resolved_item_peaks: resolved_frontier.peaks,
     execution_cursor: 0,
   }
-  let context_control = validation_machine_v1.CekContextControlV1 {
+  let context_control = vm_machine_types.CekContextControlV1 {
     ..empty_cek_context_control_fixture(1),
     language_tag: 128,
   }
@@ -10300,31 +10288,31 @@ test cek_context_reference_item_uses_authenticated_descriptor_frontier() {
     True,
     context_control.reference_items,
   )
-  let next_control = validation_machine_v1.CekContextControlV1 {
+  let next_control = vm_machine_types.CekContextControlV1 {
     ..context_control,
     reference_items: next_reference_items,
   }
   let Pair(pre, work_witness_cbor) = cek_state_fixture(
     tx,
     control,
-    validation_machine_v1.encode_cek_context_control_v1(context_control),
+    vm_witness.encode_cek_context_control_v1(context_control),
     0,
     42,
   )
   let Pair(post, _) = cek_state_fixture(
     tx,
     control,
-    validation_machine_v1.encode_cek_context_control_v1(next_control),
+    vm_witness.encode_cek_context_control_v1(next_control),
     0,
     43,
   )
-  validation_machine_v1.verify_cek_reference_context_step(
+  vm_cek.verify_cek_reference_context_step(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: post,
     },
-    validation_machine_v1.CekResolvedContextItemWitness {
+    vm_machine_types.CekResolvedContextItemWitness {
       source_kind: 1,
       item_index: 0,
       key,
@@ -10361,7 +10349,7 @@ test cek_context_output_item_uses_authenticated_descriptor_frontier() {
   let descriptor_frontier = validation_merkle_v1.build_frontier(
     [descriptor_leaf],
   )
-  let control = validation_machine_v1.NativeScriptsControlV1 {
+  let control = vm_machine_types.NativeScriptsControlV1 {
     ..cek_context_native_control_fixture(tx),
     output_count: 1,
     output_descriptor_peaks: descriptor_frontier.peaks,
@@ -10376,37 +10364,37 @@ test cek_context_output_item_uses_authenticated_descriptor_frontier() {
     False,
     context_control.output_items,
   )
-  let next_control = validation_machine_v1.CekContextControlV1 {
+  let next_control = vm_machine_types.CekContextControlV1 {
     ..context_control,
     output_items: next_output_items,
   }
   let Pair(pre, work_witness_cbor) = cek_state_fixture(
     tx,
     control,
-    validation_machine_v1.encode_cek_context_control_v1(context_control),
+    vm_witness.encode_cek_context_control_v1(context_control),
     0,
     43,
   )
   let Pair(post, _) = cek_state_fixture(
     tx,
     control,
-    validation_machine_v1.encode_cek_context_control_v1(next_control),
+    vm_witness.encode_cek_context_control_v1(next_control),
     0,
     44,
   )
-  let evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
-    transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+  let evidence = vm_machine_types.ValidationOneStepEvidenceV1 {
+    transition: vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: post,
     },
-    auxiliary: validation_machine_v1.CekOutputContextItemWitness {
+    auxiliary: vm_machine_types.CekOutputContextItemWitness {
       output_index: 0,
       descriptor_cbor,
       siblings: [],
     },
   }
   and {
-    validation_machine_v1.verify_cek_output_context_step(
+    vm_cek.verify_cek_output_context_step(
       pre,
       evidence.transition,
       evidence.auxiliary,
@@ -10758,7 +10746,7 @@ fn verify_maximum_field_terminal_fixture_v1(
     fixture.field_preimage_lengths_cbor,
   )
   let terminal_item = terminal_fixture_item(fixture)
-  let work_witness_cbor = validation_machine_v1.encode_transaction_field_scan_witness(
+  let work_witness_cbor = vm_witness.encode_transaction_field_scan_witness(
     fixture.compact_cbor,
     fixture.witness_set_compact_cbor,
     fixture.field_preimage_lengths_cbor,
@@ -10769,7 +10757,7 @@ fn verify_maximum_field_terminal_fixture_v1(
     fixture.item_count,
     fixture.encoded_length_before_item,
   )
-  let successor_work_witness_cbor = validation_machine_v1.encode_transaction_field_scan_witness(
+  let successor_work_witness_cbor = vm_witness.encode_transaction_field_scan_witness(
     fixture.compact_cbor,
     fixture.witness_set_compact_cbor,
     fixture.field_preimage_lengths_cbor,
@@ -10790,7 +10778,7 @@ fn verify_maximum_field_terminal_fixture_v1(
       successor_work_witness_cbor,
     ),
   }
-  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: post,
   }
@@ -10817,7 +10805,7 @@ fn verify_maximum_field_terminal_fixture_v1(
       bytearray.length(terminal_item),
     ),
     // The terminal fold authenticates.
-    validation_machine_v1.verify_canonical_decode_chunk_semantics_v1(
+    vm_canonical_decode.verify_canonical_decode_chunk_semantics_v1(
       pre,
       transition,
       inline_field_door(),
@@ -10828,7 +10816,7 @@ fn verify_maximum_field_terminal_fixture_v1(
     // Evidence naming a neighbouring slot does not authenticate this one: §4
     // removed domain separation and the machine re-establishes it by checking the
     // index against the control's.
-    !validation_machine_v1.verify_canonical_decode_chunk_semantics_v1(
+    !vm_canonical_decode.verify_canonical_decode_chunk_semantics_v1(
       pre,
       transition,
       inline_field_door(),
@@ -10837,7 +10825,7 @@ fn verify_maximum_field_terminal_fixture_v1(
       terminal_fixture_carriage(fixture),
     ),
     // Nor does evidence naming a different item of the same field.
-    !validation_machine_v1.verify_canonical_decode_chunk_semantics_v1(
+    !vm_canonical_decode.verify_canonical_decode_chunk_semantics_v1(
       pre,
       transition,
       inline_field_door(),
@@ -10850,9 +10838,9 @@ fn verify_maximum_field_terminal_fixture_v1(
     // one of the two `CanonicalDecode` verdicts the door leaves reachable (the
     // other being `reject_invalid_field_type`; committed bytes that are not a
     // §5.1 envelope at all are #596's).
-    validation_machine_v1.verify_canonical_decode_chunk_semantics_v1(
+    vm_canonical_decode.verify_canonical_decode_chunk_semantics_v1(
       alternate_length_pre,
-      validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: terminal_fixture_alternate_length_work_witness(
           fixture,
         ),
@@ -10946,7 +10934,7 @@ fn terminal_fixture_alternate_length_cbor(
 fn terminal_fixture_alternate_length_work_witness(
   fixture: MaximumFieldTerminalFixtureV1,
 ) -> ByteArray {
-  validation_machine_v1.encode_transaction_field_scan_witness(
+  vm_witness.encode_transaction_field_scan_witness(
     fixture.compact_cbor,
     fixture.witness_set_compact_cbor,
     terminal_fixture_alternate_length_cbor(fixture),
@@ -11120,7 +11108,7 @@ test cek_context_signer_item_uses_authenticated_signer_frontier() {
   let signer_hash = h_28_b
   let signer_leaf = script_proof_v1.signer_leaf_hash(signer_hash)
   let signer_frontier = validation_merkle_v1.build_frontier([signer_leaf])
-  let control = validation_machine_v1.NativeScriptsControlV1 {
+  let control = vm_machine_types.NativeScriptsControlV1 {
     ..cek_context_native_control_fixture(tx),
     signer_count: 1,
     signer_frontier_commitment: validation_merkle_v1.frontier_commitment(
@@ -11141,15 +11129,15 @@ test cek_context_signer_item_uses_authenticated_signer_frontier() {
   let Pair(pre, work_witness_cbor) = cek_state_fixture(
     tx,
     control,
-    validation_machine_v1.encode_cek_context_control_v1(context_control),
+    vm_witness.encode_cek_context_control_v1(context_control),
     0,
     43,
   )
   let Pair(post, _) = cek_state_fixture(
     tx,
     control,
-    validation_machine_v1.encode_cek_context_control_v1(
-      validation_machine_v1.CekContextControlV1 {
+    vm_witness.encode_cek_context_control_v1(
+      vm_machine_types.CekContextControlV1 {
         ..context_control,
         signer_items: next_signer_items,
       },
@@ -11157,14 +11145,14 @@ test cek_context_signer_item_uses_authenticated_signer_frontier() {
     0,
     44,
   )
-  validation_machine_v1.verify_one_step_evidence(
+  vm_one_step.verify_one_step_evidence(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.CekSignerContextItemWitness {
+      auxiliary: vm_machine_types.CekSignerContextItemWitness {
         peaks: signer_frontier.peaks,
         signer_index: 0,
         signer_hash,
@@ -11182,7 +11170,7 @@ test cek_context_observer_cardano_maximum_224_first_item_and_terminal_agree() {
   // two hand-mirrored copies that could drift apart (#590).
   let transaction_id = maximum_observer_terminal_transaction_id
   let transaction_commitment = maximum_observer_terminal_transaction_commitment
-  let native_control = validation_machine_v1.NativeScriptsControlV1 {
+  let native_control = vm_machine_types.NativeScriptsControlV1 {
     ..cek_context_native_control_fixture(base),
     compact_cbor: maximum_observer_terminal_compact_cbor,
     witness_set_compact_cbor: maximum_observer_terminal_witness_set_compact_cbor,
@@ -11200,18 +11188,18 @@ test cek_context_observer_cardano_maximum_224_first_item_and_terminal_agree() {
       maximum_observer_terminal_field_preimage_cbor,
     ),
   )
-  let first_items = validation_machine_v1.prepend_cek_observer_item_v1(
+  let first_items = vm_shared.prepend_cek_observer_item_v1(
     observer_hash,
     False,
     context_control.observer_items,
   )
-  let first_control = validation_machine_v1.CekContextControlV1 {
+  let first_control = vm_machine_types.CekContextControlV1 {
     ..context_control,
     observer_count: 224,
     observer_items: first_items,
     previous_observer: observer_hash,
   }
-  let mismatched_count_control = validation_machine_v1.CekContextControlV1 {
+  let mismatched_count_control = vm_machine_types.CekContextControlV1 {
     ..first_control,
     observer_count: 225,
   }
@@ -11221,7 +11209,7 @@ test cek_context_observer_cardano_maximum_224_first_item_and_terminal_agree() {
     payload_cbor_length: 7840,
     memory: 9184,
   }
-  let complete_control = validation_machine_v1.CekContextControlV1 {
+  let complete_control = vm_machine_types.CekContextControlV1 {
     ..context_control,
     observer_count: 224,
     observer_items: complete_items,
@@ -11232,13 +11220,13 @@ test cek_context_observer_cardano_maximum_224_first_item_and_terminal_agree() {
     cbor_length: 7842,
     memory: 9188,
   }
-  let final_control = validation_machine_v1.CekContextControlV1 {
+  let final_control = vm_machine_types.CekContextControlV1 {
     ..complete_control,
     stage: 6,
     observer_summary,
   }
   and {
-    observer_summary == validation_machine_v1.finalize_cek_observer_items_v1(
+    observer_summary == vm_shared.finalize_cek_observer_items_v1(
       complete_items,
       False,
     ),
@@ -11248,7 +11236,7 @@ test cek_context_observer_cardano_maximum_224_first_item_and_terminal_agree() {
       native_control,
       context_control,
       first_control,
-      validation_machine_v1.TransactionFieldChunkWitness {
+      vm_machine_types.TransactionFieldChunkWitness {
         field_index: 3,
         item_index: 223,
         carriage: observers_carriage,
@@ -11261,7 +11249,7 @@ test cek_context_observer_cardano_maximum_224_first_item_and_terminal_agree() {
       native_control,
       complete_control,
       final_control,
-      validation_machine_v1.NoAuxiliaryWitness,
+      vm_machine_types.NoAuxiliaryWitness,
       46,
     ),
     !verify_cek_context_source_transition_fixture(
@@ -11275,7 +11263,7 @@ test cek_context_observer_cardano_maximum_224_first_item_and_terminal_agree() {
       // is the successor's `observer_count`, and `mismatched_count_control` does
       // exactly that against the honest carriage — the same 225-against-224
       // overstatement the retired `ItemProofV1.item_count: 225` expressed.
-      validation_machine_v1.TransactionFieldChunkWitness {
+      vm_machine_types.TransactionFieldChunkWitness {
         field_index: 3,
         item_index: 223,
         carriage: observers_carriage,
@@ -11289,11 +11277,11 @@ test cek_context_observer_empty_field_has_exact_no_auxiliary_path() {
   let tx = empty_v1_transaction()
   let native_control = cek_context_native_control_fixture(tx)
   let context_control = empty_cek_context_control_fixture(5)
-  let observer_summary = validation_machine_v1.finalize_cek_observer_items_v1(
+  let observer_summary = vm_shared.finalize_cek_observer_items_v1(
     context_control.observer_items,
     False,
   )
-  let successor_control = validation_machine_v1.CekContextControlV1 {
+  let successor_control = vm_machine_types.CekContextControlV1 {
     ..context_control,
     stage: 6,
     observer_summary,
@@ -11305,7 +11293,7 @@ test cek_context_observer_empty_field_has_exact_no_auxiliary_path() {
       native_control,
       context_control,
       successor_control,
-      validation_machine_v1.NoAuxiliaryWitness,
+      vm_machine_types.NoAuxiliaryWitness,
       48,
     ),
     !verify_cek_context_transition_fixture(
@@ -11316,7 +11304,7 @@ test cek_context_observer_empty_field_has_exact_no_auxiliary_path() {
       // An empty field-3 slot admits no item step at all: the auxiliary must be
       // `NoAuxiliaryWitness`, so any carriage — even one that is a well-formed
       // §5.1 preimage — is refused before the door is consulted.
-      validation_machine_v1.TransactionFieldChunkWitness {
+      vm_machine_types.TransactionFieldChunkWitness {
         field_index: 3,
         item_index: 0,
         carriage,
@@ -11354,53 +11342,53 @@ test cek_context_observer_rejects_malformed_proofs_order_and_successors() {
   let native_control = cek_context_native_control_fixture(tx)
   let context_control = empty_cek_context_control_fixture(5)
   let observers_carriage = observer_field_carriage(2)
-  let first_items = validation_machine_v1.prepend_cek_observer_item_v1(
+  let first_items = vm_shared.prepend_cek_observer_item_v1(
     observer_hash_at(1),
     False,
     context_control.observer_items,
   )
-  let first_control = validation_machine_v1.CekContextControlV1 {
+  let first_control = vm_machine_types.CekContextControlV1 {
     ..context_control,
     observer_count: 2,
     observer_items: first_items,
     previous_observer: observer_hash_at(1),
   }
-  let malformed_successor = validation_machine_v1.CekContextControlV1 {
+  let malformed_successor = vm_machine_types.CekContextControlV1 {
     ..first_control,
     previous_observer: observer_hash_at(0),
   }
   // Replaces the retired `ItemProofV1.item_count: 1` perturbation: the field's
   // authenticated §5.2 count is 2, and a successor claiming 1 is the same
   // understatement, now made where a prover can actually make it.
-  let understated_count_successor = validation_machine_v1.CekContextControlV1 {
+  let understated_count_successor = vm_machine_types.CekContextControlV1 {
     ..first_control,
     observer_count: 1,
   }
-  let next_items = validation_machine_v1.prepend_cek_observer_item_v1(
+  let next_items = vm_shared.prepend_cek_observer_item_v1(
     observer_hash_at(0),
     False,
     first_items,
   )
-  let wrong_order_control = validation_machine_v1.CekContextControlV1 {
+  let wrong_order_control = vm_machine_types.CekContextControlV1 {
     ..first_control,
     previous_observer: observer_hash_at(0),
   }
-  let complete_control = validation_machine_v1.CekContextControlV1 {
+  let complete_control = vm_machine_types.CekContextControlV1 {
     ..wrong_order_control,
     observer_items: next_items,
   }
-  let exact_summary = validation_machine_v1.finalize_cek_observer_items_v1(
+  let exact_summary = vm_shared.finalize_cek_observer_items_v1(
     next_items,
     False,
   )
   let wrong_summary = cek_data_v1.DataSummaryV1 { ..exact_summary, root: h_a }
-  let wrong_summary_control = validation_machine_v1.CekContextControlV1 {
+  let wrong_summary_control = vm_machine_types.CekContextControlV1 {
     ..complete_control,
     stage: 6,
     observer_summary: wrong_summary,
   }
   // The list is built back to front, so the first item step must read index 1.
-  let honest_auxiliary = validation_machine_v1.TransactionFieldChunkWitness {
+  let honest_auxiliary = vm_machine_types.TransactionFieldChunkWitness {
     field_index: 3,
     item_index: 1,
     carriage: observers_carriage,
@@ -11430,7 +11418,7 @@ test cek_context_observer_rejects_malformed_proofs_order_and_successors() {
       native_control,
       context_control,
       first_control,
-      validation_machine_v1.TransactionFieldChunkWitness {
+      vm_machine_types.TransactionFieldChunkWitness {
         field_index: 3,
         item_index: 0,
         carriage: observers_carriage,
@@ -11453,7 +11441,7 @@ test cek_context_observer_rejects_malformed_proofs_order_and_successors() {
       native_control,
       context_control,
       first_control,
-      validation_machine_v1.TransactionFieldChunkWitness {
+      vm_machine_types.TransactionFieldChunkWitness {
         field_index: 2,
         item_index: 1,
         carriage: observers_carriage,
@@ -11467,7 +11455,7 @@ test cek_context_observer_rejects_malformed_proofs_order_and_successors() {
       native_control,
       wrong_order_control,
       complete_control,
-      validation_machine_v1.TransactionFieldChunkWitness {
+      vm_machine_types.TransactionFieldChunkWitness {
         field_index: 3,
         item_index: 0,
         carriage: observers_carriage,
@@ -11480,7 +11468,7 @@ test cek_context_observer_rejects_malformed_proofs_order_and_successors() {
       native_control,
       complete_control,
       wrong_summary_control,
-      validation_machine_v1.NoAuxiliaryWitness,
+      vm_machine_types.NoAuxiliaryWitness,
       58,
     ),
   }
@@ -11490,15 +11478,15 @@ test cek_context_observer_complete_summary_relation_is_exact() {
   let tx = empty_v1_transaction()
   let native_control = cek_context_native_control_fixture(tx)
   let empty_items = cek_data_v1.empty_data_pair_summary_v1()
-  let exact_summary = validation_machine_v1.finalize_cek_observer_items_v1(
+  let exact_summary = vm_shared.finalize_cek_observer_items_v1(
     empty_items,
     False,
   )
-  let malformed_control = validation_machine_v1.CekContextControlV1 {
+  let malformed_control = vm_machine_types.CekContextControlV1 {
     ..empty_cek_context_control_fixture(6),
     observer_summary: cek_data_v1.DataSummaryV1 { ..exact_summary, root: h_a },
   }
-  let successor_control = validation_machine_v1.CekContextControlV1 {
+  let successor_control = vm_machine_types.CekContextControlV1 {
     ..empty_cek_context_control_fixture(9),
     observer_summary: exact_summary,
     mint_summary: cek_data_v1.map_data_summary_v1(
@@ -11508,25 +11496,25 @@ test cek_context_observer_complete_summary_relation_is_exact() {
   let Pair(pre, work_witness_cbor) = cek_state_fixture(
     tx,
     native_control,
-    validation_machine_v1.encode_cek_context_control_v1(malformed_control),
+    vm_witness.encode_cek_context_control_v1(malformed_control),
     0,
     59,
   )
   let Pair(post, _) = cek_state_fixture(
     tx,
     native_control,
-    validation_machine_v1.encode_cek_context_control_v1(successor_control),
+    vm_witness.encode_cek_context_control_v1(successor_control),
     0,
     60,
   )
-  !validation_machine_v1.verify_cek_one_step_v1(
+  !vm_one_step.verify_cek_one_step_v1(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+      auxiliary: vm_machine_types.NoAuxiliaryWitness,
     },
     inline_field_door(),
   )
@@ -11547,9 +11535,9 @@ test cek_context_mint_is_authenticated_and_folded_incrementally() {
     ..base,
     body: MidgardTransactionBody { ..base.body, mint },
   }
-  let mint_leaf = validation_machine_v1.mint_asset_leaf_hash(h_28_a, #"01", -5)
+  let mint_leaf = vm_shared.mint_asset_leaf_hash(h_28_a, #"01", -5)
   let mint_frontier = validation_merkle_v1.build_frontier([mint_leaf])
-  let control = validation_machine_v1.NativeScriptsControlV1 {
+  let control = vm_machine_types.NativeScriptsControlV1 {
     ..cek_context_native_control_fixture(tx),
     mint_count: mint_frontier.count,
     mint_peaks: mint_frontier.peaks,
@@ -11558,36 +11546,36 @@ test cek_context_mint_is_authenticated_and_folded_incrementally() {
     [],
     False,
   )
-  let init_control = validation_machine_v1.CekContextControlV1 {
+  let init_control = vm_machine_types.CekContextControlV1 {
     ..empty_cek_context_control_fixture(6),
     observer_summary,
   }
-  let semantic_control = validation_machine_v1.CekContextControlV1 {
+  let semantic_control = vm_machine_types.CekContextControlV1 {
     ..init_control,
     stage: 8,
   }
   let Pair(init_pre, init_work_witness_cbor) = cek_state_fixture(
     tx,
     control,
-    validation_machine_v1.encode_cek_context_control_v1(init_control),
+    vm_witness.encode_cek_context_control_v1(init_control),
     0,
     47,
   )
   let Pair(init_post, _) = cek_state_fixture(
     tx,
     control,
-    validation_machine_v1.encode_cek_context_control_v1(semantic_control),
+    vm_witness.encode_cek_context_control_v1(semantic_control),
     0,
     48,
   )
-  let init_step = validation_machine_v1.verify_cek_one_step_v1(
+  let init_step = vm_one_step.verify_cek_one_step_v1(
     init_pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: init_work_witness_cbor,
         claimed_successor: init_post,
       },
-      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+      auxiliary: vm_machine_types.NoAuxiliaryWitness,
     },
     inline_field_door(),
   )
@@ -11596,7 +11584,7 @@ test cek_context_mint_is_authenticated_and_folded_incrementally() {
     builtin.i_data(-5) |> cek_data_v1.semantic_data_summary_v1,
     cek_data_v1.empty_data_pair_summary_v1(),
   )
-  let item_control = validation_machine_v1.CekContextControlV1 {
+  let item_control = vm_machine_types.CekContextControlV1 {
     ..semantic_control,
     mint_cursor: 1,
     current_mint_policy: h_28_a,
@@ -11605,25 +11593,25 @@ test cek_context_mint_is_authenticated_and_folded_incrementally() {
   let Pair(item_pre, item_work_witness_cbor) = cek_state_fixture(
     tx,
     control,
-    validation_machine_v1.encode_cek_context_control_v1(semantic_control),
+    vm_witness.encode_cek_context_control_v1(semantic_control),
     0,
     48,
   )
   let Pair(item_post, _) = cek_state_fixture(
     tx,
     control,
-    validation_machine_v1.encode_cek_context_control_v1(item_control),
+    vm_witness.encode_cek_context_control_v1(item_control),
     0,
     49,
   )
-  let item_step = validation_machine_v1.verify_cek_one_step_v1(
+  let item_step = vm_one_step.verify_cek_one_step_v1(
     item_pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: item_work_witness_cbor,
         claimed_successor: item_post,
       },
-      auxiliary: validation_machine_v1.CekMintContextItemWitness {
+      auxiliary: vm_machine_types.CekMintContextItemWitness {
         mint_index: 0,
         policy_id: h_28_a,
         asset_name: #"01",
@@ -11638,7 +11626,7 @@ test cek_context_mint_is_authenticated_and_folded_incrementally() {
     cek_data_v1.map_data_summary_v1(asset_items),
     cek_data_v1.empty_data_pair_summary_v1(),
   )
-  let final_control = validation_machine_v1.CekContextControlV1 {
+  let final_control = vm_machine_types.CekContextControlV1 {
     ..item_control,
     stage: 9,
     current_mint_policy: #"",
@@ -11649,25 +11637,25 @@ test cek_context_mint_is_authenticated_and_folded_incrementally() {
   let Pair(final_pre, final_work_witness_cbor) = cek_state_fixture(
     tx,
     control,
-    validation_machine_v1.encode_cek_context_control_v1(item_control),
+    vm_witness.encode_cek_context_control_v1(item_control),
     0,
     49,
   )
   let Pair(final_post, _) = cek_state_fixture(
     tx,
     control,
-    validation_machine_v1.encode_cek_context_control_v1(final_control),
+    vm_witness.encode_cek_context_control_v1(final_control),
     0,
     50,
   )
-  let final_step = validation_machine_v1.verify_cek_one_step_v1(
+  let final_step = vm_one_step.verify_cek_one_step_v1(
     final_pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: final_work_witness_cbor,
         claimed_successor: final_post,
       },
-      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+      auxiliary: vm_machine_types.NoAuxiliaryWitness,
     },
     inline_field_door(),
   )
@@ -11700,7 +11688,7 @@ test cek_context_redeemer_scalar_scan_is_content_addressed() {
   let purpose_leaf = script_proof_v1.purpose_leaf_hash(0, 0, h_28_a, subject)
   let redeemer_frontier = validation_merkle_v1.build_frontier([redeemer_leaf])
   let purpose_frontier = validation_merkle_v1.build_frontier([purpose_leaf])
-  let native_control = validation_machine_v1.NativeScriptsControlV1 {
+  let native_control = vm_machine_types.NativeScriptsControlV1 {
     ..cek_context_native_control_fixture(tx),
     redeemer_count: 1,
     redeemer_peaks: redeemer_frontier.peaks,
@@ -11730,19 +11718,19 @@ test cek_context_redeemer_scalar_scan_is_content_addressed() {
     subject,
     False,
   )
-  let active_redeemers = validation_machine_v1.CekRedeemerContextControlV1 {
-    ..validation_machine_v1.initial_cek_redeemer_context_control_v1(),
+  let active_redeemers = vm_machine_types.CekRedeemerContextControlV1 {
+    ..vm_witness.initial_cek_redeemer_context_control_v1(),
     active_scan_hash: cek_data_scan_v1.hash_control_v1(scan),
     active_redeemer_leaf: redeemer_leaf,
     active_purpose: purpose_summary,
   }
-  let context_control = validation_machine_v1.CekContextControlV1 {
+  let context_control = vm_machine_types.CekContextControlV1 {
     ..empty_cek_context_control_fixture(9),
     subject,
     redeemer_leaf,
     observer_summary,
     mint_summary,
-    redeemer_context_control_hash: validation_machine_v1.hash_cek_redeemer_context_control_v1(
+    redeemer_context_control_hash: vm_witness.hash_cek_redeemer_context_control_v1(
       active_redeemers,
     ),
   }
@@ -11751,7 +11739,7 @@ test cek_context_redeemer_scalar_scan_is_content_addressed() {
     completed_scan.result,
     cek_data_v1.empty_data_pair_summary_v1(),
   )
-  let completed_redeemers = validation_machine_v1.CekRedeemerContextControlV1 {
+  let completed_redeemers = vm_machine_types.CekRedeemerContextControlV1 {
     cursor: 1,
     map_items,
     active_scan_hash: #"",
@@ -11759,24 +11747,24 @@ test cek_context_redeemer_scalar_scan_is_content_addressed() {
     active_purpose: cek_data_scan_v1.empty_result_v1(),
     current_redeemer: completed_scan.result,
   }
-  let next_control = validation_machine_v1.CekContextControlV1 {
+  let next_control = vm_machine_types.CekContextControlV1 {
     ..context_control,
     stage: 10,
-    redeemer_context_control_hash: validation_machine_v1.hash_cek_redeemer_context_control_v1(
+    redeemer_context_control_hash: vm_witness.hash_cek_redeemer_context_control_v1(
       completed_redeemers,
     ),
   }
   let Pair(pre, work_witness_cbor) = cek_state_fixture(
     tx,
     native_control,
-    validation_machine_v1.encode_cek_context_control_v1(context_control),
+    vm_witness.encode_cek_context_control_v1(context_control),
     0,
     52,
   )
   let Pair(post, _) = cek_state_fixture(
     tx,
     native_control,
-    validation_machine_v1.encode_cek_context_control_v1(next_control),
+    vm_witness.encode_cek_context_control_v1(next_control),
     0,
     53,
   )
@@ -11784,7 +11772,7 @@ test cek_context_redeemer_scalar_scan_is_content_addressed() {
     pre.program_counter == 52,
     work_witness_cbor != #"",
     post.program_counter == 53,
-    validation_machine_v1.hash_cek_redeemer_context_control_v1(active_redeemers) != #"",
+    vm_witness.hash_cek_redeemer_context_control_v1(active_redeemers) != #"",
   }
 }
 
@@ -11810,13 +11798,13 @@ test cek_context_redeemer_map_selection_authenticates_purpose_and_redeemer() {
   let purpose_leaf = script_proof_v1.purpose_leaf_hash(0, 0, h_28_a, subject)
   let redeemer_frontier = validation_merkle_v1.build_frontier([redeemer_leaf])
   let purpose_frontier = validation_merkle_v1.build_frontier([purpose_leaf])
-  let native_control = validation_machine_v1.NativeScriptsControlV1 {
+  let native_control = vm_machine_types.NativeScriptsControlV1 {
     ..cek_context_native_control_fixture(tx),
     redeemer_count: 1,
     redeemer_peaks: redeemer_frontier.peaks,
     purpose_peaks: purpose_frontier.peaks,
   }
-  let initial_redeemers = validation_machine_v1.initial_cek_redeemer_context_control_v1()
+  let initial_redeemers = vm_witness.initial_cek_redeemer_context_control_v1()
   // The active redeemer scan is a bounded `redeemer_item_proof_v1` control, not
   // the superseded free-standing `cek_data_scan_v1` control:
   // `verify_cek_redeemer_data_step` seeds `active_scan_hash` with
@@ -11830,9 +11818,7 @@ test cek_context_redeemer_map_selection_authenticates_purpose_and_redeemer() {
     0,
     redeemer_item_cbor,
   )
-  expect Some(redeemer_tag) = validation_machine_v1.redeemer_tag_for_purpose_kind_v1(
-    0,
-  )
+  expect Some(redeemer_tag) = vm_shared.redeemer_tag_for_purpose_kind_v1(0)
   let item_control = redeemer_item_proof_v1.initial_control_v1(
     redeemer_item_proof_v1.mode_data,
     0,
@@ -11848,7 +11834,7 @@ test cek_context_redeemer_map_selection_authenticates_purpose_and_redeemer() {
     subject,
     False,
   )
-  let active_redeemers = validation_machine_v1.CekRedeemerContextControlV1 {
+  let active_redeemers = vm_machine_types.CekRedeemerContextControlV1 {
     ..initial_redeemers,
     active_scan_hash: redeemer_item_proof_v1.hash_control_v1(item_control),
     active_redeemer_leaf: redeemer_leaf,
@@ -11858,7 +11844,7 @@ test cek_context_redeemer_map_selection_authenticates_purpose_and_redeemer() {
     [],
     False,
   )
-  let context_control = validation_machine_v1.CekContextControlV1 {
+  let context_control = vm_machine_types.CekContextControlV1 {
     ..empty_cek_context_control_fixture(9),
     subject,
     redeemer_leaf,
@@ -11866,38 +11852,38 @@ test cek_context_redeemer_map_selection_authenticates_purpose_and_redeemer() {
     mint_summary: cek_data_v1.map_data_summary_v1(
       cek_data_v1.empty_data_pair_summary_v1(),
     ),
-    redeemer_context_control_hash: validation_machine_v1.hash_cek_redeemer_context_control_v1(
+    redeemer_context_control_hash: vm_witness.hash_cek_redeemer_context_control_v1(
       initial_redeemers,
     ),
   }
-  let next_control = validation_machine_v1.CekContextControlV1 {
+  let next_control = vm_machine_types.CekContextControlV1 {
     ..context_control,
-    redeemer_context_control_hash: validation_machine_v1.hash_cek_redeemer_context_control_v1(
+    redeemer_context_control_hash: vm_witness.hash_cek_redeemer_context_control_v1(
       active_redeemers,
     ),
   }
   let Pair(pre, work_witness_cbor) = cek_state_fixture(
     tx,
     native_control,
-    validation_machine_v1.encode_cek_context_control_v1(context_control),
+    vm_witness.encode_cek_context_control_v1(context_control),
     0,
     53,
   )
   let Pair(post, _) = cek_state_fixture(
     tx,
     native_control,
-    validation_machine_v1.encode_cek_context_control_v1(next_control),
+    vm_witness.encode_cek_context_control_v1(next_control),
     0,
     54,
   )
-  validation_machine_v1.verify_one_step_evidence(
+  vm_one_step.verify_one_step_evidence(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.CekRedeemerContextSelectWitness {
+      auxiliary: vm_machine_types.CekRedeemerContextSelectWitness {
         control: initial_redeemers,
         item_index: 0,
         item_count: 1,
@@ -11940,7 +11926,7 @@ test cek_context_finalize_seeds_the_exact_semantic_context_application() {
   }
   let redeemer_leaf = script_proof_v1.redeemer_leaf_hash(0, redeemer)
   let purpose_leaf = script_proof_v1.purpose_leaf_hash(2, 0, h_28_a, h_28_a)
-  let native_control = validation_machine_v1.NativeScriptsControlV1 {
+  let native_control = vm_machine_types.NativeScriptsControlV1 {
     ..cek_context_native_control_fixture(tx),
     redeemer_count: 1,
     redeemer_peaks: validation_merkle_v1.build_frontier([redeemer_leaf]).peaks,
@@ -11958,7 +11944,7 @@ test cek_context_finalize_seeds_the_exact_semantic_context_application() {
     redeemer_summary,
     cek_data_v1.empty_data_pair_summary_v1(),
   )
-  let redeemer_control = validation_machine_v1.CekRedeemerContextControlV1 {
+  let redeemer_control = vm_machine_types.CekRedeemerContextControlV1 {
     cursor: 1,
     map_items: redeemer_items,
     active_scan_hash: #"",
@@ -11978,12 +11964,12 @@ test cek_context_finalize_seeds_the_exact_semantic_context_application() {
   // that one observer -- leaving the pristine (count 0, empty items) fixture
   // in place while overriding `observer_summary` with a one-observer summary
   // is not a reachable control.
-  let observer_items = validation_machine_v1.prepend_cek_observer_item_v1(
+  let observer_items = vm_shared.prepend_cek_observer_item_v1(
     h_28_a,
     False,
     cek_data_v1.empty_data_pair_summary_v1(),
   )
-  let context_control = validation_machine_v1.CekContextControlV1 {
+  let context_control = vm_machine_types.CekContextControlV1 {
     ..empty_cek_context_control_fixture(10),
     purpose_kind: 2,
     script_hash: h_28_a,
@@ -11996,14 +11982,14 @@ test cek_context_finalize_seeds_the_exact_semantic_context_application() {
     mint_summary: cek_data_v1.map_data_summary_v1(
       cek_data_v1.empty_data_pair_summary_v1(),
     ),
-    redeemer_context_control_hash: validation_machine_v1.hash_cek_redeemer_context_control_v1(
+    redeemer_context_control_hash: vm_witness.hash_cek_redeemer_context_control_v1(
       redeemer_control,
     ),
   }
   let Pair(pre, work_witness_cbor) = cek_state_fixture(
     tx,
     native_control,
-    validation_machine_v1.encode_cek_context_control_v1(context_control),
+    vm_witness.encode_cek_context_control_v1(context_control),
     0,
     54,
   )
@@ -12013,38 +11999,38 @@ test cek_context_finalize_seeds_the_exact_semantic_context_application() {
     h_28_a,
     None,
   )
-  let parts = validation_machine_v1.CekContextPartsControlV1 {
+  let parts = vm_machine_types.CekContextPartsControlV1 {
     redeemer_items,
     redeemer: redeemer_summary,
     script_info,
   }
-  let next_control = validation_machine_v1.CekContextControlV1 {
+  let next_control = vm_machine_types.CekContextControlV1 {
     ..context_control,
     stage: 11,
-    redeemer_context_control_hash: validation_machine_v1.hash_cek_context_parts_control_v1(
+    redeemer_context_control_hash: vm_witness.hash_cek_context_parts_control_v1(
       parts,
     ),
   }
   let Pair(post, _) = cek_state_fixture(
     tx,
     native_control,
-    validation_machine_v1.encode_cek_context_control_v1(next_control),
+    vm_witness.encode_cek_context_control_v1(next_control),
     0,
     55,
   )
   and {
-    observer_summary == validation_machine_v1.finalize_cek_observer_items_v1(
+    observer_summary == vm_shared.finalize_cek_observer_items_v1(
       observer_items,
       False,
     ),
-    validation_machine_v1.verify_one_step_evidence(
+    vm_one_step.verify_one_step_evidence(
       pre,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
-        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepEvidenceV1 {
+        transition: vm_machine_types.ValidationOneStepWitnessV1 {
           work_witness_cbor,
           claimed_successor: post,
         },
-        auxiliary: validation_machine_v1.CekContextFinalizeWitness {
+        auxiliary: vm_machine_types.CekContextFinalizeWitness {
           redeemer_control,
         },
       },
@@ -12076,22 +12062,22 @@ test cek_spend_finalize_authenticates_descriptor_datum_summary() {
     subject,
     descriptor_cbor,
   )
-  let native_control = validation_machine_v1.NativeScriptsControlV1 {
+  let native_control = vm_machine_types.NativeScriptsControlV1 {
     ..cek_context_native_control_fixture(tx),
     resolved_input_count: 1,
     spend_input_count: 1,
     resolved_item_peaks: validation_merkle_v1.build_frontier([resolved_leaf]).peaks,
   }
   let redeemer_summary = cek_data_v1.semantic_data_summary_v1(builtin.i_data(0))
-  let redeemer_control = validation_machine_v1.CekRedeemerContextControlV1 {
-    ..validation_machine_v1.initial_cek_redeemer_context_control_v1(),
+  let redeemer_control = vm_machine_types.CekRedeemerContextControlV1 {
+    ..vm_witness.initial_cek_redeemer_context_control_v1(),
     current_redeemer: redeemer_summary,
   }
   expect Some(observer_summary) = script_context_v1.observer_collection_summary_v1(
     [],
     False,
   )
-  let context_control = validation_machine_v1.CekContextControlV1 {
+  let context_control = vm_machine_types.CekContextControlV1 {
     ..empty_cek_context_control_fixture(10),
     purpose_kind: 0,
     purpose_index: 0,
@@ -12100,7 +12086,7 @@ test cek_spend_finalize_authenticates_descriptor_datum_summary() {
     mint_summary: cek_data_v1.map_data_summary_v1(
       cek_data_v1.empty_data_pair_summary_v1(),
     ),
-    redeemer_context_control_hash: validation_machine_v1.hash_cek_redeemer_context_control_v1(
+    redeemer_context_control_hash: vm_witness.hash_cek_redeemer_context_control_v1(
       redeemer_control,
     ),
   }
@@ -12108,38 +12094,38 @@ test cek_spend_finalize_authenticates_descriptor_datum_summary() {
     subject,
     descriptor_cbor,
   )
-  let parts = validation_machine_v1.CekContextPartsControlV1 {
+  let parts = vm_machine_types.CekContextPartsControlV1 {
     redeemer_items: redeemer_control.map_items,
     redeemer: redeemer_summary,
     script_info,
   }
-  let next_control = validation_machine_v1.CekContextControlV1 {
+  let next_control = vm_machine_types.CekContextControlV1 {
     ..context_control,
     stage: 11,
-    redeemer_context_control_hash: validation_machine_v1.hash_cek_context_parts_control_v1(
+    redeemer_context_control_hash: vm_witness.hash_cek_context_parts_control_v1(
       parts,
     ),
   }
   let Pair(pre, work_witness_cbor) = cek_state_fixture(
     tx,
     native_control,
-    validation_machine_v1.encode_cek_context_control_v1(context_control),
+    vm_witness.encode_cek_context_control_v1(context_control),
     0,
     56,
   )
   let Pair(post, _) = cek_state_fixture(
     tx,
     native_control,
-    validation_machine_v1.encode_cek_context_control_v1(next_control),
+    vm_witness.encode_cek_context_control_v1(next_control),
     0,
     57,
   )
-  let evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
-    transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+  let evidence = vm_machine_types.ValidationOneStepEvidenceV1 {
+    transition: vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: post,
     },
-    auxiliary: validation_machine_v1.CekContextFinalizeSpendWitness {
+    auxiliary: vm_machine_types.CekContextFinalizeSpendWitness {
       redeemer_control,
       item_index: 0,
       key: subject,
@@ -12148,7 +12134,7 @@ test cek_spend_finalize_authenticates_descriptor_datum_summary() {
     },
   }
   and {
-    validation_machine_v1.verify_cek_context_finalize(
+    vm_cek.verify_cek_context_finalize(
       pre,
       evidence.transition,
       evidence.auxiliary,
@@ -12214,24 +12200,24 @@ test cek_context_seed_fits_one_step() {
     #"",
     False,
   )
-  let final_context = validation_machine_v1.CekFinalContextControlV1 {
+  let final_context = vm_machine_types.CekFinalContextControlV1 {
     tx_info,
     redeemer,
     script_info,
   }
-  let context_control = validation_machine_v1.CekContextControlV1 {
+  let context_control = vm_machine_types.CekContextControlV1 {
     ..empty_cek_context_control_fixture(13),
     purpose_kind: 1,
     observer_summary,
     mint_summary: cek_data_v1.map_data_summary_v1(empty_pairs),
-    redeemer_context_control_hash: validation_machine_v1.hash_cek_final_context_control_v1(
+    redeemer_context_control_hash: vm_witness.hash_cek_final_context_control_v1(
       final_context,
     ),
   }
   let Pair(pre, work_witness_cbor) = cek_state_fixture(
     tx,
     native_control,
-    validation_machine_v1.encode_cek_context_control_v1(context_control),
+    vm_witness.encode_cek_context_control_v1(context_control),
     0,
     55,
   )
@@ -12262,7 +12248,7 @@ test cek_context_seed_fits_one_step() {
     cpu: 0,
     memory: 0,
   }
-  let post_work = validation_machine_v1.encode_cek_witness_v1(
+  let post_work = vm_witness.encode_cek_witness_v1(
     native_control,
     #"",
     0,
@@ -12282,14 +12268,14 @@ test cek_context_seed_fits_one_step() {
       post_work,
     ),
   }
-  validation_machine_v1.verify_one_step_evidence(
+  vm_one_step.verify_one_step_evidence(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.CekContextSeedWitness {
+      auxiliary: vm_machine_types.CekContextSeedWitness {
         control: final_context,
       },
     },
@@ -12309,7 +12295,7 @@ test cek_context_assemble_fits_one_step() {
     #"",
     False,
   )
-  let parts = validation_machine_v1.CekContextPartsControlV1 {
+  let parts = vm_machine_types.CekContextPartsControlV1 {
     redeemer_items: empty_pairs,
     redeemer,
     script_info,
@@ -12318,19 +12304,19 @@ test cek_context_assemble_fits_one_step() {
     [],
     False,
   )
-  let context_control = validation_machine_v1.CekContextControlV1 {
+  let context_control = vm_machine_types.CekContextControlV1 {
     ..empty_cek_context_control_fixture(11),
     purpose_kind: 1,
     observer_summary,
     mint_summary: cek_data_v1.map_data_summary_v1(empty_pairs),
-    redeemer_context_control_hash: validation_machine_v1.hash_cek_context_parts_control_v1(
+    redeemer_context_control_hash: vm_witness.hash_cek_context_parts_control_v1(
       parts,
     ),
   }
   let Pair(pre, work_witness_cbor) = cek_state_fixture(
     tx,
     native_control,
-    validation_machine_v1.encode_cek_context_control_v1(context_control),
+    vm_witness.encode_cek_context_control_v1(context_control),
     0,
     55,
   )
@@ -12342,35 +12328,33 @@ test cek_context_assemble_fits_one_step() {
     empty_pairs,
     pre.transaction_id,
   )
-  let assembly = validation_machine_v1.CekTxInfoAssemblyControlV1 {
+  let assembly = vm_machine_types.CekTxInfoAssemblyControlV1 {
     tail_fields,
     redeemer,
     script_info,
   }
-  let next_control = validation_machine_v1.CekContextControlV1 {
+  let next_control = vm_machine_types.CekContextControlV1 {
     ..context_control,
     stage: 12,
-    redeemer_context_control_hash: validation_machine_v1.hash_cek_tx_info_assembly_control_v1(
+    redeemer_context_control_hash: vm_witness.hash_cek_tx_info_assembly_control_v1(
       assembly,
     ),
   }
   let Pair(post, _) = cek_state_fixture(
     tx,
     native_control,
-    validation_machine_v1.encode_cek_context_control_v1(next_control),
+    vm_witness.encode_cek_context_control_v1(next_control),
     0,
     56,
   )
-  validation_machine_v1.verify_one_step_evidence(
+  vm_one_step.verify_one_step_evidence(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.CekContextAssembleWitness {
-        control: parts,
-      },
+      auxiliary: vm_machine_types.CekContextAssembleWitness { control: parts },
     },
     inline_field_door(),
   )
@@ -12398,7 +12382,7 @@ test cek_context_tx_info_finalize_fits_one_step() {
     False,
   )
   let mint = cek_data_v1.map_data_summary_v1(empty_pairs)
-  let assembly = validation_machine_v1.CekTxInfoAssemblyControlV1 {
+  let assembly = vm_machine_types.CekTxInfoAssemblyControlV1 {
     tail_fields: script_context_v1.tx_info_tail_fields_summary_v1(
       False,
       observer_summary,
@@ -12410,23 +12394,23 @@ test cek_context_tx_info_finalize_fits_one_step() {
     redeemer,
     script_info,
   }
-  let context_control = validation_machine_v1.CekContextControlV1 {
+  let context_control = vm_machine_types.CekContextControlV1 {
     ..empty_cek_context_control_fixture(12),
     purpose_kind: 1,
     observer_summary,
     mint_summary: mint,
-    redeemer_context_control_hash: validation_machine_v1.hash_cek_tx_info_assembly_control_v1(
+    redeemer_context_control_hash: vm_witness.hash_cek_tx_info_assembly_control_v1(
       assembly,
     ),
   }
   let Pair(pre, work_witness_cbor) = cek_state_fixture(
     tx,
     native_control,
-    validation_machine_v1.encode_cek_context_control_v1(context_control),
+    vm_witness.encode_cek_context_control_v1(context_control),
     0,
     55,
   )
-  let final_context = validation_machine_v1.CekFinalContextControlV1 {
+  let final_context = vm_machine_types.CekFinalContextControlV1 {
     tx_info: script_context_v1.tx_info_from_tail_summary_v1(
       False,
       empty_items,
@@ -12442,30 +12426,28 @@ test cek_context_tx_info_finalize_fits_one_step() {
     redeemer,
     script_info,
   }
-  let next_control = validation_machine_v1.CekContextControlV1 {
+  let next_control = vm_machine_types.CekContextControlV1 {
     ..context_control,
     stage: 13,
-    redeemer_context_control_hash: validation_machine_v1.hash_cek_final_context_control_v1(
+    redeemer_context_control_hash: vm_witness.hash_cek_final_context_control_v1(
       final_context,
     ),
   }
   let Pair(post, _) = cek_state_fixture(
     tx,
     native_control,
-    validation_machine_v1.encode_cek_context_control_v1(next_control),
+    vm_witness.encode_cek_context_control_v1(next_control),
     0,
     56,
   )
-  validation_machine_v1.verify_one_step_evidence(
+  vm_one_step.verify_one_step_evidence(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.CekTxInfoFinalizeWitness {
-        control: assembly,
-      },
+      auxiliary: vm_machine_types.CekTxInfoFinalizeWitness { control: assembly },
     },
     inline_field_door(),
   )
@@ -12634,7 +12616,7 @@ test cek_context_maximum_mint_initializes_from_authenticated_frontier() {
   let mint_frontier = validation_merkle_v1.build_frontier(
     maximum_mint_asset_leaves(0, 128),
   )
-  let control = validation_machine_v1.NativeScriptsControlV1 {
+  let control = vm_machine_types.NativeScriptsControlV1 {
     ..cek_context_native_control_fixture(tx),
     mint_count: mint_frontier.count,
     mint_peaks: mint_frontier.peaks,
@@ -12643,36 +12625,36 @@ test cek_context_maximum_mint_initializes_from_authenticated_frontier() {
     [],
     False,
   )
-  let init_control = validation_machine_v1.CekContextControlV1 {
+  let init_control = vm_machine_types.CekContextControlV1 {
     ..empty_cek_context_control_fixture(6),
     observer_summary,
   }
-  let semantic_control = validation_machine_v1.CekContextControlV1 {
+  let semantic_control = vm_machine_types.CekContextControlV1 {
     ..init_control,
     stage: 8,
   }
   let Pair(pre, work_witness_cbor) = cek_state_fixture(
     tx,
     control,
-    validation_machine_v1.encode_cek_context_control_v1(init_control),
+    vm_witness.encode_cek_context_control_v1(init_control),
     0,
     51,
   )
   let Pair(post, _) = cek_state_fixture(
     tx,
     control,
-    validation_machine_v1.encode_cek_context_control_v1(semantic_control),
+    vm_witness.encode_cek_context_control_v1(semantic_control),
     0,
     52,
   )
-  validation_machine_v1.verify_cek_one_step_v1(
+  vm_one_step.verify_cek_one_step_v1(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+      auxiliary: vm_machine_types.NoAuxiliaryWitness,
     },
     inline_field_door(),
   )
@@ -12688,7 +12670,7 @@ test cek_context_maximum_mint_authenticates_last_asset_membership() {
   let mint_frontier = validation_merkle_v1.build_frontier(
     maximum_mint_asset_leaves(0, 128),
   )
-  let control = validation_machine_v1.NativeScriptsControlV1 {
+  let control = vm_machine_types.NativeScriptsControlV1 {
     ..cek_context_native_control_fixture(tx),
     mint_count: mint_frontier.count,
     mint_peaks: mint_frontier.peaks,
@@ -12697,7 +12679,7 @@ test cek_context_maximum_mint_authenticates_last_asset_membership() {
     [],
     False,
   )
-  let semantic_control = validation_machine_v1.CekContextControlV1 {
+  let semantic_control = vm_machine_types.CekContextControlV1 {
     ..empty_cek_context_control_fixture(8),
     observer_summary,
   }
@@ -12707,7 +12689,7 @@ test cek_context_maximum_mint_authenticates_last_asset_membership() {
     builtin.i_data(1) |> cek_data_v1.semantic_data_summary_v1,
     cek_data_v1.empty_data_pair_summary_v1(),
   )
-  let next_control = validation_machine_v1.CekContextControlV1 {
+  let next_control = vm_machine_types.CekContextControlV1 {
     ..semantic_control,
     mint_cursor: 1,
     current_mint_policy: h_28_a,
@@ -12716,25 +12698,25 @@ test cek_context_maximum_mint_authenticates_last_asset_membership() {
   let Pair(pre, work_witness_cbor) = cek_state_fixture(
     tx,
     control,
-    validation_machine_v1.encode_cek_context_control_v1(semantic_control),
+    vm_witness.encode_cek_context_control_v1(semantic_control),
     0,
     53,
   )
   let Pair(post, _) = cek_state_fixture(
     tx,
     control,
-    validation_machine_v1.encode_cek_context_control_v1(next_control),
+    vm_witness.encode_cek_context_control_v1(next_control),
     0,
     54,
   )
-  validation_machine_v1.verify_cek_one_step_v1(
+  vm_one_step.verify_cek_one_step_v1(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.CekMintContextItemWitness {
+      auxiliary: vm_machine_types.CekMintContextItemWitness {
         mint_index: 127,
         policy_id: h_28_a,
         asset_name: last_asset,
@@ -12751,12 +12733,12 @@ test cek_context_maximum_mint_authenticates_last_asset_membership() {
 /// route-agreement controls at the end of this module.
 fn cek_active_core_step_fixture() -> Pair<
   validation_trace_v1.ValidationMachineStateV1,
-  validation_machine_v1.ValidationOneStepEvidenceV1,
+  vm_machine_types.ValidationOneStepEvidenceV1,
 > {
   let tx = empty_v1_transaction()
   let purpose_frontier = validation_merkle_v1.build_frontier([h_a])
   let execution_frontier = validation_merkle_v1.build_frontier([h_b])
-  let control = validation_machine_v1.NativeScriptsControlV1 {
+  let control = vm_machine_types.NativeScriptsControlV1 {
     ..empty_native_control_fixture(tx),
     purpose_count: 1,
     purpose_peaks: purpose_frontier.peaks,
@@ -12808,7 +12790,7 @@ fn cek_active_core_step_fixture() -> Pair<
     machine_post.cpu,
     machine_post.memory,
   )
-  let work_witness_cbor = validation_machine_v1.encode_cek_witness_v1(
+  let work_witness_cbor = vm_witness.encode_cek_witness_v1(
     control,
     #"",
     0,
@@ -12853,7 +12835,7 @@ fn cek_active_core_step_fixture() -> Pair<
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.Cek,
       41,
-      validation_machine_v1.encode_cek_witness_v1(
+      vm_witness.encode_cek_witness_v1(
         control,
         #"",
         0,
@@ -12868,12 +12850,12 @@ fn cek_active_core_step_fixture() -> Pair<
     execution_cpu: 16010,
     execution_memory: 111,
   }
-  let evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
-    transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+  let evidence = vm_machine_types.ValidationOneStepEvidenceV1 {
+    transition: vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: post,
     },
-    auxiliary: validation_machine_v1.CekCoreStepWitness {
+    auxiliary: vm_machine_types.CekCoreStepWitness {
       step: cek_machine_v1.CoreStepEvidenceV1 {
         pre: machine_pre,
         post: machine_post,
@@ -12890,16 +12872,12 @@ fn cek_active_core_step_fixture() -> Pair<
 test cek_active_core_step_replays_exact_machine_transition() {
   let Pair(pre, evidence) = cek_active_core_step_fixture()
   and {
-    validation_machine_v1.verify_one_step_evidence(
+    vm_one_step.verify_one_step_evidence(pre, evidence, inline_field_door()),
+    !vm_one_step.verify_one_step_evidence(
       pre,
-      evidence,
-      inline_field_door(),
-    ),
-    !validation_machine_v1.verify_one_step_evidence(
-      pre,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
+      vm_machine_types.ValidationOneStepEvidenceV1 {
         ..evidence,
-        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+        transition: vm_machine_types.ValidationOneStepWitnessV1 {
           ..evidence.transition,
           claimed_successor: validation_trace_v1.ValidationMachineStateV1 {
             ..evidence.transition.claimed_successor,
@@ -12927,7 +12905,7 @@ fn ledger_delta_operation_authentication_fixture(operation_kind: Int) -> Bool {
   } else {
     #"0304"
   }
-  let operation_leaf = validation_machine_v1.ledger_delta_operation_leaf_hash(
+  let operation_leaf = vm_shared.ledger_delta_operation_leaf_hash(
     operation_kind,
     key,
     value,
@@ -12935,7 +12913,7 @@ fn ledger_delta_operation_authentication_fixture(operation_kind: Int) -> Bool {
   )
   let operation_frontier = validation_merkle_v1.build_frontier([operation_leaf])
   let output_descriptor_frontier = validation_merkle_v1.build_frontier([h_b])
-  let control = validation_machine_v1.LedgerDeltaControlV1 {
+  let control = vm_machine_types.LedgerDeltaControlV1 {
     resolved_input_count: 1,
     resolved_inputs_accumulator: h_b,
     output_count: 1,
@@ -12951,11 +12929,9 @@ fn ledger_delta_operation_authentication_fixture(operation_kind: Int) -> Bool {
     operation_peaks: [],
     pending_mutation_cbor: #"",
   }
-  let work_witness_cbor = validation_machine_v1.encode_ledger_delta_control_v1(
-    control,
-  )
-  let pending_mutation_cbor = validation_machine_v1.encode_ledger_delta_pending_mutation_v1(
-    validation_machine_v1.LedgerDeltaPendingMutationV1 {
+  let work_witness_cbor = vm_witness.encode_ledger_delta_control_v1(control)
+  let pending_mutation_cbor = vm_witness.encode_ledger_delta_pending_mutation_v1(
+    vm_machine_types.LedgerDeltaPendingMutationV1 {
       authorization_stage: 0,
       operation_kind,
       key,
@@ -12999,24 +12975,24 @@ fn ledger_delta_operation_authentication_fixture(operation_kind: Int) -> Bool {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.LedgerDelta,
       49,
-      validation_machine_v1.encode_ledger_delta_control_v1(
-        validation_machine_v1.LedgerDeltaControlV1 {
+      vm_witness.encode_ledger_delta_control_v1(
+        vm_machine_types.LedgerDeltaControlV1 {
           ..control,
           pending_mutation_cbor,
         },
       ),
     ),
   }
-  validation_machine_v1.verify_ledger_delta_operation_semantics_v1(
+  vm_ledger_delta.verify_ledger_delta_operation_semantics_v1(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: post,
     },
     operation_kind,
     key,
     value,
-    validation_machine_v1.LedgerDeltaOperationProofV1 {
+    vm_machine_types.LedgerDeltaOperationProofV1 {
       descriptor,
       operation_count: operation_frontier.count,
       operation_peaks: operation_frontier.peaks,
@@ -13064,17 +13040,17 @@ fn compact_ledger_output_descriptor(output_index: Int) -> ByteArray {
 
 fn compact_ledger_delta_control(
   stage: Int,
-) -> validation_machine_v1.LedgerDeltaControlV1 {
-  validation_machine_v1.LedgerDeltaControlV1 {
+) -> vm_machine_types.LedgerDeltaControlV1 {
+  vm_machine_types.LedgerDeltaControlV1 {
     resolved_input_count: 0,
-    resolved_inputs_accumulator: validation_machine_v1.initial_resolution_accumulator(),
+    resolved_inputs_accumulator: vm_witness.initial_resolution_accumulator(),
     output_count: 0,
     output_descriptor_peaks: [],
     stage,
-    replay_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     replay_cursor: 0,
-    replay_accumulator: validation_machine_v1.initial_resolution_accumulator(),
-    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_accumulator: vm_witness.initial_resolution_accumulator(),
+    replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     current_ledger_root: h_c,
     output_cursor: 0,
     operation_count: 0,
@@ -13084,7 +13060,7 @@ fn compact_ledger_delta_control(
 }
 
 fn compact_ledger_delta_state(
-  control: validation_machine_v1.LedgerDeltaControlV1,
+  control: vm_machine_types.LedgerDeltaControlV1,
   program_counter: Int,
   ledger_delta_root: ByteArray,
 ) -> validation_trace_v1.ValidationMachineStateV1 {
@@ -13101,7 +13077,7 @@ fn compact_ledger_delta_state(
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.LedgerDelta,
       program_counter,
-      validation_machine_v1.encode_ledger_delta_control_v1(control),
+      vm_witness.encode_ledger_delta_control_v1(control),
     ),
     execution_cpu: 0,
     execution_memory: 0,
@@ -13113,7 +13089,7 @@ fn compact_ledger_delta_state(
 
 fn compact_ledger_delta_successor(
   pre: validation_trace_v1.ValidationMachineStateV1,
-  control: validation_machine_v1.LedgerDeltaControlV1,
+  control: vm_machine_types.LedgerDeltaControlV1,
 ) -> validation_trace_v1.ValidationMachineStateV1 {
   validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
@@ -13121,7 +13097,7 @@ fn compact_ledger_delta_successor(
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.LedgerDelta,
       pre.program_counter + 1,
-      validation_machine_v1.encode_ledger_delta_control_v1(control),
+      vm_witness.encode_ledger_delta_control_v1(control),
     ),
   }
 }
@@ -13131,19 +13107,19 @@ test ledger_delta_reference_replay_authenticates_descriptor() {
     MidgardTxInput { tx_id: h_a, output_index: 0 },
   )
   let value = compact_ledger_output_descriptor(0)
-  let next_schedule_hash = validation_machine_v1.empty_resolution_schedule_hash()
-  let schedule_hash = validation_machine_v1.resolution_schedule_node_hash(
+  let next_schedule_hash = vm_witness.empty_resolution_schedule_hash()
+  let schedule_hash = vm_witness.resolution_schedule_node_hash(
     1,
     key,
     next_schedule_hash,
   )
-  let resolved_accumulator = validation_machine_v1.resolved_input_accumulator_successor(
-    validation_machine_v1.initial_resolution_accumulator(),
+  let resolved_accumulator = vm_witness.resolved_input_accumulator_successor(
+    vm_witness.initial_resolution_accumulator(),
     1,
     key,
     value,
   )
-  let control = validation_machine_v1.LedgerDeltaControlV1 {
+  let control = vm_machine_types.LedgerDeltaControlV1 {
     ..compact_ledger_delta_control(0),
     resolved_input_count: 1,
     resolved_inputs_accumulator: resolved_accumulator,
@@ -13157,19 +13133,17 @@ test ledger_delta_reference_replay_authenticates_descriptor() {
   )
   let post = compact_ledger_delta_successor(
     pre,
-    validation_machine_v1.LedgerDeltaControlV1 {
+    vm_machine_types.LedgerDeltaControlV1 {
       ..control,
       replay_cursor: 1,
       replay_accumulator: resolved_accumulator,
       replay_remaining_schedule_hash: next_schedule_hash,
     },
   )
-  validation_machine_v1.verify_ledger_delta_replay_semantics_v1(
+  vm_ledger_delta.verify_ledger_delta_replay_semantics_v1(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
-      work_witness_cbor: validation_machine_v1.encode_ledger_delta_control_v1(
-        control,
-      ),
+    vm_machine_types.ValidationOneStepWitnessV1 {
+      work_witness_cbor: vm_witness.encode_ledger_delta_control_v1(control),
       claimed_successor: post,
     },
     1,
@@ -13185,20 +13159,20 @@ test ledger_delta_spend_replay_initializes_authenticated_fold() {
   )
   let value = compact_ledger_output_descriptor(0)
   let descriptor = empty_mpf_proof_descriptor()
-  let next_schedule_hash = validation_machine_v1.empty_resolution_schedule_hash()
-  let schedule_hash = validation_machine_v1.resolution_schedule_node_hash(
+  let next_schedule_hash = vm_witness.empty_resolution_schedule_hash()
+  let schedule_hash = vm_witness.resolution_schedule_node_hash(
     0,
     key,
     next_schedule_hash,
   )
-  let resolved_accumulator = validation_machine_v1.resolved_input_accumulator_successor(
-    validation_machine_v1.initial_resolution_accumulator(),
+  let resolved_accumulator = vm_witness.resolved_input_accumulator_successor(
+    vm_witness.initial_resolution_accumulator(),
     0,
     key,
     value,
   )
-  let authorized_pending = validation_machine_v1.encode_ledger_delta_pending_mutation_v1(
-    validation_machine_v1.LedgerDeltaPendingMutationV1 {
+  let authorized_pending = vm_witness.encode_ledger_delta_pending_mutation_v1(
+    vm_machine_types.LedgerDeltaPendingMutationV1 {
       authorization_stage: 0,
       operation_kind: 0,
       key,
@@ -13212,7 +13186,7 @@ test ledger_delta_spend_replay_initializes_authenticated_fold() {
       },
     },
   )
-  let control = validation_machine_v1.LedgerDeltaControlV1 {
+  let control = vm_machine_types.LedgerDeltaControlV1 {
     ..compact_ledger_delta_control(0),
     resolved_input_count: 1,
     resolved_inputs_accumulator: resolved_accumulator,
@@ -13232,13 +13206,13 @@ test ledger_delta_spend_replay_initializes_authenticated_fold() {
       51,
       validation_merkle_v1.frontier_commitment(0, []),
     ),
-    validation_machine_v1.LedgerDeltaControlV1 {
+    vm_machine_types.LedgerDeltaControlV1 {
       ..control,
       replay_cursor: 1,
       replay_accumulator: resolved_accumulator,
       replay_remaining_schedule_hash: next_schedule_hash,
-      pending_mutation_cbor: validation_machine_v1.encode_ledger_delta_pending_mutation_v1(
-        validation_machine_v1.LedgerDeltaPendingMutationV1 {
+      pending_mutation_cbor: vm_witness.encode_ledger_delta_pending_mutation_v1(
+        vm_machine_types.LedgerDeltaPendingMutationV1 {
           authorization_stage: 1,
           operation_kind: 0,
           key,
@@ -13254,12 +13228,10 @@ test ledger_delta_spend_replay_initializes_authenticated_fold() {
     51,
     validation_merkle_v1.frontier_commitment(0, []),
   )
-  validation_machine_v1.verify_ledger_delta_replay_semantics_v1(
+  vm_ledger_delta.verify_ledger_delta_replay_semantics_v1(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
-      work_witness_cbor: validation_machine_v1.encode_ledger_delta_control_v1(
-        control,
-      ),
+    vm_machine_types.ValidationOneStepWitnessV1 {
+      work_witness_cbor: vm_witness.encode_ledger_delta_control_v1(control),
       claimed_successor: post,
     },
     0,
@@ -13276,15 +13248,13 @@ test ledger_delta_replay_finish_is_exact() {
     52,
     validation_merkle_v1.frontier_commitment(0, []),
   )
-  validation_machine_v1.verify_ledger_delta_replay_finish_semantics_v1(
+  vm_ledger_delta.verify_ledger_delta_replay_finish_semantics_v1(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
-      work_witness_cbor: validation_machine_v1.encode_ledger_delta_control_v1(
-        control,
-      ),
+    vm_machine_types.ValidationOneStepWitnessV1 {
+      work_witness_cbor: vm_witness.encode_ledger_delta_control_v1(control),
       claimed_successor: compact_ledger_delta_successor(
         pre,
-        validation_machine_v1.LedgerDeltaControlV1 { ..control, stage: 1 },
+        vm_machine_types.LedgerDeltaControlV1 { ..control, stage: 1 },
       ),
     },
   )
@@ -13302,8 +13272,8 @@ test ledger_delta_output_authenticates_descriptor_and_initializes_fold() {
   let descriptor_frontier = validation_merkle_v1.build_frontier(
     [descriptor_leaf],
   )
-  let authorized_pending = validation_machine_v1.encode_ledger_delta_pending_mutation_v1(
-    validation_machine_v1.LedgerDeltaPendingMutationV1 {
+  let authorized_pending = vm_witness.encode_ledger_delta_pending_mutation_v1(
+    vm_machine_types.LedgerDeltaPendingMutationV1 {
       authorization_stage: 0,
       operation_kind: 1,
       key,
@@ -13317,7 +13287,7 @@ test ledger_delta_output_authenticates_descriptor_and_initializes_fold() {
       },
     },
   )
-  let control = validation_machine_v1.LedgerDeltaControlV1 {
+  let control = vm_machine_types.LedgerDeltaControlV1 {
     ..compact_ledger_delta_control(1),
     output_count: 1,
     output_descriptor_peaks: descriptor_frontier.peaks,
@@ -13334,19 +13304,17 @@ test ledger_delta_output_authenticates_descriptor_and_initializes_fold() {
     53,
     validation_merkle_v1.frontier_commitment(0, []),
   )
-  validation_machine_v1.verify_ledger_delta_output_semantics_v1(
+  vm_ledger_delta.verify_ledger_delta_output_semantics_v1(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
-      work_witness_cbor: validation_machine_v1.encode_ledger_delta_control_v1(
-        control,
-      ),
+    vm_machine_types.ValidationOneStepWitnessV1 {
+      work_witness_cbor: vm_witness.encode_ledger_delta_control_v1(control),
       claimed_successor: compact_ledger_delta_successor(
         pre,
-        validation_machine_v1.LedgerDeltaControlV1 {
+        vm_machine_types.LedgerDeltaControlV1 {
           ..control,
           output_cursor: 1,
-          pending_mutation_cbor: validation_machine_v1.encode_ledger_delta_pending_mutation_v1(
-            validation_machine_v1.LedgerDeltaPendingMutationV1 {
+          pending_mutation_cbor: vm_witness.encode_ledger_delta_pending_mutation_v1(
+            vm_machine_types.LedgerDeltaPendingMutationV1 {
               authorization_stage: 1,
               operation_kind: 1,
               key,
@@ -13371,15 +13339,13 @@ test ledger_delta_output_finish_is_exact() {
     54,
     validation_merkle_v1.frontier_commitment(0, []),
   )
-  validation_machine_v1.verify_ledger_delta_output_finish_semantics_v1(
+  vm_ledger_delta.verify_ledger_delta_output_finish_semantics_v1(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
-      work_witness_cbor: validation_machine_v1.encode_ledger_delta_control_v1(
-        control,
-      ),
+    vm_machine_types.ValidationOneStepWitnessV1 {
+      work_witness_cbor: vm_witness.encode_ledger_delta_control_v1(control),
       claimed_successor: compact_ledger_delta_successor(
         pre,
-        validation_machine_v1.LedgerDeltaControlV1 { ..control, stage: 2 },
+        vm_machine_types.LedgerDeltaControlV1 { ..control, stage: 2 },
       ),
     },
   )
@@ -13420,7 +13386,7 @@ test ledger_delta_proof_frame_advances_only_authenticated_frame() {
     frame,
     [],
   )
-  let pending = validation_machine_v1.LedgerDeltaPendingMutationV1 {
+  let pending = vm_machine_types.LedgerDeltaPendingMutationV1 {
     authorization_stage: 1,
     operation_kind: 1,
     key,
@@ -13428,9 +13394,9 @@ test ledger_delta_proof_frame_advances_only_authenticated_frame() {
     descriptor,
     fold_control,
   }
-  let control = validation_machine_v1.LedgerDeltaControlV1 {
+  let control = vm_machine_types.LedgerDeltaControlV1 {
     ..compact_ledger_delta_control(1),
-    pending_mutation_cbor: validation_machine_v1.encode_ledger_delta_pending_mutation_v1(
+    pending_mutation_cbor: vm_witness.encode_ledger_delta_pending_mutation_v1(
       pending,
     ),
   }
@@ -13439,18 +13405,16 @@ test ledger_delta_proof_frame_advances_only_authenticated_frame() {
     55,
     validation_merkle_v1.frontier_commitment(0, []),
   )
-  validation_machine_v1.verify_ledger_delta_proof_frame_semantics_v1(
+  vm_ledger_delta.verify_ledger_delta_proof_frame_semantics_v1(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
-      work_witness_cbor: validation_machine_v1.encode_ledger_delta_control_v1(
-        control,
-      ),
+    vm_machine_types.ValidationOneStepWitnessV1 {
+      work_witness_cbor: vm_witness.encode_ledger_delta_control_v1(control),
       claimed_successor: compact_ledger_delta_successor(
         pre,
-        validation_machine_v1.LedgerDeltaControlV1 {
+        vm_machine_types.LedgerDeltaControlV1 {
           ..control,
-          pending_mutation_cbor: validation_machine_v1.encode_ledger_delta_pending_mutation_v1(
-            validation_machine_v1.LedgerDeltaPendingMutationV1 {
+          pending_mutation_cbor: vm_witness.encode_ledger_delta_pending_mutation_v1(
+            vm_machine_types.LedgerDeltaPendingMutationV1 {
               ..pending,
               fold_control: next_fold_control,
             },
@@ -13472,7 +13436,7 @@ test ledger_delta_finalize_applies_only_authenticated_root_transition() {
     value,
     descriptor,
   )
-  let pending = validation_machine_v1.LedgerDeltaPendingMutationV1 {
+  let pending = vm_machine_types.LedgerDeltaPendingMutationV1 {
     authorization_stage: 1,
     operation_kind: 1,
     key,
@@ -13480,17 +13444,17 @@ test ledger_delta_finalize_applies_only_authenticated_root_transition() {
     descriptor,
     fold_control,
   }
-  let operation_leaf = validation_machine_v1.ledger_delta_operation_leaf_hash(
+  let operation_leaf = vm_shared.ledger_delta_operation_leaf_hash(
     1,
     key,
     value,
     descriptor,
   )
   let operation_frontier = validation_merkle_v1.build_frontier([operation_leaf])
-  let control = validation_machine_v1.LedgerDeltaControlV1 {
+  let control = vm_machine_types.LedgerDeltaControlV1 {
     ..compact_ledger_delta_control(1),
     current_ledger_root: fold_control.excluding_root,
-    pending_mutation_cbor: validation_machine_v1.encode_ledger_delta_pending_mutation_v1(
+    pending_mutation_cbor: vm_witness.encode_ledger_delta_pending_mutation_v1(
       pending,
     ),
   }
@@ -13502,15 +13466,13 @@ test ledger_delta_finalize_applies_only_authenticated_root_transition() {
       operation_frontier.peaks,
     ),
   )
-  validation_machine_v1.verify_ledger_delta_finalize_semantics_v1(
+  vm_ledger_delta.verify_ledger_delta_finalize_semantics_v1(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
-      work_witness_cbor: validation_machine_v1.encode_ledger_delta_control_v1(
-        control,
-      ),
+    vm_machine_types.ValidationOneStepWitnessV1 {
+      work_witness_cbor: vm_witness.encode_ledger_delta_control_v1(control),
       claimed_successor: compact_ledger_delta_successor(
         pre,
-        validation_machine_v1.LedgerDeltaControlV1 {
+        vm_machine_types.LedgerDeltaControlV1 {
           ..control,
           current_ledger_root: fold_control.including_root,
           operation_count: 1,
@@ -13525,26 +13487,26 @@ test ledger_delta_finalize_applies_only_authenticated_root_transition() {
 test value_and_mint_final_equation_is_enforced_on_l1() {
   let tx = empty_v1_transaction()
   let native_control = empty_native_control_fixture(tx)
-  let valid_control = validation_machine_v1.ValueAndMintControlV1 {
+  let valid_control = vm_machine_types.ValueAndMintControlV1 {
     native_control,
     stage: 5,
-    replay_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     replay_cursor: 0,
     replay_asset_cursor: 0,
     replay_value_hash: zero,
-    replay_accumulator: validation_machine_v1.initial_resolution_accumulator(),
-    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_accumulator: vm_witness.initial_resolution_accumulator(),
+    replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     output_cursor: 0,
     output_asset_cursor: 0,
     mint_cursor: 0,
-    value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+    value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 0,
       asset_root: null_hash,
       seen_asset_count: 0,
       nonzero_asset_count: 0,
     },
   }
-  let valid_work_witness_cbor = validation_machine_v1.encode_value_and_mint_control_v1(
+  let valid_work_witness_cbor = vm_witness.encode_value_and_mint_control_v1(
     valid_control,
   )
   let compact = midgard_transaction_to_compact(tx)
@@ -13582,23 +13544,23 @@ test value_and_mint_final_equation_is_enforced_on_l1() {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.LedgerDelta,
       41,
-      validation_machine_v1.encode_ledger_delta_witness_v1(
+      vm_witness.encode_ledger_delta_witness_v1(
         native_control,
         valid_pre.prior_ledger_root,
         valid_control.replay_schedule_hash,
       ),
     ),
   }
-  let invalid_control = validation_machine_v1.ValueAndMintControlV1 {
+  let invalid_control = vm_machine_types.ValueAndMintControlV1 {
     ..valid_control,
-    value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+    value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 1,
       asset_root: null_hash,
       seen_asset_count: 0,
       nonzero_asset_count: 0,
     },
   }
-  let invalid_work_witness_cbor = validation_machine_v1.encode_value_and_mint_control_v1(
+  let invalid_work_witness_cbor = vm_witness.encode_value_and_mint_control_v1(
     invalid_control,
   )
   let invalid_pre = validation_trace_v1.ValidationMachineStateV1 {
@@ -13621,7 +13583,7 @@ test value_and_mint_final_equation_is_enforced_on_l1() {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.Terminal,
       43,
-      validation_machine_v1.encode_terminal_rejection_witness(
+      vm_shared.encode_terminal_rejection_witness(
         rejection_code,
         invalid_pre.prior_ledger_root,
       ),
@@ -13630,24 +13592,24 @@ test value_and_mint_final_equation_is_enforced_on_l1() {
     rejection_code_hash: validation_trace_v1.hash_rejection_code(rejection_code),
   }
   and {
-    validation_machine_v1.verify_value_and_mint_one_step_v1(
+    vm_one_step.verify_value_and_mint_one_step_v1(
       valid_pre,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
-        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepEvidenceV1 {
+        transition: vm_machine_types.ValidationOneStepWitnessV1 {
           work_witness_cbor: valid_work_witness_cbor,
           claimed_successor: valid_post,
         },
-        auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+        auxiliary: vm_machine_types.NoAuxiliaryWitness,
       },
     ),
-    validation_machine_v1.verify_value_and_mint_one_step_v1(
+    vm_one_step.verify_value_and_mint_one_step_v1(
       invalid_pre,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
-        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepEvidenceV1 {
+        transition: vm_machine_types.ValidationOneStepWitnessV1 {
           work_witness_cbor: invalid_work_witness_cbor,
           claimed_successor: terminal,
         },
-        auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+        auxiliary: vm_machine_types.NoAuxiliaryWitness,
       },
     ),
   }
@@ -13668,26 +13630,26 @@ test value_and_mint_uses_authenticated_native_mint_frontier() {
     ..base,
     body: MidgardTransactionBody { ..base.body, mint },
   }
-  let mint_leaf = validation_machine_v1.mint_asset_leaf_hash(h_28_a, #"01", -5)
+  let mint_leaf = vm_shared.mint_asset_leaf_hash(h_28_a, #"01", -5)
   let mint_frontier = validation_merkle_v1.build_frontier([mint_leaf])
-  let native_control = validation_machine_v1.NativeScriptsControlV1 {
+  let native_control = vm_machine_types.NativeScriptsControlV1 {
     ..empty_native_control_fixture(tx),
     mint_count: mint_frontier.count,
     mint_peaks: mint_frontier.peaks,
   }
-  let control = validation_machine_v1.ValueAndMintControlV1 {
+  let control = vm_machine_types.ValueAndMintControlV1 {
     native_control,
     stage: 1,
-    replay_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     replay_cursor: 0,
     replay_asset_cursor: 0,
     replay_value_hash: zero,
-    replay_accumulator: validation_machine_v1.initial_resolution_accumulator(),
-    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_accumulator: vm_witness.initial_resolution_accumulator(),
+    replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     output_cursor: 0,
     output_asset_cursor: 0,
     mint_cursor: 0,
-    value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+    value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 0,
       asset_root: null_hash,
       seen_asset_count: 0,
@@ -13699,9 +13661,7 @@ test value_and_mint_uses_authenticated_native_mint_frontier() {
     native_tx_version_v1,
     encode_native_tx_body_compact(compact.body),
   )
-  let work_witness_cbor = validation_machine_v1.encode_value_and_mint_control_v1(
-    control,
-  )
+  let work_witness_cbor = vm_witness.encode_value_and_mint_control_v1(control)
   let pre = validation_trace_v1.ValidationMachineStateV1 {
     machine_version: validation_trace_v1.machine_version,
     event_key_hash: h_a,
@@ -13731,30 +13691,30 @@ test value_and_mint_uses_authenticated_native_mint_frontier() {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.ValueAndMint,
       41,
-      validation_machine_v1.encode_value_and_mint_control_v1(
-        validation_machine_v1.ValueAndMintControlV1 { ..control, stage: 2 },
+      vm_witness.encode_value_and_mint_control_v1(
+        vm_machine_types.ValueAndMintControlV1 { ..control, stage: 2 },
       ),
     ),
   }
-  let valid_step = validation_machine_v1.verify_value_and_mint_one_step_v1(
+  let valid_step = vm_one_step.verify_value_and_mint_one_step_v1(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+      auxiliary: vm_machine_types.NoAuxiliaryWitness,
     },
   )
-  let malformed_native_control = validation_machine_v1.NativeScriptsControlV1 {
+  let malformed_native_control = vm_machine_types.NativeScriptsControlV1 {
     ..native_control,
     mint_count: 0,
   }
-  let malformed_control = validation_machine_v1.ValueAndMintControlV1 {
+  let malformed_control = vm_machine_types.ValueAndMintControlV1 {
     ..control,
     native_control: malformed_native_control,
   }
-  let malformed_work_witness_cbor = validation_machine_v1.encode_value_and_mint_control_v1(
+  let malformed_work_witness_cbor = vm_witness.encode_value_and_mint_control_v1(
     malformed_control,
   )
   let malformed_pre = validation_trace_v1.ValidationMachineStateV1 {
@@ -13770,24 +13730,21 @@ test value_and_mint_uses_authenticated_native_mint_frontier() {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.ValueAndMint,
       post.program_counter,
-      validation_machine_v1.encode_value_and_mint_control_v1(
-        validation_machine_v1.ValueAndMintControlV1 {
-          ..malformed_control,
-          stage: 2,
-        },
+      vm_witness.encode_value_and_mint_control_v1(
+        vm_machine_types.ValueAndMintControlV1 { ..malformed_control, stage: 2 },
       ),
     ),
   }
   and {
     valid_step,
-    !validation_machine_v1.verify_value_and_mint_one_step_v1(
+    !vm_one_step.verify_value_and_mint_one_step_v1(
       malformed_pre,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
-        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepEvidenceV1 {
+        transition: vm_machine_types.ValidationOneStepWitnessV1 {
           work_witness_cbor: malformed_work_witness_cbor,
           claimed_successor: malformed_post,
         },
-        auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+        auxiliary: vm_machine_types.NoAuxiliaryWitness,
       },
     ),
   }
@@ -13798,39 +13755,33 @@ test value_and_mint_replays_signed_burn_leaf_on_l1() {
   let policy_id = #"11111111111111111111111111111111111111111111111111111111"
   let asset_name = #"beef"
   let unit = policy_id |> bytearray.concat(asset_name)
-  let leaf = validation_machine_v1.mint_asset_leaf_hash(
-    policy_id,
-    asset_name,
-    -5,
-  )
+  let leaf = vm_shared.mint_asset_leaf_hash(policy_id, asset_name, -5)
   let mint_frontier = validation_merkle_v1.build_frontier([leaf])
-  let native_control = validation_machine_v1.NativeScriptsControlV1 {
+  let native_control = vm_machine_types.NativeScriptsControlV1 {
     ..empty_native_control_fixture(tx),
     mint_count: mint_frontier.count,
     mint_peaks: mint_frontier.peaks,
   }
-  let control = validation_machine_v1.ValueAndMintControlV1 {
+  let control = vm_machine_types.ValueAndMintControlV1 {
     native_control,
     stage: 4,
-    replay_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     replay_cursor: 0,
     replay_asset_cursor: 0,
     replay_value_hash: zero,
-    replay_accumulator: validation_machine_v1.initial_resolution_accumulator(),
-    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_accumulator: vm_witness.initial_resolution_accumulator(),
+    replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     output_cursor: 0,
     output_asset_cursor: 0,
     mint_cursor: 0,
-    value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+    value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 0,
       asset_root: singleton_root(unit, cbor.serialise(5)),
       seen_asset_count: 1,
       nonzero_asset_count: 1,
     },
   }
-  let work_witness_cbor = validation_machine_v1.encode_value_and_mint_control_v1(
-    control,
-  )
+  let work_witness_cbor = vm_witness.encode_value_and_mint_control_v1(control)
   let compact = midgard_transaction_to_compact(tx)
   let tx_id = native_tx_id_for_version(
     native_tx_version_v1,
@@ -13859,10 +13810,10 @@ test value_and_mint_replays_signed_burn_leaf_on_l1() {
     rejection_code_hash: zero,
     ledger_delta_root: validation_trace_v1.hash_ledger_delta(#"80"),
   }
-  let next_control = validation_machine_v1.ValueAndMintControlV1 {
+  let next_control = vm_machine_types.ValueAndMintControlV1 {
     ..control,
     mint_cursor: 1,
-    value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+    value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 0,
       asset_root: singleton_root(unit, cbor.serialise(0)),
       seen_asset_count: 1,
@@ -13875,23 +13826,23 @@ test value_and_mint_replays_signed_burn_leaf_on_l1() {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.ValueAndMint,
       45,
-      validation_machine_v1.encode_value_and_mint_control_v1(next_control),
+      vm_witness.encode_value_and_mint_control_v1(next_control),
     ),
   }
-  validation_machine_v1.verify_value_and_mint_one_step_v1(
+  vm_one_step.verify_value_and_mint_one_step_v1(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.ValueMintAssetWitness {
+      auxiliary: vm_machine_types.ValueMintAssetWitness {
         mint_index: 0,
         policy_id,
         asset_name,
         quantity: -5,
         siblings: [],
-        mutation: validation_machine_v1.ValueAssetMutationWitnessV1 {
+        mutation: vm_machine_types.ValueAssetMutationWitnessV1 {
           delta_was_present: True,
           old_delta: 5,
           delta_proof: [],
@@ -13925,7 +13876,7 @@ const value_output_descriptor_total_length: Int = 16384
 /// with the rule instead of leaving a stale literal behind.
 /// `min_ada_wiring_floor_is_the_pinned_absolute_value` pins its absolute value.
 fn value_output_descriptor_min_ada_floor() -> Int {
-  validation_machine_v1.min_ada_lovelace_v1(
+  vm_shared.min_ada_lovelace_v1(
     env.coins_per_utxo_byte,
     value_output_descriptor_total_length,
   )
@@ -13985,46 +13936,46 @@ fn value_output_descriptor_fixture_at(
   let descriptor_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.output_descriptor_leaf_hash(0, descriptor_cbor)],
   )
-  let native_control = validation_machine_v1.NativeScriptsControlV1 {
+  let native_control = vm_machine_types.NativeScriptsControlV1 {
     ..empty_native_control_fixture(tx),
     output_count: 1,
     output_peaks: validation_merkle_v1.build_frontier([h_c]).peaks,
     output_descriptor_peaks: descriptor_frontier.peaks,
   }
-  let initial_control = validation_machine_v1.ValueAndMintControlV1 {
+  let initial_control = vm_machine_types.ValueAndMintControlV1 {
     native_control,
     stage: 3,
-    replay_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     replay_cursor: 0,
     replay_asset_cursor: 0,
     replay_value_hash: zero,
-    replay_accumulator: validation_machine_v1.initial_resolution_accumulator(),
-    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_accumulator: vm_witness.initial_resolution_accumulator(),
+    replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     output_cursor: 0,
     output_asset_cursor: 0,
     mint_cursor: 0,
-    value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+    value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 0,
       asset_root: null_hash,
       seen_asset_count: 0,
       nonzero_asset_count: 0,
     },
   }
-  let active_control = validation_machine_v1.ValueAndMintControlV1 {
+  let active_control = vm_machine_types.ValueAndMintControlV1 {
     ..initial_control,
     output_asset_cursor: 1,
     replay_value_hash: blake2b_256(descriptor_cbor),
-    value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+    value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       ..initial_control.value_accumulator,
       lovelace_delta: -output_lovelace,
     },
   }
-  let final_control = validation_machine_v1.ValueAndMintControlV1 {
+  let final_control = vm_machine_types.ValueAndMintControlV1 {
     ..active_control,
     output_cursor: 1,
     output_asset_cursor: 0,
     replay_value_hash: zero,
-    value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+    value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: -output_lovelace,
       asset_root: singleton_root(unit, cbor.serialise(-7)),
       seen_asset_count: 1,
@@ -14036,7 +13987,7 @@ fn value_output_descriptor_fixture_at(
     native_tx_version_v1,
     encode_native_tx_body_compact(compact.body),
   )
-  let initial_work = validation_machine_v1.encode_value_and_mint_control_v1(
+  let initial_work = vm_witness.encode_value_and_mint_control_v1(
     initial_control,
   )
   let pre = validation_trace_v1.ValidationMachineStateV1 {
@@ -14062,9 +14013,7 @@ fn value_output_descriptor_fixture_at(
     rejection_code_hash: zero,
     ledger_delta_root: validation_trace_v1.hash_ledger_delta(#"80"),
   }
-  let active_work = validation_machine_v1.encode_value_and_mint_control_v1(
-    active_control,
-  )
+  let active_work = vm_witness.encode_value_and_mint_control_v1(active_control)
   let active_state = validation_trace_v1.ValidationMachineStateV1 {
     ..pre,
     program_counter: 47,
@@ -14080,7 +14029,7 @@ fn value_output_descriptor_fixture_at(
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.ValueAndMint,
       48,
-      validation_machine_v1.encode_value_and_mint_control_v1(final_control),
+      vm_witness.encode_value_and_mint_control_v1(final_control),
     ),
   }
   ValueOutputDescriptorFixture {
@@ -14103,14 +14052,14 @@ fn value_output_descriptor_fixture() -> ValueOutputDescriptorFixture {
 
 test value_and_mint_authenticates_output_descriptor_on_l1() {
   let fixture = value_output_descriptor_fixture()
-  validation_machine_v1.verify_one_step_evidence(
+  vm_one_step.verify_one_step_evidence(
     fixture.pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: fixture.initial_work,
         claimed_successor: fixture.active_state,
       },
-      auxiliary: validation_machine_v1.ValueOutputDescriptorWitness {
+      auxiliary: vm_machine_types.ValueOutputDescriptorWitness {
         output_index: 0,
         descriptor_cbor: fixture.descriptor_cbor,
         siblings: [],
@@ -14122,14 +14071,14 @@ test value_and_mint_authenticates_output_descriptor_on_l1() {
 
 test value_and_mint_replays_output_descriptor_asset_on_l1() {
   let fixture = value_output_descriptor_fixture()
-  validation_machine_v1.verify_one_step_evidence(
+  vm_one_step.verify_one_step_evidence(
     fixture.active_state,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: fixture.active_work,
         claimed_successor: fixture.final_state,
       },
-      auxiliary: validation_machine_v1.ValueOutputAssetWitness {
+      auxiliary: vm_machine_types.ValueOutputAssetWitness {
         output_index: 0,
         descriptor_cbor: fixture.descriptor_cbor,
         asset_index: 0,
@@ -14138,7 +14087,7 @@ test value_and_mint_replays_output_descriptor_asset_on_l1() {
         quantity: fixture.quantity,
         asset_peaks: fixture.asset_peaks,
         asset_siblings: [],
-        mutation: validation_machine_v1.ValueAssetMutationWitnessV1 {
+        mutation: vm_machine_types.ValueAssetMutationWitnessV1 {
           delta_was_present: False,
           old_delta: 0,
           delta_proof: [],
@@ -14203,7 +14152,7 @@ fn target_snapshot_min_fee_step_is_provable(
     native_tx_version_v1,
     encode_native_tx_body_compact(compact.body),
   )
-  let work_witness_cbor = validation_machine_v1.encode_static_rules_witness(
+  let work_witness_cbor = vm_witness.encode_static_rules_witness(
     proof_source.compact_cbor,
     proof_source.witness_set_compact_cbor,
     proof_source.field_preimage_lengths_cbor,
@@ -14242,7 +14191,7 @@ fn target_snapshot_min_fee_step_is_provable(
       work_root: validation_trace_v1.hash_work_witness(
         validation_trace_v1.InputSets,
         3,
-        validation_machine_v1.encode_input_sets_scan_witness(
+        vm_witness.encode_input_sets_scan_witness(
           proof_source.compact_cbor,
           proof_source.witness_set_compact_cbor,
           proof_source.field_preimage_lengths_cbor,
@@ -14252,16 +14201,16 @@ fn target_snapshot_min_fee_step_is_provable(
           0,
           0,
           #"",
-          validation_machine_v1.empty_resolution_schedule_hash(),
+          vm_witness.empty_resolution_schedule_hash(),
         ),
       ),
     }
   } else {
     exact_rejection_post(pre, reject_min_fee_code)
   }
-  validation_machine_v1.verify_one_step(
+  vm_one_step.verify_one_step(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor,
     },
@@ -14325,37 +14274,34 @@ test parameterized_min_ada_boundary_matches_target_snapshot() {
     script_ref: None,
   }
   let output_bytes = bytearray.length(encode_midgard_tx_output(output))
-  let floor = validation_machine_v1.min_ada_lovelace_v1(
+  let floor = vm_shared.min_ada_lovelace_v1(
     target_snapshot_coins_per_utxo_byte,
     output_bytes,
   )
   and {
     target_snapshot_coins_per_utxo_byte == 4_310,
-    validation_machine_v1.min_ada_output_overhead_bytes == 160,
+    vm_shared.min_ada_output_overhead_bytes == 160,
     floor == target_snapshot_coins_per_utxo_byte * ( 160 + output_bytes ),
-    validation_machine_v1.output_meets_min_ada_v1(
+    vm_shared.output_meets_min_ada_v1(
       target_snapshot_coins_per_utxo_byte,
       output_bytes,
       floor,
     ),
-    !validation_machine_v1.output_meets_min_ada_v1(
+    !vm_shared.output_meets_min_ada_v1(
       target_snapshot_coins_per_utxo_byte,
       output_bytes,
       floor - 1,
     ),
-    validation_machine_v1.output_meets_min_ada_v1(
+    vm_shared.output_meets_min_ada_v1(
       target_snapshot_coins_per_utxo_byte,
       output_bytes,
       floor + 1,
     ),
-    validation_machine_v1.min_ada_lovelace_v1(
+    vm_shared.min_ada_lovelace_v1(
       target_snapshot_coins_per_utxo_byte,
       output_bytes + 1,
     ) - floor == target_snapshot_coins_per_utxo_byte,
-    validation_machine_v1.min_ada_lovelace_v1(
-      target_snapshot_coins_per_utxo_byte,
-      0,
-    ) == 689_600,
+    vm_shared.min_ada_lovelace_v1(target_snapshot_coins_per_utxo_byte, 0) == 689_600,
   }
 }
 
@@ -14393,26 +14339,23 @@ fn min_ada_absolute_vector_is_exact(
   floor: Int,
 ) -> Bool {
   and {
-    validation_machine_v1.min_ada_lovelace_v1(
-      coins_per_utxo_byte,
-      serialized_output_bytes,
-    ) == floor,
-    validation_machine_v1.output_meets_min_ada_v1(
+    vm_shared.min_ada_lovelace_v1(coins_per_utxo_byte, serialized_output_bytes) == floor,
+    vm_shared.output_meets_min_ada_v1(
       coins_per_utxo_byte,
       serialized_output_bytes,
       floor,
     ),
-    !validation_machine_v1.output_meets_min_ada_v1(
+    !vm_shared.output_meets_min_ada_v1(
       coins_per_utxo_byte,
       serialized_output_bytes,
       floor - 1,
     ),
-    validation_machine_v1.output_meets_min_ada_v1(
+    vm_shared.output_meets_min_ada_v1(
       coins_per_utxo_byte,
       serialized_output_bytes,
       floor + 1,
     ),
-    !validation_machine_v1.output_meets_min_ada_v1(
+    !vm_shared.output_meets_min_ada_v1(
       coins_per_utxo_byte,
       serialized_output_bytes,
       0,
@@ -14476,11 +14419,11 @@ test min_ada_shared_canonical_outputs_serialize_to_their_pinned_bytes() {
     rich == #"a400583900aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb01821a0098967fa2581c11111111111111111111111111111111111111111111111111111111a242abcd075820ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff01581c22222222222222222222222222222222222222222222222222222222a140182a0243d879800382034e4d01000033222220051200120011",
     bytearray.length(rich) == 196,
     // The two floors those exact fixtures fund, as absolute lovelace.
-    validation_machine_v1.min_ada_lovelace_v1(
+    vm_shared.min_ada_lovelace_v1(
       target_snapshot_coins_per_utxo_byte,
       bytearray.length(enterprise),
     ) == 866_310,
-    validation_machine_v1.min_ada_lovelace_v1(
+    vm_shared.min_ada_lovelace_v1(
       target_snapshot_coins_per_utxo_byte,
       bytearray.length(rich),
     ) == 1_534_360,
@@ -14496,7 +14439,7 @@ test min_ada_absolute_vectors_match_the_typescript_twin() {
   )
   and {
     target_snapshot_coins_per_utxo_byte == 4_310,
-    validation_machine_v1.min_ada_output_overhead_bytes == 160,
+    vm_shared.min_ada_output_overhead_bytes == 160,
     // 1. C70 snapshot rate, zero-byte intercept.
     min_ada_absolute_vector_is_exact(4_310, 0, 689_600),
     // 2. C70 snapshot rate, the 41-byte enterprise output holding 2 ADA.
@@ -14543,12 +14486,8 @@ test min_ada_target_snapshot_rate_is_the_production_pin() {
     env.coins_per_utxo_byte == 4_310,
     target_snapshot_coins_per_utxo_byte == env.coins_per_utxo_byte,
     env.coins_per_utxo_byte > 0,
-    validation_machine_v1.output_meets_min_ada_v1(0, 16384, 0),
-    !validation_machine_v1.output_meets_min_ada_v1(
-      env.coins_per_utxo_byte,
-      16384,
-      0,
-    ),
+    vm_shared.output_meets_min_ada_v1(0, 16384, 0),
+    !vm_shared.output_meets_min_ada_v1(env.coins_per_utxo_byte, 16384, 0),
   }
 }
 
@@ -14567,13 +14506,13 @@ test min_ada_wiring_floor_is_the_pinned_absolute_value() {
 /// lovelace and open the asset cursor.
 fn value_output_descriptor_advance_evidence(
   f: ValueOutputDescriptorFixture,
-) -> validation_machine_v1.ValidationOneStepEvidenceV1 {
-  validation_machine_v1.ValidationOneStepEvidenceV1 {
-    transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+) -> vm_machine_types.ValidationOneStepEvidenceV1 {
+  vm_machine_types.ValidationOneStepEvidenceV1 {
+    transition: vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor: f.initial_work,
       claimed_successor: f.active_state,
     },
-    auxiliary: validation_machine_v1.ValueOutputDescriptorWitness {
+    auxiliary: vm_machine_types.ValueOutputDescriptorWitness {
       output_index: 0,
       descriptor_cbor: f.descriptor_cbor,
       siblings: [],
@@ -14588,13 +14527,13 @@ fn value_output_descriptor_advance_evidence(
 fn value_output_descriptor_rejection_evidence(
   f: ValueOutputDescriptorFixture,
   code: ByteArray,
-) -> validation_machine_v1.ValidationOneStepEvidenceV1 {
-  validation_machine_v1.ValidationOneStepEvidenceV1 {
-    transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+) -> vm_machine_types.ValidationOneStepEvidenceV1 {
+  vm_machine_types.ValidationOneStepEvidenceV1 {
+    transition: vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor: f.initial_work,
       claimed_successor: exact_rejection_post(f.pre, code),
     },
-    auxiliary: validation_machine_v1.ValueOutputDescriptorWitness {
+    auxiliary: vm_machine_types.ValueOutputDescriptorWitness {
       output_index: 0,
       descriptor_cbor: f.descriptor_cbor,
       siblings: [],
@@ -14611,12 +14550,12 @@ test value_and_mint_output_descriptor_admits_exact_min_ada_floor() {
     value_output_descriptor_min_ada_floor(),
   )
   and {
-    validation_machine_v1.verify_one_step_evidence(
+    vm_one_step.verify_one_step_evidence(
       f.pre,
       value_output_descriptor_advance_evidence(f),
       inline_field_door(),
     ),
-    !validation_machine_v1.verify_one_step_evidence(
+    !vm_one_step.verify_one_step_evidence(
       f.pre,
       value_output_descriptor_rejection_evidence(f, reject_min_ada_code),
       inline_field_door(),
@@ -14633,12 +14572,12 @@ test value_and_mint_output_descriptor_rejects_min_ada_short_by_one_lovelace() {
     value_output_descriptor_min_ada_floor() - 1,
   )
   and {
-    validation_machine_v1.verify_one_step_evidence(
+    vm_one_step.verify_one_step_evidence(
       f.pre,
       value_output_descriptor_rejection_evidence(f, reject_min_ada_code),
       inline_field_door(),
     ),
-    !validation_machine_v1.verify_one_step_evidence(
+    !vm_one_step.verify_one_step_evidence(
       f.pre,
       value_output_descriptor_advance_evidence(f),
       inline_field_door(),
@@ -14652,12 +14591,12 @@ test value_and_mint_output_descriptor_rejects_min_ada_short_by_one_lovelace() {
 test value_and_mint_output_descriptor_rejects_zero_lovelace_output() {
   let f = value_output_descriptor_fixture_at(0)
   and {
-    validation_machine_v1.verify_one_step_evidence(
+    vm_one_step.verify_one_step_evidence(
       f.pre,
       value_output_descriptor_rejection_evidence(f, reject_min_ada_code),
       inline_field_door(),
     ),
-    !validation_machine_v1.verify_one_step_evidence(
+    !vm_one_step.verify_one_step_evidence(
       f.pre,
       value_output_descriptor_advance_evidence(f),
       inline_field_door(),
@@ -14674,7 +14613,7 @@ test value_and_mint_output_descriptor_min_ada_code_is_not_interchangeable() {
   let f = value_output_descriptor_fixture_at(
     value_output_descriptor_min_ada_floor() - 1,
   )
-  !validation_machine_v1.verify_one_step_evidence(
+  !vm_one_step.verify_one_step_evidence(
     f.pre,
     value_output_descriptor_rejection_evidence(
       f,
@@ -14711,32 +14650,26 @@ fn conservation_mint_step_is_exact(
   let tx = conservation_transaction()
   let unit = conservation_unit()
   let mint_frontier = validation_merkle_v1.build_frontier(
-    [
-      validation_machine_v1.mint_asset_leaf_hash(
-        h_28_a,
-        asset_name,
-        mint_quantity,
-      ),
-    ],
+    [vm_shared.mint_asset_leaf_hash(h_28_a, asset_name, mint_quantity)],
   )
-  let native_control = validation_machine_v1.NativeScriptsControlV1 {
+  let native_control = vm_machine_types.NativeScriptsControlV1 {
     ..empty_native_control_fixture(tx),
     mint_count: mint_frontier.count,
     mint_peaks: mint_frontier.peaks,
   }
-  let control = validation_machine_v1.ValueAndMintControlV1 {
+  let control = vm_machine_types.ValueAndMintControlV1 {
     native_control,
     stage: 4,
-    replay_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     replay_cursor: 0,
     replay_asset_cursor: 0,
     replay_value_hash: zero,
-    replay_accumulator: validation_machine_v1.initial_resolution_accumulator(),
-    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_accumulator: vm_witness.initial_resolution_accumulator(),
+    replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     output_cursor: 0,
     output_asset_cursor: 0,
     mint_cursor: 0,
-    value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+    value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 1,
       asset_root: singleton_root(unit, cbor.serialise(pre_asset_delta)),
       seen_asset_count: 1,
@@ -14744,10 +14677,10 @@ fn conservation_mint_step_is_exact(
     },
   }
   let next_asset_delta = pre_asset_delta + mint_quantity
-  let next_control = validation_machine_v1.ValueAndMintControlV1 {
+  let next_control = vm_machine_types.ValueAndMintControlV1 {
     ..control,
     mint_cursor: 1,
-    value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+    value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 1,
       asset_root: singleton_root(unit, cbor.serialise(next_asset_delta)),
       seen_asset_count: 1,
@@ -14758,9 +14691,7 @@ fn conservation_mint_step_is_exact(
       },
     },
   }
-  let work_witness_cbor = validation_machine_v1.encode_value_and_mint_control_v1(
-    control,
-  )
+  let work_witness_cbor = vm_witness.encode_value_and_mint_control_v1(control)
   let compact = midgard_transaction_to_compact(tx)
   let tx_id = native_tx_id_for_version(
     native_tx_version_v1,
@@ -14795,23 +14726,23 @@ fn conservation_mint_step_is_exact(
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.ValueAndMint,
       61,
-      validation_machine_v1.encode_value_and_mint_control_v1(next_control),
+      vm_witness.encode_value_and_mint_control_v1(next_control),
     ),
   }
-  validation_machine_v1.verify_value_and_mint_one_step_v1(
+  vm_one_step.verify_value_and_mint_one_step_v1(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.ValueMintAssetWitness {
+      auxiliary: vm_machine_types.ValueMintAssetWitness {
         mint_index: 0,
         policy_id: h_28_a,
         asset_name,
         quantity: mint_quantity,
         siblings: [],
-        mutation: validation_machine_v1.ValueAssetMutationWitnessV1 {
+        mutation: vm_machine_types.ValueAssetMutationWitnessV1 {
           delta_was_present: True,
           old_delta: pre_asset_delta,
           delta_proof: [],
@@ -14832,26 +14763,26 @@ fn conservation_final_step_is_provable(
   let tx = conservation_transaction()
   let unit = conservation_unit()
   let mint_frontier = validation_merkle_v1.build_frontier(
-    [validation_machine_v1.mint_asset_leaf_hash(h_28_a, #"beef", 3)],
+    [vm_shared.mint_asset_leaf_hash(h_28_a, #"beef", 3)],
   )
-  let native_control = validation_machine_v1.NativeScriptsControlV1 {
+  let native_control = vm_machine_types.NativeScriptsControlV1 {
     ..empty_native_control_fixture(tx),
     mint_count: mint_frontier.count,
     mint_peaks: mint_frontier.peaks,
   }
-  let control = validation_machine_v1.ValueAndMintControlV1 {
+  let control = vm_machine_types.ValueAndMintControlV1 {
     native_control,
     stage: 5,
-    replay_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     replay_cursor: 0,
     replay_asset_cursor: 0,
     replay_value_hash: zero,
-    replay_accumulator: validation_machine_v1.initial_resolution_accumulator(),
-    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_accumulator: vm_witness.initial_resolution_accumulator(),
+    replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     output_cursor: 0,
     output_asset_cursor: 0,
     mint_cursor: 1,
-    value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+    value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta,
       asset_root: singleton_root(unit, cbor.serialise(asset_delta)),
       seen_asset_count: 1,
@@ -14862,9 +14793,7 @@ fn conservation_final_step_is_provable(
       },
     },
   }
-  let work_witness_cbor = validation_machine_v1.encode_value_and_mint_control_v1(
-    control,
-  )
+  let work_witness_cbor = vm_witness.encode_value_and_mint_control_v1(control)
   let compact = midgard_transaction_to_compact(tx)
   let tx_id = native_tx_id_for_version(
     native_tx_version_v1,
@@ -14901,7 +14830,7 @@ fn conservation_final_step_is_provable(
       work_root: validation_trace_v1.hash_work_witness(
         validation_trace_v1.LedgerDelta,
         63,
-        validation_machine_v1.encode_ledger_delta_witness_v1(
+        vm_witness.encode_ledger_delta_witness_v1(
           native_control,
           pre.prior_ledger_root,
           control.replay_schedule_hash,
@@ -14911,14 +14840,14 @@ fn conservation_final_step_is_provable(
   } else {
     exact_rejection_post(pre, reject_value_not_preserved_code)
   }
-  validation_machine_v1.verify_value_and_mint_one_step_v1(
+  vm_one_step.verify_value_and_mint_one_step_v1(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor,
       },
-      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+      auxiliary: vm_machine_types.NoAuxiliaryWitness,
     },
   )
 }
@@ -14981,31 +14910,31 @@ fn mint_authorization_step_is_provable(
   let tx = empty_v1_transaction()
   let mint_frontier = validation_merkle_v1.build_frontier(
     [
-      validation_machine_v1.mint_asset_leaf_hash(
+      vm_shared.mint_asset_leaf_hash(
         authenticated_policy_id,
         asset_name,
         quantity,
       ),
     ],
   )
-  let native_control = validation_machine_v1.NativeScriptsControlV1 {
+  let native_control = vm_machine_types.NativeScriptsControlV1 {
     ..empty_native_control_fixture(tx),
     mint_count: mint_frontier.count,
     mint_peaks: mint_frontier.peaks,
   }
-  let control = validation_machine_v1.ValueAndMintControlV1 {
+  let control = vm_machine_types.ValueAndMintControlV1 {
     native_control,
     stage: 4,
-    replay_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     replay_cursor: 0,
     replay_asset_cursor: 0,
     replay_value_hash: zero,
-    replay_accumulator: validation_machine_v1.initial_resolution_accumulator(),
-    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_accumulator: vm_witness.initial_resolution_accumulator(),
+    replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     output_cursor: 0,
     output_asset_cursor: 0,
     mint_cursor: 0,
-    value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+    value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 0,
       asset_root: null_hash,
       seen_asset_count: 0,
@@ -15013,19 +14942,17 @@ fn mint_authorization_step_is_provable(
     },
   }
   let unit = witnessed_policy_id |> bytearray.concat(asset_name)
-  let next_control = validation_machine_v1.ValueAndMintControlV1 {
+  let next_control = vm_machine_types.ValueAndMintControlV1 {
     ..control,
     mint_cursor: 1,
-    value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+    value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 0,
       asset_root: singleton_root(unit, cbor.serialise(quantity)),
       seen_asset_count: 1,
       nonzero_asset_count: 1,
     },
   }
-  let work_witness_cbor = validation_machine_v1.encode_value_and_mint_control_v1(
-    control,
-  )
+  let work_witness_cbor = vm_witness.encode_value_and_mint_control_v1(control)
   let compact = midgard_transaction_to_compact(tx)
   let tx_id = native_tx_id_for_version(
     native_tx_version_v1,
@@ -15060,23 +14987,23 @@ fn mint_authorization_step_is_provable(
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.ValueAndMint,
       65,
-      validation_machine_v1.encode_value_and_mint_control_v1(next_control),
+      vm_witness.encode_value_and_mint_control_v1(next_control),
     ),
   }
-  validation_machine_v1.verify_value_and_mint_one_step_v1(
+  vm_one_step.verify_value_and_mint_one_step_v1(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.ValueMintAssetWitness {
+      auxiliary: vm_machine_types.ValueMintAssetWitness {
         mint_index: 0,
         policy_id: witnessed_policy_id,
         asset_name,
         quantity,
         siblings: [],
-        mutation: validation_machine_v1.ValueAssetMutationWitnessV1 {
+        mutation: vm_machine_types.ValueAssetMutationWitnessV1 {
           delta_was_present: False,
           old_delta: 0,
           delta_proof: [],
@@ -15106,7 +15033,7 @@ fn mint_authorization_step_is_provable(
 // one is NOT, which makes the membership check the sole falsifier.
 test mint_and_burn_authorization_rejects_unbacked_policy() {
   let backed_mint_frontier = validation_merkle_v1.build_frontier(
-    [validation_machine_v1.mint_asset_leaf_hash(h_28_a, #"beef", 3)],
+    [vm_shared.mint_asset_leaf_hash(h_28_a, #"beef", 3)],
   )
   and {
     // Positive controls: the authorized policy mints and burns.
@@ -15120,14 +15047,14 @@ test mint_and_burn_authorization_rejects_unbacked_policy() {
       backed_mint_frontier.count,
       backed_mint_frontier.peaks,
       0,
-      validation_machine_v1.mint_asset_leaf_hash(h_28_a, #"beef", 3),
+      vm_shared.mint_asset_leaf_hash(h_28_a, #"beef", 3),
       [],
     ),
     !validation_merkle_v1.verify_membership(
       backed_mint_frontier.count,
       backed_mint_frontier.peaks,
       0,
-      validation_machine_v1.mint_asset_leaf_hash(h_28_b, #"beef", 3),
+      vm_shared.mint_asset_leaf_hash(h_28_b, #"beef", 3),
       [],
     ),
   }
@@ -15158,7 +15085,7 @@ test value_asset_output_instruction_evidence_is_bounded() {
     validation_merkle_v1.FrontierPeak { height: 5, hash: h_b },
     validation_merkle_v1.FrontierPeak { height: 6, hash: h_c },
   ]
-  let native_control = validation_machine_v1.NativeScriptsControlV1 {
+  let native_control = vm_machine_types.NativeScriptsControlV1 {
     ..empty_native_control_fixture(tx),
     resolved_input_count: 127,
     spend_input_count: 63,
@@ -15180,28 +15107,26 @@ test value_asset_output_instruction_evidence_is_bounded() {
     execution_cursor: 15,
     language_bitmap: 3,
   }
-  let control = validation_machine_v1.ValueAndMintControlV1 {
+  let control = vm_machine_types.ValueAndMintControlV1 {
     native_control,
     stage: 3,
-    replay_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     replay_cursor: 0,
     replay_asset_cursor: 0,
     replay_value_hash: zero,
-    replay_accumulator: validation_machine_v1.initial_resolution_accumulator(),
-    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_accumulator: vm_witness.initial_resolution_accumulator(),
+    replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     output_cursor: 0,
     output_asset_cursor: 1,
     mint_cursor: 0,
-    value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+    value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 0,
       asset_root: h_a,
       seen_asset_count: 127,
       nonzero_asset_count: 127,
     },
   }
-  let work_witness_cbor = validation_machine_v1.encode_value_and_mint_control_v1(
-    control,
-  )
+  let work_witness_cbor = vm_witness.encode_value_and_mint_control_v1(control)
   let compact = midgard_transaction_to_compact(tx)
   let tx_id = native_tx_id_for_version(
     native_tx_version_v1,
@@ -15240,12 +15165,12 @@ test value_asset_output_instruction_evidence_is_bounded() {
     neighbors: bytearray.from_int_big_endian(0, 128),
   }
   let maximum_map_proof = list.repeat(maximum_branch, 16)
-  let evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
-    transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+  let evidence = vm_machine_types.ValidationOneStepEvidenceV1 {
+    transition: vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: post,
     },
-    auxiliary: validation_machine_v1.ValueOutputAssetWitness {
+    auxiliary: vm_machine_types.ValueOutputAssetWitness {
       output_index: 63,
       descriptor_cbor: bytearray.from_int_big_endian(0, 512),
       asset_index: 127,
@@ -15254,7 +15179,7 @@ test value_asset_output_instruction_evidence_is_bounded() {
       quantity: 9_223_372_036_854_775_807,
       asset_peaks: dense_frontier_seven,
       asset_siblings: list.repeat(zero, 7),
-      mutation: validation_machine_v1.ValueAssetMutationWitnessV1 {
+      mutation: vm_machine_types.ValueAssetMutationWitnessV1 {
         delta_was_present: True,
         old_delta: -9_223_372_036_854_775_808,
         delta_proof: maximum_map_proof,
@@ -15299,9 +15224,9 @@ test maximum_general_field_bounded_chunk_instruction_evidence_is_bounded() {
     native_tx_field_access_v1.max_tier1_redeemer_preimage_bytes,
   )
   let maximum_tier3_chunk_indices = [1, 2, 3]
-  let tier1_evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
+  let tier1_evidence = vm_machine_types.ValidationOneStepEvidenceV1 {
     transition: base_evidence.transition,
-    auxiliary: validation_machine_v1.TransactionFieldChunkWitness {
+    auxiliary: vm_machine_types.TransactionFieldChunkWitness {
       field_index: 8,
       item_index: 16_382,
       carriage: native_tx_field_access_v1.Inline {
@@ -15309,9 +15234,9 @@ test maximum_general_field_bounded_chunk_instruction_evidence_is_bounded() {
       },
     },
   }
-  let tier3_evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
+  let tier3_evidence = vm_machine_types.ValidationOneStepEvidenceV1 {
     transition: base_evidence.transition,
-    auxiliary: validation_machine_v1.TransactionFieldChunkWitness {
+    auxiliary: vm_machine_types.TransactionFieldChunkWitness {
       field_index: 8,
       item_index: 16_382,
       carriage: native_tx_field_access_v1.Certified {
@@ -15339,7 +15264,7 @@ test maximum_script_program_instruction_evidence_is_bounded() {
     empty_frontier,
     empty_frontier,
     empty_frontier,
-    validation_machine_v1.empty_script_discovery_control(),
+    vm_witness.empty_script_discovery_control(),
     52,
   )
   let proof_source = midgard_transaction_proof_source_v1(tx)
@@ -15352,7 +15277,7 @@ test maximum_script_program_instruction_evidence_is_bounded() {
   let dense_frontier_seven = validation_merkle_v1.build_frontier(
     list.repeat(h_c, 127),
   )
-  let discovery = validation_machine_v1.ScriptDiscoveryControlV1 {
+  let discovery = vm_machine_types.ScriptDiscoveryControlV1 {
     purpose_cursor: 15,
     source_cursor: 15,
     redeemer_cursor: 15,
@@ -15369,7 +15294,7 @@ test maximum_script_program_instruction_evidence_is_bounded() {
     execution_peaks: dense_frontier_four.peaks,
     redeemer_item_control_hash: #"",
   }
-  let control = validation_machine_v1.ScriptSourcesControlV1 {
+  let control = vm_machine_types.ScriptSourcesControlV1 {
     compact_cbor: proof_source.compact_cbor,
     witness_set_compact_cbor: proof_source.witness_set_compact_cbor,
     field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
@@ -15394,17 +15319,17 @@ test maximum_script_program_instruction_evidence_is_bounded() {
     output_count: 63,
     output_peaks: dense_frontier_six.peaks,
     output_total_count: 63,
-    receive_scan: validation_machine_v1.empty_receive_purpose_scan_control(),
+    receive_scan: vm_witness.empty_receive_purpose_scan_control(),
     source_total_count: 15,
     redeemer_total_count: 15,
-    observer_scan: validation_machine_v1.empty_observer_purpose_scan_control(),
+    observer_scan: vm_witness.empty_observer_purpose_scan_control(),
     discovery,
     output_proof: None,
     pending_source_cbor: #"",
-    mint_fold: validation_machine_v1.empty_mint_fold_control(),
+    mint_fold: vm_witness.empty_mint_fold_control(),
     resolution_schedule_hash: h_c,
   }
-  let work_witness_cbor = validation_machine_v1.encode_script_sources_discovery_witness(
+  let work_witness_cbor = vm_witness.encode_script_sources_discovery_witness(
     control,
     8,
     discovery,
@@ -15422,12 +15347,12 @@ test maximum_script_program_instruction_evidence_is_bounded() {
     program_counter: 53,
     work_root: h_b,
   }
-  let evidence = validation_machine_v1.ValidationOneStepEvidenceV1 {
-    transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+  let evidence = vm_machine_types.ValidationOneStepEvidenceV1 {
+    transition: vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor,
       claimed_successor: post,
     },
-    auxiliary: validation_machine_v1.ScriptSourceScanWitness {
+    auxiliary: vm_machine_types.ScriptSourceScanWitness {
       source_index: 15,
       origin_kind: 1,
       source_key: bytearray.from_int_big_endian(0, 36),
@@ -15449,16 +15374,16 @@ fn stage_zero_script_sources_control(
   source_frontier: validation_merkle_v1.BuiltFrontier,
   source_total_count: Int,
   pending_source_cbor: ByteArray,
-) -> validation_machine_v1.ScriptSourcesControlV1 {
+) -> vm_machine_types.ScriptSourcesControlV1 {
   let proof_source = midgard_transaction_proof_source_v1(tx)
   let signer_frontier = signer_frontier_for_tx(tx)
-  validation_machine_v1.ScriptSourcesControlV1 {
+  vm_machine_types.ScriptSourcesControlV1 {
     compact_cbor: proof_source.compact_cbor,
     witness_set_compact_cbor: proof_source.witness_set_compact_cbor,
     field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
     context_cbor: validation_context_cbor,
     resolved_input_count: 0,
-    resolved_inputs_accumulator: validation_machine_v1.initial_resolution_accumulator(),
+    resolved_inputs_accumulator: vm_witness.initial_resolution_accumulator(),
     signer_count: signer_frontier.count,
     signer_frontier_commitment: validation_merkle_v1.frontier_commitment(
       signer_frontier.count,
@@ -15471,8 +15396,8 @@ fn stage_zero_script_sources_control(
     redeemer_count: 0,
     redeemer_peaks: validation_merkle_v1.empty_frontier(),
     replay_cursor: 0,
-    replay_accumulator: validation_machine_v1.initial_resolution_accumulator(),
-    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_accumulator: vm_witness.initial_resolution_accumulator(),
+    replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     spend_index: 0,
     purpose_count: 0,
     purpose_peaks: validation_merkle_v1.empty_frontier(),
@@ -15480,15 +15405,15 @@ fn stage_zero_script_sources_control(
     output_count: 0,
     output_peaks: validation_merkle_v1.empty_frontier(),
     output_total_count: 0,
-    receive_scan: validation_machine_v1.empty_receive_purpose_scan_control(),
+    receive_scan: vm_witness.empty_receive_purpose_scan_control(),
     source_total_count,
     redeemer_total_count: 0,
-    observer_scan: validation_machine_v1.empty_observer_purpose_scan_control(),
-    discovery: validation_machine_v1.empty_script_discovery_control(),
+    observer_scan: vm_witness.empty_observer_purpose_scan_control(),
+    discovery: vm_witness.empty_script_discovery_control(),
     output_proof: None,
     pending_source_cbor,
-    mint_fold: validation_machine_v1.empty_mint_fold_control(),
-    resolution_schedule_hash: validation_machine_v1.transaction_resolution_schedule_hash(
+    mint_fold: vm_witness.empty_mint_fold_control(),
+    resolution_schedule_hash: vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
@@ -15496,10 +15421,10 @@ fn stage_zero_script_sources_control(
 }
 
 fn stage_zero_script_sources_work_witness(
-  control: validation_machine_v1.ScriptSourcesControlV1,
+  control: vm_machine_types.ScriptSourcesControlV1,
 ) -> ByteArray {
   if control.pending_source_cbor == #"" {
-    validation_machine_v1.encode_script_sources_witness(
+    vm_witness.encode_script_sources_witness(
       control.compact_cbor,
       control.witness_set_compact_cbor,
       control.field_preimage_lengths_cbor,
@@ -15532,7 +15457,7 @@ fn stage_zero_script_sources_work_witness(
       control.resolution_schedule_hash,
     )
   } else {
-    validation_machine_v1.encode_script_sources_pending_source_witness(
+    vm_witness.encode_script_sources_pending_source_witness(
       control,
       control.pending_source_cbor,
     )
@@ -15541,7 +15466,7 @@ fn stage_zero_script_sources_work_witness(
 
 fn stage_zero_script_sources_state(
   tx: MidgardTransaction,
-  control: validation_machine_v1.ScriptSourcesControlV1,
+  control: vm_machine_types.ScriptSourcesControlV1,
   program_counter: Int,
 ) -> validation_trace_v1.ValidationMachineStateV1 {
   let compact = midgard_transaction_to_compact(tx)
@@ -15591,7 +15516,7 @@ test script_sources_stage_zero_begin_initializes_an_authenticated_identity_trace
   }
   let item_cbor = encode_midgard_versioned_script(script)
   let carriage = inline_field_carriage([item_cbor])
-  let pending = validation_machine_v1.InlineSourceHashControlV1 {
+  let pending = vm_machine_types.InlineSourceHashControlV1 {
     version: 1,
     source_index: 0,
     source_total_count: 1,
@@ -15610,18 +15535,18 @@ test script_sources_stage_zero_begin_initializes_an_authenticated_identity_trace
     0,
     #"",
   )
-  let successor_control = validation_machine_v1.ScriptSourcesControlV1 {
+  let successor_control = vm_machine_types.ScriptSourcesControlV1 {
     ..control,
     source_total_count: 1,
-    pending_source_cbor: validation_machine_v1.encode_inline_source_hash_control_v1(
+    pending_source_cbor: vm_witness.encode_inline_source_hash_control_v1(
       pending,
     ),
   }
   let pre = stage_zero_script_sources_state(tx, control, 59)
   let post = stage_zero_script_sources_state(tx, successor_control, 60)
-  validation_machine_v1.verify_script_sources_stage_zero_begin_semantics_v1(
+  vm_script_sources_early_stages.verify_script_sources_stage_zero_begin_semantics_v1(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor: stage_zero_script_sources_work_witness(control),
       claimed_successor: post,
     },
@@ -15660,15 +15585,15 @@ test script_sources_stage_zero_finish_advances_a_complete_source_frontier() {
     ],
   )
   let control = stage_zero_script_sources_control(tx, source_frontier, 1, #"")
-  let successor_control = validation_machine_v1.ScriptSourcesControlV1 {
+  let successor_control = vm_machine_types.ScriptSourcesControlV1 {
     ..control,
     stage: 1,
   }
   let pre = stage_zero_script_sources_state(tx, control, 62)
   let post = stage_zero_script_sources_state(tx, successor_control, 63)
-  validation_machine_v1.verify_script_sources_stage_zero_finish_semantics_v1(
+  vm_script_sources_early_stages.verify_script_sources_stage_zero_finish_semantics_v1(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor: stage_zero_script_sources_work_witness(control),
       claimed_successor: post,
     },
@@ -15694,7 +15619,7 @@ test script_sources_stage_zero_accepts_an_authenticated_hash_block() {
   let hash_control = blake2b_224_trace_v1.initial_control_v1(
     bytearray.length(payload) + 1,
   )
-  let pending = validation_machine_v1.InlineSourceHashControlV1 {
+  let pending = vm_machine_types.InlineSourceHashControlV1 {
     version: 1,
     source_index: 0,
     source_total_count: 1,
@@ -15705,9 +15630,7 @@ test script_sources_stage_zero_accepts_an_authenticated_hash_block() {
     item_commitment: bounded_item_v1.from_bytes(6, 0, item_cbor),
     hash_control,
   }
-  let pending_cbor = validation_machine_v1.encode_inline_source_hash_control_v1(
-    pending,
-  )
+  let pending_cbor = vm_witness.encode_inline_source_hash_control_v1(pending)
   let control = stage_zero_script_sources_control(
     tx,
     validation_merkle_v1.build_frontier([]),
@@ -15719,39 +15642,39 @@ test script_sources_stage_zero_accepts_an_authenticated_hash_block() {
     hash_control,
     Some(block),
   )
-  let next_pending_cbor = validation_machine_v1.encode_inline_source_hash_control_v1(
-    validation_machine_v1.InlineSourceHashControlV1 {
+  let next_pending_cbor = vm_witness.encode_inline_source_hash_control_v1(
+    vm_machine_types.InlineSourceHashControlV1 {
       ..pending,
       hash_control: next_hash_control,
     },
   )
-  let successor_control = validation_machine_v1.ScriptSourcesControlV1 {
+  let successor_control = vm_machine_types.ScriptSourcesControlV1 {
     ..control,
     pending_source_cbor: next_pending_cbor,
   }
   let pre = stage_zero_script_sources_state(tx, control, 60)
   let post = stage_zero_script_sources_state(tx, successor_control, 61)
-  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor: stage_zero_script_sources_work_witness(control),
     claimed_successor: post,
   }
   and {
-    validation_machine_v1.verify_script_sources_stage_zero_semantics_v1(
+    vm_script_sources.verify_script_sources_stage_zero_semantics_v1(
       pre,
       transition,
-      validation_machine_v1.ScriptSourceHashBlockWitness {
+      vm_machine_types.ScriptSourceHashBlockWitness {
         chunk_proof,
         next_chunk_proof: None,
       },
       inline_field_door(),
     ),
-    validation_machine_v1.verify_script_sources_stage_zero_hash_block_semantics_v1(
+    vm_script_sources_early_stages.verify_script_sources_stage_zero_hash_block_semantics_v1(
       pre,
       transition,
       chunk_proof,
       None,
     ),
-    !validation_machine_v1.verify_script_sources_stage_zero_hash_block_semantics_v1(
+    !vm_script_sources_early_stages.verify_script_sources_stage_zero_hash_block_semantics_v1(
       validation_trace_v1.ValidationMachineStateV1 {
         ..pre,
         transaction_commitment: h_b,
@@ -15789,7 +15712,7 @@ test script_sources_stage_zero_advances_an_inline_hash_round() {
     round_control,
     None,
   )
-  let pending = validation_machine_v1.InlineSourceHashControlV1 {
+  let pending = vm_machine_types.InlineSourceHashControlV1 {
     version: 1,
     source_index: 0,
     source_total_count: 1,
@@ -15804,12 +15727,12 @@ test script_sources_stage_zero_advances_an_inline_hash_round() {
     tx,
     validation_merkle_v1.build_frontier([]),
     1,
-    validation_machine_v1.encode_inline_source_hash_control_v1(pending),
+    vm_witness.encode_inline_source_hash_control_v1(pending),
   )
-  let successor_control = validation_machine_v1.ScriptSourcesControlV1 {
+  let successor_control = vm_machine_types.ScriptSourcesControlV1 {
     ..control,
-    pending_source_cbor: validation_machine_v1.encode_inline_source_hash_control_v1(
-      validation_machine_v1.InlineSourceHashControlV1 {
+    pending_source_cbor: vm_witness.encode_inline_source_hash_control_v1(
+      vm_machine_types.InlineSourceHashControlV1 {
         ..pending,
         hash_control: next_hash_control,
       },
@@ -15817,9 +15740,9 @@ test script_sources_stage_zero_advances_an_inline_hash_round() {
   }
   let pre = stage_zero_script_sources_state(tx, control, 60)
   let post = stage_zero_script_sources_state(tx, successor_control, 61)
-  validation_machine_v1.verify_script_sources_stage_zero_hash_advance_semantics_v1(
+  vm_script_sources_early_stages.verify_script_sources_stage_zero_hash_advance_semantics_v1(
     pre,
-    validation_machine_v1.ValidationOneStepWitnessV1 {
+    vm_machine_types.ValidationOneStepWitnessV1 {
       work_witness_cbor: stage_zero_script_sources_work_witness(control),
       claimed_successor: post,
     },
@@ -15855,7 +15778,7 @@ test script_sources_stage_zero_commits_the_terminal_script_identity() {
     working_value: #"",
     round: 0,
   }
-  let pending = validation_machine_v1.InlineSourceHashControlV1 {
+  let pending = vm_machine_types.InlineSourceHashControlV1 {
     version: 1,
     source_index: 0,
     source_total_count: 1,
@@ -15870,7 +15793,7 @@ test script_sources_stage_zero_commits_the_terminal_script_identity() {
     tx,
     validation_merkle_v1.build_frontier([]),
     1,
-    validation_machine_v1.encode_inline_source_hash_control_v1(pending),
+    vm_witness.encode_inline_source_hash_control_v1(pending),
   )
   let successor_frontier = validation_merkle_v1.build_frontier(
     [
@@ -15891,18 +15814,18 @@ test script_sources_stage_zero_commits_the_terminal_script_identity() {
   )
   let pre = stage_zero_script_sources_state(tx, control, 61)
   let post = stage_zero_script_sources_state(tx, successor_control, 62)
-  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor: stage_zero_script_sources_work_witness(control),
     claimed_successor: post,
   }
   and {
-    validation_machine_v1.verify_script_sources_stage_zero_semantics_v1(
+    vm_script_sources.verify_script_sources_stage_zero_semantics_v1(
       pre,
       transition,
-      validation_machine_v1.NoAuxiliaryWitness,
+      vm_machine_types.NoAuxiliaryWitness,
       inline_field_door(),
     ),
-    validation_machine_v1.verify_script_sources_stage_zero_hash_terminal_semantics_v1(
+    vm_script_sources_early_stages.verify_script_sources_stage_zero_hash_terminal_semantics_v1(
       pre,
       transition,
     ),
@@ -15910,7 +15833,7 @@ test script_sources_stage_zero_commits_the_terminal_script_identity() {
 }
 
 fn crossing_inline_source_hash_fixture() -> Pair<
-  validation_machine_v1.InlineSourceHashControlV1,
+  vm_machine_types.InlineSourceHashControlV1,
   Pair<bounded_item_v1.ChunkProofV1, bounded_item_v1.ChunkProofV1>,
 > {
   let payload = builtin.replicate_byte(4_200, 171)
@@ -15936,7 +15859,7 @@ fn crossing_inline_source_hash_fixture() -> Pair<
     bytearray.length(item_cbor),
     frontier.peaks,
   )
-  let pending = validation_machine_v1.InlineSourceHashControlV1 {
+  let pending = vm_machine_types.InlineSourceHashControlV1 {
     version: 1,
     source_index: 0,
     source_total_count: 1,
@@ -15986,7 +15909,7 @@ fn crossing_inline_source_hash_fixture() -> Pair<
 
 test inline_source_hash_block_authenticates_a_chunk_boundary() {
   let Pair(pending, Pair(current, next)) = crossing_inline_source_hash_fixture()
-  validation_machine_v1.inline_source_hash_block_v1(
+  vm_script_sources_early_stages.inline_source_hash_block_v1(
     pending,
     current,
     Some(next),
@@ -15995,7 +15918,11 @@ test inline_source_hash_block_authenticates_a_chunk_boundary() {
 
 test inline_source_hash_block_fails_closed_when_boundary_data_is_withheld() {
   let Pair(pending, Pair(current, _next)) = crossing_inline_source_hash_fixture()
-  validation_machine_v1.inline_source_hash_block_v1(pending, current, None) == None
+  vm_script_sources_early_stages.inline_source_hash_block_v1(
+    pending,
+    current,
+    None,
+  ) == None
 }
 
 // ===========================================================================
@@ -16069,7 +15996,7 @@ test stage_differential_zero_begin_routes_agree() {
   }
   let item_cbor = encode_midgard_versioned_script(script)
   let carriage = inline_field_carriage([item_cbor])
-  let pending = validation_machine_v1.InlineSourceHashControlV1 {
+  let pending = vm_machine_types.InlineSourceHashControlV1 {
     version: 1,
     source_index: 0,
     source_total_count: 1,
@@ -16091,10 +16018,10 @@ test stage_differential_zero_begin_routes_agree() {
   let pre = stage_zero_script_sources_state(tx, control, 59)
   let post = stage_zero_script_sources_state(
     tx,
-    validation_machine_v1.ScriptSourcesControlV1 {
+    vm_machine_types.ScriptSourcesControlV1 {
       ..control,
       source_total_count: 1,
-      pending_source_cbor: validation_machine_v1.encode_inline_source_hash_control_v1(
+      pending_source_cbor: vm_witness.encode_inline_source_hash_control_v1(
         pending,
       ),
     },
@@ -16104,11 +16031,11 @@ test stage_differential_zero_begin_routes_agree() {
   // door-authenticated field-6 preimage carries one.
   let mutated_post = stage_zero_script_sources_state(
     tx,
-    validation_machine_v1.ScriptSourcesControlV1 {
+    vm_machine_types.ScriptSourcesControlV1 {
       ..control,
       source_total_count: 2,
-      pending_source_cbor: validation_machine_v1.encode_inline_source_hash_control_v1(
-        validation_machine_v1.InlineSourceHashControlV1 {
+      pending_source_cbor: vm_witness.encode_inline_source_hash_control_v1(
+        vm_machine_types.InlineSourceHashControlV1 {
           ..pending,
           source_total_count: 2,
         },
@@ -16117,22 +16044,22 @@ test stage_differential_zero_begin_routes_agree() {
     60,
   )
   let work_witness_cbor = stage_zero_script_sources_work_witness(control)
-  let accepting = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let accepting = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: post,
   }
-  let rejecting = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let rejecting = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: mutated_post,
   }
-  let auxiliary = validation_machine_v1.TransactionFieldChunkWitness {
+  let auxiliary = vm_machine_types.TransactionFieldChunkWitness {
     field_index: 6,
     item_index: 0,
     carriage,
   }
   and {
     stage_routes_agree(
-      validation_machine_v1.verify_script_sources_stage_zero_begin_semantics_v1(
+      vm_script_sources_early_stages.verify_script_sources_stage_zero_begin_semantics_v1(
         pre,
         accepting,
         inline_field_door(),
@@ -16140,7 +16067,7 @@ test stage_differential_zero_begin_routes_agree() {
         0,
         carriage,
       ),
-      validation_machine_v1.verify_script_sources_stage_zero_semantics_v1(
+      vm_script_sources.verify_script_sources_stage_zero_semantics_v1(
         pre,
         accepting,
         auxiliary,
@@ -16149,7 +16076,7 @@ test stage_differential_zero_begin_routes_agree() {
       True,
     ),
     stage_routes_agree(
-      validation_machine_v1.verify_script_sources_stage_zero_begin_semantics_v1(
+      vm_script_sources_early_stages.verify_script_sources_stage_zero_begin_semantics_v1(
         pre,
         rejecting,
         inline_field_door(),
@@ -16157,7 +16084,7 @@ test stage_differential_zero_begin_routes_agree() {
         0,
         carriage,
       ),
-      validation_machine_v1.verify_script_sources_stage_zero_semantics_v1(
+      vm_script_sources.verify_script_sources_stage_zero_semantics_v1(
         pre,
         rejecting,
         auxiliary,
@@ -16199,47 +16126,47 @@ test stage_differential_zero_finish_routes_agree() {
   let pre = stage_zero_script_sources_state(tx, control, 62)
   let post = stage_zero_script_sources_state(
     tx,
-    validation_machine_v1.ScriptSourcesControlV1 { ..control, stage: 1 },
+    vm_machine_types.ScriptSourcesControlV1 { ..control, stage: 1 },
     63,
   )
   // Mutated successor: stage 2 instead of the mandated stage 1.
   let mutated_post = stage_zero_script_sources_state(
     tx,
-    validation_machine_v1.ScriptSourcesControlV1 { ..control, stage: 2 },
+    vm_machine_types.ScriptSourcesControlV1 { ..control, stage: 2 },
     63,
   )
   let work_witness_cbor = stage_zero_script_sources_work_witness(control)
-  let accepting = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let accepting = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: post,
   }
-  let rejecting = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let rejecting = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: mutated_post,
   }
   and {
     stage_routes_agree(
-      validation_machine_v1.verify_script_sources_stage_zero_finish_semantics_v1(
+      vm_script_sources_early_stages.verify_script_sources_stage_zero_finish_semantics_v1(
         pre,
         accepting,
       ),
-      validation_machine_v1.verify_script_sources_stage_zero_semantics_v1(
+      vm_script_sources.verify_script_sources_stage_zero_semantics_v1(
         pre,
         accepting,
-        validation_machine_v1.NoAuxiliaryWitness,
+        vm_machine_types.NoAuxiliaryWitness,
         inline_field_door(),
       ),
       True,
     ),
     stage_routes_agree(
-      validation_machine_v1.verify_script_sources_stage_zero_finish_semantics_v1(
+      vm_script_sources_early_stages.verify_script_sources_stage_zero_finish_semantics_v1(
         pre,
         rejecting,
       ),
-      validation_machine_v1.verify_script_sources_stage_zero_semantics_v1(
+      vm_script_sources.verify_script_sources_stage_zero_semantics_v1(
         pre,
         rejecting,
-        validation_machine_v1.NoAuxiliaryWitness,
+        vm_machine_types.NoAuxiliaryWitness,
         inline_field_door(),
       ),
       False,
@@ -16259,7 +16186,7 @@ test stage_differential_seven_observer_routes_agree() {
   let observer_purpose_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.purpose_leaf_hash(2, 0, h_28_a, h_28_a)],
   )
-  let accumulator = validation_machine_v1.initial_resolution_accumulator()
+  let accumulator = vm_witness.initial_resolution_accumulator()
   let Pair(pre, work_witness_cbor) = script_sources_output_step_fixture(
     tx,
     0,
@@ -16269,14 +16196,14 @@ test stage_differential_seven_observer_routes_agree() {
     empty_frontier,
     0,
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
     0,
     empty_frontier,
     18,
   )
-  let observer_scan = validation_machine_v1.ObserverPurposeScanControlV1 {
+  let observer_scan = vm_machine_types.ObserverPurposeScanControlV1 {
     total_count: 1,
     seen: 1,
     previous_hash: h_28_a,
@@ -16291,13 +16218,13 @@ test stage_differential_seven_observer_routes_agree() {
     0,
     empty_frontier,
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     observer_purpose_frontier,
     0,
     empty_frontier,
     0,
-    validation_machine_v1.empty_receive_purpose_scan_control(),
+    vm_witness.empty_receive_purpose_scan_control(),
     observer_scan,
     19,
   )
@@ -16313,33 +16240,33 @@ test stage_differential_seven_observer_routes_agree() {
     0,
     empty_frontier,
     accumulator,
-    validation_machine_v1.empty_resolution_schedule_hash(),
+    vm_witness.empty_resolution_schedule_hash(),
     0,
     empty_frontier,
     0,
     empty_frontier,
     0,
-    validation_machine_v1.empty_receive_purpose_scan_control(),
+    vm_witness.empty_receive_purpose_scan_control(),
     observer_scan,
     19,
   )
   let carriage = inline_field_carriage([h_28_a])
-  let accepting = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let accepting = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: post,
   }
-  let rejecting = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let rejecting = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: mutated_post,
   }
-  let auxiliary = validation_machine_v1.TransactionFieldChunkWitness {
+  let auxiliary = vm_machine_types.TransactionFieldChunkWitness {
     field_index: 3,
     item_index: 0,
     carriage,
   }
   and {
     stage_routes_agree(
-      validation_machine_v1.verify_script_sources_stage_seven_observer_semantics_v1(
+      vm_script_sources_late_stages.verify_script_sources_stage_seven_observer_semantics_v1(
         pre,
         accepting,
         inline_field_door(),
@@ -16347,7 +16274,7 @@ test stage_differential_seven_observer_routes_agree() {
         0,
         carriage,
       ),
-      validation_machine_v1.verify_script_sources_stage_seven_semantics_v1(
+      vm_script_sources.verify_script_sources_stage_seven_semantics_v1(
         pre,
         accepting,
         auxiliary,
@@ -16356,7 +16283,7 @@ test stage_differential_seven_observer_routes_agree() {
       True,
     ),
     stage_routes_agree(
-      validation_machine_v1.verify_script_sources_stage_seven_observer_semantics_v1(
+      vm_script_sources_late_stages.verify_script_sources_stage_seven_observer_semantics_v1(
         pre,
         rejecting,
         inline_field_door(),
@@ -16364,7 +16291,7 @@ test stage_differential_seven_observer_routes_agree() {
         0,
         carriage,
       ),
-      validation_machine_v1.verify_script_sources_stage_seven_semantics_v1(
+      vm_script_sources.verify_script_sources_stage_seven_semantics_v1(
         pre,
         rejecting,
         auxiliary,
@@ -16404,7 +16331,7 @@ test stage_differential_seven_receive_routes_agree() {
   let output_descriptor_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.output_descriptor_leaf_hash(0, material.descriptor_cbor)],
   )
-  let empty_receive_scan = validation_machine_v1.ReceivePurposeScanControlV1 {
+  let empty_receive_scan = vm_machine_types.ReceivePurposeScanControlV1 {
     source_count: receive_source_frontier.count,
     source_peaks: receive_source_frontier.peaks,
     receive_count: 0,
@@ -16412,7 +16339,7 @@ test stage_differential_seven_receive_routes_agree() {
     candidate_hash: #"",
     descriptor_peaks: output_descriptor_frontier.peaks,
   }
-  let selected_receive_scan = validation_machine_v1.ReceivePurposeScanControlV1 {
+  let selected_receive_scan = vm_machine_types.ReceivePurposeScanControlV1 {
     ..empty_receive_scan,
     candidate_hash: h_28_a,
   }
@@ -16441,15 +16368,15 @@ test stage_differential_seven_receive_routes_agree() {
     selected_receive_scan,
     16,
   )
-  let accepting = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let accepting = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: post,
   }
-  let rejecting = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let rejecting = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: mutated_post,
   }
-  let auxiliary = validation_machine_v1.ScriptPurposeScanWitness {
+  let auxiliary = vm_machine_types.ScriptPurposeScanWitness {
     purpose_kind: 3,
     purpose_index: 0,
     script_hash: h_28_a,
@@ -16458,7 +16385,7 @@ test stage_differential_seven_receive_routes_agree() {
   }
   and {
     stage_routes_agree(
-      validation_machine_v1.verify_script_sources_stage_seven_receive_semantics_v1(
+      vm_script_sources_late_stages.verify_script_sources_stage_seven_receive_semantics_v1(
         pre,
         accepting,
         3,
@@ -16467,7 +16394,7 @@ test stage_differential_seven_receive_routes_agree() {
         h_28_a,
         [],
       ),
-      validation_machine_v1.verify_script_sources_stage_seven_semantics_v1(
+      vm_script_sources.verify_script_sources_stage_seven_semantics_v1(
         pre,
         accepting,
         auxiliary,
@@ -16476,7 +16403,7 @@ test stage_differential_seven_receive_routes_agree() {
       True,
     ),
     stage_routes_agree(
-      validation_machine_v1.verify_script_sources_stage_seven_receive_semantics_v1(
+      vm_script_sources_late_stages.verify_script_sources_stage_seven_receive_semantics_v1(
         pre,
         rejecting,
         3,
@@ -16485,7 +16412,7 @@ test stage_differential_seven_receive_routes_agree() {
         h_28_a,
         [],
       ),
-      validation_machine_v1.verify_script_sources_stage_seven_semantics_v1(
+      vm_script_sources.verify_script_sources_stage_seven_semantics_v1(
         pre,
         rejecting,
         auxiliary,
@@ -16504,7 +16431,7 @@ test stage_differential_eight_purpose_routes_agree() {
   let purpose_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.purpose_leaf_hash(0, 0, h_28_a, #"0102")],
   )
-  let empty_discovery = validation_machine_v1.empty_script_discovery_control()
+  let empty_discovery = vm_witness.empty_script_discovery_control()
   let Pair(pre, work_witness_cbor) = script_discovery_step_fixture(
     tx,
     8,
@@ -16514,7 +16441,7 @@ test stage_differential_eight_purpose_routes_agree() {
     empty_discovery,
     19,
   )
-  let selected = validation_machine_v1.ScriptDiscoveryControlV1 {
+  let selected = vm_machine_types.ScriptDiscoveryControlV1 {
     ..empty_discovery,
     current_purpose_kind: 0,
     current_purpose_index: 0,
@@ -16538,21 +16465,21 @@ test stage_differential_eight_purpose_routes_agree() {
     empty_frontier,
     empty_frontier,
     purpose_frontier,
-    validation_machine_v1.ScriptDiscoveryControlV1 {
+    vm_machine_types.ScriptDiscoveryControlV1 {
       ..selected,
       current_subject: #"0103",
     },
     20,
   )
-  let accepting = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let accepting = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: post,
   }
-  let rejecting = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let rejecting = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: mutated_post,
   }
-  let auxiliary = validation_machine_v1.ScriptPurposeScanWitness {
+  let auxiliary = vm_machine_types.ScriptPurposeScanWitness {
     purpose_kind: 0,
     purpose_index: 0,
     script_hash: h_28_a,
@@ -16561,7 +16488,7 @@ test stage_differential_eight_purpose_routes_agree() {
   }
   and {
     stage_routes_agree(
-      validation_machine_v1.verify_script_sources_stage_eight_purpose_semantics_v1(
+      vm_script_sources_late_stages.verify_script_sources_stage_eight_purpose_semantics_v1(
         pre,
         accepting,
         0,
@@ -16570,7 +16497,7 @@ test stage_differential_eight_purpose_routes_agree() {
         #"0102",
         [],
       ),
-      validation_machine_v1.verify_script_sources_stage_eight_semantics_v1(
+      vm_script_sources.verify_script_sources_stage_eight_semantics_v1(
         pre,
         accepting,
         auxiliary,
@@ -16578,7 +16505,7 @@ test stage_differential_eight_purpose_routes_agree() {
       True,
     ),
     stage_routes_agree(
-      validation_machine_v1.verify_script_sources_stage_eight_purpose_semantics_v1(
+      vm_script_sources_late_stages.verify_script_sources_stage_eight_purpose_semantics_v1(
         pre,
         rejecting,
         0,
@@ -16587,7 +16514,7 @@ test stage_differential_eight_purpose_routes_agree() {
         #"0102",
         [],
       ),
-      validation_machine_v1.verify_script_sources_stage_eight_semantics_v1(
+      vm_script_sources.verify_script_sources_stage_eight_semantics_v1(
         pre,
         rejecting,
         auxiliary,
@@ -16600,7 +16527,7 @@ test stage_differential_eight_purpose_routes_agree() {
 test stage_differential_eight_finish_routes_agree() {
   let tx = empty_v1_transaction()
   let empty_frontier = validation_merkle_v1.build_frontier([])
-  let empty_discovery = validation_machine_v1.empty_script_discovery_control()
+  let empty_discovery = vm_witness.empty_script_discovery_control()
   let Pair(pre, work_witness_cbor) = script_discovery_step_fixture(
     tx,
     8,
@@ -16629,36 +16556,36 @@ test stage_differential_eight_finish_routes_agree() {
     empty_discovery,
     20,
   )
-  let accepting = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let accepting = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: post,
   }
-  let rejecting = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let rejecting = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: mutated_post,
   }
   and {
     stage_routes_agree(
-      validation_machine_v1.verify_script_sources_stage_eight_finish_semantics_v1(
+      vm_script_sources_late_stages.verify_script_sources_stage_eight_finish_semantics_v1(
         pre,
         accepting,
       ),
-      validation_machine_v1.verify_script_sources_stage_eight_semantics_v1(
+      vm_script_sources.verify_script_sources_stage_eight_semantics_v1(
         pre,
         accepting,
-        validation_machine_v1.NoAuxiliaryWitness,
+        vm_machine_types.NoAuxiliaryWitness,
       ),
       True,
     ),
     stage_routes_agree(
-      validation_machine_v1.verify_script_sources_stage_eight_finish_semantics_v1(
+      vm_script_sources_late_stages.verify_script_sources_stage_eight_finish_semantics_v1(
         pre,
         rejecting,
       ),
-      validation_machine_v1.verify_script_sources_stage_eight_semantics_v1(
+      vm_script_sources.verify_script_sources_stage_eight_semantics_v1(
         pre,
         rejecting,
-        validation_machine_v1.NoAuxiliaryWitness,
+        vm_machine_types.NoAuxiliaryWitness,
       ),
       False,
     ),
@@ -16673,8 +16600,8 @@ test stage_differential_nine_missing_routes_agree() {
   let purpose_frontier = validation_merkle_v1.build_frontier(
     [script_proof_v1.purpose_leaf_hash(3, 0, h_28_a, h_28_a)],
   )
-  let discovery = validation_machine_v1.ScriptDiscoveryControlV1 {
-    ..validation_machine_v1.empty_script_discovery_control(),
+  let discovery = vm_machine_types.ScriptDiscoveryControlV1 {
+    ..vm_witness.empty_script_discovery_control(),
     current_purpose_kind: 3,
     current_purpose_index: 0,
     current_script_hash: h_28_a,
@@ -16689,7 +16616,7 @@ test stage_differential_nine_missing_routes_agree() {
     discovery,
     24,
   )
-  let accepting = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let accepting = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: exact_rejection_post(
       pre,
@@ -16697,7 +16624,7 @@ test stage_differential_nine_missing_routes_agree() {
     ),
   }
   // Mutated successor: a rejection carrying the wrong code.
-  let rejecting = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let rejecting = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: exact_rejection_post(
       pre,
@@ -16706,26 +16633,26 @@ test stage_differential_nine_missing_routes_agree() {
   }
   and {
     stage_routes_agree(
-      validation_machine_v1.verify_script_sources_stage_nine_missing_semantics_v1(
+      vm_script_sources_late_stages.verify_script_sources_stage_nine_missing_semantics_v1(
         pre,
         accepting,
       ),
-      validation_machine_v1.verify_script_sources_stage_nine_semantics_v1(
+      vm_script_sources.verify_script_sources_stage_nine_semantics_v1(
         pre,
         accepting,
-        validation_machine_v1.NoAuxiliaryWitness,
+        vm_machine_types.NoAuxiliaryWitness,
       ),
       True,
     ),
     stage_routes_agree(
-      validation_machine_v1.verify_script_sources_stage_nine_missing_semantics_v1(
+      vm_script_sources_late_stages.verify_script_sources_stage_nine_missing_semantics_v1(
         pre,
         rejecting,
       ),
-      validation_machine_v1.verify_script_sources_stage_nine_semantics_v1(
+      vm_script_sources.verify_script_sources_stage_nine_semantics_v1(
         pre,
         rejecting,
-        validation_machine_v1.NoAuxiliaryWitness,
+        vm_machine_types.NoAuxiliaryWitness,
       ),
       False,
     ),
@@ -16765,8 +16692,8 @@ fn stage_ten_missing_fixture(
     singleton_frontier,
     singleton_frontier,
     purpose_frontier,
-    validation_machine_v1.ScriptDiscoveryControlV1 {
-      ..validation_machine_v1.empty_script_discovery_control(),
+    vm_machine_types.ScriptDiscoveryControlV1 {
+      ..vm_witness.empty_script_discovery_control(),
       source_cursor: 1,
       redeemer_cursor: 1,
       current_purpose_kind: 0,
@@ -16784,7 +16711,7 @@ fn stage_ten_missing_fixture(
 
 test stage_differential_ten_missing_routes_agree() {
   let Pair(pre, work_witness_cbor) = stage_ten_missing_fixture(#"")
-  let accepting = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let accepting = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: exact_rejection_post(
       pre,
@@ -16792,7 +16719,7 @@ test stage_differential_ten_missing_routes_agree() {
     ),
   }
   // Mutated successor: a rejection carrying the wrong code.
-  let rejecting = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let rejecting = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: exact_rejection_post(
       pre,
@@ -16800,37 +16727,37 @@ test stage_differential_ten_missing_routes_agree() {
     ),
   }
   and {
-    !validation_machine_v1.verify_script_sources_stage_ten_match_semantics_v1(
+    !vm_script_sources.verify_script_sources_stage_ten_match_semantics_v1(
       pre,
       accepting,
-      validation_machine_v1.NoAuxiliaryWitness,
+      vm_machine_types.NoAuxiliaryWitness,
     ),
-    !validation_machine_v1.verify_script_sources_stage_ten_mismatch_semantics_v1(
+    !vm_script_sources.verify_script_sources_stage_ten_mismatch_semantics_v1(
       pre,
       accepting,
-      validation_machine_v1.NoAuxiliaryWitness,
+      vm_machine_types.NoAuxiliaryWitness,
     ),
     stage_routes_agree(
-      validation_machine_v1.verify_script_sources_stage_ten_missing_semantics_v1(
+      vm_script_sources_late_stages.verify_script_sources_stage_ten_missing_semantics_v1(
         pre,
         accepting,
       ),
-      validation_machine_v1.verify_script_sources_stage_ten_semantics_v1(
+      vm_script_sources.verify_script_sources_stage_ten_semantics_v1(
         pre,
         accepting,
-        validation_machine_v1.NoAuxiliaryWitness,
+        vm_machine_types.NoAuxiliaryWitness,
       ),
       True,
     ),
     stage_routes_agree(
-      validation_machine_v1.verify_script_sources_stage_ten_missing_semantics_v1(
+      vm_script_sources_late_stages.verify_script_sources_stage_ten_missing_semantics_v1(
         pre,
         rejecting,
       ),
-      validation_machine_v1.verify_script_sources_stage_ten_semantics_v1(
+      vm_script_sources.verify_script_sources_stage_ten_semantics_v1(
         pre,
         rejecting,
-        validation_machine_v1.NoAuxiliaryWitness,
+        vm_machine_types.NoAuxiliaryWitness,
       ),
       False,
     ),
@@ -16845,9 +16772,9 @@ fn stage_eleven_audit_discovery(
   execution_peaks: List<validation_merkle_v1.FrontierPeak>,
   source_cursor: Int,
   redeemer_item_control_hash: ByteArray,
-) -> validation_machine_v1.ScriptDiscoveryControlV1 {
-  validation_machine_v1.ScriptDiscoveryControlV1 {
-    ..validation_machine_v1.empty_script_discovery_control(),
+) -> vm_machine_types.ScriptDiscoveryControlV1 {
+  vm_machine_types.ScriptDiscoveryControlV1 {
+    ..vm_witness.empty_script_discovery_control(),
     purpose_cursor: 1,
     source_cursor,
     used_inline_bitmap: 1,
@@ -16900,36 +16827,36 @@ test stage_differential_eleven_finish_routes_agree() {
     discovery,
     32,
   )
-  let accepting = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let accepting = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: post,
   }
-  let rejecting = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let rejecting = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: mutated_post,
   }
   and {
     stage_routes_agree(
-      validation_machine_v1.verify_script_sources_stage_eleven_finish_semantics_v1(
+      vm_script_sources_late_stages.verify_script_sources_stage_eleven_finish_semantics_v1(
         pre,
         accepting,
       ),
-      validation_machine_v1.verify_script_sources_stage_eleven_semantics_v1(
+      vm_script_sources.verify_script_sources_stage_eleven_semantics_v1(
         pre,
         accepting,
-        validation_machine_v1.NoAuxiliaryWitness,
+        vm_machine_types.NoAuxiliaryWitness,
       ),
       True,
     ),
     stage_routes_agree(
-      validation_machine_v1.verify_script_sources_stage_eleven_finish_semantics_v1(
+      vm_script_sources_late_stages.verify_script_sources_stage_eleven_finish_semantics_v1(
         pre,
         rejecting,
       ),
-      validation_machine_v1.verify_script_sources_stage_eleven_semantics_v1(
+      vm_script_sources.verify_script_sources_stage_eleven_semantics_v1(
         pre,
         rejecting,
-        validation_machine_v1.NoAuxiliaryWitness,
+        vm_machine_types.NoAuxiliaryWitness,
       ),
       False,
     ),
@@ -17006,36 +16933,36 @@ test stage_differential_twelve_finish_routes_agree() {
   let Pair(pre, Pair(work_witness_cbor, Pair(post, mutated_post))) = stage_twelve_finish_fixture(
     #"",
   )
-  let accepting = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let accepting = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: post,
   }
-  let rejecting = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let rejecting = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: mutated_post,
   }
   and {
     stage_routes_agree(
-      validation_machine_v1.verify_script_sources_stage_twelve_finish_semantics_v1(
+      vm_script_sources_late_stages.verify_script_sources_stage_twelve_finish_semantics_v1(
         pre,
         accepting,
       ),
-      validation_machine_v1.verify_script_sources_stage_twelve_semantics_v1(
+      vm_script_sources.verify_script_sources_stage_twelve_semantics_v1(
         pre,
         accepting,
-        validation_machine_v1.NoAuxiliaryWitness,
+        vm_machine_types.NoAuxiliaryWitness,
       ),
       True,
     ),
     stage_routes_agree(
-      validation_machine_v1.verify_script_sources_stage_twelve_finish_semantics_v1(
+      vm_script_sources_late_stages.verify_script_sources_stage_twelve_finish_semantics_v1(
         pre,
         rejecting,
       ),
-      validation_machine_v1.verify_script_sources_stage_twelve_semantics_v1(
+      vm_script_sources.verify_script_sources_stage_twelve_semantics_v1(
         pre,
         rejecting,
-        validation_machine_v1.NoAuxiliaryWitness,
+        vm_machine_types.NoAuxiliaryWitness,
       ),
       False,
     ),
@@ -17126,14 +17053,14 @@ fn narrow_route_is_wider_than_generic(deployed: Bool, generic: Bool) -> Bool {
 test stage_eight_finish_pending_redeemer_hash_divergence_is_unreachable() {
   let tx = empty_v1_transaction()
   let empty_frontier = validation_merkle_v1.build_frontier([])
-  let empty_discovery = validation_machine_v1.empty_script_discovery_control()
+  let empty_discovery = vm_witness.empty_script_discovery_control()
   let Pair(pre, work_witness_cbor) = script_discovery_step_fixture(
     tx,
     8,
     empty_frontier,
     empty_frontier,
     empty_frontier,
-    validation_machine_v1.ScriptDiscoveryControlV1 {
+    vm_machine_types.ScriptDiscoveryControlV1 {
       ..empty_discovery,
       redeemer_item_control_hash: h_a,
     },
@@ -17150,19 +17077,19 @@ test stage_eight_finish_pending_redeemer_hash_divergence_is_unreachable() {
     empty_discovery,
     20,
   )
-  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: post,
   }
   narrow_route_is_wider_than_generic(
-    validation_machine_v1.verify_script_sources_stage_eight_finish_semantics_v1(
+    vm_script_sources_late_stages.verify_script_sources_stage_eight_finish_semantics_v1(
       pre,
       transition,
     ),
-    validation_machine_v1.verify_script_sources_stage_eight_semantics_v1(
+    vm_script_sources.verify_script_sources_stage_eight_semantics_v1(
       pre,
       transition,
-      validation_machine_v1.NoAuxiliaryWitness,
+      vm_machine_types.NoAuxiliaryWitness,
     ),
   )
 }
@@ -17174,7 +17101,7 @@ test stage_eight_finish_pending_redeemer_hash_divergence_is_unreachable() {
 /// section note above.
 test stage_ten_missing_pending_redeemer_hash_divergence_is_unreachable() {
   let Pair(pre, work_witness_cbor) = stage_ten_missing_fixture(h_a)
-  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: exact_rejection_post(
       pre,
@@ -17182,14 +17109,14 @@ test stage_ten_missing_pending_redeemer_hash_divergence_is_unreachable() {
     ),
   }
   narrow_route_is_wider_than_generic(
-    validation_machine_v1.verify_script_sources_stage_ten_missing_semantics_v1(
+    vm_script_sources_late_stages.verify_script_sources_stage_ten_missing_semantics_v1(
       pre,
       transition,
     ),
-    validation_machine_v1.verify_script_sources_stage_ten_semantics_v1(
+    vm_script_sources.verify_script_sources_stage_ten_semantics_v1(
       pre,
       transition,
-      validation_machine_v1.NoAuxiliaryWitness,
+      vm_machine_types.NoAuxiliaryWitness,
     ),
   )
 }
@@ -17202,19 +17129,19 @@ test stage_twelve_finish_pending_redeemer_hash_divergence_is_unreachable() {
   let Pair(pre, Pair(work_witness_cbor, Pair(post, _))) = stage_twelve_finish_fixture(
     h_a,
   )
-  let transition = validation_machine_v1.ValidationOneStepWitnessV1 {
+  let transition = vm_machine_types.ValidationOneStepWitnessV1 {
     work_witness_cbor,
     claimed_successor: post,
   }
   narrow_route_is_wider_than_generic(
-    validation_machine_v1.verify_script_sources_stage_twelve_finish_semantics_v1(
+    vm_script_sources_late_stages.verify_script_sources_stage_twelve_finish_semantics_v1(
       pre,
       transition,
     ),
-    validation_machine_v1.verify_script_sources_stage_twelve_semantics_v1(
+    vm_script_sources.verify_script_sources_stage_twelve_semantics_v1(
       pre,
       transition,
-      validation_machine_v1.NoAuxiliaryWitness,
+      vm_machine_types.NoAuxiliaryWitness,
     ),
   )
 }
@@ -17244,9 +17171,9 @@ test stage_twelve_finish_pending_redeemer_hash_divergence_is_unreachable() {
 // ===========================================================================
 
 fn work_root_mutated(
-  witness: validation_machine_v1.ValidationOneStepWitnessV1,
-) -> validation_machine_v1.ValidationOneStepWitnessV1 {
-  validation_machine_v1.ValidationOneStepWitnessV1 {
+  witness: vm_machine_types.ValidationOneStepWitnessV1,
+) -> vm_machine_types.ValidationOneStepWitnessV1 {
+  vm_machine_types.ValidationOneStepWitnessV1 {
     ..witness,
     claimed_successor: validation_trace_v1.ValidationMachineStateV1 {
       ..witness.claimed_successor,
@@ -17260,7 +17187,7 @@ fn work_root_mutated(
 type CekKindFixtureV1 {
   kind: Int,
   pre: validation_trace_v1.ValidationMachineStateV1,
-  evidence: validation_machine_v1.ValidationOneStepEvidenceV1,
+  evidence: vm_machine_types.ValidationOneStepEvidenceV1,
 }
 
 /// Kind 0: the stand-alone hand-off to ValueAndMint. A transaction with no
@@ -17277,18 +17204,18 @@ fn cek_finish_kind_fixture() -> CekKindFixtureV1 {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.ValueAndMint,
       41,
-      validation_machine_v1.encode_value_and_mint_witness_v1(control),
+      vm_witness.encode_value_and_mint_witness_v1(control),
     ),
   }
   CekKindFixtureV1 {
     kind: 0,
     pre,
-    evidence: validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    evidence: vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+      auxiliary: vm_machine_types.NoAuxiliaryWitness,
     },
   }
 }
@@ -17309,11 +17236,11 @@ fn cek_context_step_kind_fixture() -> CekKindFixtureV1 {
     [],
     False,
   )
-  let init_control = validation_machine_v1.CekContextControlV1 {
+  let init_control = vm_machine_types.CekContextControlV1 {
     ..empty_cek_context_control_fixture(6),
     observer_summary,
   }
-  let successor_control = validation_machine_v1.CekContextControlV1 {
+  let successor_control = vm_machine_types.CekContextControlV1 {
     ..init_control,
     stage: 9,
     mint_summary: cek_data_v1.map_data_summary_v1(
@@ -17323,26 +17250,26 @@ fn cek_context_step_kind_fixture() -> CekKindFixtureV1 {
   let Pair(pre, work_witness_cbor) = cek_state_fixture(
     tx,
     control,
-    validation_machine_v1.encode_cek_context_control_v1(init_control),
+    vm_witness.encode_cek_context_control_v1(init_control),
     0,
     47,
   )
   let Pair(post, _) = cek_state_fixture(
     tx,
     control,
-    validation_machine_v1.encode_cek_context_control_v1(successor_control),
+    vm_witness.encode_cek_context_control_v1(successor_control),
     0,
     48,
   )
   CekKindFixtureV1 {
     kind: 2,
     pre,
-    evidence: validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    evidence: vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+      auxiliary: vm_machine_types.NoAuxiliaryWitness,
     },
   }
 }
@@ -17367,38 +17294,34 @@ fn cek_kind_fixtures() -> List<CekKindFixtureV1> {
 fn cek_kind_route(
   kind: Int,
   pre: validation_trace_v1.ValidationMachineStateV1,
-  witness: validation_machine_v1.ValidationOneStepWitnessV1,
-  auxiliary: validation_machine_v1.ValidationAuxiliaryWitnessV1,
+  witness: vm_machine_types.ValidationOneStepWitnessV1,
+  auxiliary: vm_machine_types.ValidationAuxiliaryWitnessV1,
 ) -> Bool {
   if kind == 0 {
-    validation_machine_v1.verify_cek_finish_semantics_v1(pre, witness)
+    vm_cek.verify_cek_finish_semantics_v1(pre, witness)
   } else if kind == 1 {
-    validation_machine_v1.verify_cek_execution_selection_semantics_v1(
-      pre,
-      witness,
-      auxiliary,
-    )
+    vm_cek.verify_cek_execution_selection_semantics_v1(pre, witness, auxiliary)
   } else if kind == 2 {
-    validation_machine_v1.verify_cek_context_step_semantics_v1(
+    vm_cek.verify_cek_context_step_semantics_v1(
       pre,
       witness,
       auxiliary,
       inline_field_door(),
     )
   } else {
-    expect validation_machine_v1.CekCoreStepWitness { step } = auxiliary
-    validation_machine_v1.verify_cek_core_step_semantics_v1(pre, witness, step)
+    expect vm_machine_types.CekCoreStepWitness { step } = auxiliary
+    vm_cek.verify_cek_core_step_semantics_v1(pre, witness, step)
   }
 }
 
 fn cek_aggregate_route(
   pre: validation_trace_v1.ValidationMachineStateV1,
-  witness: validation_machine_v1.ValidationOneStepWitnessV1,
-  auxiliary: validation_machine_v1.ValidationAuxiliaryWitnessV1,
+  witness: vm_machine_types.ValidationOneStepWitnessV1,
+  auxiliary: vm_machine_types.ValidationAuxiliaryWitnessV1,
 ) -> Bool {
-  validation_machine_v1.verify_cek_one_step_v1(
+  vm_one_step.verify_cek_one_step_v1(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
       transition: witness,
       auxiliary,
     },
@@ -17472,28 +17395,28 @@ test cek_kinds_partition_the_cek_step_space() {
 type ValueAndMintKindFixtureV1 {
   kind: Int,
   pre: validation_trace_v1.ValidationMachineStateV1,
-  evidence: validation_machine_v1.ValidationOneStepEvidenceV1,
+  evidence: vm_machine_types.ValidationOneStepEvidenceV1,
 }
 
 /// A ValueAndMint control at `stage` with every cursor at zero, every
 /// accumulator initial and no replay schedule.
 fn idle_value_and_mint_control(
-  native_control: validation_machine_v1.NativeScriptsControlV1,
+  native_control: vm_machine_types.NativeScriptsControlV1,
   stage: Int,
-) -> validation_machine_v1.ValueAndMintControlV1 {
-  validation_machine_v1.ValueAndMintControlV1 {
+) -> vm_machine_types.ValueAndMintControlV1 {
+  vm_machine_types.ValueAndMintControlV1 {
     native_control,
     stage,
-    replay_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     replay_cursor: 0,
     replay_asset_cursor: 0,
     replay_value_hash: zero,
-    replay_accumulator: validation_machine_v1.initial_resolution_accumulator(),
-    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_accumulator: vm_witness.initial_resolution_accumulator(),
+    replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     output_cursor: 0,
     output_asset_cursor: 0,
     mint_cursor: 0,
-    value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+    value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 0,
       asset_root: null_hash,
       seen_asset_count: 0,
@@ -17504,7 +17427,7 @@ fn idle_value_and_mint_control(
 
 fn value_and_mint_state_fixture(
   tx: MidgardTransaction,
-  control: validation_machine_v1.ValueAndMintControlV1,
+  control: vm_machine_types.ValueAndMintControlV1,
   program_counter: Int,
 ) -> Pair<validation_trace_v1.ValidationMachineStateV1, ByteArray> {
   let compact = midgard_transaction_to_compact(tx)
@@ -17512,9 +17435,7 @@ fn value_and_mint_state_fixture(
     native_tx_version_v1,
     encode_native_tx_body_compact(compact.body),
   )
-  let work_witness_cbor = validation_machine_v1.encode_value_and_mint_control_v1(
-    control,
-  )
+  let work_witness_cbor = vm_witness.encode_value_and_mint_control_v1(control)
   Pair(
     validation_trace_v1.ValidationMachineStateV1 {
       machine_version: validation_trace_v1.machine_version,
@@ -17547,9 +17468,9 @@ fn value_and_mint_state_fixture(
 fn value_and_mint_kind_fixture(
   kind: Int,
   tx: MidgardTransaction,
-  control: validation_machine_v1.ValueAndMintControlV1,
-  next_control: validation_machine_v1.ValueAndMintControlV1,
-  auxiliary: validation_machine_v1.ValidationAuxiliaryWitnessV1,
+  control: vm_machine_types.ValueAndMintControlV1,
+  next_control: vm_machine_types.ValueAndMintControlV1,
+  auxiliary: vm_machine_types.ValidationAuxiliaryWitnessV1,
 ) -> ValueAndMintKindFixtureV1 {
   let Pair(pre, work_witness_cbor) = value_and_mint_state_fixture(
     tx,
@@ -17560,8 +17481,8 @@ fn value_and_mint_kind_fixture(
   ValueAndMintKindFixtureV1 {
     kind,
     pre,
-    evidence: validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    evidence: vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
@@ -17619,22 +17540,22 @@ fn replayed_input_descriptor(
 fn single_replayed_input_native_control(
   tx: MidgardTransaction,
   descriptor_cbor: ByteArray,
-) -> validation_machine_v1.NativeScriptsControlV1 {
-  validation_machine_v1.NativeScriptsControlV1 {
+) -> vm_machine_types.NativeScriptsControlV1 {
+  vm_machine_types.NativeScriptsControlV1 {
     ..empty_native_control_fixture(tx),
     resolved_input_count: 1,
     spend_input_count: 1,
     resolved_item_peaks: validation_merkle_v1.build_frontier([h_a]).peaks,
-    resolved_inputs_accumulator: validation_machine_v1.resolved_input_accumulator_successor(
-      validation_machine_v1.initial_resolution_accumulator(),
+    resolved_inputs_accumulator: vm_witness.resolved_input_accumulator_successor(
+      vm_witness.initial_resolution_accumulator(),
       0,
       replayed_input_key,
       descriptor_cbor,
     ),
-    resolution_schedule_hash: validation_machine_v1.resolution_schedule_node_hash(
+    resolution_schedule_hash: vm_witness.resolution_schedule_node_hash(
       0,
       replayed_input_key,
-      validation_machine_v1.empty_resolution_schedule_hash(),
+      vm_witness.empty_resolution_schedule_hash(),
     ),
   }
 }
@@ -17643,7 +17564,7 @@ fn single_replayed_input_native_control(
 /// the replay schedule.
 fn value_and_mint_begin_kind_fixture() -> ValueAndMintKindFixtureV1 {
   let tx = empty_v1_transaction()
-  let native_control = validation_machine_v1.NativeScriptsControlV1 {
+  let native_control = vm_machine_types.NativeScriptsControlV1 {
     ..empty_native_control_fixture(tx),
     resolution_schedule_hash: h_a,
   }
@@ -17652,13 +17573,13 @@ fn value_and_mint_begin_kind_fixture() -> ValueAndMintKindFixtureV1 {
     0,
     tx,
     control,
-    validation_machine_v1.ValueAndMintControlV1 {
+    vm_machine_types.ValueAndMintControlV1 {
       ..control,
       stage: 1,
       replay_schedule_hash: h_a,
       replay_remaining_schedule_hash: h_a,
     },
-    validation_machine_v1.NoAuxiliaryWitness,
+    vm_machine_types.NoAuxiliaryWitness,
   )
 }
 
@@ -17670,8 +17591,8 @@ fn value_and_mint_replay_begin_kind_fixture() -> ValueAndMintKindFixtureV1 {
     1,
     tx,
     control,
-    validation_machine_v1.ValueAndMintControlV1 { ..control, stage: 2 },
-    validation_machine_v1.NoAuxiliaryWitness,
+    vm_machine_types.ValueAndMintControlV1 { ..control, stage: 2 },
+    vm_machine_types.NoAuxiliaryWitness,
   )
 }
 
@@ -17683,7 +17604,7 @@ fn value_and_mint_replay_input_kind_fixture() -> ValueAndMintKindFixtureV1 {
     replayed_input_descriptor(0),
   )
   let native_control = single_replayed_input_native_control(tx, descriptor_cbor)
-  let control = validation_machine_v1.ValueAndMintControlV1 {
+  let control = vm_machine_types.ValueAndMintControlV1 {
     ..idle_value_and_mint_control(native_control, 2),
     replay_schedule_hash: native_control.resolution_schedule_hash,
     replay_remaining_schedule_hash: native_control.resolution_schedule_hash,
@@ -17692,20 +17613,20 @@ fn value_and_mint_replay_input_kind_fixture() -> ValueAndMintKindFixtureV1 {
     2,
     tx,
     control,
-    validation_machine_v1.ValueAndMintControlV1 {
+    vm_machine_types.ValueAndMintControlV1 {
       ..control,
       replay_cursor: 1,
       replay_accumulator: native_control.resolved_inputs_accumulator,
-      replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
-      value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+      replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
+      value_accumulator: vm_machine_types.ValueAccumulatorV1 {
         ..control.value_accumulator,
         lovelace_delta: 3,
       },
     },
-    validation_machine_v1.ResolvedInputReplayWitness {
+    vm_machine_types.ResolvedInputReplayWitness {
       source_kind: 0,
       key: replayed_input_key,
-      next_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+      next_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
       value: descriptor_cbor,
     },
   )
@@ -17719,13 +17640,13 @@ fn value_and_mint_replay_asset_kind_fixture() -> ValueAndMintKindFixtureV1 {
   let descriptor_cbor = ledger_output_commitment_v1.encode(descriptor)
   let native_control = single_replayed_input_native_control(tx, descriptor_cbor)
   let unit = h_28_a |> bytearray.concat(#"beef")
-  let control = validation_machine_v1.ValueAndMintControlV1 {
+  let control = vm_machine_types.ValueAndMintControlV1 {
     ..idle_value_and_mint_control(native_control, 2),
     replay_schedule_hash: native_control.resolution_schedule_hash,
     replay_remaining_schedule_hash: native_control.resolution_schedule_hash,
     replay_asset_cursor: 1,
     replay_value_hash: blake2b_256(descriptor_cbor),
-    value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+    value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 3,
       asset_root: null_hash,
       seen_asset_count: 0,
@@ -17736,24 +17657,24 @@ fn value_and_mint_replay_asset_kind_fixture() -> ValueAndMintKindFixtureV1 {
     3,
     tx,
     control,
-    validation_machine_v1.ValueAndMintControlV1 {
+    vm_machine_types.ValueAndMintControlV1 {
       ..control,
       replay_cursor: 1,
       replay_asset_cursor: 0,
       replay_value_hash: zero,
       replay_accumulator: native_control.resolved_inputs_accumulator,
-      replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
-      value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+      replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
+      value_accumulator: vm_machine_types.ValueAccumulatorV1 {
         lovelace_delta: 3,
         asset_root: singleton_root(unit, cbor.serialise(7)),
         seen_asset_count: 1,
         nonzero_asset_count: 1,
       },
     },
-    validation_machine_v1.ValueInputAssetWitness {
+    vm_machine_types.ValueInputAssetWitness {
       source_kind: 0,
       key: replayed_input_key,
-      next_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+      next_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
       descriptor_cbor,
       asset_index: 0,
       policy_id: h_28_a,
@@ -17763,7 +17684,7 @@ fn value_and_mint_replay_asset_kind_fixture() -> ValueAndMintKindFixtureV1 {
         [ledger_output_commitment_v1.asset_leaf_hash(h_28_a, #"beef", 7)],
       ).peaks,
       asset_siblings: [],
-      mutation: validation_machine_v1.ValueAssetMutationWitnessV1 {
+      mutation: vm_machine_types.ValueAssetMutationWitnessV1 {
         delta_was_present: False,
         old_delta: 0,
         delta_proof: [],
@@ -17780,8 +17701,8 @@ fn value_and_mint_replay_finish_kind_fixture() -> ValueAndMintKindFixtureV1 {
     4,
     tx,
     control,
-    validation_machine_v1.ValueAndMintControlV1 { ..control, stage: 3 },
-    validation_machine_v1.NoAuxiliaryWitness,
+    vm_machine_types.ValueAndMintControlV1 { ..control, stage: 3 },
+    vm_machine_types.NoAuxiliaryWitness,
   )
 }
 
@@ -17791,12 +17712,12 @@ fn value_and_mint_output_descriptor_kind_fixture() -> ValueAndMintKindFixtureV1 
   ValueAndMintKindFixtureV1 {
     kind: 5,
     pre: f.pre,
-    evidence: validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    evidence: vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: f.initial_work,
         claimed_successor: f.active_state,
       },
-      auxiliary: validation_machine_v1.ValueOutputDescriptorWitness {
+      auxiliary: vm_machine_types.ValueOutputDescriptorWitness {
         output_index: 0,
         descriptor_cbor: f.descriptor_cbor,
         siblings: [],
@@ -17811,12 +17732,12 @@ fn value_and_mint_output_asset_kind_fixture() -> ValueAndMintKindFixtureV1 {
   ValueAndMintKindFixtureV1 {
     kind: 6,
     pre: f.active_state,
-    evidence: validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    evidence: vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor: f.active_work,
         claimed_successor: f.final_state,
       },
-      auxiliary: validation_machine_v1.ValueOutputAssetWitness {
+      auxiliary: vm_machine_types.ValueOutputAssetWitness {
         output_index: 0,
         descriptor_cbor: f.descriptor_cbor,
         asset_index: 0,
@@ -17825,7 +17746,7 @@ fn value_and_mint_output_asset_kind_fixture() -> ValueAndMintKindFixtureV1 {
         quantity: f.quantity,
         asset_peaks: f.asset_peaks,
         asset_siblings: [],
-        mutation: validation_machine_v1.ValueAssetMutationWitnessV1 {
+        mutation: vm_machine_types.ValueAssetMutationWitnessV1 {
           delta_was_present: False,
           old_delta: 0,
           delta_proof: [],
@@ -17843,8 +17764,8 @@ fn value_and_mint_output_finish_kind_fixture() -> ValueAndMintKindFixtureV1 {
     7,
     tx,
     control,
-    validation_machine_v1.ValueAndMintControlV1 { ..control, stage: 4 },
-    validation_machine_v1.NoAuxiliaryWitness,
+    vm_machine_types.ValueAndMintControlV1 { ..control, stage: 4 },
+    vm_machine_types.NoAuxiliaryWitness,
   )
 }
 
@@ -17856,16 +17777,16 @@ fn value_and_mint_mint_asset_kind_fixture() -> ValueAndMintKindFixtureV1 {
   let asset_name = #"beef"
   let unit = policy_id |> bytearray.concat(asset_name)
   let mint_frontier = validation_merkle_v1.build_frontier(
-    [validation_machine_v1.mint_asset_leaf_hash(policy_id, asset_name, -5)],
+    [vm_shared.mint_asset_leaf_hash(policy_id, asset_name, -5)],
   )
-  let native_control = validation_machine_v1.NativeScriptsControlV1 {
+  let native_control = vm_machine_types.NativeScriptsControlV1 {
     ..empty_native_control_fixture(tx),
     mint_count: mint_frontier.count,
     mint_peaks: mint_frontier.peaks,
   }
-  let control = validation_machine_v1.ValueAndMintControlV1 {
+  let control = vm_machine_types.ValueAndMintControlV1 {
     ..idle_value_and_mint_control(native_control, 4),
-    value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+    value_accumulator: vm_machine_types.ValueAccumulatorV1 {
       lovelace_delta: 0,
       asset_root: singleton_root(unit, cbor.serialise(5)),
       seen_asset_count: 1,
@@ -17876,23 +17797,23 @@ fn value_and_mint_mint_asset_kind_fixture() -> ValueAndMintKindFixtureV1 {
     8,
     tx,
     control,
-    validation_machine_v1.ValueAndMintControlV1 {
+    vm_machine_types.ValueAndMintControlV1 {
       ..control,
       mint_cursor: 1,
-      value_accumulator: validation_machine_v1.ValueAccumulatorV1 {
+      value_accumulator: vm_machine_types.ValueAccumulatorV1 {
         lovelace_delta: 0,
         asset_root: singleton_root(unit, cbor.serialise(0)),
         seen_asset_count: 1,
         nonzero_asset_count: 0,
       },
     },
-    validation_machine_v1.ValueMintAssetWitness {
+    vm_machine_types.ValueMintAssetWitness {
       mint_index: 0,
       policy_id,
       asset_name,
       quantity: -5,
       siblings: [],
-      mutation: validation_machine_v1.ValueAssetMutationWitnessV1 {
+      mutation: vm_machine_types.ValueAssetMutationWitnessV1 {
         delta_was_present: True,
         old_delta: 5,
         delta_proof: [],
@@ -17909,8 +17830,8 @@ fn value_and_mint_mint_finish_kind_fixture() -> ValueAndMintKindFixtureV1 {
     9,
     tx,
     control,
-    validation_machine_v1.ValueAndMintControlV1 { ..control, stage: 5 },
-    validation_machine_v1.NoAuxiliaryWitness,
+    vm_machine_types.ValueAndMintControlV1 { ..control, stage: 5 },
+    vm_machine_types.NoAuxiliaryWitness,
   )
 }
 
@@ -17931,7 +17852,7 @@ fn value_and_mint_finalize_kind_fixture() -> ValueAndMintKindFixtureV1 {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.LedgerDelta,
       41,
-      validation_machine_v1.encode_ledger_delta_witness_v1(
+      vm_witness.encode_ledger_delta_witness_v1(
         native_control,
         pre.prior_ledger_root,
         control.replay_schedule_hash,
@@ -17941,12 +17862,12 @@ fn value_and_mint_finalize_kind_fixture() -> ValueAndMintKindFixtureV1 {
   ValueAndMintKindFixtureV1 {
     kind: 10,
     pre,
-    evidence: validation_machine_v1.ValidationOneStepEvidenceV1 {
-      transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+    evidence: vm_machine_types.ValidationOneStepEvidenceV1 {
+      transition: vm_machine_types.ValidationOneStepWitnessV1 {
         work_witness_cbor,
         claimed_successor: post,
       },
-      auxiliary: validation_machine_v1.NoAuxiliaryWitness,
+      auxiliary: vm_machine_types.NoAuxiliaryWitness,
     },
   }
 }
@@ -17972,26 +17893,26 @@ fn value_and_mint_kind_fixtures() -> List<ValueAndMintKindFixtureV1> {
 fn value_and_mint_kind_route(
   kind: Int,
   pre: validation_trace_v1.ValidationMachineStateV1,
-  witness: validation_machine_v1.ValidationOneStepWitnessV1,
-  auxiliary: validation_machine_v1.ValidationAuxiliaryWitnessV1,
+  witness: vm_machine_types.ValidationOneStepWitnessV1,
+  auxiliary: vm_machine_types.ValidationAuxiliaryWitnessV1,
 ) -> Bool {
   if kind == 0 {
-    validation_machine_v1.verify_value_and_mint_begin_semantics_v1(pre, witness)
+    vm_value_and_mint.verify_value_and_mint_begin_semantics_v1(pre, witness)
   } else if kind == 1 {
-    validation_machine_v1.verify_value_and_mint_replay_begin_semantics_v1(
+    vm_value_and_mint.verify_value_and_mint_replay_begin_semantics_v1(
       pre,
       witness,
     )
   } else if kind == 2 {
     expect
-        validation_machine_v1.ResolvedInputReplayWitness {
+        vm_machine_types.ResolvedInputReplayWitness {
           source_kind,
           key,
           next_schedule_hash,
           value,
         }
       = auxiliary
-    validation_machine_v1.verify_value_and_mint_replay_input_semantics_v1(
+    vm_value_and_mint.verify_value_and_mint_replay_input_semantics_v1(
       pre,
       witness,
       source_kind,
@@ -18001,7 +17922,7 @@ fn value_and_mint_kind_route(
     )
   } else if kind == 3 {
     expect
-        validation_machine_v1.ValueInputAssetWitness {
+        vm_machine_types.ValueInputAssetWitness {
           source_kind,
           key,
           next_schedule_hash,
@@ -18015,7 +17936,7 @@ fn value_and_mint_kind_route(
           mutation,
         }
       = auxiliary
-    validation_machine_v1.verify_value_and_mint_replay_asset_semantics_v1(
+    vm_value_and_mint.verify_value_and_mint_replay_asset_semantics_v1(
       pre,
       witness,
       source_kind,
@@ -18031,19 +17952,19 @@ fn value_and_mint_kind_route(
       mutation,
     )
   } else if kind == 4 {
-    validation_machine_v1.verify_value_and_mint_replay_finish_semantics_v1(
+    vm_value_and_mint.verify_value_and_mint_replay_finish_semantics_v1(
       pre,
       witness,
     )
   } else if kind == 5 {
     expect
-        validation_machine_v1.ValueOutputDescriptorWitness {
+        vm_machine_types.ValueOutputDescriptorWitness {
           output_index,
           descriptor_cbor,
           siblings,
         }
       = auxiliary
-    validation_machine_v1.verify_value_and_mint_output_descriptor_semantics_v1(
+    vm_value_and_mint.verify_value_and_mint_output_descriptor_semantics_v1(
       pre,
       witness,
       output_index,
@@ -18052,7 +17973,7 @@ fn value_and_mint_kind_route(
     )
   } else if kind == 6 {
     expect
-        validation_machine_v1.ValueOutputAssetWitness {
+        vm_machine_types.ValueOutputAssetWitness {
           output_index,
           descriptor_cbor,
           asset_index,
@@ -18064,7 +17985,7 @@ fn value_and_mint_kind_route(
           mutation,
         }
       = auxiliary
-    validation_machine_v1.verify_value_and_mint_output_asset_semantics_v1(
+    vm_value_and_mint.verify_value_and_mint_output_asset_semantics_v1(
       pre,
       witness,
       output_index,
@@ -18078,13 +17999,13 @@ fn value_and_mint_kind_route(
       mutation,
     )
   } else if kind == 7 {
-    validation_machine_v1.verify_value_and_mint_output_finish_semantics_v1(
+    vm_value_and_mint.verify_value_and_mint_output_finish_semantics_v1(
       pre,
       witness,
     )
   } else if kind == 8 {
     expect
-        validation_machine_v1.ValueMintAssetWitness {
+        vm_machine_types.ValueMintAssetWitness {
           mint_index,
           policy_id,
           asset_name,
@@ -18093,7 +18014,7 @@ fn value_and_mint_kind_route(
           mutation,
         }
       = auxiliary
-    validation_machine_v1.verify_value_and_mint_mint_asset_semantics_v1(
+    vm_value_and_mint.verify_value_and_mint_mint_asset_semantics_v1(
       pre,
       witness,
       mint_index,
@@ -18104,26 +18025,23 @@ fn value_and_mint_kind_route(
       mutation,
     )
   } else if kind == 9 {
-    validation_machine_v1.verify_value_and_mint_mint_finish_semantics_v1(
+    vm_value_and_mint.verify_value_and_mint_mint_finish_semantics_v1(
       pre,
       witness,
     )
   } else {
-    validation_machine_v1.verify_value_and_mint_finalize_semantics_v1(
-      pre,
-      witness,
-    )
+    vm_value_and_mint.verify_value_and_mint_finalize_semantics_v1(pre, witness)
   }
 }
 
 fn value_and_mint_aggregate_route(
   pre: validation_trace_v1.ValidationMachineStateV1,
-  witness: validation_machine_v1.ValidationOneStepWitnessV1,
-  auxiliary: validation_machine_v1.ValidationAuxiliaryWitnessV1,
+  witness: vm_machine_types.ValidationOneStepWitnessV1,
+  auxiliary: vm_machine_types.ValidationAuxiliaryWitnessV1,
 ) -> Bool {
-  validation_machine_v1.verify_value_and_mint_one_step_v1(
+  vm_one_step.verify_value_and_mint_one_step_v1(
     pre,
-    validation_machine_v1.ValidationOneStepEvidenceV1 {
+    vm_machine_types.ValidationOneStepEvidenceV1 {
       transition: witness,
       auxiliary,
     },

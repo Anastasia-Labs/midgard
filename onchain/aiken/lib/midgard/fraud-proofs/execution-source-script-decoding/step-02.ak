@@ -4,7 +4,7 @@ use midgard/fraud_proofs/execution_source_script_decoding/rule.{
 }
 use midgard/ledger_state
 use midgard/transition_trace
-use midgard/validation_machine_v1.{NativeScriptsControlV1}
+use midgard/validation_machine/machine_types.{NativeScriptsControlV1}
 use midgard/validation_trace_v1
 
 pub type Args {

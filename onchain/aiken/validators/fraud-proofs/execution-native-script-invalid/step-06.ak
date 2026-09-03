@@ -20,7 +20,7 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/native_tx_script_pushdown_v1 as pushdown
 use midgard/script_proof_v1
-use midgard/validation_machine_v1 as validation_machine
+use midgard/validation_machine/machine_types as vm_machine_types
 use midgard/validation_merkle_v1
 
 validator main(
@@ -255,14 +255,14 @@ fn signer_proof_verdict(
   signer_hash: ByteArray,
   signer_count: Int,
   signer_peaks: List<validation_merkle_v1.FrontierPeak>,
-  proof: validation_machine.SignerSetProofV1,
+  proof: vm_machine_types.SignerSetProofV1,
 ) -> Bool {
   let commitment = validation_merkle_v1.frontier_commitment(
     signer_count,
     signer_peaks,
   )
   when proof is {
-    validation_machine.SignerMembershipProof { peaks, signer_index, siblings } -> {
+    vm_machine_types.SignerMembershipProof { peaks, signer_index, siblings } -> {
       expect peaks == signer_peaks
       expect
         signer_membership_is_valid(
@@ -275,12 +275,12 @@ fn signer_proof_verdict(
         )
       True
     }
-    validation_machine.EmptySignerSetProof { peaks } -> {
+    vm_machine_types.EmptySignerSetProof { peaks } -> {
       expect signer_count == 0
       expect signer_frontier_matches(signer_count, commitment, peaks)
       False
     }
-    validation_machine.SignerBelowFirstProof {
+    vm_machine_types.SignerBelowFirstProof {
       peaks,
       first_signer_hash,
       siblings,
@@ -297,11 +297,7 @@ fn signer_proof_verdict(
         )
       False
     }
-    validation_machine.SignerAboveLastProof {
-      peaks,
-      last_signer_hash,
-      siblings,
-    } -> {
+    vm_machine_types.SignerAboveLastProof { peaks, last_signer_hash, siblings } -> {
       expect signer_count > 0
       expect bytearray.compare(last_signer_hash, signer_hash) == Less
       expect
@@ -315,7 +311,7 @@ fn signer_proof_verdict(
         )
       False
     }
-    validation_machine.SignerBetweenProof {
+    vm_machine_types.SignerBetweenProof {
       peaks,
       lower_index,
       lower_signer_hash,
@@ -347,7 +343,7 @@ fn signer_proof_verdict(
         )
       False
     }
-    validation_machine.NoSignerSetProof -> fail
+    vm_machine_types.NoSignerSetProof -> fail
   }
 }
 
@@ -382,7 +378,7 @@ fn state_for(script_item_cbor: ByteArray, phase: PhaseV1) -> State {
 fn missing_query() -> SignerQueryV1 {
   SignerQueryV1 {
     signer_hash: tf.signer_key_hash,
-    proof: validation_machine.SignerAboveLastProof {
+    proof: vm_machine_types.SignerAboveLastProof {
       peaks: one_signer_peaks(),
       last_signer_hash: present_signer_hash,
       siblings: [],
@@ -393,7 +389,7 @@ fn missing_query() -> SignerQueryV1 {
 fn present_query() -> SignerQueryV1 {
   SignerQueryV1 {
     signer_hash: present_signer_hash,
-    proof: validation_machine.SignerMembershipProof {
+    proof: vm_machine_types.SignerMembershipProof {
       peaks: one_signer_peaks(),
       signer_index: 0,
       siblings: [],
@@ -450,7 +446,7 @@ test execution_native_script_invalid_step_06_rejects_a_missing_signer_query() fa
 test execution_native_script_invalid_step_06_rejects_a_forged_absence_boundary() fail {
   let forged = SignerQueryV1 {
     signer_hash: tf.signer_key_hash,
-    proof: validation_machine.SignerAboveLastProof {
+    proof: vm_machine_types.SignerAboveLastProof {
       peaks: one_signer_peaks(),
       last_signer_hash: #"22222222222222222222222222222222222222222222222222222222",
       siblings: [],

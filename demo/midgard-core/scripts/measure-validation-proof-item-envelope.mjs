@@ -24,18 +24,19 @@ import { resolve } from "node:path";
 const sdkRequire = createRequire(
   resolve(process.cwd(), "../midgard-sdk/package.json"),
 );
-const {
-  applyParamsToScript,
-  CML,
-  validatorToScriptHash,
-} = sdkRequire("@lucid-evolution/lucid");
+const { applyParamsToScript, CML, validatorToScriptHash } = sdkRequire(
+  "@lucid-evolution/lucid",
+);
 
 const MAX_TX_BYTES = 16_384;
 const RELIABILITY_RESERVE_BYTES = 512;
 const COINS_PER_UTXO_BYTE = 4_310n;
 const LINEAR_FEE = CML.LinearFee.new(44n, 155_381n, 15n);
 const blueprint = JSON.parse(
-  readFileSync(resolve(process.cwd(), "../../onchain/aiken/plutus.json"), "utf8"),
+  readFileSync(
+    resolve(process.cwd(), "../../onchain/aiken/plutus.json"),
+    "utf8",
+  ),
 );
 
 const compiled = (title) => {
@@ -45,9 +46,7 @@ const compiled = (title) => {
 };
 const proofItemScript = {
   type: "PlutusV3",
-  script: compiled(
-    "fraud_proofs/validation_trace/proof_item_v1.main.else",
-  ),
+  script: compiled("fraud_proofs/validation_trace/proof_item_v1.main.else"),
 };
 const proofItemScriptHash = validatorToScriptHash(proofItemScript);
 const semanticScript = {
@@ -84,16 +83,13 @@ const changeAddress = CML.Address.from_raw_bytes(
 );
 const scriptAddress = (scriptHashHex) =>
   CML.Address.from_raw_bytes(
-    Buffer.concat([
-      Buffer.from([0x70]),
-      Buffer.from(scriptHashHex, "hex"),
-    ]),
+    Buffer.concat([Buffer.from([0x70]), Buffer.from(scriptHashHex, "hex")]),
   );
 const proofItemAddress = scriptAddress(proofItemScriptHash);
 const awardAddress = scriptAddress("11".repeat(28));
 
 // Deployed ValidationProofItemDatum: version, transaction_id,
-// transaction_commitment, field_preimage (validation-machine-v1.ak:421-426).
+// transaction_commitment, field_preimage (lib/midgard/validation-machine/).
 const proofItemDatum = (itemBytes) =>
   constr(0, [
     integer(1),
@@ -120,10 +116,7 @@ const witnessSetWithRedeemer = (tag, redeemer) => {
   const redeemers = CML.MapRedeemerKeyToRedeemerVal.new();
   redeemers.insert(
     CML.RedeemerKey.new(tag, 0n),
-    CML.RedeemerVal.new(
-      redeemer,
-      CML.ExUnits.new(7_500_000n, 3_500_000_000n),
-    ),
+    CML.RedeemerVal.new(redeemer, CML.ExUnits.new(7_500_000n, 3_500_000_000n)),
   );
   const witnesses = CML.TransactionWitnessSet.new();
   witnesses.set_redeemers(

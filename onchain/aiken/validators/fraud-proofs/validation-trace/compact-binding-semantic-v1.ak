@@ -3,10 +3,10 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
-use midgard/validation_machine_v1.{
+use midgard/validation_machine/machine_types.{
   NoAuxiliaryWitness, ValidationOneStepEvidenceV1, ValidationOneStepWitnessV1,
-  verify_compact_binding_semantics_v1,
 }
+use midgard/validation_machine/one_step.{verify_compact_binding_semantics_v1}
 use midgard/validation_resolution_v1
 use midgard/validation_trace_v1
 

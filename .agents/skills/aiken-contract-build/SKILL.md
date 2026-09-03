@@ -40,7 +40,7 @@ guard for one exact test:
 
 ```bash
 node scripts/run-focused-check.mjs \
-  midgard/validation_machine_v1 \
+  midgard/validation_machine/machine_types \
   exact_test_name
 ```
 
@@ -49,7 +49,7 @@ name to one guard invocation rather than recompiling the tree for each:
 
 ```bash
 node scripts/run-focused-check.mjs \
-  midgard/validation_machine_v1 \
+  midgard/validation_machine/machine_types \
   first_exact_test_name \
   second_exact_test_name
 ```
@@ -65,7 +65,7 @@ When invoking Aiken directly, use:
 
 ```bash
 aiken check \
-  -m 'midgard/validation_machine_v1.{exact_test_name}' \
+  -m 'midgard/validation_machine/machine_types.{exact_test_name}' \
   -e --plain-numbers
 ```
 

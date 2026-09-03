@@ -8,7 +8,7 @@ use midgard/fraud_proofs/native_tx/codec.{
   encode_definite_array_header, encode_definite_bytes,
 }
 use midgard/fraud_proofs/native_tx/compact.{native_tx_proof_commitment_v1}
-use midgard/validation_machine_v1.{ValidationOneStepWitnessV1}
+use midgard/validation_machine/machine_types.{ValidationOneStepWitnessV1}
 use midgard/validation_resolution_v1
 use midgard/validation_trace_v1
 
@@ -266,7 +266,7 @@ pub fn canonical_action_hash_v1(
     }
   }
   expect and {
-      // `validation_machine_v1.RedeemerItemStepWitness` -- the only
+      // `vm_machine_types.RedeemerItemStepWitness` -- the only
       // `ValidationAuxiliaryWitnessV1` constructor carrying
       // `(Option<CekRedeemerContextControlV1>, RedeemerItemProofControlV1,
       // RedeemerItemProofWitnessV1)`, and the one the machine itself matches for
@@ -371,7 +371,7 @@ pub fn verify_raw_envelope_v1(
   )
   // The bytes the machine actually commits for a stage-1 pending redeemer item
   // are the *canonical* ones produced by
-  // `validation_machine_v1.encode_script_sources_redeemer_item_witness`
+  // `vm_witness.encode_script_sources_redeemer_item_witness`
   // (validation-machine-v1.ak:7337, dispatched from
   // `exact_script_sources_control:7462`): a definite-length 31-item array,
   // `encode_definite_array_header(31)` = `98 1f`, holding the thirty

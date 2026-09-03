@@ -440,7 +440,7 @@ const makeAiken = ({ transactions, forcedOrders, roots }) => {
     lines.push(
       `test rf031_${entry.constantPrefix}_transaction_source_is_exact() {`,
       `  expect Some(data) = cbor.deserialise(${entry.constantPrefix}_value_cbor)`,
-      `  expect value: ledger_state.L2TransactionSource = data`,
+      `  expect value: ledger_state.L2TransactionSourceV1 = data`,
       "  and {",
       `    cbor.serialise(value) == ${entry.constantPrefix}_value_cbor,`,
       `    value.tx_id == ${entry.constantPrefix}_key,`,

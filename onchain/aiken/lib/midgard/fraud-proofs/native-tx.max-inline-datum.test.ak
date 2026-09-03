@@ -12,8 +12,10 @@ use aiken/primitive/bytearray
 use midgard/bounded_item_v1
 use midgard/fraud_proofs/native_binding_fixture_v1 as binding_fixture
 use midgard/native_tx_field_access_v1
+use midgard/validation_machine/machine_types as vm_machine_types
+use midgard/validation_machine/one_step as vm_one_step
+use midgard/validation_machine/witness as vm_witness
 use midgard/validation_machine_field_door_v1 as field_door
-use midgard/validation_machine_v1
 use midgard/validation_trace_v1
 
 const maximum_cardano_inline_datum_transaction_id =
@@ -95,7 +97,7 @@ fn maximum_cardano_inline_datum_terminal_chunk() -> ByteArray {
 
 test maximum_cardano_inline_datum_terminal_fold_matches_typescript() {
   let chunk = maximum_cardano_inline_datum_terminal_chunk()
-  let work_witness_cbor = validation_machine_v1.encode_transaction_field_scan_witness(
+  let work_witness_cbor = vm_witness.encode_transaction_field_scan_witness(
     maximum_cardano_inline_datum_compact_cbor,
     maximum_cardano_inline_datum_witness_set_compact_cbor,
     maximum_cardano_inline_datum_field_preimage_lengths_cbor,
@@ -106,7 +108,7 @@ test maximum_cardano_inline_datum_terminal_fold_matches_typescript() {
     1,
     1,
   )
-  let successor_work_witness_cbor = validation_machine_v1.encode_transaction_field_scan_witness(
+  let successor_work_witness_cbor = vm_witness.encode_transaction_field_scan_witness(
     maximum_cardano_inline_datum_compact_cbor,
     maximum_cardano_inline_datum_witness_set_compact_cbor,
     maximum_cardano_inline_datum_field_preimage_lengths_cbor,
@@ -174,10 +176,10 @@ test maximum_cardano_inline_datum_terminal_fold_matches_typescript() {
     ) == chunk,
     pre.work_root == maximum_cardano_inline_datum_terminal_pre_work_root,
     post.work_root == maximum_cardano_inline_datum_terminal_post_work_root,
-    validation_machine_v1.verify_canonical_decode_one_step_v1(
+    vm_one_step.verify_canonical_decode_one_step_v1(
       pre,
-      validation_machine_v1.ValidationOneStepEvidenceV1 {
-        transition: validation_machine_v1.ValidationOneStepWitnessV1 {
+      vm_machine_types.ValidationOneStepEvidenceV1 {
+        transition: vm_machine_types.ValidationOneStepWitnessV1 {
           work_witness_cbor,
           claimed_successor: post,
         },
@@ -192,7 +194,7 @@ test maximum_cardano_inline_datum_terminal_fold_matches_typescript() {
         // `[15,148, 1,077]` and both chunks publish (§8.3 erratum E1). The door
         // then materialises the manifest's chunks, hashes the concatenation once
         // against `outputs_hash`, and chunk 3 of item 0 is a slice.
-        auxiliary: validation_machine_v1.TransactionFieldChunkWitness {
+        auxiliary: vm_machine_types.TransactionFieldChunkWitness {
           field_index: 2,
           item_index: 0,
           carriage: binding_fixture.certified_carriage_v1(

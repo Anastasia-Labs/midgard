@@ -4,7 +4,7 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/canonical_decode_item_staging_v1 as staging
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
-use midgard/validation_machine_v1.{
+use midgard/validation_machine/machine_types.{
   NoAuxiliaryWitness, ValidationOneStepWitnessV1,
 }
 use midgard/validation_resolution_v1.{hash_one_step_evidence}

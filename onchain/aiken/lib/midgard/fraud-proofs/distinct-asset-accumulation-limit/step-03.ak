@@ -1,6 +1,6 @@
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/distinct_asset_accumulation_limit/rule.{FoldStateV1}
-use midgard/validation_machine_v1.{ValueAssetMutationWitnessV1}
+use midgard/validation_machine/machine_types.{ValueAssetMutationWitnessV1}
 use midgard/validation_merkle_v1.{FrontierPeak}
 
 pub type InputEvidenceV1 {

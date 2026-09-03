@@ -212,7 +212,7 @@ export type ValidationMachineWorkWitness = {
          *
          * This is the C21-STAGE4 site. Its evidence is O(1) in output size
          * exactly when the resolved carriage is tier 2 or 3
-         * (`onchain/aiken/lib/midgard/validation-machine-v1.ak:9189-9192`), which
+         * (`onchain/aiken/lib/midgard/validation-machine/`), which
          * is what resolving at evidence-commitment time restores.
          */
         readonly kind: "transactionRedeemerItemBegin";

@@ -50,12 +50,16 @@ use midgard/fraud_proofs/native_tx/types.{
   PlutusV3Script, native_tx_version_v1,
 }
 use midgard/native_tx_field_access_v1 as field_access
-use midgard/validation_machine_field_door_v1 as field_door
-use midgard/validation_machine_v1.{
-  NoAuxiliaryWitness, TransactionFieldItemWitness, ValidationOneStepWitnessV1,
-  ValidationProofItemDatumV1, bind_canonical_decode_item_source_v1,
-  encode_transaction_field_scan_witness, observe_canonical_decode_item_v1,
+use midgard/validation_machine/canonical_decode.{
+  bind_canonical_decode_item_source_v1, observe_canonical_decode_item_v1,
 }
+use midgard/validation_machine/machine_types as vm_machine_types
+use midgard/validation_machine/machine_types.{
+  NoAuxiliaryWitness, TransactionFieldItemWitness, ValidationOneStepWitnessV1,
+  ValidationProofItemDatumV1,
+}
+use midgard/validation_machine/witness.{encode_transaction_field_scan_witness}
+use midgard/validation_machine_field_door_v1 as field_door
 use midgard/validation_resolution_v1.{
   PreparedValidationResolutionStateV1, ValidationResolutionStateV1,
   hash_one_step_evidence, prepared_resolution_version, resolution_version,
@@ -1227,7 +1231,7 @@ test observe_refuses_a_forged_observation() fail {
   let honest = honest_observation(f)
   let forged: Data = staging.observe(
     prepared_stage(f, f.base),
-    validation_machine_v1.CanonicalDecodeItemObservationV1 {
+    vm_machine_types.CanonicalDecodeItemObservationV1 {
       ..honest,
       item_length: honest.item_length + 1,
     },

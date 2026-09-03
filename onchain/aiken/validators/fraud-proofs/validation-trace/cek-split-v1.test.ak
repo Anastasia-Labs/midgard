@@ -49,12 +49,14 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/script_context_v1
 use midgard/script_proof_v1
-use midgard/validation_machine_field_door_v1 as field_door
-use midgard/validation_machine_v1.{
+use midgard/validation_machine/machine_types.{
   CekContextControlV1, CekCoreStepWitness, NativeExecutionScanWitness,
   NativeScriptsControlV1, NoAuxiliaryWitness, ValidationAuxiliaryWitnessV1,
   ValidationOneStepEvidenceV1, ValidationOneStepWitnessV1,
 }
+use midgard/validation_machine/one_step as vm_one_step
+use midgard/validation_machine/witness as vm_witness
+use midgard/validation_machine_field_door_v1 as field_door
 use midgard/validation_merkle_v1
 use midgard/validation_resolution_v1.{
   PreparedValidationResolutionStateV1, ValidationResolutionStateV1,
@@ -152,7 +154,7 @@ fn empty_native_control(tx: MidgardTransaction) -> NativeScriptsControlV1 {
     field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
     context_cbor: validation_context_cbor,
     resolved_input_count: 0,
-    resolved_inputs_accumulator: validation_machine_v1.initial_resolution_accumulator(),
+    resolved_inputs_accumulator: vm_witness.initial_resolution_accumulator(),
     spend_input_count: 0,
     resolved_item_peaks: validation_merkle_v1.empty_frontier(),
     signer_count: empty.count,
@@ -175,7 +177,7 @@ fn empty_native_control(tx: MidgardTransaction) -> NativeScriptsControlV1 {
     execution_peaks: validation_merkle_v1.empty_frontier(),
     execution_cursor: 0,
     language_bitmap: 0,
-    resolution_schedule_hash: validation_machine_v1.transaction_resolution_schedule_hash(
+    resolution_schedule_hash: vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
@@ -202,7 +204,7 @@ fn cek_state(
     native_tx_version_v1,
     encode_native_tx_body_compact(compact.body),
   )
-  let work_witness_cbor = validation_machine_v1.encode_cek_witness_v1(
+  let work_witness_cbor = vm_witness.encode_cek_witness_v1(
     control,
     context_control_cbor,
     execution_cursor,
@@ -298,7 +300,7 @@ fn finish_fixture() -> CekStepFixtureV1 {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.ValueAndMint,
       41,
-      validation_machine_v1.encode_value_and_mint_witness_v1(control),
+      vm_witness.encode_value_and_mint_witness_v1(control),
     ),
   }
   step_fixture(
@@ -459,7 +461,7 @@ fn selection_fixture() -> CekStepFixtureV1 {
   let Pair(post, _) = cek_state(
     tx,
     control,
-    validation_machine_v1.encode_cek_context_control_v1(context_control),
+    vm_witness.encode_cek_context_control_v1(context_control),
     0,
     #"",
     0,
@@ -577,7 +579,7 @@ fn native_only_selection_fixture() -> CekStepFixtureV1 {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.ValueAndMint,
       41,
-      validation_machine_v1.encode_value_and_mint_witness_v1(control),
+      vm_witness.encode_value_and_mint_witness_v1(control),
     ),
   }
   step_fixture(
@@ -627,7 +629,7 @@ fn context_step_fixture() -> CekStepFixtureV1 {
     [],
     False,
   )
-  let redeemer_context = validation_machine_v1.initial_cek_redeemer_context_control_v1()
+  let redeemer_context = vm_witness.initial_cek_redeemer_context_control_v1()
   let init_control = CekContextControlV1 {
     stage: 6,
     language_tag: 3,
@@ -638,7 +640,7 @@ fn context_step_fixture() -> CekStepFixtureV1 {
     script_hash: h_28_a,
     subject: #"00",
     redeemer_leaf: h_c,
-    redeemer_context_control_hash: validation_machine_v1.hash_cek_redeemer_context_control_v1(
+    redeemer_context_control_hash: vm_witness.hash_cek_redeemer_context_control_v1(
       redeemer_context,
     ),
     execution_memory_limit: 10,
@@ -671,7 +673,7 @@ fn context_step_fixture() -> CekStepFixtureV1 {
   let Pair(pre, work_witness_cbor) = cek_state(
     tx,
     control,
-    validation_machine_v1.encode_cek_context_control_v1(init_control),
+    vm_witness.encode_cek_context_control_v1(init_control),
     0,
     #"",
     0,
@@ -684,7 +686,7 @@ fn context_step_fixture() -> CekStepFixtureV1 {
   let Pair(post, _) = cek_state(
     tx,
     control,
-    validation_machine_v1.encode_cek_context_control_v1(successor_control),
+    vm_witness.encode_cek_context_control_v1(successor_control),
     0,
     #"",
     0,
@@ -1565,7 +1567,7 @@ test finish_validator_refuses_a_hand_off_with_pending_executions() fail {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.ValueAndMint,
       41,
-      validation_machine_v1.encode_value_and_mint_witness_v1(control),
+      vm_witness.encode_value_and_mint_witness_v1(control),
     ),
   }
   let f = step_fixture(
@@ -1605,7 +1607,7 @@ test finish_validator_refuses_a_native_only_selection() fail {
 /// execution selection, so the four kinds still cover the native-only step.
 test native_only_selection_is_an_honest_machine_step() {
   let f = native_only_selection_fixture()
-  validation_machine_v1.verify_cek_one_step_v1(
+  vm_one_step.verify_cek_one_step_v1(
     f.pre,
     ValidationOneStepEvidenceV1 {
       transition: f.transition,
@@ -1707,7 +1709,7 @@ test every_fixture_is_an_honest_machine_step() {
     certificate_policy_id: #"",
   }
   and {
-    validation_machine_v1.verify_cek_one_step_v1(
+    vm_one_step.verify_cek_one_step_v1(
       finish_fixture().pre,
       ValidationOneStepEvidenceV1 {
         transition: finish_fixture().transition,
@@ -1715,7 +1717,7 @@ test every_fixture_is_an_honest_machine_step() {
       },
       door,
     ),
-    validation_machine_v1.verify_cek_one_step_v1(
+    vm_one_step.verify_cek_one_step_v1(
       selection_fixture().pre,
       ValidationOneStepEvidenceV1 {
         transition: selection_fixture().transition,
@@ -1723,7 +1725,7 @@ test every_fixture_is_an_honest_machine_step() {
       },
       door,
     ),
-    validation_machine_v1.verify_cek_one_step_v1(
+    vm_one_step.verify_cek_one_step_v1(
       context_step_fixture().pre,
       ValidationOneStepEvidenceV1 {
         transition: context_step_fixture().transition,
@@ -1731,7 +1733,7 @@ test every_fixture_is_an_honest_machine_step() {
       },
       door,
     ),
-    validation_machine_v1.verify_cek_one_step_v1(
+    vm_one_step.verify_cek_one_step_v1(
       core_step_fixture().pre,
       ValidationOneStepEvidenceV1 {
         transition: core_step_fixture().transition,

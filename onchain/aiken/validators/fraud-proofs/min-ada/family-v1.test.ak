@@ -51,7 +51,7 @@ use midgard/fraud_proofs/transition_trace/proof.{ledger_outref_key}
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_output_descriptor_v1
 use midgard/ledger_state
-use midgard/validation_machine_v1
+use midgard/validation_machine/shared as vm_shared
 use pexcludes as pexcludes_validator
 use phas as phas_validator
 
@@ -108,7 +108,7 @@ fn with_authenticated_yield(
 fn output_at_delta(delta: Int) -> MidgardTxOutput {
   let base = fixture.sample_native_output()
   let base_cbor = encode_midgard_tx_output(base)
-  let floor = validation_machine_v1.min_ada_lovelace_v1(
+  let floor = vm_shared.min_ada_lovelace_v1(
     env.coins_per_utxo_byte,
     bytearray.length(base_cbor),
   )
@@ -174,7 +174,7 @@ fn maximum_descriptor_material() -> (OutputReference, ByteArray) {
   let output_cbor = encode_midgard_tx_output(output_at_delta(-1))
   expect Some(base) = ledger_output_descriptor_v1.build_v1(0, output_cbor)
   let maximum_total_length = 16_384
-  let floor = validation_machine_v1.min_ada_lovelace_v1(
+  let floor = vm_shared.min_ada_lovelace_v1(
     env.coins_per_utxo_byte,
     maximum_total_length,
   )
@@ -1012,19 +1012,19 @@ test q27_min_ada_predecessor_step_rejects_a_wrong_terminal_successor() fail {
 
 test q27_min_ada_family_binds_the_exact_production_parameter_snapshot() {
   let maximum_total_length = 16_384
-  let floor = validation_machine_v1.min_ada_lovelace_v1(
+  let floor = vm_shared.min_ada_lovelace_v1(
     env.coins_per_utxo_byte,
     maximum_total_length,
   )
   and {
     env.coins_per_utxo_byte == 4_310,
     floor == 71_304_640,
-    validation_machine_v1.output_meets_min_ada_v1(
+    vm_shared.output_meets_min_ada_v1(
       env.coins_per_utxo_byte,
       maximum_total_length,
       floor,
     ),
-    !validation_machine_v1.output_meets_min_ada_v1(
+    !vm_shared.output_meets_min_ada_v1(
       env.coins_per_utxo_byte,
       maximum_total_length,
       floor - 1,
@@ -1032,11 +1032,7 @@ test q27_min_ada_family_binds_the_exact_production_parameter_snapshot() {
     // A mutated zero-rate snapshot would accept the same underfunded output;
     // the family therefore cannot derive the deployment parameter from the
     // prover or transaction and must stay compiled to `env`.
-    validation_machine_v1.output_meets_min_ada_v1(
-      0,
-      maximum_total_length,
-      floor - 1,
-    ),
+    vm_shared.output_meets_min_ada_v1(0, maximum_total_length, floor - 1),
   }
 }
 

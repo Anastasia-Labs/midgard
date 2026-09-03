@@ -9,7 +9,8 @@ use midgard/rejection_reason_v1.{
 }
 use midgard/script_proof_v1
 use midgard/transition_trace
-use midgard/validation_machine_v1
+use midgard/validation_machine/machine_types as vm_machine_types
+use midgard/validation_machine/witness as vm_witness
 use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
 
@@ -150,7 +151,7 @@ fn authenticate_exact_receive(
   let purpose = validation_merkle_v1.build_frontier([purpose_leaf])
   let source = validation_merkle_v1.build_frontier([source_leaf])
   let execution = validation_merkle_v1.build_frontier([execution_leaf])
-  let control = validation_machine_v1.NativeScriptsControlV1 {
+  let control = vm_machine_types.NativeScriptsControlV1 {
     compact_cbor: #"",
     witness_set_compact_cbor: #"",
     field_preimage_lengths_cbor: #"",
@@ -192,7 +193,7 @@ fn authenticate_exact_receive(
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.NativeScripts,
       7,
-      validation_machine_v1.encode_native_scripts_control_v1(control),
+      vm_witness.encode_native_scripts_control_v1(control),
     ),
     execution_cpu: 0,
     execution_memory: 0,

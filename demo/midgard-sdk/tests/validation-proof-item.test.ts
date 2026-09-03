@@ -15,7 +15,7 @@ import {
  * with an opening into it: under §4 a field commits to a flat `blake2b_256` over
  * its preimage bytes, so a per-item opening has nothing to be checked against.
  * The Aiken twin is `ValidationProofItemDatum` in
- * `onchain/aiken/lib/midgard/validation-machine-v1.ak:421`, and
+ * `onchain/aiken/lib/midgard/validation-machine/`, and
  * `canonical_decode_item_semantic_v1.proof_item_from_reference` is what reads it
  * back — as `Inline { preimage }`, constructed by the validator rather than
  * named by the prover.

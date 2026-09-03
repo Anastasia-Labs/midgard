@@ -2,7 +2,7 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/distinct_asset_accumulation_limit/rule.{BoundV1}
 use midgard/ledger_state
 use midgard/transition_trace
-use midgard/validation_machine_v1.{ValueAndMintControlV1}
+use midgard/validation_machine/machine_types.{ValueAndMintControlV1}
 use midgard/validation_trace_v1
 
 pub type Args {

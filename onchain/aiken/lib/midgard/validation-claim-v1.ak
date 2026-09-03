@@ -7,7 +7,7 @@ use midgard/fraud_proofs/native_tx/compact.{
 use midgard/ledger_state
 use midgard/rejection_reason_v1.{ForcedTxInvalid, ForcedTxValid}
 use midgard/transition_trace
-use midgard/validation_machine_v1
+use midgard/validation_machine/witness as vm_witness
 use midgard/validation_trace_v1
 
 pub const claim_version: Int = 1
@@ -98,7 +98,7 @@ fn initial_work_root_is_exact(
 ) -> Bool {
   let first_work_witness = when source is {
     ForcedValidationSource { membership } ->
-      validation_machine_v1.encode_transaction_field_scan_witness(
+      vm_witness.encode_transaction_field_scan_witness(
         membership.value.source.compact_cbor,
         membership.value.source.witness_set_compact_cbor,
         membership.value.source.field_preimage_lengths_cbor,
@@ -110,7 +110,7 @@ fn initial_work_root_is_exact(
         0,
       )
     NormalValidationSource { membership } ->
-      validation_machine_v1.encode_transaction_field_scan_witness(
+      vm_witness.encode_transaction_field_scan_witness(
         membership.value.source.compact_cbor,
         membership.value.source.witness_set_compact_cbor,
         membership.value.source.field_preimage_lengths_cbor,

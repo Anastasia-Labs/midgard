@@ -9,11 +9,14 @@ use midgard/canonical_decode_item_staging_v1 as staging
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/native_tx_field_access_v1.{FieldCarriageV1, Inline}
-use midgard/validation_machine_field_door_v1.{MachineFieldDoorV1}
-use midgard/validation_machine_v1.{
-  TransactionFieldItemWitness, ValidationAuxiliaryWitnessV1,
-  ValidationProofItemDatumV1, observe_canonical_decode_item_v1,
+use midgard/validation_machine/canonical_decode.{
+  observe_canonical_decode_item_v1,
 }
+use midgard/validation_machine/machine_types.{
+  TransactionFieldItemWitness, ValidationAuxiliaryWitnessV1,
+  ValidationProofItemDatumV1,
+}
+use midgard/validation_machine_field_door_v1.{MachineFieldDoorV1}
 use midgard/validation_trace_v1.{ValidationMachineStateV1}
 
 pub type Datum =

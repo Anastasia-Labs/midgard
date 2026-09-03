@@ -13,7 +13,8 @@ use midgard/redeemer_item_proof_v1
 use midgard/rejection_reason_v1.{UnusedRedeemer, rejection_code_of}
 use midgard/script_proof_v1
 use midgard/transition_trace
-use midgard/validation_machine_v1
+use midgard/validation_machine/machine_types as vm_machine_types
+use midgard/validation_machine/witness as vm_witness
 use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
 
@@ -210,11 +211,11 @@ pub fn authenticate_control_v1(
   authenticated: AuthenticatedDescriptorV1,
   machine_state: validation_trace_v1.ValidationMachineStateV1,
   trace_proof: validation_trace_v1.ValidationTraceProof,
-  control: validation_machine_v1.ScriptSourcesControlV1,
+  control: vm_machine_types.ScriptSourcesControlV1,
 ) -> AuthenticatedControlV1 {
   let bound = authenticated.bound
   let discovery = control.discovery
-  let control_cbor = validation_machine_v1.encode_script_sources_discovery_witness(
+  let control_cbor = vm_witness.encode_script_sources_discovery_witness(
     control,
     control.stage,
     discovery,

@@ -70,7 +70,7 @@ for (const [name, source] of Object.entries(evidence.sources)) {
     ? (
         await Promise.all(
           (await readdir(absolutePath))
-            .filter((entry) => entry.endsWith(".ts"))
+            .filter((entry) => /\.(ts|ak)$/.test(entry))
             .sort()
             .map((entry) => readFile(resolve(absolutePath, entry), "utf8")),
         )
@@ -278,7 +278,7 @@ assert.deepEqual(evidence.wholePreimageFinding.removedFrom, [
   "demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness.ts",
   "demo/midgard-validation/src/validation-machine",
   "demo/midgard-validation/src/validation-machine-data.ts",
-  "onchain/aiken/lib/midgard/validation-machine-v1.ak",
+  "onchain/aiken/lib/midgard/validation-machine",
 ]);
 
 assert.ok(isPassStatus(evidence.acceptance.F10));

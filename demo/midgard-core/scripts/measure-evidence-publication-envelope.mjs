@@ -5,10 +5,7 @@ const RELIABILITY_RESERVE_BYTES = 512;
 
 const hash = (fill) => Buffer.alloc(32, fill);
 const input = (fill) =>
-  CML.TransactionInput.new(
-    CML.TransactionHash.from_raw_bytes(hash(fill)),
-    0n,
-  );
+  CML.TransactionInput.new(CML.TransactionHash.from_raw_bytes(hash(fill)), 0n);
 
 const signingKey = CML.PrivateKey.from_normal_bytes(hash(4));
 const paymentKeyHash = signingKey.to_public().hash();
@@ -39,11 +36,7 @@ const evidenceValue = (withStateToken) => {
   return CML.Value.new(100_000_000n, assets);
 };
 
-const transactionFor = ({
-  evidenceBytes,
-  withStateToken,
-  includeWitness,
-}) => {
+const transactionFor = ({ evidenceBytes, withStateToken, includeWitness }) => {
   const inputs = CML.TransactionInputList.new();
   inputs.add(input(0));
 

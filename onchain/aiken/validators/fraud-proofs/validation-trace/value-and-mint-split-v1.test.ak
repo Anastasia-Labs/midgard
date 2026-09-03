@@ -66,13 +66,16 @@ use midgard/fraud_proofs/native_tx/types.{
 }
 use midgard/ledger_output_commitment_v1
 use midgard/script_proof_v1
-use midgard/validation_machine_v1.{
+use midgard/validation_machine/machine_types.{
   NativeScriptsControlV1, NoAuxiliaryWitness, ResolvedInputReplayWitness,
   ValidationAuxiliaryWitnessV1, ValidationOneStepEvidenceV1,
   ValidationOneStepWitnessV1, ValueAccumulatorV1, ValueAndMintControlV1,
   ValueAssetMutationWitnessV1, ValueInputAssetWitness, ValueMintAssetWitness,
   ValueOutputAssetWitness, ValueOutputDescriptorWitness,
 }
+use midgard/validation_machine/one_step as vm_one_step
+use midgard/validation_machine/shared as vm_shared
+use midgard/validation_machine/witness as vm_witness
 use midgard/validation_merkle_v1.{FrontierPeak}
 use midgard/validation_resolution_v1.{
   PreparedValidationResolutionStateV1, ValidationResolutionStateV1,
@@ -163,7 +166,7 @@ fn empty_native_control(tx: MidgardTransaction) -> NativeScriptsControlV1 {
     field_preimage_lengths_cbor: proof_source.field_preimage_lengths_cbor,
     context_cbor: validation_context_cbor,
     resolved_input_count: 0,
-    resolved_inputs_accumulator: validation_machine_v1.initial_resolution_accumulator(),
+    resolved_inputs_accumulator: vm_witness.initial_resolution_accumulator(),
     spend_input_count: 0,
     resolved_item_peaks: validation_merkle_v1.empty_frontier(),
     signer_count: empty.count,
@@ -186,7 +189,7 @@ fn empty_native_control(tx: MidgardTransaction) -> NativeScriptsControlV1 {
     execution_peaks: validation_merkle_v1.empty_frontier(),
     execution_cursor: 0,
     language_bitmap: 0,
-    resolution_schedule_hash: validation_machine_v1.transaction_resolution_schedule_hash(
+    resolution_schedule_hash: vm_witness.transaction_resolution_schedule_hash(
       tx.body.inputs,
       tx.body.reference_inputs,
     ),
@@ -202,12 +205,12 @@ fn idle_control(
   ValueAndMintControlV1 {
     native_control,
     stage,
-    replay_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     replay_cursor: 0,
     replay_asset_cursor: 0,
     replay_value_hash: zero,
-    replay_accumulator: validation_machine_v1.initial_resolution_accumulator(),
-    replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+    replay_accumulator: vm_witness.initial_resolution_accumulator(),
+    replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
     output_cursor: 0,
     output_asset_cursor: 0,
     mint_cursor: 0,
@@ -230,9 +233,7 @@ fn state_of(
     native_tx_version_v1,
     encode_native_tx_body_compact(compact.body),
   )
-  let work_witness_cbor = validation_machine_v1.encode_value_and_mint_control_v1(
-    control,
-  )
+  let work_witness_cbor = vm_witness.encode_value_and_mint_control_v1(control)
   Pair(
     validation_trace_v1.ValidationMachineStateV1 {
       machine_version: validation_trace_v1.machine_version,
@@ -306,7 +307,7 @@ const reject_min_ada_code: ByteArray = #"455f4d494e5f414441"
 const descriptor_total_length: Int = 16384
 
 fn descriptor_min_ada_floor() -> Int {
-  validation_machine_v1.min_ada_lovelace_v1(
+  vm_shared.min_ada_lovelace_v1(
     env.coins_per_utxo_byte,
     descriptor_total_length,
   )
@@ -372,16 +373,16 @@ fn single_replayed_input_native_control(
     resolved_input_count: 1,
     spend_input_count: 1,
     resolved_item_peaks: validation_merkle_v1.build_frontier([h_a]).peaks,
-    resolved_inputs_accumulator: validation_machine_v1.resolved_input_accumulator_successor(
-      validation_machine_v1.initial_resolution_accumulator(),
+    resolved_inputs_accumulator: vm_witness.resolved_input_accumulator_successor(
+      vm_witness.initial_resolution_accumulator(),
       0,
       replayed_input_key,
       descriptor_cbor,
     ),
-    resolution_schedule_hash: validation_machine_v1.resolution_schedule_node_hash(
+    resolution_schedule_hash: vm_witness.resolution_schedule_node_hash(
       0,
       replayed_input_key,
-      validation_machine_v1.empty_resolution_schedule_hash(),
+      vm_witness.empty_resolution_schedule_hash(),
     ),
   }
 }
@@ -455,7 +456,7 @@ fn replay_input_fixture() -> StepFixtureV1 {
       ..control,
       replay_cursor: 1,
       replay_accumulator: native_control.resolved_inputs_accumulator,
-      replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+      replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
       value_accumulator: ValueAccumulatorV1 {
         ..control.value_accumulator,
         lovelace_delta: 3,
@@ -464,7 +465,7 @@ fn replay_input_fixture() -> StepFixtureV1 {
     ResolvedInputReplayWitness {
       source_kind: 0,
       key: replayed_input_key,
-      next_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+      next_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
       value: descriptor_cbor,
     },
   )
@@ -502,7 +503,7 @@ fn replay_asset_fixture() -> StepFixtureV1 {
       replay_asset_cursor: 0,
       replay_value_hash: zero,
       replay_accumulator: native_control.resolved_inputs_accumulator,
-      replay_remaining_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+      replay_remaining_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
       value_accumulator: ValueAccumulatorV1 {
         lovelace_delta: 3,
         asset_root: singleton_root(unit, cbor.serialise(7)),
@@ -513,7 +514,7 @@ fn replay_asset_fixture() -> StepFixtureV1 {
     ValueInputAssetWitness {
       source_kind: 0,
       key: replayed_input_key,
-      next_schedule_hash: validation_machine_v1.empty_resolution_schedule_hash(),
+      next_schedule_hash: vm_witness.empty_resolution_schedule_hash(),
       descriptor_cbor,
       asset_index: 0,
       policy_id: h_28_a,
@@ -629,7 +630,7 @@ fn exact_rejection_post(
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.Terminal,
       pre.program_counter + 1,
-      validation_machine_v1.encode_terminal_rejection_witness(
+      vm_shared.encode_terminal_rejection_witness(
         rejection_code,
         pre.prior_ledger_root,
       ),
@@ -698,7 +699,7 @@ fn mint_asset_fixture() -> StepFixtureV1 {
   let asset_name = #"beef"
   let unit = policy_id |> bytearray.concat(asset_name)
   let mint_frontier = validation_merkle_v1.build_frontier(
-    [validation_machine_v1.mint_asset_leaf_hash(policy_id, asset_name, -5)],
+    [vm_shared.mint_asset_leaf_hash(policy_id, asset_name, -5)],
   )
   let native_control = NativeScriptsControlV1 {
     ..empty_native_control(tx),
@@ -760,7 +761,7 @@ fn finalize_fixture() -> StepFixtureV1 {
     work_root: validation_trace_v1.hash_work_witness(
       validation_trace_v1.LedgerDelta,
       41,
-      validation_machine_v1.encode_ledger_delta_witness_v1(
+      vm_witness.encode_ledger_delta_witness_v1(
         native_control,
         pre.prior_ledger_root,
         control.replay_schedule_hash,
@@ -1995,7 +1996,7 @@ test begin_validator_refuses_a_foreign_transaction_commitment() fail {
 /// accepts it agrees with the machine and not with a broken vector.
 fn fixture_is_an_honest_step(kind: Int) -> Bool {
   let f = fixture_of_kind(kind)
-  validation_machine_v1.verify_value_and_mint_one_step_v1(
+  vm_one_step.verify_value_and_mint_one_step_v1(
     f.pre,
     ValidationOneStepEvidenceV1 {
       transition: f.transition,

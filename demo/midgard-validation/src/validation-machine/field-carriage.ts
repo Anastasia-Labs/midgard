@@ -27,7 +27,7 @@ import {
  * preimage bytes, and nothing here is ever compared against one — the collection
  * root this builds is not `spend_inputs_hash` or any of its eight siblings, and
  * no caller treats it as such. What it feeds is the machine's proof-step trace,
- * whose on-chain twin is `lib/midgard/validation-machine-v1.ak`.
+ * whose on-chain twin is `lib/midgard/validation-machine/`.
  *
  * **It survived the rebind, and the correction is worth stating (#592 → #597).**
  * The docstrings here used to promise that this trace "retires with the

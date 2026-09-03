@@ -4,9 +4,10 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
-use midgard/validation_machine_v1.{
-  NoAuxiliaryWitness, ValidationOneStepWitnessV1, structural_transition_is_valid,
+use midgard/validation_machine/machine_types.{
+  NoAuxiliaryWitness, ValidationOneStepWitnessV1,
 }
+use midgard/validation_machine/shared.{structural_transition_is_valid}
 use midgard/validation_resolution_v1.{
   PreparedValidationResolutionStateV1, hash_one_step_evidence,
   prepared_resolution_version, state_is_well_formed,

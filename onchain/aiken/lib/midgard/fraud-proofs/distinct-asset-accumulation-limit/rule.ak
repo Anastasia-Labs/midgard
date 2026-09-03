@@ -11,10 +11,12 @@ use midgard/rejection_reason_v1.{
   OutputAssetAccumulationLimit, reject_asset_count,
 }
 use midgard/transition_trace
-use midgard/validation_machine_v1.{
+use midgard/validation_machine/machine_types.{
   ValueAndMintControlV1, ValueAssetMutationWitnessV1,
-  encode_value_and_mint_control_v1, mint_asset_leaf_hash,
-  resolution_schedule_node_hash,
+}
+use midgard/validation_machine/shared.{mint_asset_leaf_hash}
+use midgard/validation_machine/witness.{
+  encode_value_and_mint_control_v1, resolution_schedule_node_hash,
 }
 use midgard/validation_merkle_v1.{FrontierPeak}
 use midgard/validation_trace_v1

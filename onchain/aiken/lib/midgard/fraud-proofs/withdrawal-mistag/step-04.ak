@@ -10,7 +10,7 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/withdrawal_mistag/step_03
 use midgard/ledger_output_commitment_v1
 use midgard/ledger_state
-use midgard/validation_machine_v1
+use midgard/validation_machine/shared as vm_shared
 
 pub type State {
   challenged_header_hash: ledger_state.HeaderHash,
@@ -104,7 +104,7 @@ pub fn payout_is_exactly_payable_with_rate_v1(
   and {
     cardano_value_size > 0,
     cardano_value_size <= ledger_output_commitment_v1.max_cardano_value_cbor_bytes,
-    validation_machine_v1.output_meets_min_ada_v1(
+    vm_shared.output_meets_min_ada_v1(
       coins_per_utxo_byte,
       exact_payout_output_bytes_v1(body, cardano_value_size),
       lovelace,
@@ -150,7 +150,7 @@ pub fn establish_mistag_v1(
     claimed_valid,
     actual_valid,
     exact_output_bytes,
-    required_lovelace: validation_machine_v1.min_ada_lovelace_v1(
+    required_lovelace: vm_shared.min_ada_lovelace_v1(
       env.coins_per_utxo_byte,
       exact_output_bytes,
     ),
@@ -183,20 +183,14 @@ test accepts_unpayable_mistag() {
 test accepts_exact_minimum() {
   let body = fixture_body_v1(1)
   let bytes = exact_payout_output_bytes_v1(body, 5)
-  let minimum = validation_machine_v1.min_ada_lovelace_v1(
-    env.coins_per_utxo_byte,
-    bytes,
-  )
+  let minimum = vm_shared.min_ada_lovelace_v1(env.coins_per_utxo_byte, bytes)
   payout_is_exactly_payable_v1(fixture_body_v1(minimum), 5)
 }
 
 test rejects_one_lovelace_below_exact_minimum() {
   let body = fixture_body_v1(1)
   let bytes = exact_payout_output_bytes_v1(body, 5)
-  let minimum = validation_machine_v1.min_ada_lovelace_v1(
-    env.coins_per_utxo_byte,
-    bytes,
-  )
+  let minimum = vm_shared.min_ada_lovelace_v1(env.coins_per_utxo_byte, bytes)
   !payout_is_exactly_payable_v1(fixture_body_v1(minimum - 1), 5)
 }
 

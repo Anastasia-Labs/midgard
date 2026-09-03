@@ -25,7 +25,7 @@ use midgard/user_events/deposit
 use midgard/user_events/tx_order_v1 as tx_order
 use midgard/user_events/withdrawal
 use midgard/validation_claim_v1
-use midgard/validation_machine_v1
+use midgard/validation_machine/witness as vm_witness
 use midgard/validation_trace_v1
 
 const h28_a = #"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -682,7 +682,7 @@ fn accepted_forced_transition_case(
   let validation_context_hash = validation_trace_v1.hash_validation_context(
     validation_context_cbor,
   )
-  let initial_work_witness = validation_machine_v1.encode_transaction_field_scan_witness(
+  let initial_work_witness = vm_witness.encode_transaction_field_scan_witness(
     source.source.compact_cbor,
     source.source.witness_set_compact_cbor,
     source.source.field_preimage_lengths_cbor,
@@ -727,7 +727,7 @@ fn accepted_forced_transition_case(
     rejection_code_hash: zero_hash,
     ledger_delta_root: h32_c,
   }
-  let terminal_acceptance_witness_cbor = validation_machine_v1.encode_terminal_acceptance_witness_v1(
+  let terminal_acceptance_witness_cbor = vm_witness.encode_terminal_acceptance_witness_v1(
     terminal_post_root,
     0,
     [],

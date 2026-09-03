@@ -3,9 +3,9 @@ use cardano/assets.{PolicyId}
 use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel}
-use midgard/validation_machine_v1.{
+use midgard/validation_machine/input_sets.{verify_input_sets_empty_semantics_v1}
+use midgard/validation_machine/machine_types.{
   NoAuxiliaryWitness, ValidationOneStepWitnessV1,
-  verify_input_sets_empty_semantics_v1,
 }
 use midgard/validation_semantic_v1.{Datum, continue_winning}
 use midgard/validation_trace_v1.{InputSets}

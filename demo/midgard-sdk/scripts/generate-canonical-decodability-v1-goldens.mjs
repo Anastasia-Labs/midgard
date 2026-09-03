@@ -255,7 +255,7 @@ const witnessSetHashes = {
 const wireVectors = [
   {
     label: "claim_body_inline",
-    aikenType: "CommittedFieldClaim",
+    aikenType: "CommittedFieldClaimV1",
     schema: CommittedFieldClaim,
     value: {
       BodyFieldClaim: {
@@ -272,7 +272,7 @@ const wireVectors = [
   },
   {
     label: "claim_body_certified",
-    aikenType: "CommittedFieldClaim",
+    aikenType: "CommittedFieldClaimV1",
     schema: CommittedFieldClaim,
     value: {
       BodyFieldClaim: {
@@ -297,7 +297,7 @@ const wireVectors = [
   },
   {
     label: "claim_witness_raw_utxo",
-    aikenType: "CommittedFieldClaim",
+    aikenType: "CommittedFieldClaimV1",
     schema: CommittedFieldClaim,
     value: {
       WitnessFieldClaim: {

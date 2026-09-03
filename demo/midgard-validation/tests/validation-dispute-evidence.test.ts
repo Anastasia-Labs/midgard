@@ -169,14 +169,15 @@ const expectExactBundle = (
   });
   parseExactAikenDataCbor({
     blueprint,
-    definitionName: "midgard/validation_machine_v1/ValidationOneStepWitnessV1",
+    definitionName:
+      "midgard/validation_machine/machine_types/ValidationOneStepWitnessV1",
     cbor: bundle.oneStepArgument.transitionCbor.toString("hex"),
     maxBytes: 16 * 1024 - 1,
   });
   parseExactAikenDataCbor({
     blueprint,
     definitionName:
-      "midgard/validation_machine_v1/ValidationAuxiliaryWitnessV1",
+      "midgard/validation_machine/machine_types/ValidationAuxiliaryWitnessV1",
     cbor: bundle.oneStepArgument.auxiliaryCbor.toString("hex"),
     maxBytes: 16 * 1024 - 1,
   });

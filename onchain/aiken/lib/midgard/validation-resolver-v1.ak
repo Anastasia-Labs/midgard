@@ -11,7 +11,7 @@ use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/ledger_state.{CekProgramMaterialDatumV1}
 use midgard/native_script_scan_v1
-use midgard/validation_machine_v1
+use midgard/validation_machine/machine_types as vm_machine_types
 use midgard/validation_resolution_v1
 use midgard/validation_trace_v1
 
@@ -44,10 +44,10 @@ pub type CekSinglePublicationDatumV1 {
 }
 
 fn cek_selection_envelope_cbor_v1(
-  evidence: validation_machine_v1.ValidationOneStepEvidenceV1,
+  evidence: vm_machine_types.ValidationOneStepEvidenceV1,
 ) -> Option<ByteArray> {
   when evidence.auxiliary is {
-    validation_machine_v1.NativeExecutionScanWitness {
+    vm_machine_types.NativeExecutionScanWitness {
       language_tag,
       script_total_length,
       first_chunk_proof,
@@ -291,7 +291,7 @@ pub fn verify_cek_material_route_for_selected_envelope_v1(
 /// against the transaction's reference inputs after `continue_winning` has
 /// bound transition and auxiliary to the prepared evidence hash.
 pub fn verify_cek_route_v1(
-  evidence: validation_machine_v1.ValidationOneStepEvidenceV1,
+  evidence: vm_machine_types.ValidationOneStepEvidenceV1,
   material_route: CekMaterialRouteV1,
   reference_inputs: List<Input>,
   cek_program_material_script_hash: ScriptHash,
@@ -312,7 +312,7 @@ pub type PrepareActionV1 {
   Prepare {
     input_index: Int,
     output_index: Int,
-    transition: validation_machine_v1.ValidationOneStepWitnessV1,
+    transition: vm_machine_types.ValidationOneStepWitnessV1,
     auxiliary: Data,
   }
 }
@@ -325,7 +325,7 @@ pub type PrepareSelectedActionV1 {
     input_index: Int,
     output_index: Int,
     semantic_resolver_index: Int,
-    transition: validation_machine_v1.ValidationOneStepWitnessV1,
+    transition: vm_machine_types.ValidationOneStepWitnessV1,
     auxiliary: Data,
   }
 }

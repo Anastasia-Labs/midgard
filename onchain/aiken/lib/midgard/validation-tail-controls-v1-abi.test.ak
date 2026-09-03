@@ -11,7 +11,9 @@ use midgard/mpf_proof_fold_v1
 use midgard/rejection_reason_v1
 use midgard/transition_trace
 use midgard/validation_claim_v1
-use midgard/validation_machine_v1
+use midgard/validation_machine/machine_types as vm_machine_types
+use midgard/validation_machine/shared as vm_shared
+use midgard/validation_machine/witness as vm_witness
 use midgard/validation_merkle_v1
 use midgard/validation_trace_v1
 
@@ -75,8 +77,8 @@ const forced_source_membership_cbor =
 const normal_source_membership_cbor =
   #"d87a9fd8799fd87b8058202121212121212121212121212121212121212121212121212121212121212121582022222222222222222222222222222222222222222222222222222222222222220158202323232323232323232323232323232323232323232323232323232323232323d8799f58202323232323232323232323232323232323232323232323232323232323232323d8799f43820102428104428105ffff80ffff"
 
-fn native_control() -> validation_machine_v1.NativeScriptsControlV1 {
-  validation_machine_v1.NativeScriptsControlV1 {
+fn native_control() -> vm_machine_types.NativeScriptsControlV1 {
+  vm_machine_types.NativeScriptsControlV1 {
     compact_cbor: #"01",
     witness_set_compact_cbor: #"02",
     field_preimage_lengths_cbor: #"03",
@@ -106,8 +108,8 @@ fn native_control() -> validation_machine_v1.NativeScriptsControlV1 {
   }
 }
 
-fn value_accumulator() -> validation_machine_v1.ValueAccumulatorV1 {
-  validation_machine_v1.ValueAccumulatorV1 {
+fn value_accumulator() -> vm_machine_types.ValueAccumulatorV1 {
+  vm_machine_types.ValueAccumulatorV1 {
     lovelace_delta: 7,
     asset_root: h54,
     seen_asset_count: 2,
@@ -115,8 +117,8 @@ fn value_accumulator() -> validation_machine_v1.ValueAccumulatorV1 {
   }
 }
 
-fn value_mutation() -> validation_machine_v1.ValueAssetMutationWitnessV1 {
-  validation_machine_v1.ValueAssetMutationWitnessV1 {
+fn value_mutation() -> vm_machine_types.ValueAssetMutationWitnessV1 {
+  vm_machine_types.ValueAssetMutationWitnessV1 {
     delta_was_present: False,
     old_delta: 0,
     delta_proof: [],
@@ -155,11 +157,9 @@ fn chunk_proof() -> bounded_item_v1.ChunkProofV1 {
   }
 }
 
-fn tail_auxiliaries() -> List<
-  validation_machine_v1.ValidationAuxiliaryWitnessV1,
-> {
+fn tail_auxiliaries() -> List<vm_machine_types.ValidationAuxiliaryWitnessV1> {
   [
-    validation_machine_v1.ValueInputAssetWitness {
+    vm_machine_types.ValueInputAssetWitness {
       source_kind: 0,
       key: #"01",
       next_schedule_hash: h41,
@@ -172,7 +172,7 @@ fn tail_auxiliaries() -> List<
       asset_siblings: [],
       mutation: value_mutation(),
     },
-    validation_machine_v1.ValueOutputAssetWitness {
+    vm_machine_types.ValueOutputAssetWitness {
       output_index: 1,
       descriptor_cbor: #"80",
       asset_index: 0,
@@ -183,7 +183,7 @@ fn tail_auxiliaries() -> List<
       asset_siblings: [],
       mutation: value_mutation(),
     },
-    validation_machine_v1.ValueMintAssetWitness {
+    vm_machine_types.ValueMintAssetWitness {
       mint_index: 2,
       policy_id: #"44444444444444444444444444444444444444444444444444444444",
       asset_name: #"cafe",
@@ -191,26 +191,26 @@ fn tail_auxiliaries() -> List<
       siblings: [],
       mutation: value_mutation(),
     },
-    validation_machine_v1.LedgerDeltaReplayWitness {
+    vm_machine_types.LedgerDeltaReplayWitness {
       source_kind: 1,
       key: #"02",
       next_schedule_hash: h45,
       value: #"03",
     },
-    validation_machine_v1.LedgerDeltaOutputWitness {
+    vm_machine_types.LedgerDeltaOutputWitness {
       output_index: 3,
       descriptor_cbor: #"8100",
       siblings: [h46],
     },
-    validation_machine_v1.LedgerDeltaProofFrameWitness {
+    vm_machine_types.LedgerDeltaProofFrameWitness {
       frame: proof_frame(),
       siblings: [h47],
     },
-    validation_machine_v1.LedgerDeltaOperationWitness {
+    vm_machine_types.LedgerDeltaOperationWitness {
       operation_kind: 0,
       key: #"01",
       value: #"",
-      operation_proof: validation_machine_v1.LedgerDeltaOperationProofV1 {
+      operation_proof: vm_machine_types.LedgerDeltaOperationProofV1 {
         descriptor: proof_descriptor(),
         operation_count: 0,
         operation_peaks: [],
@@ -218,12 +218,12 @@ fn tail_auxiliaries() -> List<
         operation_siblings: [],
       },
     },
-    validation_machine_v1.ValueOutputDescriptorWitness {
+    vm_machine_types.ValueOutputDescriptorWitness {
       output_index: 4,
       descriptor_cbor: #"8101",
       siblings: [h48],
     },
-    validation_machine_v1.MintFoldAssetWitness {
+    vm_machine_types.MintFoldAssetWitness {
       chunk_proof: chunk_proof(),
       next_chunk_proof: None,
     },
@@ -231,7 +231,7 @@ fn tail_auxiliaries() -> List<
 }
 
 fn constructors_are_exact(
-  items: List<validation_machine_v1.ValidationAuxiliaryWitnessV1>,
+  items: List<vm_machine_types.ValidationAuxiliaryWitnessV1>,
   tags: List<Int>,
   arities: List<Int>,
 ) -> Bool {
@@ -268,9 +268,9 @@ test validation_tail_auxiliary_v1_typescript_corpus_is_exact() {
 
 test value_accumulator_update_and_control_v1_abi_is_exact() {
   let accumulator = value_accumulator()
-  let updated = validation_machine_v1.ValueAccumulatorUpdated(accumulator)
-  let asset_limit = validation_machine_v1.ValueAccumulatorAssetLimitExceeded
-  let mutation_invalid = validation_machine_v1.ValueAccumulatorMutationInvalid
+  let updated = vm_machine_types.ValueAccumulatorUpdated(accumulator)
+  let asset_limit = vm_machine_types.ValueAccumulatorAssetLimitExceeded
+  let mutation_invalid = vm_machine_types.ValueAccumulatorMutationInvalid
   expect Some(updated_data) = cbor.deserialise(cbor.serialise(updated))
   expect Some(asset_limit_data) = cbor.deserialise(cbor.serialise(asset_limit))
   expect Some(mutation_invalid_data) = cbor.deserialise(
@@ -283,7 +283,7 @@ test value_accumulator_update_and_control_v1_abi_is_exact() {
   let Pair(mutation_invalid_tag, mutation_invalid_fields) = builtin.un_constr_data(
     mutation_invalid_data,
   )
-  let control = validation_machine_v1.ValueAndMintControlV1 {
+  let control = vm_machine_types.ValueAndMintControlV1 {
     native_control: native_control(),
     stage: 3,
     replay_schedule_hash: h55,
@@ -297,11 +297,9 @@ test value_accumulator_update_and_control_v1_abi_is_exact() {
     mint_cursor: 8,
     value_accumulator: accumulator,
   }
-  let control_cbor = validation_machine_v1.encode_value_and_mint_control_v1(
-    control,
-  )
+  let control_cbor = vm_witness.encode_value_and_mint_control_v1(control)
   and {
-    validation_machine_v1.encode_value_accumulator_v1(accumulator) == expected_value_accumulator_cbor,
+    vm_witness.encode_value_accumulator_v1(accumulator) == expected_value_accumulator_cbor,
     updated_tag == 0,
     list.length(updated_fields) == 1,
     asset_limit_tag == 1,
@@ -316,8 +314,8 @@ test value_accumulator_update_and_control_v1_abi_is_exact() {
   }
 }
 
-fn pending_mutation() -> validation_machine_v1.LedgerDeltaPendingMutationV1 {
-  validation_machine_v1.LedgerDeltaPendingMutationV1 {
+fn pending_mutation() -> vm_machine_types.LedgerDeltaPendingMutationV1 {
+  vm_machine_types.LedgerDeltaPendingMutationV1 {
     authorization_stage: 0,
     operation_kind: 1,
     key: #"0102",
@@ -334,7 +332,7 @@ fn pending_mutation() -> validation_machine_v1.LedgerDeltaPendingMutationV1 {
 
 test ledger_delta_control_operation_and_frontier_v1_abi_is_exact() {
   let pending = pending_mutation()
-  let control = validation_machine_v1.LedgerDeltaControlV1 {
+  let control = vm_machine_types.LedgerDeltaControlV1 {
     resolved_input_count: 0,
     resolved_inputs_accumulator: h61,
     output_count: 0,
@@ -350,16 +348,14 @@ test ledger_delta_control_operation_and_frontier_v1_abi_is_exact() {
     operation_peaks: [],
     pending_mutation_cbor: expected_pending_mutation_cbor,
   }
-  let control_cbor = validation_machine_v1.encode_ledger_delta_control_v1(
-    control,
-  )
-  let deletion = validation_machine_v1.ledger_delta_operation_leaf_hash(
+  let control_cbor = vm_witness.encode_ledger_delta_control_v1(control)
+  let deletion = vm_shared.ledger_delta_operation_leaf_hash(
     0,
     #"010203",
     #"",
     proof_descriptor(),
   )
-  let insertion = validation_machine_v1.ledger_delta_operation_leaf_hash(
+  let insertion = vm_shared.ledger_delta_operation_leaf_hash(
     1,
     #"0405",
     #"060708",
@@ -367,7 +363,7 @@ test ledger_delta_control_operation_and_frontier_v1_abi_is_exact() {
   )
   let frontier = validation_merkle_v1.build_frontier([deletion, insertion])
   and {
-    validation_machine_v1.encode_ledger_delta_pending_mutation_v1(pending) == expected_pending_mutation_cbor,
+    vm_witness.encode_ledger_delta_pending_mutation_v1(pending) == expected_pending_mutation_cbor,
     blake2b_256(control_cbor) == #"92e07c0c935ac73750a521ed638aed060414828d766774495885b56a04f5481b",
     when cbor.deserialise(control_cbor) is {
       None -> False
@@ -380,12 +376,12 @@ test ledger_delta_control_operation_and_frontier_v1_abi_is_exact() {
 }
 
 test terminal_acceptance_and_rejection_v1_typescript_vectors_are_exact() {
-  let acceptance = validation_machine_v1.encode_terminal_acceptance_witness_v1(
+  let acceptance = vm_witness.encode_terminal_acceptance_witness_v1(
     h72,
     2,
     [validation_merkle_v1.FrontierPeak { height: 1, hash: h71 }],
   )
-  let rejection = validation_machine_v1.encode_terminal_rejection_witness(
+  let rejection = vm_shared.encode_terminal_rejection_witness(
     #"455f56414c55455f4e4f545f505245534552564544",
     h73,
   )
@@ -473,13 +469,13 @@ test validation_source_membership_v1_typescript_vectors_are_exact() {
 
 test validation_tail_auxiliary_v1_rejects_adjacent_tag_40() fail {
   expect Some(data) = cbor.deserialise(#"d9052180")
-  expect _: validation_machine_v1.ValidationAuxiliaryWitnessV1 = data
+  expect _: vm_machine_types.ValidationAuxiliaryWitnessV1 = data
   True
 }
 
 test validation_tail_auxiliary_v1_rejects_wrong_arity() fail {
   expect Some(data) = cbor.deserialise(#"d905149f00ff")
-  expect _: validation_machine_v1.ValidationAuxiliaryWitnessV1 = data
+  expect _: vm_machine_types.ValidationAuxiliaryWitnessV1 = data
   True
 }
 

@@ -4,8 +4,10 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel}
 use midgard/ledger_output_proof_v1.{LedgerOutputProofWitnessV1}
-use midgard/validation_machine_v1.{
+use midgard/validation_machine/machine_types.{
   LedgerOutputProofStepWitness, ValidationOneStepWitnessV1,
+}
+use midgard/validation_machine/resolve_inputs.{
   verify_resolve_inputs_membership_step_semantics_v1,
 }
 use midgard/validation_semantic_v1.{Datum, continue_winning}

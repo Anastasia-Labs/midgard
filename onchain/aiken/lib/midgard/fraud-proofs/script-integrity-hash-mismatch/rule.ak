@@ -8,7 +8,8 @@ use midgard/ledger_state
 use midgard/rejection_reason_v1.{ScriptIntegrityHashMismatch}
 use midgard/script_language_views_v1
 use midgard/transition_trace
-use midgard/validation_machine_v1.{NativeScriptsControlV1}
+use midgard/validation_machine/machine_types.{NativeScriptsControlV1}
+use midgard/validation_machine/witness as vm_witness
 use midgard/validation_trace_v1
 
 pub type BoundIntegrityV1 {
@@ -127,7 +128,7 @@ pub fn authenticate_integrity_v1(
       machine_state.work_root == validation_trace_v1.hash_work_witness(
         validation_trace_v1.ScriptIntegrity,
         machine_state.program_counter,
-        validation_machine_v1.encode_script_integrity_finalize_witness_v1(
+        vm_witness.encode_script_integrity_finalize_witness_v1(
           control,
           bound.script_integrity_hash,
           redeemer_witness_hash,

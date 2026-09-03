@@ -27,7 +27,7 @@
       "path": "demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness.ts"
     },
     "validationMachineAiken": {
-      "path": "onchain/aiken/lib/midgard/validation-machine-v1.ak"
+      "path": "onchain/aiken/lib/midgard/validation-machine"
     }
   },
   "controlPlane": {
@@ -307,7 +307,7 @@
       "demo/midgard-sdk/src/fraud-proof/validation-auxiliary-witness.ts",
       "demo/midgard-validation/src/validation-machine",
       "demo/midgard-validation/src/validation-machine-data.ts",
-      "onchain/aiken/lib/midgard/validation-machine-v1.ak"
+      "onchain/aiken/lib/midgard/validation-machine"
     ],
     "affectedAcceptance": ["AC-C21", "C29", "C32", "CG2"],
     "note": "The whole-field constructor is absent from every active TypeScript/Aiken auxiliary ABI and its former tags 2..41 are canonically shifted to 1..40. AC-C21 remains independently open until the broader active helper/bridge/selector call-graph audit and final-tree ABI selectors pass."

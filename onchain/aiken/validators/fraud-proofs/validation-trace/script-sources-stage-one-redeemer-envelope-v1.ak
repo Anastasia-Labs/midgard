@@ -5,9 +5,8 @@ use cardano/transaction.{OutputReference, Transaction}
 use midgard/computation_thread as ct
 use midgard/fraud_proofs/common.{cancel, continue}
 use midgard/script_sources_redeemer_normalization_v1 as normalization
-use midgard/validation_machine_v1.{
-  ValidationOneStepWitnessV1, structural_transition_is_valid,
-}
+use midgard/validation_machine/machine_types.{ValidationOneStepWitnessV1}
+use midgard/validation_machine/shared.{structural_transition_is_valid}
 use midgard/validation_resolution_v1
 use midgard/validation_semantic_v1.{Datum}
 use midgard/validation_trace_v1.{ScriptSources}

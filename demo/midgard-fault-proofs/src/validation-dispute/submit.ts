@@ -1353,7 +1353,7 @@ const VALIDATION_AUXILIARY_SHAPES = {
   // `(field_index, item_index, carriage)`, `RequiredSignerItemWitness` is
   // `(carriage, signer_proof)`, and the two begin/item constructors are
   // `(carriage)` alone. Constructor *indices* are unchanged — only the shapes
-  // moved (`onchain/aiken/lib/midgard/validation-machine-v1.ak:119`).
+  // moved (`onchain/aiken/lib/midgard/validation-machine/`).
   transactionFieldChunk: [1, 3],
   transactionFieldItem: [30, 1],
   requiredSignerItem: [2, 2],
