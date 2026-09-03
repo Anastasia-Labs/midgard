@@ -15,7 +15,7 @@ Reviewed files:
 
 Additional context consulted by reviewer:
 
-- `public_testnet_readiness.md`
+- `docs/public_testnet_readiness.md`
 - `demo/midgard-node/docs/PREPROD_DOUBLE_SPEND_FAULT_PROOF_GAP_REPORT.md`
 - `demo/midgard-node/docs/FAULT_PROOF_DECISION_RECOMMENDATIONS.md`
 - `technical-spec`

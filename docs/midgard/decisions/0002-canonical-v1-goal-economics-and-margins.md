@@ -276,7 +276,7 @@ recommended hardware is:
 | DA committee node, midgard-watcher, Postgres | sized from C74/C86 measured usage plus ≥ 2× headroom; the §5.1 ceilings are containment caps, not recommendations |
 
 This floor is owner-set and ACCEPTED. W46 operational documentation and
-`public_testnet_readiness.md` must carry it verbatim; C86 bounded-stress
+`docs/public_testnet_readiness.md` must carry it verbatim; C86 bounded-stress
 results refine the non-node role sizing but cannot lower the node floor.
 
 ## 6. Acceptance-window check (`GOAL_SPEC.md` §7 F04)

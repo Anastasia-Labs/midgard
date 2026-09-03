@@ -5,8 +5,8 @@ authoritative contributor instruction file for this repo (principles, repo
 shape, tradeoff order, verification expectations). Read it before making
 changes.
 
-For Goal-program work, `GOAL_SPEC.md` is the authoritative execution
-specification. `GOAL_PROGRESS.md` is historical human context only; never parse
+For Goal-program work, `docs/exec-plans/GOAL_SPEC.md` is the authoritative execution
+specification. `docs/exec-plans/GOAL_PROGRESS.md` is historical human context only; never parse
 it or treat it as a task, readiness, or completion authority.
 
 ## Agent skills

@@ -40,7 +40,7 @@ These paths were dirty before Wave 0 and are not cleanup targets:
 - `docs/fault-proofs/execution-plan.md`
 - `docs/fault-proofs/testing-status.md`
 - `onchain/aiken/lib/midgard/fraud-proofs/withdrawal-mistag/step-03.ak`
-- `public_testnet_readiness.md`
+- `docs/public_testnet_readiness.md`
 - untracked `docs/fault-proofs/non-interactive-proof-thread-program-v1.md`
 - untracked `docs/fault-proofs/size-plans/`
 - untracked empty file `typescript`

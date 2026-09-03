@@ -148,7 +148,7 @@ Build a repeatable soak benchmark (extend existing stress scripts in `demo/midga
    bound, so the pre-consolidation V3/V2 fixture and active runner were
    invalidated rather than relabeled or accepted through a compatibility path.
    The historical procedure remains documented in
-   [`docs/benchmark-scenarios/phase-5-da-50k-distribution.md`](docs/benchmark-scenarios/phase-5-da-50k-distribution.md).
+   [`docs/benchmark-scenarios/phase-5-da-50k-distribution.md`](../benchmark-scenarios/phase-5-da-50k-distribution.md).
 
 ### Phase 6 — Verification & soak (weeks 14–16)
 

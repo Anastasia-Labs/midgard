@@ -1,6 +1,6 @@
 ---
 name: midgard-typescript-cleanup
-description: Use when scanning or refactoring Midgard TypeScript for redundant checks, assertions, normalization, defensive code, duplicate helpers, or dead compatibility code while preserving production L2 correctness. Especially useful for split-scope worker cleanup passes across demo/midgard-node, demo/lucid-midgard, demo/midgard-core, demo/midgard-sdk, demo/midgard-validation, demo/midgard-fault-proofs, and demo/midgard-manager packages.
+description: Use when scanning or refactoring Midgard TypeScript for redundant checks, assertions, normalization, defensive code, duplicate helpers, or dead compatibility code while preserving production L2 correctness. Especially useful for split-scope worker cleanup passes across demo/midgard-node, demo/lucid-midgard, demo/midgard-core, demo/midgard-sdk, demo/midgard-validation, and demo/midgard-fault-proofs packages.
 ---
 
 # Midgard TypeScript Cleanup

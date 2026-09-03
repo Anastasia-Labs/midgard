@@ -15,12 +15,16 @@ implementations, and the LaTeX technical specification in a single repository.
   important protocol logic.
 - `demo/midgard-sdk`: off-chain TypeScript SDK for building Midgard
   transactions and decoding protocol data.
-- `demo/midgard-node`: demo node runtime, HTTP server, worker loops, stress
-  scripts, and integration tests.
-- `demo/midgard-manager`: CLI and transaction-generator tooling for operator
-  workflows and demos.
+- `demo/midgard-node`: demo node runtime, HTTP server, worker loops, and
+  integration tests.
+- `demo/midgard-node-tools`: end-to-end, stress, and acceptance tooling that
+  drives a node from the outside, kept out of the operator binary.
+- `demo/midgard-watcher`: independent verifier and challenger service.
 - `technical-spec`: normative protocol design target and diagrams. Its
   conformance status is tracked separately from the implementation.
+- `docs`: contributor documentation, decisions, and plans. Execution plans,
+  progress ledgers, and review records live under `docs/exec-plans/`; the
+  public-testnet readiness status lives at `docs/public_testnet_readiness.md`.
 - `docs-site`: documentation site covering the SDK, node, watchers, fault
   proofs, and on-chain validators.
 
@@ -65,11 +69,13 @@ Then open `technical-spec/midgard.pdf`.
 
 ## Demo Packages
 
-The demo packages are built independently inside `demo/`.
+The demo packages form one pnpm workspace under `demo/`:
 
-- `demo/midgard-sdk`: `pnpm install && pnpm build`
-- `demo/midgard-node`: `pnpm install && pnpm build`
-- `demo/midgard-manager`: `pnpm install && pnpm build`
+```sh
+cd demo
+pnpm install
+pnpm build
+```
 
 ## Contributor guidelines
 

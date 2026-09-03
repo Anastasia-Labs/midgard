@@ -12,7 +12,6 @@
     "l1-transactions",
     "data-structures",
     "considerations",
-    "formal-models",
-    "offchain-haskell"
+    "formal-models"
   ]
 }

@@ -99,7 +99,7 @@ claim before you write it:
 
 The third kind has no mechanical guard, so the only defence is to keep one copy of it.
 `getting-started/status.mdx` is that copy, and it defers to
-`public_testnet_readiness.md`. Do not reproduce a readiness matrix, a blocker list, or a
+`docs/public_testnet_readiness.md`. Do not reproduce a readiness matrix, a blocker list, or a
 commit hash pinning present state on any other page. Link to the page that owns it.
 
 ### Rules

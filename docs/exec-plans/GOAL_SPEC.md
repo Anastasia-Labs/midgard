@@ -249,13 +249,13 @@ cannot otherwise be satisfied.
 
 The final tree must contain:
 
-- `GOAL_SPEC.md` itself, tracked in Git at the repository root;
+- `GOAL_SPEC.md` itself, tracked in Git under `docs/exec-plans/`;
 - all production source, schemas, migrations, tests, fixtures, commands, and
   generated validators required by G1, G2, and G4;
 - a fully implemented `demo/midgard-watcher` workspace package;
 - updated canonical P2, fault-coverage, catalogue, and public-readiness status
   documents that agree with executable evidence (the public-readiness document
-  is root `public_testnet_readiness.md`);
+  is `docs/public_testnet_readiness.md`);
 - `docs/exec-plans/canonical-v1-goal-completion-report.md` as the concise
   human-readable final evidence index;
 - coherent checkpoint commits plus one final integration commit, without
@@ -1018,7 +1018,7 @@ outcome must be exactly one of:
 1. an implemented protection with adversarial positive/negative tests;
 2. an executable structural `N/A` proving the protection is unnecessary; or
 3. a named residual launch blocker, recorded in root
-   `public_testnet_readiness.md` with the owner's explicit acceptance — never
+   `docs/public_testnet_readiness.md` with the owner's explicit acceptance — never
    silence.
 
 | ID  | Deliverable                                       | Depends on        | Acceptance                                                                                                                                                                                                                                                                                                                                              |

@@ -5,7 +5,6 @@
 **/*.tgz
 **/*.log
 
-midgard-manager
 midgard-node/.env
 midgard-node/.env.*
 midgard-node/cardano

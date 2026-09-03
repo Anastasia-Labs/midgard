@@ -505,4 +505,4 @@ A production watcher should:
 - Current commit/root construction: `demo/midgard-node/src/workers/utils/mpf.ts`
 - Aiken ledger/proof types: `onchain/aiken/lib/midgard`
 - Fault-proof tooling: `demo/midgard-fault-proofs/src`
-- Public readiness and proof gaps: `public_testnet_readiness.md` and `demo/midgard-node/docs/PREPROD_DOUBLE_SPEND_FAULT_PROOF_GAP_REPORT.md`
+- Public readiness and proof gaps: `docs/public_testnet_readiness.md` and `demo/midgard-node/docs/PREPROD_DOUBLE_SPEND_FAULT_PROOF_GAP_REPORT.md`

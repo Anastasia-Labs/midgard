@@ -90,7 +90,7 @@ documentation effort.
 
 ## Related docs updated earlier in the session
 
-`public_testnet_readiness.md`, `docs/fault-proofs/{catalogue-status,
+`docs/public_testnet_readiness.md`, `docs/fault-proofs/{catalogue-status,
 testing-status,execution-plan,coverage-matrix,architecture}.md` were brought
 in line with the code (min-ADA split, native-script-invalid frontier,
 missing-native-script-UTxO, blueprint identity, DA route, provider mode,

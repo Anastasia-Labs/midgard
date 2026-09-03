@@ -1,6 +1,6 @@
 ---
 title: "Overview"
-description: "Operating a Midgard deployment: the node, the management CLI, and the flows from initialization to recovery."
+description: "Operating a Midgard deployment: the node runtime and the flows from initialization to recovery."
 ---
 
 An operator runs the off-chain machinery that keeps a Midgard L2 deployment
@@ -9,7 +9,7 @@ maintains PostgreSQL-backed views and LevelDB Merkle Patricia Forestry (MPF)
 state, and runs the background fibers that commit block headers to L1, confirm
 those commitments, and merge matured blocks into confirmed state.
 
-This section documents the two off-chain components in the repository:
+This section documents the operator runtime in the repository:
 
 <Cards>
   <Card
@@ -18,9 +18,9 @@ This section documents the two off-chain components in the repository:
     description="The demo/midgard-node runtime: HTTP API, database, MPF state, background fibers, and the full CLI."
   />
   <Card
-    title="Management CLI"
-    href="/docs/operators/manager"
-    description="demo/midgard-manager: interactive node management plus the transaction generator for load testing."
+    title="Benchmarks & stress"
+    href="/docs/operators/node/benchmarks"
+    description="Load generation and acceptance gates, driven from the separate demo/midgard-node-tools package."
   />
 </Cards>
 

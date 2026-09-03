@@ -6,7 +6,7 @@ match the order in which content is assembled into `midgard.pdf`.
 
 The specification is the normative **design target**, not evidence that every
 described feature is implemented or production-ready. Read its conformance
-notice together with `public_testnet_readiness.md`, the proof-coverage audit in
+notice together with `docs/public_testnet_readiness.md`, the proof-coverage audit in
 `docs/fault-proofs/`, and the repository
 [documentation policy](../docs/DOCUMENTATION_POLICY.md).
 

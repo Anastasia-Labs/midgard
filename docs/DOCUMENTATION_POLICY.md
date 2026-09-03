@@ -41,7 +41,7 @@ There is no single artifact that is authoritative for every kind of claim:
    **implemented behavior** at a particular revision.
 4. Passing acceptance tests and retained, reproducible artifacts describe the
    **verified behavior**.
-5. `public_testnet_readiness.md` owns launch/readiness claims.
+5. `docs/public_testnet_readiness.md` owns launch/readiness claims.
 6. `docs/fault-proofs/` owns the current proof-coverage and proof-binding audit.
 
 When these disagree, document the divergence. Do not make the implementation

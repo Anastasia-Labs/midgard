@@ -15,15 +15,15 @@ specification.
 | `onchain/plutarch`  | Plutarch models, validators, and test helpers that mirror important protocol logic.              | [On-Chain Validators](/docs/onchain/overview)    |
 | `demo/`             | The off-chain TypeScript `pnpm` workspace: SDK, node runtime, and tooling.                       | [Developer SDK](/docs/sdk)                       |
 | `technical-spec`    | The normative protocol design target and diagrams; conformance is tracked separately.            | [Protocol Specification](/docs/spec/building)    |
-| `offchain`          | A Haskell (`cabal`) off-chain package (`midgard-offchain.cabal`) with its own `src` and `tests`. | [Off-Chain Haskell](/docs/spec/offchain-haskell) |
 | `l1-services`       | Docker Compose stack for the Cardano L1 dependencies (node, Ogmios, Kupo, Mithril bootstrap).    | [L1 Backend](/docs/getting-started/l1-backend)   |
 | `cddl-files`        | CDDL schema files for protocol data structures.                                                  | Source only                                      |
 | `scripts`           | Repository helper scripts.                                                                       | Source only                                      |
-| `docs`, `docs-site` | Contributor documentation and this Fumadocs documentation site.                                  | Source only                                      |
+| `docs`              | Contributor documentation, decisions, execution plans (`docs/exec-plans/`), and readiness status. | Source only                                      |
+| `docs-site`         | This Fumadocs documentation site.                                                                | Source only                                      |
 
 ## The `demo/` workspace
 
-The demo packages form a `pnpm` workspace. The eight workspace members declared
+The demo packages form a `pnpm` workspace. The nine workspace members declared
 in `demo/pnpm-workspace.yaml` are:
 
 | Package                | Purpose                                                                                   | Docs                                           |
@@ -32,19 +32,18 @@ in `demo/pnpm-workspace.yaml` are:
 | `midgard-core`         | Core protocol primitives and the native transaction codec.                                | [Developer SDK](/docs/sdk)                     |
 | `midgard-sdk`          | Off-chain TypeScript SDK for building Midgard transactions and decoding protocol data.    | [Developer SDK](/docs/sdk)                     |
 | `midgard-validation`   | Shared Phase A / Phase B transaction validation used by node admission.                   | [Validation Engine](/docs/validation/overview) |
-| `midgard-node`         | Demo node runtime, HTTP server, worker loops, stress scripts, and integration tests.      | [Operators](/docs/operators)                   |
+| `midgard-node`         | Demo node runtime, HTTP server, worker loops, and integration tests.                      | [Operators](/docs/operators)                   |
+| `midgard-node-tools`   | End-to-end, stress, and acceptance tooling that drives a node from the outside.           | [Benchmarks](/docs/operators/node/benchmarks)  |
 | `midgard-fault-proofs` | Fault-proof tooling for challenging invalid blocks.                                       | [Fault Proofs](/docs/fault-proofs/overview)    |
 | `midgard-watcher`      | Independent L1 observation, rollback, finality, and protocol-indexing service.            | [Watchers & DA](/docs/watchers/concept)        |
 | `da-committee-node`    | Data-availability committee node that validates and exchanges block payloads over libp2p. | [Watchers & DA](/docs/watchers/concept)        |
 
-Additional directories exist under `demo/` that are not workspace members in
+One additional directory exists under `demo/` that is not a workspace member in
 `pnpm-workspace.yaml`:
 
-| Directory            | Purpose                                                                 |
-| -------------------- | ----------------------------------------------------------------------- |
-| `midgard-manager`    | CLI and transaction-generator tooling for operator workflows and demos. |
-| `midgard-utxo-cache` | UTxO caching support.                                                   |
-| `schemes`            | Shared scheme definitions.                                              |
+| Directory | Purpose                    |
+| --------- | -------------------------- |
+| `schemes` | Shared scheme definitions. |
 
 ## Package documentation guides
 
