@@ -12,6 +12,8 @@ single agent turn.
 - `docs/agents/transaction-finalization.md`: transaction completion rules.
 - `docs/agents/midgard-node.md`: `demo/midgard-node`-specific compatibility
   policy.
+- `docs/agents/naming-and-versioning.md`: identifier, file, and version naming
+  policy (what carries a version, what never does).
 
 Add a new domain file only when repeated repository-specific guidance cannot be
 derived from code, tests, or an existing skill. Do not create placeholder files

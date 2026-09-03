@@ -67,6 +67,9 @@ targets another environment.
   resolve first, so typecheck, lint, and test suites read sibling source and
   never need a prior `pnpm build`. Plain `node` scripts still resolve `dist`,
   so anything that shells out to `node` keeps building first.
+- Names carry no version, no `production-` prefix, and no ticket id; the
+  version lives in wire and manifest values. See
+  `docs/agents/naming-and-versioning.md` before naming or renaming anything.
 - Preserve user work: check dirty state, do not clean or revert unrelated
   changes, and keep patches scoped to the request.
 - Before finalizing changes, run the narrow checks that prove the touched
