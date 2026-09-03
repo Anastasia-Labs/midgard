@@ -17,14 +17,14 @@
 //// string up to and including 64 bytes and becomes an indefinite-length
 //// string of 64-byte definite chunks strictly above it, so the divergence to
 //// fear is a `>=` written where the rule says `>`. Every type whose shape can
-//// reach that width carries a crossing vector — `FieldCarriage` via
-//// `carriage_inline_chunked_preimage`, `FieldView` via
+//// reach that width carries a crossing vector — `FieldCarriageV1` via
+//// `carriage_inline_chunked_preimage`, `FieldViewV1` via
 //// `view_chunked_three_chunk_corner`, and
-//// `FieldPreimageCertificateMintRedeemer` via
-//// `mint_redeemer_certify_chunked_arguments` — and `FieldCarriage` also
+//// `FieldPreimageCertificateMintRedeemerV1` via
+//// `mint_redeemer_certify_chunked_arguments` — and `FieldCarriageV1` also
 //// pins the boundary itself from below and at it, with the 63-byte (`583f…`)
 //// and 64-byte (`5840…`) vectors that must stay definite.
-//// `FieldPreimageCertificate` is the one exception and is so structurally:
+//// `FieldPreimageCertificateV1` is the one exception and is so structurally:
 //// every field it declares is fixed-width and at most 32 bytes (owner 28,
 //// tx-id 32, each digest 32), so no value of that type can carry a byte
 //// string wide enough to chunk and there is no vector to write.
@@ -41,11 +41,11 @@
 
 use aiken/cbor
 use midgard/native_tx_carriage_v1.{
-  Certify, FieldPreimageCertificateMintRedeemer, Retire,
+  Certify, FieldPreimageCertificateMintRedeemerV1, Retire,
 }
 use midgard/native_tx_field_access_v1.{
-  Certified, Chunked, FieldCarriage, FieldPreimageCertificate, FieldView, Inline,
-  RawUtxo, Whole,
+  Certified, Chunked, FieldCarriageV1, FieldPreimageCertificateV1, FieldViewV1,
+  Inline, RawUtxo, Whole,
 }
 
 // ---------------------------------------------------------------------------
@@ -231,7 +231,7 @@ const certificate_three_chunk_corner_cbor: ByteArray =
   #"d8799f581c11111111111111111111111111111111111111111111111111111111582022222222222222222222222222222222222222222222222222222222222222220558206666666666666666666666666666666666666666666666666666666666666666197ffb9f582033333333333333333333333333333333333333333333333333333333333333335820444444444444444444444444444444444444444444444444444444444444444458205555555555555555555555555555555555555555555555555555555555555555ffff"
 
 fn certificate_three_chunk_corner_value() -> FieldPreimageCertificateV1 {
-  FieldPreimageCertificate {
+  FieldPreimageCertificateV1 {
     owner: #"11111111111111111111111111111111111111111111111111111111",
     tx_id: #"2222222222222222222222222222222222222222222222222222222222222222",
     field_index: 5,
@@ -354,7 +354,7 @@ test golden_carriage_constructor_index_out_of_range_parses_as_cbor() {
 }
 
 /// FieldCarriageV1 / `carriage_constructor_index_out_of_range`:
-/// constructor index 3; FieldCarriage declares exactly
+/// constructor index 3; FieldCarriageV1 declares exactly
 /// Inline/RawUtxo/Certified at 0/1/2.
 test golden_carriage_constructor_index_out_of_range_rejects() fail {
   expect Some(decoded_data) = cbor.deserialise(
@@ -422,7 +422,8 @@ test golden_view_constructor_index_out_of_range_parses_as_cbor() {
 }
 
 /// FieldViewV1 / `view_constructor_index_out_of_range`: constructor index
-/// 3; FieldView declares exactly Whole/Chunked/ProvisionalWhole at 0/1/2.
+/// 3; FieldViewV1 declares exactly Whole/Chunked/ProvisionalWhole at
+/// 0/1/2.
 test golden_view_constructor_index_out_of_range_rejects() fail {
   expect Some(decoded_data) = cbor.deserialise(
     view_constructor_index_out_of_range_cbor,
