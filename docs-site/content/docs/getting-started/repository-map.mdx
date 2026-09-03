@@ -9,17 +9,18 @@ specification.
 
 ## Top-level layout
 
-| Directory           | Purpose                                                                                          | Docs                                             |
-| ------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
-| `onchain/aiken`     | Primary Aiken validators, minting policies, and shared protocol libraries.                       | [On-Chain Validators](/docs/onchain/overview)    |
-| `onchain/plutarch`  | Plutarch models, validators, and test helpers that mirror important protocol logic.              | [On-Chain Validators](/docs/onchain/overview)    |
-| `demo/`             | The off-chain TypeScript `pnpm` workspace: SDK, node runtime, and tooling.                       | [Developer SDK](/docs/sdk)                       |
-| `technical-spec`    | The normative protocol design target and diagrams; conformance is tracked separately.            | [Protocol Specification](/docs/spec/building)    |
-| `l1-services`       | Docker Compose stack for the Cardano L1 dependencies (node, Ogmios, Kupo, Mithril bootstrap).    | [L1 Backend](/docs/getting-started/l1-backend)   |
-| `cddl-files`        | CDDL schema files for protocol data structures.                                                  | Source only                                      |
-| `scripts`           | Repository helper scripts.                                                                       | Source only                                      |
-| `docs`              | Contributor documentation, decisions, execution plans (`docs/exec-plans/`), and readiness status. | Source only                                      |
-| `docs-site`         | This Fumadocs documentation site.                                                                | Source only                                      |
+| Directory          | Purpose                                                                                           | Docs                                             |
+| ------------------ | ------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `onchain/aiken`    | Primary Aiken validators, minting policies, and shared protocol libraries.                        | [On-Chain Validators](/docs/onchain/overview)    |
+| `onchain/plutarch` | Plutarch models, validators, and test helpers that mirror important protocol logic.               | [On-Chain Validators](/docs/onchain/overview)    |
+| `offchain`         | A Haskell (`cabal`) off-chain package (`midgard-offchain.cabal`) with its own `src` and `tests`.  | [Off-Chain Haskell](/docs/spec/offchain-haskell) |
+| `demo/`            | The off-chain TypeScript `pnpm` workspace: SDK, node runtime, and tooling.                        | [Developer SDK](/docs/sdk)                       |
+| `technical-spec`   | The normative protocol design target and diagrams; conformance is tracked separately.             | [Protocol Specification](/docs/spec/building)    |
+| `l1-services`      | Docker Compose stack for the Cardano L1 dependencies (node, Ogmios, Kupo, Mithril bootstrap).     | [L1 Backend](/docs/getting-started/l1-backend)   |
+| `cddl-files`       | CDDL schema files for protocol data structures.                                                   | Source only                                      |
+| `scripts`          | Repository helper scripts.                                                                        | Source only                                      |
+| `docs`             | Contributor documentation, decisions, execution plans (`docs/exec-plans/`), and readiness status. | Source only                                      |
+| `docs-site`        | This Fumadocs documentation site.                                                                 | Source only                                      |
 
 ## The `demo/` workspace
 
