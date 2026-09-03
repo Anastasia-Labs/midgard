@@ -26,7 +26,7 @@ export * from "./tx-out-ref.js";
 export * from "./types.js";
 export * from "./validation-candidate.js";
 export * from "./validation-dispute-evidence.js";
-export * from "./validation-machine.js";
+export * from "./validation-machine/index.js";
 export * from "./validation-machine-data.js";
 export * from "./validation-one-step-data.js";
 export * from "./value-accounting.js";

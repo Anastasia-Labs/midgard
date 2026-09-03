@@ -32,7 +32,7 @@ import {
 } from "@lucid-evolution/lucid";
 import { describe, expect, it } from "vitest";
 
-import { countedMachineTransactionChunkStepsV1 } from "../src/validation-machine.js";
+import { countedMachineTransactionChunkStepsV1 } from "../src/validation-machine/index.js";
 import { runMaxDepthCmlOperationV1 } from "./helpers/cml-max-depth-runner-v1.js";
 import {
   buildCollateralFreeMidgardSchemaParallelCandidateV1,

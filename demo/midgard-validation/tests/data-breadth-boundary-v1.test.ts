@@ -47,7 +47,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildMidgardCanonicalScriptArtifactV1 } from "../src/cek-program.js";
 import { decodeMidgardRedeemers } from "../src/midgard-redeemers.js";
-import { countedMachineFieldTraceV1 } from "../src/validation-machine.js";
+import { countedMachineFieldTraceV1 } from "../src/validation-machine/index.js";
 import {
   buildCollateralFreeMidgardSchemaParallelCandidateV1,
   buildSignedCardanoNestedDatumCandidateV1,

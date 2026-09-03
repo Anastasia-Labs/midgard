@@ -16,7 +16,7 @@ import {
 } from "@al-ft/midgard-core";
 import { describe, expect, it } from "vitest";
 
-import { countedMachineFieldTraceV1 } from "../src/validation-machine.js";
+import { countedMachineFieldTraceV1 } from "../src/validation-machine/index.js";
 
 type RetainedCorpus = {
   readonly entries: readonly {

@@ -7,7 +7,7 @@ import {
   revealMidgardValidationOperatorMidpoint,
 } from "@al-ft/midgard-core";
 
-import type { DeterministicValidationMachineTrace } from "./validation-machine.js";
+import type { DeterministicValidationMachineTrace } from "./validation-machine/index.js";
 import {
   buildValidationOneStepArgumentV1,
   type ValidationOneStepArgumentV1,

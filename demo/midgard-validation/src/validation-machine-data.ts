@@ -63,7 +63,7 @@ import {
   type ValidationMachineFieldCarriagePlanInputV1,
   type ValidationMachineSignerSetProof,
   type ValidationMachineWorkWitness,
-} from "./validation-machine.js";
+} from "./validation-machine/index.js";
 
 type PlutusData = unknown;
 type ConstructorData = Constr<PlutusData>;

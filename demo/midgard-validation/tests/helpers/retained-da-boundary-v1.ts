@@ -29,7 +29,7 @@ import * as SDK from "@al-ft/midgard-sdk";
 import { Data } from "@lucid-evolution/lucid";
 
 import { buildMidgardCanonicalScriptArtifactV1 } from "../../src/cek-program.js";
-import { countedMachineTransactionChunkStepsV1 } from "../../src/validation-machine.js";
+import { countedMachineTransactionChunkStepsV1 } from "../../src/validation-machine/index.js";
 
 const ZERO_HASH_28 = "00".repeat(28);
 const EMPTY_ROOT = SDK.EMPTY_MERKLE_TREE_ROOT;

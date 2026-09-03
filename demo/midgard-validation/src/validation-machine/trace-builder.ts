@@ -1,15 +1,17 @@
+/**
+ * buildDeterministicValidationMachineTrace: the phase-by-phase construction of the deterministic
+ * validation-machine trace for one transaction.
+ */
+
 import { Store, Trie } from "@aiken-lang/merkle-patricia-forestry";
 import {
   aikenSerialisedPlutusDataCbor,
   appendMidgardValidationMerkleLeafV1,
   buildMidgardBlake2b224TraceV1,
-  buildMidgardBoundedCollectionItemProofV1,
-  buildMidgardBoundedCollectionV1,
   buildMidgardBoundedItemChunkProofV1,
   buildMidgardBoundedItemV1,
   buildMidgardLedgerOutputAssetFrontierV1,
   buildMidgardLedgerOutputProofTraceV1,
-  buildMidgardMpfProofFoldTraceV1,
   buildMidgardRedeemerItemProofTraceV1,
   buildMidgardValidationLedgerDeltaFrontierV1,
   buildMidgardValidationMerkleFrontierV1,
@@ -56,31 +58,21 @@ import {
   MIDGARD_VALIDATION_NO_REJECTION_CODE_HASH,
   type MidgardBlake2b224TraceControlV1,
   MidgardBlake2b224TraceStagesV1,
-  type MidgardBoundedCollectionItemProofV1,
   type MidgardBoundedCollectionV1,
   midgardBoundedItemChunkCountV1,
   type MidgardBoundedItemChunkProofV1,
-  type MidgardConsensusProfileV1,
-  type MidgardLedgerOutputAssetV1,
   type MidgardLedgerOutputProofControlV1,
-  type MidgardLedgerOutputProofWitnessV1,
   type MidgardMpfProofFoldTraceV1,
-  type MidgardMpfProofFrameV1,
-  type MidgardRedeemerItemProofControlV1,
   MidgardRedeemerItemProofModesV1,
   MidgardRedeemerItemProofStagesV1,
-  type MidgardRedeemerItemProofWitnessV1,
   type MidgardValidationMachineStateV1,
   type MidgardValidationMerkleFrontierV1,
   type MidgardValidationMerkleMembershipV1,
   type MidgardValidationPhaseName,
-  type MidgardValidationTraceTree,
-  parseMidgardMpfProofJsonV1,
 } from "@al-ft/midgard-core";
 import {
   adjudicateMidgardNativeTxFullV1Validity,
   decodeMidgardAddressBytes,
-  decodeMidgardFieldPreimageV1,
   decodeMidgardNativeByteListPreimage,
   decodeMidgardNativeTxCompactV1,
   decodeMidgardNativeTxFullV1FromCanonicalCbor,
@@ -90,22 +82,15 @@ import {
   decodeMidgardVersionedScript,
   decodeSingleCbor,
   deriveMidgardNativeTxProofSourceV1,
-  encodeMidgardDefiniteBytesV1,
   encodeMidgardSpendInputItemV1,
   encodeMidgardVersionedScript,
-  midgardFieldHeaderLengthForCountV1,
-  type MidgardValue,
   type MidgardVersionedScript,
 } from "@al-ft/midgard-core/codec";
 import {
-  encodeCborArrayRaw,
-  encodeCborBytes,
-  encodeCborInteger,
   readCborArrayHeader,
   readCborBytes,
   readCborInteger,
   readCborMapHeader,
-  readCborUnsigned,
 } from "@al-ft/midgard-core/codec/cbor";
 import { CML } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
@@ -125,38 +110,36 @@ import {
   type MidgardCekContextControlV1,
   type MidgardCekContextPartsControlV1,
   type MidgardCekFinalContextControlV1,
-  type MidgardCekRedeemerContextControlV1,
   type MidgardCekTxInfoAssemblyControlV1,
   prependMidgardCekObserverItemV1,
   summarizeMidgardCekContextPartsV1,
   summarizeMidgardCekLucidDataV1,
   validateMidgardCekObserverCollectionV1,
-} from "./cek-context.js";
+} from "../cek-context.js";
 import {
   buildMidgardCekExecutionGraphV1,
   executeMidgardCekStructuralProgramV1,
   type MidgardCekExecutionGraphV1,
-  type MidgardCekExecutionStepV1,
   type MidgardCekStructuralExecutionV1,
-} from "./cek-executor.js";
+} from "../cek-executor.js";
 import {
   buildCanonicalMidgardLedgerEntryOutputMaterialV1,
   buildCanonicalMidgardLedgerOutputMaterialV1,
-} from "./ledger-output-descriptor.js";
+} from "../ledger-output-descriptor.js";
 import {
   type MidgardRawEnvelopePhaseAProjectionV1,
   projectMidgardRawEnvelopeForPhaseAV1,
-} from "./ledger-tx.js";
-import type { LocalScriptEvalResult } from "./local-script-eval.js";
+} from "../ledger-tx.js";
+import type { LocalScriptEvalResult } from "../local-script-eval.js";
 import {
   cardanoScriptPurposeData,
   type DecodedMidgardRedeemer,
   decodeMidgardRedeemers,
   type MidgardScriptPurpose,
   midgardScriptPurposeData,
-} from "./midgard-redeemers.js";
-import { validatePhaseASingle } from "./phase-a.js";
-import { runPhaseBValidationWithPatch } from "./phase-b.js";
+} from "../midgard-redeemers.js";
+import { validatePhaseASingle } from "../phase-a.js";
+import { runPhaseBValidationWithPatch } from "../phase-b.js";
 import {
   emptyMidgardCekDataListSummaryV1,
   emptyMidgardCekDataPairSummaryV1,
@@ -164,1181 +147,68 @@ import {
   prependMidgardCekDataPairSummaryV1,
   summarizeMidgardCekMapDataV1,
   summarizeMidgardCekSmallConstrDataV1,
-} from "./script-context-proof.js";
-import { txOutRefData } from "./tx-out-ref.js";
-import type { QueuedTx, RejectCode, RejectedTx } from "./types.js";
-
-/**
- * The validation machine's own per-item trace material for one of the nine
- * fields: the §5.1 item split, folded into a counted bounded collection so the
- * machine can emit `transactionFieldChunk` witnesses with a per-item opening.
- *
- * **This is machine-internal trace structure, not a field commitment.** Under
- * `docs/spec/midgard-tx.md` §4 a field commits to a flat `blake2b_256` of its
- * preimage bytes, and nothing here is ever compared against one — the collection
- * root this builds is not `spend_inputs_hash` or any of its eight siblings, and
- * no caller treats it as such. What it feeds is the machine's proof-step trace,
- * whose on-chain twin is `lib/midgard/validation-machine-v1.ak`.
- *
- * **It survived the rebind, and the correction is worth stating (#592 → #597).**
- * The docstrings here used to promise that this trace "retires with the
- * openings". That is true only of the per-item *collection* opening, which is
- * gone: `bounded_collection_v1.verify_item` no longer runs in the machine and
- * `verifyMachineFieldItemV1` retired with it. What did not go is the walk — the
- * machine still steps item-major then chunk-major, four phases still hand a
- * partially-read item forward under a genuine `bounded_item_v1` root, and five
- * suites use these functions for step counting and size measurement. What changed
- * is the *provenance* of that root: it is derived from bytes the §8 door
- * authenticated against the flat §4 field commitment, rather than asserted by a
- * prover's `ItemProofV1`. So the structure stays and the claim it used to make
- * about the committed field is gone.
- *
- * What *did* change with the reversion is the input: the items come from §5.1's
- * one uniform enveloped byte-list decode, replacing the retired counted-era
- * three-way split (byte lists / raw item concatenation / the field-5 raw map).
- * Field-5 policy items are byte-identical either way — §5.6's
- * `82 ‖ 58 1C policy_id ‖ map(k) ‖ assets` is the same `[bytes, map]` pair the
- * counted map-entry split produced — so only the field-level envelope moved.
- *
- * Exported so the machine's own test helpers build this trace the same way the
- * machine does. It replaced `deriveMidgardNativeFieldCollectionV1`, which used to
- * live in `@al-ft/midgard-core` — the package every consumer depends on.
- *
- * **What moving it did and did not buy.** `src/index.ts` re-exports this module
- * wholesale, so the name is public API of `@al-ft/midgard-validation` and is
- * already imported across the package boundary:
- * `demo/midgard-fault-proofs/tests/cardano-capability-retained-da-v1.test.ts`
- * takes `countedMachineTransactionChunkStepsV1` that way. So this is not
- * containment; what it buys is that the counted spelling now lives in the package
- * whose on-chain twin still asks for it, one import away from this note, instead
- * of in the dependency every producer already pulls in. The discipline it asks
- * for is by name: `counted…` marks a machine-trace structure, and nothing called
- * `counted…` may be compared against a §4 field commitment. Reach for
- * `midgardFieldCommitmentV1` / `verifyMidgardV1TxFieldPreimage` for that.
- */
-export const countedMachineFieldTraceV1 = (
-  fieldIndex: number,
-  preimageCbor: Uint8Array,
-): MidgardBoundedCollectionV1 =>
-  buildMidgardBoundedCollectionV1({
-    fieldIndex,
-    items: decodeMidgardFieldPreimageV1(preimageCbor),
-  });
-
-/**
- * One `transactionFieldChunk` step of the machine's walk over a field: the
- * per-item collection opening, the chunk opening inside that item, and the §5.1
- * byte count the field has completed through this step.
- *
- * `fieldEncodedSize` is where the retired counted grammar showed most plainly.
- * It used to need a per-field rule — a CBOR header plus the item for the byte-list
- * fields, the item minus one byte for field 5's map pair, the raw item for the
- * concatenated fields 6 and 8. §5.1 gives all nine fields one envelope, so it is
- * now the header width plus the wrapper-and-payload width of each completed item,
- * with no field in it at all.
- */
-export type MachineFieldChunkStepV1 = {
-  readonly fieldIndex: number;
-  readonly collectionProof: MidgardBoundedCollectionItemProofV1;
-  readonly chunkProof: MidgardBoundedItemChunkProofV1;
-  readonly fieldEncodedSize: number;
-};
-
-/**
- * §5.1's `definite_bytes_header(L) ‖ payload` width, measured with the encoder
- * that defines it rather than re-spelled here.
- *
- * The re-spelling this replaces stopped at three header bytes, so it silently
- * under-counted by two for any item wide enough to need `5a` — and an
- * under-counted `fieldEncodedSize` is exactly what the terminating check below
- * exists to catch, which means the duplicate could only ever have turned a real
- * encoding into a spurious failure or, worse, agreed by accident.
- */
-const midgardWrappedItemBytesV1 = (item: Uint8Array): number =>
-  encodeMidgardDefiniteBytesV1(item).length;
-
-/**
- * The machine's chunk steps for one field, in the order it emits them:
- * item-major, chunk-major.
- *
- * This is the replacement for `midgard-core`'s retired
- * `deriveMidgardV1TxFieldChunks`, and the difference is what AC2 of #585 is about.
- * That function *published* per-item openings against a field's committed hash,
- * which §4 leaves nothing to check against. This one produces the machine's own
- * trace steps and makes no claim about the field commitment — a caller that wants
- * the field authenticated calls `verifyMidgardV1TxFieldPreimage`, once, over the
- * whole preimage.
- */
-export const countedMachineFieldChunkStepsV1 = (
-  fieldIndex: number,
-  preimageCbor: Uint8Array,
-): readonly MachineFieldChunkStepV1[] => {
-  const collection = countedMachineFieldTraceV1(fieldIndex, preimageCbor);
-  const steps: MachineFieldChunkStepV1[] = [];
-  let fieldEncodedSize = midgardFieldHeaderLengthForCountV1(
-    collection.items.length,
-  );
-  for (const [itemIndex, item] of collection.items.entries()) {
-    const collectionProof = buildMidgardBoundedCollectionItemProofV1(
-      collection,
-      itemIndex,
-    );
-    for (const [chunkIndex] of item.chunkHashes.entries()) {
-      if (chunkIndex + 1 === item.chunkHashes.length) {
-        fieldEncodedSize += midgardWrappedItemBytesV1(item.bytes);
-      }
-      steps.push({
-        fieldIndex,
-        collectionProof,
-        chunkProof: buildMidgardBoundedItemChunkProofV1(item, chunkIndex),
-        fieldEncodedSize,
-      });
-    }
-  }
-  if (fieldEncodedSize !== preimageCbor.length) {
-    throw new Error(
-      `V1 field ${fieldIndex.toString()} trace does not terminate at the committed field length: ${fieldEncodedSize.toString()} != ${preimageCbor.length.toString()}`,
-    );
-  }
-  return steps;
-};
-
-/*
- * `verifyMachineFieldItemV1` used to live here and is retired (#597, the
- * TypeScript twin of #592's wire change). It checked one `transactionFieldItem`
- * opening against the machine's own trace for that field — and the machine
- * verifies no openings any more. Under §8 the door authenticates the whole §5.1
- * preimage once against the flat §4 commitment and an item is a slice of it, so
- * there is no per-item opening for a caller to hand over and nothing left for
- * this function to check. Its seven mutation rows retire with it: count,
- * ordering, swap, substitution, trailing-byte and field-substitution mutations
- * are all mutations of a preimage the door refuses by aborting (§7.3), which is
- * fail-closed but not a `False` an off-chain predicate can observe.
- *
- * A caller that wants a field authenticated calls
- * `verifyMidgardV1TxFieldPreimage`, once, over the whole preimage.
- */
-
-/**
- * What a field-reading step says about the field it read, before anything knows
- * how the bytes will travel (#600).
- *
- * A step names one committed field and needs its §5.1 preimage to reach the
- * consuming transaction; §8's three tiers are three answers to *how*, and the
- * answer is not a property of the field. Tiers 2–3 name their bytes by
- * **positional reference-input index**, and §8.7 makes those indices
- * content-resolved against a concrete transaction's canonically-sorted
- * reference-input set — so the tier cannot be decided here, where no transaction
- * exists.
- *
- * The tier is therefore decided at the one place that has a transaction:
- * `buildValidationOneStepArgumentV1`. The committed `evidence_hash` is
- * transition-only (#619) — no carriage is ever hashed into it — so resolving
- * there is not a late substitution: the observe-stage field door verifies
- * whatever carriage arrives by content, and the tier is honestly named at the
- * first moment one can be.
- *
- * **This is why the producer never refuses.** It is not only the dispute path
- * that builds traces: the operator's block-build routine runs this exact
- * producer once per transaction in a block
- * (`demo/midgard-node/src/mpf/validation-trace.ts`, wired from `process.ts`),
- * where there is no dispute transaction, no published carriage and no
- * reference-input set — and never will be. A producer that refused a preimage
- * above §8.3's tier-1 cap would fail the whole block build for a legal ~14.3 KB
- * output, which is strictly worse than the dispute-side gap refusing was meant to
- * name. Carrying the plan input keeps the producer a pure function of the L2
- * transaction, exactly as its callers require, while no carriage §8.4 does not
- * admit ever exists at any instant.
- */
-export type ValidationMachineFieldCarriagePlanInputV1 = {
-  readonly fieldIndex: number;
-  readonly fieldPreimage: Buffer;
-};
-
-/** Every field's chunk steps, field-major — the whole-transaction walk order. */
-export const countedMachineTransactionChunkStepsV1 = (
-  canonicalTransactionCbor: Uint8Array,
-): readonly MachineFieldChunkStepV1[] =>
-  deriveMidgardV1TxFieldPreimages(canonicalTransactionCbor).flatMap((field) =>
-    countedMachineFieldChunkStepsV1(field.fieldIndex, field.preimageCbor),
-  );
-
-export type MidgardPurposeKindV1 = 0 | 1 | 2 | 3;
-export type MidgardRedeemerPurposeTagV1 = 0 | 1 | 3 | 6;
-
-export function redeemerTagForPurposeKindV1(
-  purposeKind: MidgardPurposeKindV1,
-): MidgardRedeemerPurposeTagV1;
-export function redeemerTagForPurposeKindV1(
-  purposeKind: number,
-): MidgardRedeemerPurposeTagV1 | null;
-export function redeemerTagForPurposeKindV1(
-  purposeKind: number,
-): MidgardRedeemerPurposeTagV1 | null {
-  switch (purposeKind) {
-    case 0:
-      return 0;
-    case 1:
-      return 1;
-    case 2:
-      return 3;
-    case 3:
-      return 6;
-    default:
-      return null;
-  }
-}
-
-export const purposeKindForRedeemerTagV1 = (
-  redeemerTag: number,
-): MidgardPurposeKindV1 | null => {
-  switch (redeemerTag) {
-    case 0:
-      return 0;
-    case 1:
-      return 1;
-    case 3:
-      return 2;
-    case 6:
-      return 3;
-    default:
-      return null;
-  }
-};
-
-export const redeemerPointerMatchesPurposeV1 = (input: {
-  readonly purposeKind: number;
-  readonly purposeIndex: bigint;
-  readonly redeemerTag: number;
-  readonly redeemerIndex: bigint;
-}): boolean => {
-  const expectedTag = redeemerTagForPurposeKindV1(input.purposeKind);
-  return (
-    expectedTag !== null &&
-    input.redeemerTag === expectedTag &&
-    input.redeemerIndex === input.purposeIndex
-  );
-};
-import { RejectCodes } from "./types.js";
-import { outputCborMeetsMinAdaV1 } from "./value-accounting.js";
-
-type ValidationControlDataV1 =
-  | bigint
-  | Buffer
-  | readonly ValidationControlDataV1[];
-
-const encodeValidationControlDataV1 = (
-  value: ValidationControlDataV1,
-): Buffer => {
-  if (typeof value === "bigint") {
-    return encodeCborInteger(value);
-  }
-  if (Buffer.isBuffer(value)) {
-    if (value.length <= 64) {
-      return encodeCborBytes(value);
-    }
-    const chunks: Buffer[] = [];
-    for (let offset = 0; offset < value.length; offset += 64) {
-      chunks.push(encodeCborBytes(value.subarray(offset, offset + 64)));
-    }
-    return Buffer.concat([Buffer.from([0x5f]), ...chunks, Buffer.from([0xff])]);
-  }
-  return encodeCborArrayRaw(value.map(encodeValidationControlDataV1));
-};
-
-const encodeValidationControlListV1 = (
-  values: readonly ValidationControlDataV1[],
-): Buffer =>
-  Buffer.concat([
-    Buffer.from([0x9f]),
-    ...values.map(encodeValidationControlDataV1),
-    Buffer.from([0xff]),
-  ]);
-
-const encodeValidationFrontierPeaksV1 = (
-  frontier: MidgardValidationMerkleFrontierV1,
-): readonly (readonly [bigint, Buffer])[] =>
-  frontier.peaks.map((peak) => [BigInt(peak.height), peak.hash]);
-
-export type ScriptDiscoveryTraceControlV1 = {
-  readonly purposeCursor: number;
-  readonly sourceCursor: number;
-  readonly redeemerCursor: number;
-  readonly currentPurposeKind: -1 | 0 | 1 | 2 | 3;
-  readonly currentPurposeIndex: bigint;
-  readonly currentScriptHash: Buffer;
-  readonly currentSubject: Buffer;
-  readonly matchedSourceIndex: number;
-  readonly matchedLanguageTag: -1 | 0 | 3 | 128;
-  readonly matchedSourceLeaf: Buffer;
-  readonly usedInlineBitmap: bigint;
-  readonly usedRedeemerBitmap: bigint;
-  readonly redeemerItemControlHash: Buffer;
-  readonly executionFrontier: MidgardValidationMerkleFrontierV1;
-};
-
-export const encodeScriptDiscoveryControlCborV1 = (
-  discovery: ScriptDiscoveryTraceControlV1,
-): Buffer =>
-  encodeCbor([
-    BigInt(discovery.purposeCursor),
-    BigInt(discovery.sourceCursor),
-    BigInt(discovery.redeemerCursor),
-    BigInt(discovery.currentPurposeKind),
-    discovery.currentPurposeIndex,
-    discovery.currentScriptHash,
-    discovery.currentSubject,
-    BigInt(discovery.matchedSourceIndex),
-    BigInt(discovery.matchedLanguageTag),
-    discovery.matchedSourceLeaf,
-    discovery.usedInlineBitmap,
-    discovery.usedRedeemerBitmap,
-    discovery.redeemerItemControlHash,
-    BigInt(discovery.executionFrontier.count),
-    encodeValidationFrontierPeaksV1(discovery.executionFrontier),
-  ]);
-
-export type ValidationMachineLedgerEntry = {
-  readonly outRef: Buffer;
-  readonly output: Buffer;
-};
-
-export type ValidationMachineLedgerOp =
-  | { readonly type: "delete"; readonly key: Buffer }
-  /** Insert values are exact canonical Midgard ledger output descriptors. */
-  | { readonly type: "insert"; readonly key: Buffer; readonly value: Buffer };
-
-export type ValidationMachineLedgerMutationStep = {
-  readonly operation: ValidationMachineLedgerOp;
-  readonly preRoot: Buffer;
-  readonly postRoot: Buffer;
-  /** Canonical bounded-frame form consumed by the deployed resolver chain. */
-  readonly proofFoldTrace: MidgardMpfProofFoldTraceV1;
-};
-
-export type ValidationMachineValueMutationStep = {
-  readonly unit: Buffer;
-  readonly quantityDelta: bigint;
-  readonly oldDelta: bigint | null;
-  readonly preAssetRoot: Buffer;
-  readonly postAssetRoot: Buffer;
-  /** Membership/non-membership witness for unit against preAssetRoot. */
-  readonly proofCbor: Buffer;
-  readonly postSeenAssetCount: number;
-  readonly postNonzeroAssetCount: number;
-};
-
-export type ValidationMachineReplayInput = {
-  readonly consensusProfile: MidgardConsensusProfileV1;
-  readonly eventKeyCbor: Buffer;
-  readonly transactionId: Buffer;
-  readonly canonicalTransactionCbor: Buffer;
-  readonly programMaterialSidecarCbor?: Buffer;
-  readonly sourceKind: "normal" | "forced";
-  readonly priorUtxosRoot: string;
-  readonly postUtxosRoot: string;
-  readonly ledgerWitnessEntries: readonly ValidationMachineLedgerEntry[];
-  readonly expectedLedgerOps: readonly ValidationMachineLedgerOp[];
-  readonly ledgerMutationSteps: readonly ValidationMachineLedgerMutationStep[];
-  readonly expectedVerdict: "accepted" | "rejected";
-  readonly expectedRejectionCode: RejectCode | null;
-  /**
-   * Verdict carried by the COMMITTED forced leaf — the operator's
-   * adjudication, which is what `source_binding_is_exact` reveals on-chain
-   * and therefore what the machine's `transaction_commitment` must bind.
-   * Defaults to the replay's own verdict, which is exact on the classifier
-   * path (the leaf is produced from this replay, and the machine aborts on
-   * any expected/replayed divergence). A dispute trace replayed AGAINST an
-   * operator leaf whose verdict it contests must pass the leaf's verdict
-   * here, or its states bind a commitment the committed leaf does not carry.
-   */
-  readonly committedForcedVerdict?: "accepted" | "rejected";
-  readonly blockEndTimeMs: number;
-  readonly expectedNetworkId: bigint;
-  readonly minFeeA: bigint;
-  readonly minFeeB: bigint;
-  readonly blockSlot: bigint;
-};
-
-const exactTrieRoot = (trie: Trie): Buffer =>
-  trie.hash == null ? Buffer.alloc(32) : Buffer.from(trie.hash);
-
-export const buildValidationMachineLedgerInsertOpV1 = ({
-  key,
-  outputCbor,
-}: {
-  readonly key: Uint8Array;
-  readonly outputCbor: Uint8Array;
-}): Extract<ValidationMachineLedgerOp, { readonly type: "insert" }> => ({
-  type: "insert",
-  key: Buffer.from(key),
-  value: buildCanonicalMidgardLedgerEntryOutputMaterialV1({
-    outRef: key,
-    outputCbor,
-  }).descriptorCbor,
-});
-
-export const buildValidationMachineLedgerMutationSteps = async (input: {
-  readonly initialEntries: readonly ValidationMachineLedgerEntry[];
-  readonly operations: readonly ValidationMachineLedgerOp[];
-}): Promise<readonly ValidationMachineLedgerMutationStep[]> => {
-  const store = new Store(undefined);
-  await store.ready();
-  const trie = new Trie(store);
-  for (const entry of [...input.initialEntries].sort((left, right) =>
-    Buffer.compare(left.outRef, right.outRef),
-  )) {
-    await trie.insert(
-      entry.outRef,
-      buildCanonicalMidgardLedgerEntryOutputMaterialV1({
-        outRef: entry.outRef,
-        outputCbor: entry.output,
-      }).descriptorCbor,
-    );
-  }
-  const steps: ValidationMachineLedgerMutationStep[] = [];
-  for (const operation of input.operations) {
-    steps.push(
-      await applyValidationMachineLedgerMutationStepV1(trie, operation),
-    );
-  }
-  return steps;
-};
-
-export const applyValidationMachineLedgerMutationStepV1 = async (
-  trie: Trie,
-  operation: ValidationMachineLedgerOp,
-): Promise<ValidationMachineLedgerMutationStep> => {
-  const preRoot = exactTrieRoot(trie);
-  const mutationValue =
-    operation.type === "insert"
-      ? Buffer.from(operation.value)
-      : await trie.get(operation.key);
-  if (mutationValue === undefined) {
-    throw new Error(
-      "cannot construct a ledger deletion proof for an absent key",
-    );
-  }
-  const proof = await trie.prove(operation.key, operation.type === "insert");
-  const proofFoldTrace = buildMidgardMpfProofFoldTraceV1({
-    key: operation.key,
-    value: mutationValue,
-    steps: parseMidgardMpfProofJsonV1(proof.toJSON()),
-  });
-  if (operation.type === "delete") {
-    await trie.delete(operation.key);
-  } else {
-    await trie.insert(operation.key, operation.value);
-  }
-  const postRoot = exactTrieRoot(trie);
-  const foldPreRoot =
-    operation.type === "delete"
-      ? proofFoldTrace.terminal.includingRoot
-      : proofFoldTrace.terminal.excludingRoot;
-  const foldPostRoot =
-    operation.type === "delete"
-      ? proofFoldTrace.terminal.excludingRoot
-      : proofFoldTrace.terminal.includingRoot;
-  if (!foldPreRoot.equals(preRoot) || !foldPostRoot.equals(postRoot)) {
-    throw new Error(
-      "bounded MPF proof fold disagrees with the applied ledger mutation",
-    );
-  }
-  return {
-    operation,
-    preRoot,
-    postRoot,
-    proofFoldTrace,
-  };
-};
-
-export type ValidationMachineWorkWitness = {
-  readonly phase: MidgardValidationPhaseName;
-  readonly programCounter: number;
-  readonly cbor: Buffer;
-  readonly auxiliary:
-    | {
-        /**
-         * One item of one committed field, reached through §8's door. Nine of
-         * the machine's fifteen per-item sites match this arm, across all eight
-         * phases that read a field.
-         *
-         * It used to carry a counted `(collectionProof, chunkProof)` pair
-         * checked against the §4 flat field commitment — a predicate no honest
-         * prover could satisfy (#592). What replaces the pair is not a smaller
-         * proof but *no* proof: the carriage names where the field's preimage
-         * is, the door authenticates the whole preimage once against the flat
-         * commitment, and the item is then a slice.
-         *
-         * `fieldIndex` is on the wire because §4 removed field-index domain
-         * separation and two phases read more than one slot — `canonicalDecode`,
-         * which walks all nine from its own control, and `inputSets`, which
-         * alternates fields 0 and 1. `itemIndex` is on the wire because two
-         * sites let the prover choose the item order and the claimed successor
-         * pins it.
-         *
-         * `fieldPreimage` is the plan input, not wire: it is replaced by the §8
-         * carriage §8.4 admits for its length when the auxiliary is encoded
-         * (#600). See {@link ValidationMachineFieldCarriagePlanInputV1}.
-         */
-        readonly kind: "transactionFieldChunk";
-        readonly fieldIndex: number;
-        readonly itemIndex: number;
-        readonly fieldPreimage: Buffer;
-      }
-    | {
-        /**
-         * `canonicalDecode`'s complete-item step: one item read whole rather
-         * than chunk by chunk. Field index and item index come from the phase's
-         * control, so the carriage is the entire wire surface — `fieldIndex`
-         * here is the plan input's, never encoded (#600).
-         */
-        readonly kind: "transactionFieldItem";
-        readonly fieldIndex: number;
-        readonly fieldPreimage: Buffer;
-      }
-    | {
-        readonly kind: "ledgerOutputProofBegin";
-        readonly outputIndex: number;
-        readonly totalLength: number;
-        readonly itemCommitment: Buffer;
-        readonly siblings: readonly Buffer[];
-      }
-    | {
-        readonly kind: "ledgerOutputProofStep";
-        readonly witness: MidgardLedgerOutputProofWitnessV1;
-      }
-    | {
-        readonly kind: "ledgerOutputProofFinalize";
-        readonly descriptorCbor: Buffer;
-        readonly signerProof: ValidationMachineSignerSetProof;
-      }
-    | {
-        /**
-         * A field-4 required-signer item plus the signer-set membership
-         * evidence the step decides on. No field or item index **on the wire**:
-         * the field is 4 by construction and the item index is
-         * `control.required_seen`. `fieldIndex` is carried only as the plan
-         * input's, and is never encoded (#600).
-         */
-        readonly kind: "requiredSignerItem";
-        readonly fieldIndex: number;
-        readonly fieldPreimage: Buffer;
-        readonly signerProof: ValidationMachineSignerSetProof;
-      }
-    | {
-        readonly kind: "nativeScriptToken";
-        readonly chunkProof: MidgardBoundedItemChunkProofV1;
-        readonly nextChunkProof: MidgardBoundedItemChunkProofV1 | null;
-        readonly signerProof: ValidationMachineSignerSetProof;
-      }
-    | {
-        readonly kind: "nativeScriptFrame";
-        readonly frame: ValidationMachineNativeScriptFrameV1;
-      }
-    | {
-        readonly kind: "scriptSourceHashBlock";
-        readonly chunkProof: MidgardBoundedItemChunkProofV1;
-        readonly nextChunkProof: MidgardBoundedItemChunkProofV1 | null;
-      }
-    | {
-        readonly kind: "mintFoldAsset";
-        readonly chunkProof: MidgardBoundedItemChunkProofV1;
-        readonly nextChunkProof: MidgardBoundedItemChunkProofV1 | null;
-      }
-    | {
-        readonly kind: "scheduledLedgerLookup";
-        readonly sourceKind: "spend" | "reference";
-        readonly key: Buffer;
-        readonly nextScheduleHash: Buffer;
-        readonly value: Buffer | null;
-        readonly proofCbor: Buffer;
-        readonly signerProof: ValidationMachineSignerSetProof;
-      }
-    | {
-        readonly kind: "resolvedInputReplay";
-        readonly sourceKind: "spend" | "reference";
-        readonly key: Buffer;
-        readonly nextScheduleHash: Buffer;
-        readonly value: Buffer;
-      }
-    | {
-        readonly kind: "scriptPurposeScan";
-        readonly purposeKind: 0 | 1 | 2 | 3;
-        readonly purposeIndex: bigint;
-        readonly scriptHash: Buffer;
-        readonly subject: Buffer;
-        readonly siblings: readonly Buffer[];
-      }
-    | {
-        readonly kind: "scriptSourceScan";
-        readonly sourceIndex: number;
-        readonly originKind: "inline" | "reference";
-        readonly sourceKey: Buffer;
-        readonly scriptLanguageTag: 0 | 3 | 128;
-        readonly scriptHash: Buffer;
-        readonly scriptTotalLength: number;
-        readonly scriptItemCommitment: Buffer;
-        readonly siblings: readonly Buffer[];
-      }
-    | {
-        readonly kind: "redeemerScanBegin";
-        readonly itemIndex: number;
-        readonly itemCount: number;
-        readonly totalLength: number;
-        readonly itemCommitment: Buffer;
-        readonly siblings: readonly Buffer[];
-      }
-    | {
-        /**
-         * `scriptSources` stage 1 (field 8, one redeemer item) and stage 4
-         * (field 2, one output item). Both stages need the item's length and its
-         * `bounded_item_v1` commitment and never look at its bytes, so the
-         * door's derived commitment is all the carriage has to yield; field
-         * index and item index are fixed by the stage and its cursor, so
-         * `fieldIndex` here is the plan input's and is never encoded (#600).
-         *
-         * This is the C21-STAGE4 site. Its evidence is O(1) in output size
-         * exactly when the resolved carriage is tier 2 or 3
-         * (`onchain/aiken/lib/midgard/validation-machine-v1.ak:9189-9192`), which
-         * is what resolving at evidence-commitment time restores.
-         */
-        readonly kind: "transactionRedeemerItemBegin";
-        readonly fieldIndex: number;
-        readonly fieldPreimage: Buffer;
-      }
-    | {
-        readonly kind: "nativeExecutionScan";
-        readonly executionIndex: number;
-        readonly languageTag: 0 | 3 | 128;
-        readonly purpose: {
-          readonly purposeKind: 0 | 1 | 2 | 3;
-          readonly purposeIndex: bigint;
-          readonly scriptHash: Buffer;
-          readonly subject: Buffer;
-          readonly siblings: readonly Buffer[];
-        };
-        readonly source: {
-          readonly sourceIndex: number;
-          readonly originKind: "inline" | "reference";
-          readonly sourceKey: Buffer;
-          readonly scriptTotalLength: number;
-          readonly scriptItemCommitment: Buffer;
-          readonly siblings: readonly Buffer[];
-        };
-        readonly redeemerLeaf: Buffer;
-        readonly executionSiblings: readonly Buffer[];
-        readonly firstChunkProof: MidgardBoundedItemChunkProofV1;
-      }
-    | {
-        readonly kind: "nativeExecutionDescriptor";
-        readonly executionIndex: number;
-        readonly languageTag: 0 | 3 | 128;
-        readonly purpose: {
-          readonly purposeKind: 0 | 1 | 2 | 3;
-          readonly purposeIndex: bigint;
-          readonly scriptHash: Buffer;
-          readonly subject: Buffer;
-          readonly siblings: readonly Buffer[];
-        };
-        readonly source: {
-          readonly sourceIndex: number;
-          readonly originKind: "inline" | "reference";
-          readonly sourceKey: Buffer;
-          readonly scriptTotalLength: number;
-          readonly scriptItemCommitment: Buffer;
-          readonly siblings: readonly Buffer[];
-        };
-        readonly redeemerLeaf: Buffer;
-        readonly executionSiblings: readonly Buffer[];
-        readonly firstChunkProof: MidgardBoundedItemChunkProofV1 | null;
-        readonly signerFrontier: MidgardValidationMerkleFrontierV1;
-      }
-    | {
-        readonly kind: "cekCoreStep";
-        readonly step: MidgardCekExecutionStepV1;
-      }
-    | {
-        readonly kind: "cekResolvedContextItem";
-        readonly sourceKind: "spend" | "reference";
-        readonly itemIndex: number;
-        readonly key: Buffer;
-        readonly descriptorCbor: Buffer;
-        readonly siblings: readonly Buffer[];
-      }
-    | {
-        readonly kind: "cekOutputContextItem";
-        readonly outputIndex: number;
-        readonly descriptorCbor: Buffer;
-        readonly siblings: readonly Buffer[];
-      }
-    | {
-        readonly kind: "cekSignerContextItem";
-        readonly frontier: MidgardValidationMerkleFrontierV1;
-        readonly signerIndex: number;
-        readonly signerHash: Buffer;
-        readonly siblings: readonly Buffer[];
-      }
-    | {
-        readonly kind: "cekMintContextItem";
-        readonly mintIndex: number;
-        readonly policyId: Buffer;
-        readonly assetName: Buffer;
-        readonly quantity: bigint;
-        readonly siblings: readonly Buffer[];
-      }
-    | {
-        readonly kind: "cekRedeemerContextSelect";
-        readonly control: MidgardCekRedeemerContextControlV1;
-        readonly itemIndex: number;
-        readonly itemCount: number;
-        readonly totalLength: number;
-        readonly itemCommitment: Buffer;
-        readonly redeemerSiblings: readonly Buffer[];
-        readonly purposeFrontierIndex: number;
-        readonly purpose: {
-          readonly purposeKind: 0 | 1 | 2 | 3;
-          readonly purposeIndex: bigint;
-          readonly scriptHash: Buffer;
-          readonly subject: Buffer;
-          readonly siblings: readonly Buffer[];
-        };
-      }
-    | {
-        readonly kind: "redeemerItemStep";
-        readonly redeemerControl: MidgardCekRedeemerContextControlV1 | null;
-        readonly control: MidgardRedeemerItemProofControlV1;
-        readonly witness: MidgardRedeemerItemProofWitnessV1;
-      }
-    | {
-        readonly kind: "cekContextFinalize";
-        readonly redeemerControl: MidgardCekRedeemerContextControlV1;
-      }
-    | {
-        readonly kind: "cekContextFinalizeSpend";
-        readonly redeemerControl: MidgardCekRedeemerContextControlV1;
-        readonly itemIndex: number;
-        readonly key: Buffer;
-        readonly descriptorCbor: Buffer;
-        readonly siblings: readonly Buffer[];
-      }
-    | {
-        readonly kind: "cekContextAssemble";
-        readonly control: MidgardCekContextPartsControlV1;
-      }
-    | {
-        readonly kind: "cekTxInfoFinalize";
-        readonly control: MidgardCekTxInfoAssemblyControlV1;
-      }
-    | {
-        readonly kind: "cekContextSeed";
-        readonly control: MidgardCekFinalContextControlV1;
-      }
-    | {
-        readonly kind: "valueInputAsset";
-        readonly sourceKind: "spend";
-        readonly key: Buffer;
-        readonly nextScheduleHash: Buffer;
-        readonly descriptorCbor: Buffer;
-        readonly assetIndex: number;
-        readonly policyId: Buffer;
-        readonly assetName: Buffer;
-        readonly quantity: bigint;
-        readonly assetFrontier: MidgardValidationMerkleFrontierV1;
-        readonly assetSiblings: readonly Buffer[];
-        readonly mutationStep: ValidationMachineValueMutationStep;
-      }
-    | {
-        readonly kind: "valueOutputDescriptor";
-        readonly outputIndex: number;
-        readonly descriptorCbor: Buffer;
-        readonly siblings: readonly Buffer[];
-      }
-    | {
-        readonly kind: "valueOutputAsset";
-        readonly outputIndex: number;
-        readonly descriptorCbor: Buffer;
-        readonly assetIndex: number;
-        readonly policyId: Buffer;
-        readonly assetName: Buffer;
-        readonly quantity: bigint;
-        readonly assetFrontier: MidgardValidationMerkleFrontierV1;
-        readonly assetSiblings: readonly Buffer[];
-        readonly mutationStep: ValidationMachineValueMutationStep;
-      }
-    | {
-        readonly kind: "valueMintAsset";
-        readonly mintIndex: number;
-        readonly policyId: Buffer;
-        readonly assetName: Buffer;
-        readonly quantity: bigint;
-        readonly siblings: readonly Buffer[];
-        readonly mutationStep: ValidationMachineValueMutationStep;
-      }
-    | {
-        readonly kind: "ledgerDeltaOperation";
-        readonly operationKind: "delete" | "insert";
-        readonly key: Buffer;
-        readonly value: Buffer;
-        readonly mutationStep: ValidationMachineLedgerMutationStep;
-        readonly operationMembership: MidgardValidationMerkleMembershipV1;
-      }
-    | {
-        readonly kind: "ledgerDeltaReplay";
-        readonly sourceKind: "spend" | "reference";
-        readonly key: Buffer;
-        readonly nextScheduleHash: Buffer;
-        readonly value: Buffer;
-      }
-    | {
-        readonly kind: "ledgerDeltaOutput";
-        readonly outputIndex: number;
-        readonly descriptorCbor: Buffer;
-        readonly siblings: readonly Buffer[];
-      }
-    | {
-        readonly kind: "ledgerDeltaProofFrame";
-        readonly frame: MidgardMpfProofFrameV1;
-        readonly siblings: readonly Buffer[];
-      }
-    | null;
-};
-
-export type ValidationMachineSignerSetProof =
-  | { readonly kind: "none" }
-  | {
-      readonly kind: "membership";
-      readonly frontier: MidgardValidationMerkleFrontierV1;
-      readonly signerIndex: number;
-      readonly siblings: readonly Buffer[];
-    }
-  | {
-      readonly kind: "empty";
-      readonly frontier: MidgardValidationMerkleFrontierV1;
-    }
-  | {
-      readonly kind: "belowFirst";
-      readonly frontier: MidgardValidationMerkleFrontierV1;
-      readonly firstSignerHash: Buffer;
-      readonly siblings: readonly Buffer[];
-    }
-  | {
-      readonly kind: "aboveLast";
-      readonly frontier: MidgardValidationMerkleFrontierV1;
-      readonly lastSignerHash: Buffer;
-      readonly siblings: readonly Buffer[];
-    }
-  | {
-      readonly kind: "between";
-      readonly frontier: MidgardValidationMerkleFrontierV1;
-      readonly lowerIndex: number;
-      readonly lowerSignerHash: Buffer;
-      readonly lowerSiblings: readonly Buffer[];
-      readonly upperSignerHash: Buffer;
-      readonly upperSiblings: readonly Buffer[];
-    };
-
-export type DeterministicValidationMachineTrace = {
-  readonly validationContextCbor: Buffer;
-  /** Canonical, immutable input material for the CEK selection transition. */
-  readonly programMaterialSidecarCbor: Buffer;
-  readonly states: readonly MidgardValidationMachineStateV1[];
-  readonly witnesses: readonly ValidationMachineWorkWitness[];
-  readonly tree: MidgardValidationTraceTree;
-  readonly verdict: "accepted" | "rejected";
-  readonly rejectionCode: RejectCode | null;
-  readonly ledgerOps: readonly ValidationMachineLedgerOp[];
-};
-
-const ZERO_32 = Buffer.alloc(32);
-
-const RESOLVED_INPUTS_ACCUMULATOR_DOMAIN = Buffer.from(
-  "MidgardResolvedInputsAccumulatorV1",
-  "ascii",
-);
-const INPUT_RESOLUTION_SCHEDULE_DOMAIN = Buffer.from(
-  "MidgardInputResolutionScheduleV1",
-  "ascii",
-);
-const hash32 = (bytes: Uint8Array): Buffer =>
-  Buffer.from(blake2b(Buffer.from(bytes), { dkLen: 32 }));
-
-const NATIVE_SCRIPT_SCAN_FRAME_DOMAIN_V1 = Buffer.from(
-  "MidgardNativeScriptScanFrameV1",
-  "ascii",
-);
-const MAX_NATIVE_SCRIPT_SCAN_NODES_V1 = 16_384;
-const MAX_NATIVE_SCRIPT_SCAN_DEPTH_V1 = 16_384;
-
-type ValidationMachineNativeScriptTokenV1 = {
-  readonly kind: 0 | 1 | 2 | 3 | 4 | 5;
-  readonly nextOffset: number;
-  readonly childCount: number;
-  readonly required: bigint;
-  readonly keyHash: Buffer;
-  readonly slot: bigint;
-};
-
-type ValidationMachineNativeScriptTokenHeadV1 = {
-  readonly kind: 0 | 1 | 2 | 3 | 4 | 5;
-  readonly payloadOffset: number;
-};
-
-export type ValidationMachineNativeScriptFrameV1 = {
-  readonly tail: Buffer;
-  readonly kind: 1 | 2 | 3;
-  readonly childCount: number;
-  readonly remaining: number;
-  readonly validCount: number;
-  readonly required: bigint;
-};
-
-type ValidationMachineVersionedScriptHeaderV1 = {
-  readonly languageTag: 0 | 3 | 128;
-  readonly payloadOffset: number;
-  readonly payloadLength: number;
-};
-
-const readValidationMachineVersionedScriptHeaderV1 = (
-  item: Buffer,
-): ValidationMachineVersionedScriptHeaderV1 => {
-  const outer = readCborArrayHeader(item, 0, "versioned_script");
-  if (outer.length !== 2) {
-    throw new Error("versioned script must contain exactly two fields");
-  }
-  const language = readCborUnsigned(
-    item,
-    outer.nextOffset,
-    "versioned_script.language",
-  );
-  const payload = readCborBytes(
-    item,
-    language.nextOffset,
-    "versioned_script.payload",
-  );
-  if (
-    (language.value !== 0n &&
-      language.value !== 3n &&
-      language.value !== 128n) ||
-    payload.nextOffset !== item.length
-  ) {
-    throw new Error("versioned script has an invalid language or length");
-  }
-  return {
-    languageTag: Number(language.value) as 0 | 3 | 128,
-    payloadOffset: payload.nextOffset - payload.value.length,
-    payloadLength: payload.value.length,
-  };
-};
-
-const readValidationMachineNativeScriptTokenHeadV1 = (
-  item: Buffer,
-  offset: number,
-): ValidationMachineNativeScriptTokenHeadV1 => {
-  const outer = readCborArrayHeader(item, offset, "native_script");
-  const tag = readCborUnsigned(item, outer.nextOffset, "native_script.tag");
-  if (tag.value < 0n || tag.value > 5n) {
-    throw new Error("native script has an unsupported tag");
-  }
-  const kind = Number(tag.value) as 0 | 1 | 2 | 3 | 4 | 5;
-  if (
-    (kind === 3 && outer.length !== 3) ||
-    (kind !== 3 && outer.length !== 2)
-  ) {
-    throw new Error("native script has an invalid outer shape");
-  }
-  return { kind, payloadOffset: tag.nextOffset };
-};
-
-const readValidationMachineNativeScriptPayloadV1 = (
-  item: Buffer,
-  offset: number,
-  kind: 0 | 1 | 2 | 3 | 4 | 5,
-): ValidationMachineNativeScriptTokenV1 => {
-  if (kind === 0) {
-    const keyHash = readCborBytes(item, offset, "native_script.key_hash");
-    if (keyHash.value.length !== 28) {
-      throw new Error("native signature script has an invalid shape");
-    }
-    return {
-      kind: 0,
-      nextOffset: keyHash.nextOffset,
-      childCount: 0,
-      required: 0n,
-      keyHash: keyHash.value,
-      slot: 0n,
-    };
-  }
-  if (kind === 1 || kind === 2) {
-    const children = readCborArrayHeader(
-      item,
-      offset,
-      "native_script.children",
-    );
-    if (children.length > MAX_NATIVE_SCRIPT_SCAN_NODES_V1) {
-      throw new Error("native all/any script has an invalid shape");
-    }
-    return {
-      kind,
-      nextOffset: children.nextOffset,
-      childCount: children.length,
-      required: 0n,
-      keyHash: Buffer.alloc(0),
-      slot: 0n,
-    };
-  }
-  if (kind === 3) {
-    const required = readCborUnsigned(item, offset, "native_script.required");
-    const children = readCborArrayHeader(
-      item,
-      required.nextOffset,
-      "native_script.children",
-    );
-    if (children.length > MAX_NATIVE_SCRIPT_SCAN_NODES_V1) {
-      throw new Error("native at-least script has an invalid shape");
-    }
-    return {
-      kind: 3,
-      nextOffset: children.nextOffset,
-      childCount: children.length,
-      required: required.value,
-      keyHash: Buffer.alloc(0),
-      slot: 0n,
-    };
-  }
-  if (kind === 4 || kind === 5) {
-    const slot = readCborUnsigned(item, offset, "native_script.slot");
-    return {
-      kind,
-      nextOffset: slot.nextOffset,
-      childCount: 0,
-      required: 0n,
-      keyHash: Buffer.alloc(0),
-      slot: slot.value,
-    };
-  }
-  throw new Error("native script payload has an unsupported tag");
-};
-
-const validationMachineNativeScriptFrameIsWellFormedV1 = (
-  frame: ValidationMachineNativeScriptFrameV1,
-): boolean => {
-  const processed = frame.childCount - frame.remaining;
-  return (
-    (frame.tail.length === 0 || frame.tail.length === 32) &&
-    frame.childCount > 0 &&
-    frame.childCount <= MAX_NATIVE_SCRIPT_SCAN_NODES_V1 &&
-    frame.remaining > 0 &&
-    frame.remaining <= frame.childCount &&
-    frame.validCount >= 0 &&
-    frame.validCount <= processed &&
-    (frame.kind === 3 ? frame.required >= 0n : frame.required === 0n)
-  );
-};
-
-const hashValidationMachineNativeScriptFrameV1 = (
-  frame: ValidationMachineNativeScriptFrameV1,
-): Buffer => {
-  if (!validationMachineNativeScriptFrameIsWellFormedV1(frame)) {
-    throw new Error("cannot hash a malformed native-script frame");
-  }
-  return hash32(
-    Buffer.concat([
-      NATIVE_SCRIPT_SCAN_FRAME_DOMAIN_V1,
-      encodeCbor([
-        frame.tail,
-        BigInt(frame.kind),
-        BigInt(frame.childCount),
-        BigInt(frame.remaining),
-        BigInt(frame.validCount),
-        frame.required,
-      ]),
-    ]),
-  );
-};
-
-const canonicalCborArgumentHeaderSize = (value: number): number => {
-  if (!Number.isSafeInteger(value) || value < 0) {
-    throw new Error("canonical CBOR argument must be a non-negative integer");
-  }
-  if (value < 24) return 1;
-  if (value < 0x100) return 2;
-  if (value < 0x1_0000) return 3;
-  if (value < 0x1_0000_0000) return 5;
-  return 9;
-};
-
-const MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX = 6;
-const MIDGARD_V1_ADDRESS_WITNESSES_FIELD_INDEX = 7;
-
-const canonicalFieldItemEncodedLength = (
-  fieldIndex: number,
-  itemLength: number,
-): number => {
-  if (
-    [0, 1, 2, 3, 4, MIDGARD_V1_ADDRESS_WITNESSES_FIELD_INDEX].includes(
-      fieldIndex,
-    )
-  ) {
-    return canonicalCborArgumentHeaderSize(itemLength) + itemLength;
-  }
-  if (
-    fieldIndex === MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX ||
-    fieldIndex === 8
-  ) {
-    return itemLength;
-  }
-  if (fieldIndex !== 5 || itemLength === 0) {
-    throw new Error(
-      `invalid canonical field item length at field ${fieldIndex.toString()}`,
-    );
-  }
-  return itemLength - 1;
-};
-
-export const initialMidgardResolvedInputsAccumulatorV1 = (): Buffer =>
-  hash32(RESOLVED_INPUTS_ACCUMULATOR_DOMAIN);
-
-export const emptyMidgardInputResolutionScheduleV1 = (): Buffer =>
-  hash32(INPUT_RESOLUTION_SCHEDULE_DOMAIN);
-
-export const prependMidgardInputResolutionScheduleV1 = (input: {
-  readonly sourceKind: "spend" | "reference";
-  readonly key: Uint8Array;
-  readonly nextHash: Uint8Array;
-}): Buffer => {
-  if (input.nextHash.length !== 32) {
-    throw new Error("input-resolution schedule hash must contain 32 bytes");
-  }
-  return hash32(
-    Buffer.concat([
-      INPUT_RESOLUTION_SCHEDULE_DOMAIN,
-      encodeCbor(input.sourceKind === "spend" ? 0n : 1n),
-      encodeCbor(Buffer.from(input.key)),
-      Buffer.from(input.nextHash),
-    ]),
-  );
-};
-
-export const advanceMidgardResolvedInputsAccumulatorV1 = (input: {
-  readonly accumulator: Uint8Array;
-  readonly sourceKind: "spend" | "reference";
-  readonly key: Uint8Array;
-  readonly value: Uint8Array;
-}): Buffer => {
-  if (input.accumulator.length !== 32) {
-    throw new Error("resolved-input accumulator must contain exactly 32 bytes");
-  }
-  return hash32(
-    Buffer.concat([
-      RESOLVED_INPUTS_ACCUMULATOR_DOMAIN,
-      Buffer.from(input.accumulator),
-      encodeCbor(input.sourceKind === "spend" ? 0n : 1n),
-      encodeCbor(Buffer.from(input.key)),
-      encodeCbor(Buffer.from(input.value)),
-    ]),
-  );
-};
+} from "../script-context-proof.js";
+import { txOutRefData } from "../tx-out-ref.js";
+import type { QueuedTx, RejectCode, RejectedTx } from "../types.js";
+import { RejectCodes } from "../types.js";
+import { outputCborMeetsMinAdaV1 } from "../value-accounting.js";
+import {
+  canonicalCborArgumentHeaderSize,
+  canonicalFieldItemEncodedLength,
+  MIDGARD_V1_ADDRESS_WITNESSES_FIELD_INDEX,
+  MIDGARD_V1_SCRIPT_WITNESSES_FIELD_INDEX,
+} from "./canonical-field-item.js";
+import {
+  encodeScriptDiscoveryControlCborV1,
+  encodeValidationControlListV1,
+  encodeValidationFrontierPeaksV1,
+  type ScriptDiscoveryTraceControlV1,
+} from "./control-encoding.js";
+import { countedMachineFieldTraceV1 } from "./field-carriage.js";
+import {
+  advanceMidgardResolvedInputsAccumulatorV1,
+  emptyMidgardInputResolutionScheduleV1,
+  hash32,
+  initialMidgardResolvedInputsAccumulatorV1,
+  prependMidgardInputResolutionScheduleV1,
+  ZERO_32,
+} from "./input-resolution.js";
+import {
+  buildValidationMachineLedgerInsertOpV1,
+  type ValidationMachineLedgerOp,
+} from "./ledger-mutation.js";
+import {
+  hashValidationMachineNativeScriptFrameV1,
+  MAX_NATIVE_SCRIPT_SCAN_DEPTH_V1,
+  MAX_NATIVE_SCRIPT_SCAN_NODES_V1,
+  readValidationMachineNativeScriptPayloadV1,
+  readValidationMachineNativeScriptTokenHeadV1,
+  readValidationMachineVersionedScriptHeaderV1,
+  type ValidationMachineNativeScriptFrameV1,
+  type ValidationMachineNativeScriptTokenHeadV1,
+  type ValidationMachineNativeScriptTokenV1,
+  type ValidationMachineVersionedScriptHeaderV1,
+} from "./native-script-frame.js";
+import {
+  purposeKindForRedeemerTagV1,
+  redeemerPointerMatchesPurposeV1,
+  redeemerTagForPurposeKindV1,
+} from "./redeemer-purpose.js";
+import {
+  type DeterministicValidationMachineTrace,
+  type ValidationMachineReplayInput,
+  type ValidationMachineSignerSetProof,
+  type ValidationMachineWorkWitness,
+} from "./types.js";
+import {
+  applyValidationValueMutationStep,
+  buildValidationValueMutationSteps,
+  emptyValidationValueAccumulator,
+  encodeValidationValueAccumulator,
+  midgardValueAssets,
+  midgardValueContributions,
+  type ValidationValueContribution,
+} from "./value-mutation.js";
 
 const exactHash32 = (hex: string, field: string): Buffer => {
   if (!/^[0-9a-f]{64}$/u.test(hex)) {
@@ -1362,113 +232,6 @@ const sameLedgerOps = (
   left: readonly ValidationMachineLedgerOp[],
   right: readonly ValidationMachineLedgerOp[],
 ): boolean => canonicalLedgerOps(left).equals(canonicalLedgerOps(right));
-
-type ValidationValueAccumulator = {
-  lovelaceDelta: bigint;
-  assetRoot: Buffer;
-  seenAssetCount: number;
-  nonzeroAssetCount: number;
-};
-
-const emptyValidationValueAccumulator = (): ValidationValueAccumulator => ({
-  lovelaceDelta: 0n,
-  assetRoot: Buffer.alloc(32),
-  seenAssetCount: 0,
-  nonzeroAssetCount: 0,
-});
-
-const encodeValidationValueAccumulator = (
-  accumulator: ValidationValueAccumulator,
-): Buffer =>
-  encodeCbor([
-    accumulator.lovelaceDelta,
-    accumulator.assetRoot,
-    BigInt(accumulator.seenAssetCount),
-    BigInt(accumulator.nonzeroAssetCount),
-  ]);
-
-type ValidationValueContribution = {
-  readonly unit: Buffer;
-  readonly quantityDelta: bigint;
-};
-
-const midgardValueAssets = (
-  value: MidgardValue,
-): readonly MidgardLedgerOutputAssetV1[] =>
-  [...value.assets.entries()].flatMap(([policyId, policyAssets]) =>
-    [...policyAssets.entries()].map(([assetName, quantity]) => ({
-      policyId: Buffer.from(policyId, "hex"),
-      assetName: Buffer.from(assetName, "hex"),
-      quantity,
-    })),
-  );
-
-const midgardValueContributions = (
-  value: MidgardValue,
-  multiplier: 1n | -1n,
-): readonly ValidationValueContribution[] =>
-  midgardValueAssets(value).map(({ policyId, assetName, quantity }) => ({
-    unit: Buffer.concat([policyId, assetName]),
-    quantityDelta: quantity * multiplier,
-  }));
-
-const buildValidationValueMutationSteps = async (
-  contributions: readonly ValidationValueContribution[],
-): Promise<readonly ValidationMachineValueMutationStep[]> => {
-  const assetStore = new Store(undefined);
-  await assetStore.ready();
-  const assetTrie = new Trie(assetStore);
-  const deltas = new Map<string, bigint>();
-  const steps: ValidationMachineValueMutationStep[] = [];
-
-  for (const contribution of contributions) {
-    if (contribution.quantityDelta === 0n) {
-      throw new Error("value mutation quantity delta must be non-zero");
-    }
-    const unit = Buffer.from(contribution.unit);
-    const unitHex = unit.toString("hex");
-    const oldDelta = deltas.get(unitHex) ?? null;
-    const preAssetRoot = exactTrieRoot(assetTrie);
-    const proofCbor = Buffer.from(
-      (await assetTrie.prove(unit, oldDelta === null)).toCBOR(),
-    );
-    const nextDelta = (oldDelta ?? 0n) + contribution.quantityDelta;
-
-    if (oldDelta !== null) {
-      await assetTrie.delete(unit);
-    }
-    await assetTrie.insert(unit, encodeCbor(nextDelta));
-    deltas.set(unitHex, nextDelta);
-
-    steps.push({
-      unit,
-      quantityDelta: contribution.quantityDelta,
-      oldDelta,
-      preAssetRoot,
-      postAssetRoot: exactTrieRoot(assetTrie),
-      proofCbor,
-      postSeenAssetCount: deltas.size,
-      postNonzeroAssetCount: [...deltas.values()].filter(
-        (quantity) => quantity !== 0n,
-      ).length,
-    });
-  }
-  return steps;
-};
-
-const applyValidationValueMutationStep = (
-  accumulator: ValidationValueAccumulator,
-  step: ValidationMachineValueMutationStep,
-): void => {
-  if (!accumulator.assetRoot.equals(step.preAssetRoot)) {
-    throw new Error(
-      "value mutation step does not continue the authenticated root",
-    );
-  }
-  accumulator.assetRoot = Buffer.from(step.postAssetRoot);
-  accumulator.seenAssetCount = step.postSeenAssetCount;
-  accumulator.nonzeroAssetCount = step.postNonzeroAssetCount;
-};
 
 const rejectionPhase = (rejection: RejectedTx): MidgardValidationPhaseName => {
   if (rejection.consensusPhase === undefined) {

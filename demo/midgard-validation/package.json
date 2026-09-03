@@ -146,7 +146,7 @@
   "scripts": {
     "clean": "rimraf dist",
     "prebuild": "pnpm --dir ../midgard-core run build",
-    "build": "tsup src/index.ts src/cek-builtin.ts src/cek-constant.ts src/cek-data-tree.ts src/cek-data.ts src/cek-executor.ts src/cek-machine.ts src/cek-program.ts src/ledger.ts src/ledger-output-descriptor.ts src/ledger-tx.ts src/ledger-tx/codec.ts src/ledger-tx/types.ts src/local-script-eval.ts src/midgard-redeemers.ts src/phase-a.ts src/phase-b.ts src/plutus-data.ts src/script-context.ts src/script-context-proof.ts src/script-source.ts src/tx-out-ref.ts src/types.ts src/validation-dispute-evidence.ts src/validation-machine.ts --format esm,cjs --dts --clean",
+    "build": "tsup src/index.ts src/cek-builtin.ts src/cek-constant.ts src/cek-data-tree.ts src/cek-data.ts src/cek-executor.ts src/cek-machine.ts src/cek-program.ts src/ledger.ts src/ledger-output-descriptor.ts src/ledger-tx.ts src/ledger-tx/codec.ts src/ledger-tx/types.ts src/local-script-eval.ts src/midgard-redeemers.ts src/phase-a.ts src/phase-b.ts src/plutus-data.ts src/script-context.ts src/script-context-proof.ts src/script-source.ts src/tx-out-ref.ts src/types.ts src/validation-dispute-evidence.ts src/validation-machine/index.ts --format esm,cjs --dts --clean",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc --noEmit",

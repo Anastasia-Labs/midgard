@@ -14,7 +14,7 @@ import { Constr, Data } from "@lucid-evolution/lucid";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { describe, expect, it } from "vitest";
 
-import type { ValidationMachineWorkWitness } from "../src/validation-machine.js";
+import type { ValidationMachineWorkWitness } from "../src/validation-machine/index.js";
 import {
   encodeValidationAuxiliaryWitnessCborV1,
   validationAuxiliaryWitnessDataV1,

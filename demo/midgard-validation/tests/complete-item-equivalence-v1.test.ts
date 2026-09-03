@@ -10,7 +10,7 @@ import {
 import { MIDGARD_CONSENSUS_LIMITS_V1 } from "@al-ft/midgard-core/consensus-profile-v1";
 import { describe, expect, it } from "vitest";
 
-import { countedMachineFieldTraceV1 } from "../src/validation-machine.js";
+import { countedMachineFieldTraceV1 } from "../src/validation-machine/index.js";
 
 /**
  * §3.2 semantic equivalence for the transaction-field family: the complete

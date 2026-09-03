@@ -33,7 +33,7 @@ import {
   type UTxO,
 } from "@lucid-evolution/lucid";
 
-import { countedMachineTransactionChunkStepsV1 } from "../../src/validation-machine.js";
+import { countedMachineTransactionChunkStepsV1 } from "../../src/validation-machine/index.js";
 import { encodeValidationAuxiliaryWitnessCborV1 } from "../../src/validation-machine-data.js";
 
 export const CARDANO_BOUNDARY_MAX_TX_SIZE_V1 = 16_384;

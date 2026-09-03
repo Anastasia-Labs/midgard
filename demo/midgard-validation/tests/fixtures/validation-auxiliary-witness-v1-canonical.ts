@@ -1,4 +1,4 @@
-import type { ValidationMachineWorkWitness } from "../../src/validation-machine.js";
+import type { ValidationMachineWorkWitness } from "../../src/validation-machine/index.js";
 
 type AuxiliaryV1 = NonNullable<ValidationMachineWorkWitness["auxiliary"]>;
 
