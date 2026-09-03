@@ -9,7 +9,6 @@ export * from "./da-availability-state-v1.js";
 export * from "./da-payload.js";
 export * from "./escape-hatch.js";
 export * from "./fraud-proof/index.js";
-export * from "./fraud-proofs/transition-trace.js";
 export * from "./hub-oracle.js";
 export * from "./initialization.js";
 export * from "./ledger-constants.js";

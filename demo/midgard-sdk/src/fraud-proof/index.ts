@@ -32,6 +32,7 @@ export * from "./non-existent-input.js";
 export * from "./proof-thread-substrate-v1.js";
 export * from "./reference-input-no-idx.js";
 export * from "./tokens.js";
+export * from "./transition-trace.js";
 export * from "./validation-auxiliary-witness-v1.js";
 export * from "./validation-dispute.js";
 export * from "./validation-proof-item-v1.js";

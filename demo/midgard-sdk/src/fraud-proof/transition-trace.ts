@@ -7,15 +7,6 @@ import {
   ProofSchema,
 } from "../common.js";
 import {
-  type FaultProofStepCancel,
-  faultProofStepDatumSchema,
-  faultProofStepRedeemerSchema,
-} from "../fraud-proof/native.js";
-import {
-  type ValidationClaimWitnessV1,
-  ValidationClaimWitnessV1Schema,
-} from "../fraud-proof/validation-dispute.js";
-import {
   type HeaderHash,
   HeaderHashSchema,
   type HeaderV1,
@@ -53,6 +44,15 @@ import {
   type WithdrawalSourceMembershipProof,
   WithdrawalSourceMembershipProofSchema,
 } from "../transition-trace.js";
+import {
+  type FaultProofStepCancel,
+  faultProofStepDatumSchema,
+  faultProofStepRedeemerSchema,
+} from "./native.js";
+import {
+  type ValidationClaimWitnessV1,
+  ValidationClaimWitnessV1Schema,
+} from "./validation-dispute.js";
 
 export const TraceBoundarySideSchema = Data.Enum([
   Data.Literal("TraceStart"),

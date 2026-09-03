@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   type InvalidOneStepTransitionWitness,
   InvalidOneStepTransitionWitnessSchema,
-} from "@/fraud-proofs/transition-trace.js";
+} from "@/fraud-proof/transition-trace.js";
 import { ROOT_DOMAINS } from "@/transition-trace.js";
 
 const h32 = (byte: string): string => byte.repeat(64);
