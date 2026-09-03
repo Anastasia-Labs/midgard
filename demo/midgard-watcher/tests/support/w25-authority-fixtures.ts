@@ -16,25 +16,25 @@ import { Data } from "@lucid-evolution/lucid";
 
 import { blake2b } from "../../../midgard-core/node_modules/@noble/hashes/blake2.js";
 import { makeQueued } from "../../../midgard-validation/tests/validation-fixtures.js";
+import type { WatcherStateQueueHeaderV1 } from "../../src/indexers/state-queue-indexer.js";
 import {
   type EvaluateWatcherBlockReplayInputV1,
   type WatcherBlockReplayEventAuthorityV1,
   watcherBlockReplayPriorStateV1,
   type WatcherBlockReplayPriorUtxoV1,
-} from "../../src/block-replay.js";
+} from "../../src/verification/block-replay.js";
 import {
   evaluateWatcherHeaderRootReconstructionV1,
   makeWatcherAuthenticatedHeaderObservationV1,
-} from "../../src/header-root-reconstruction.js";
+} from "../../src/verification/header-root-reconstruction.js";
 import {
   evaluateWatcherPhaseABlockV1,
   type WatcherPhaseAVerificationResultV1,
-} from "../../src/phase-a-verifier.js";
+} from "../../src/verification/phase-a-verifier.js";
 import {
   computeWatcherRuleBundleV1Commitment,
   makeWatcherCanonicalRuleBundleV1,
-} from "../../src/rule-bundle-v1.js";
-import type { WatcherStateQueueHeaderV1 } from "../../src/state-queue-indexer.js";
+} from "../../src/verification/rule-bundle-v1.js";
 import {
   replayGenuineDepositAuthorityScenarioV1,
   replayGenuineForcedTerminalAuthorityScenarioV1,

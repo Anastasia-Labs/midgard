@@ -5,7 +5,7 @@ import {
   WATCHER_COMMAND_FAILURE_EXIT_CODE,
   WATCHER_PACKAGE_NAME,
   type WatcherCommand,
-} from "./scaffold.js";
+} from "./runtime/scaffold.js";
 
 const USAGE = `${WATCHER_PACKAGE_NAME}
 

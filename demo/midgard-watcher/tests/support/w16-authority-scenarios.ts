@@ -24,39 +24,6 @@ import {
 import { CML, Data } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
-import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/config.js";
-import {
-  encodeWatcherDurableStoreV1,
-  journalWatcherProtocolUtxoTransitionV1,
-  makeWatcherDurablePayloadV1,
-  makeWatcherDurableStoreV1,
-  watcherDurableStoreBytesSha256,
-  type WatcherDurableStoreV1,
-  type WatcherProtocolUtxoV1,
-} from "../../src/durable-store.js";
-import {
-  evaluateWatcherFinalityV1,
-  makeWatcherFinalityPolicyV1,
-} from "../../src/finality-engine.js";
-import {
-  closeWatcherL1TransportAttestationContextV1,
-  encodeWatcherNormalizedL1BlockV1,
-  establishWatcherExternalProviderTransportV1,
-  makeWatcherL1PublicBytesV1,
-  normalizeWatcherL1BlockV1 as normalizeWatcherL1BlockV1Raw,
-  WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
-  WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
-  type WatcherAuthenticatedL1ProviderV1,
-  type WatcherL1TransportAttestationContextV1,
-  watcherL1TransportAttestationDetailsV1,
-  type WatcherNormalizedL1BlockV1,
-} from "../../src/l1-adapter.js";
-import { evaluateWatcherMultiProviderConsistencyV1 as evaluateWatcherMultiProviderConsistencyV1Raw } from "../../src/multi-provider-consistency.js";
-import {
-  evaluateWatcherPostFinalityRecoveryV1 as evaluateWatcherPostFinalityRecoveryV1Raw,
-  evaluateWatcherRollbackV1 as evaluateWatcherRollbackV1Raw,
-  type WatcherPostFinalityRecoveryInputV1,
-} from "../../src/rollback-engine.js";
 import {
   evaluateWatcherSettlementIndexerV1 as evaluateWatcherSettlementIndexerV1Raw,
   makeWatcherSettlementIndexerPolicyV1,
@@ -76,7 +43,40 @@ import {
   type WatcherSettlementSubjectV1,
   type WatcherSettlementTransitionKindV1,
   type WatcherSettlementTransitionV1,
-} from "../../src/settlement-indexer.js";
+} from "../../src/indexers/settlement-indexer.js";
+import {
+  evaluateWatcherFinalityV1,
+  makeWatcherFinalityPolicyV1,
+} from "../../src/l1/finality-engine.js";
+import {
+  closeWatcherL1TransportAttestationContextV1,
+  encodeWatcherNormalizedL1BlockV1,
+  establishWatcherExternalProviderTransportV1,
+  makeWatcherL1PublicBytesV1,
+  normalizeWatcherL1BlockV1 as normalizeWatcherL1BlockV1Raw,
+  WATCHER_AUTHENTICATED_L1_PROVIDER_V1_SCHEMA_VERSION,
+  WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
+  type WatcherAuthenticatedL1ProviderV1,
+  type WatcherL1TransportAttestationContextV1,
+  watcherL1TransportAttestationDetailsV1,
+  type WatcherNormalizedL1BlockV1,
+} from "../../src/l1/l1-adapter.js";
+import { evaluateWatcherMultiProviderConsistencyV1 as evaluateWatcherMultiProviderConsistencyV1Raw } from "../../src/l1/multi-provider-consistency.js";
+import {
+  evaluateWatcherPostFinalityRecoveryV1 as evaluateWatcherPostFinalityRecoveryV1Raw,
+  evaluateWatcherRollbackV1 as evaluateWatcherRollbackV1Raw,
+  type WatcherPostFinalityRecoveryInputV1,
+} from "../../src/l1/rollback-engine.js";
+import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
+import {
+  encodeWatcherDurableStoreV1,
+  journalWatcherProtocolUtxoTransitionV1,
+  makeWatcherDurablePayloadV1,
+  makeWatcherDurableStoreV1,
+  watcherDurableStoreBytesSha256,
+  type WatcherDurableStoreV1,
+  type WatcherProtocolUtxoV1,
+} from "../../src/storage/durable-store.js";
 import { h28, h32 } from "./deployment-authority-fixture.js";
 import { makeWatcherAuthorityDeploymentFixtureV1 } from "./watcher-opaque-authority-harness.js";
 

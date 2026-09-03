@@ -30,15 +30,7 @@ import {
 } from "@al-ft/midgard-core/deployment-manifest-identity-v1";
 import { validatorToScriptHash } from "@lucid-evolution/lucid";
 
-import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/config.js";
-import {
-  makeWatcherDeploymentIdentitySignaturePayloadV1,
-  verifyWatcherDeploymentIdentityV1,
-  WATCHER_DEPLOYMENT_RELEASE_BINDINGS_V1_SCHEMA_VERSION,
-  WATCHER_SIGNED_DEPLOYMENT_IDENTITY_V1_SCHEMA_VERSION,
-  type WatcherDeploymentIdentityPolicyV1,
-} from "../../src/deployment-identity.js";
-import { makeWatcherFinalityPolicyV1 } from "../../src/finality-engine.js";
+import { makeWatcherFinalityPolicyV1 } from "../../src/l1/finality-engine.js";
 import {
   closeWatcherL1TransportAttestationContextV1,
   establishWatcherExternalProviderTransportV1,
@@ -46,8 +38,16 @@ import {
   type WatcherAuthenticatedL1ProviderV1,
   type WatcherL1TransportAttestationContextV1,
   watcherL1TransportAttestationDetailsV1,
-} from "../../src/l1-adapter.js";
-import { evaluateWatcherMultiProviderConsistencyV1 as consistencyRaw } from "../../src/multi-provider-consistency.js";
+} from "../../src/l1/l1-adapter.js";
+import { evaluateWatcherMultiProviderConsistencyV1 as consistencyRaw } from "../../src/l1/multi-provider-consistency.js";
+import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
+import {
+  makeWatcherDeploymentIdentitySignaturePayloadV1,
+  verifyWatcherDeploymentIdentityV1,
+  WATCHER_DEPLOYMENT_RELEASE_BINDINGS_V1_SCHEMA_VERSION,
+  WATCHER_SIGNED_DEPLOYMENT_IDENTITY_V1_SCHEMA_VERSION,
+  type WatcherDeploymentIdentityPolicyV1,
+} from "../../src/runtime/deployment-identity.js";
 import { canonicalFraudProofCatalogueFixture } from "../canonical-fraud-proof-catalogue.js";
 
 type AuthorityContractFixtureV1 = Readonly<{

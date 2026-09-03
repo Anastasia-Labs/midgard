@@ -3720,7 +3720,7 @@
           ]
         },
         {
-          "path": "demo/midgard-watcher/src/public-da-client.ts",
+          "path": "demo/midgard-watcher/src/storage/public-da-client.ts",
           "symbols": [
             "DA_PAYLOAD_V1_VERSION",
             "decodeDaPayloadV1",
@@ -4092,7 +4092,7 @@
           "symbols": ["wrapDaPayloadV1"]
         },
         {
-          "path": "demo/midgard-watcher/src/public-da-client.ts",
+          "path": "demo/midgard-watcher/src/storage/public-da-client.ts",
           "symbols": ["unwrapDaPayloadV1"]
         }
       ],
@@ -4187,7 +4187,7 @@
           ]
         },
         {
-          "path": "demo/midgard-watcher/tests/public-da-client.test.ts",
+          "path": "demo/midgard-watcher/tests/storage/public-da-client.test.ts",
           "testNames": [
             "REJECTS an envelope whose declared inner SHA-256 does not match its body",
             "REJECTS an envelope carrying a payload for a different header"
@@ -4246,7 +4246,7 @@
           "symbols": ["DaRequestResponseProtocol", "DaGossipTopic"]
         },
         {
-          "path": "demo/midgard-watcher/src/public-da-client.ts",
+          "path": "demo/midgard-watcher/src/storage/public-da-client.ts",
           "symbols": ["daRequestResponseProtocolId"]
         }
       ],
@@ -4316,7 +4316,7 @@
           ]
         },
         {
-          "path": "demo/midgard-watcher/tests/public-da-client.test.ts",
+          "path": "demo/midgard-watcher/tests/storage/public-da-client.test.ts",
           "testNames": ["dials the deployment-scoped protocol id"]
         },
         {
@@ -4698,7 +4698,7 @@
           "symbols": ["handleCapabilities"]
         },
         {
-          "path": "demo/midgard-watcher/src/public-da-client.ts",
+          "path": "demo/midgard-watcher/src/storage/public-da-client.ts",
           "symbols": ["decodeDaCapabilitiesResponseV1Cbor"]
         }
       ],
@@ -4782,7 +4782,7 @@
           ]
         },
         {
-          "path": "demo/midgard-watcher/tests/public-da-client.test.ts",
+          "path": "demo/midgard-watcher/tests/storage/public-da-client.test.ts",
           "testNames": [
             "negotiates before requesting and clamps limits to the protocol ceiling"
           ]
@@ -4802,7 +4802,7 @@
           ]
         },
         {
-          "path": "demo/midgard-watcher/tests/public-da-client.test.ts",
+          "path": "demo/midgard-watcher/tests/storage/public-da-client.test.ts",
           "testNames": [
             "rejects capabilities announcing a foreign deployment fingerprint",
             "rejects undecodable capability bytes",
@@ -4861,7 +4861,7 @@
           "symbols": ["encodeDaPayloadByHeaderRequestV1Cbor"]
         },
         {
-          "path": "demo/midgard-watcher/src/public-da-client.ts",
+          "path": "demo/midgard-watcher/src/storage/public-da-client.ts",
           "symbols": [
             "encodeDaPayloadByHeaderRequestV1Cbor",
             "decodeDaPayloadByHeaderResponseV1Cbor"
@@ -4954,7 +4954,7 @@
           ]
         },
         {
-          "path": "demo/midgard-watcher/tests/public-da-client.test.ts",
+          "path": "demo/midgard-watcher/tests/storage/public-da-client.test.ts",
           "testNames": [
             "accepts an inline payload whose SHA-256 matches the announced hash",
             "accepts a payload present in acceptedPayloadHashes",
@@ -4988,7 +4988,7 @@
           ]
         },
         {
-          "path": "demo/midgard-watcher/tests/public-da-client.test.ts",
+          "path": "demo/midgard-watcher/tests/storage/public-da-client.test.ts",
           "testNames": [
             "REJECTS a response echoing a different header hash",
             "REJECTS an inline payload whose bytes were corrupted after hashing",
@@ -5043,7 +5043,7 @@
           "symbols": ["handlePayloadChunk"]
         },
         {
-          "path": "demo/midgard-watcher/src/public-da-client.ts",
+          "path": "demo/midgard-watcher/src/storage/public-da-client.ts",
           "symbols": [
             "DaPayloadChunkManifestV1",
             "encodeDaPayloadChunkRequestV1Cbor"
@@ -5156,7 +5156,7 @@
           ]
         },
         {
-          "path": "demo/midgard-watcher/tests/public-da-client.test.ts",
+          "path": "demo/midgard-watcher/tests/storage/public-da-client.test.ts",
           "testNames": [
             "reassembles a multi-chunk payload and verifies the whole-payload hash",
             "requests every chunk index in order"
@@ -5177,7 +5177,7 @@
           ]
         },
         {
-          "path": "demo/midgard-watcher/tests/public-da-client.test.ts",
+          "path": "demo/midgard-watcher/tests/storage/public-da-client.test.ts",
           "testNames": [
             "REJECTS a chunk whose bytes do not hash to the manifest entry",
             "REJECTS a chunk announcing a hash that is not the manifest entry",
@@ -5365,7 +5365,7 @@
           "symbols": ["handleProofBundleByHeader"]
         },
         {
-          "path": "demo/midgard-watcher/src/public-da-client.ts",
+          "path": "demo/midgard-watcher/src/storage/public-da-client.ts",
           "symbols": ["encodeDaProofBundleByHeaderRequestV1Cbor"]
         }
       ],
@@ -5455,7 +5455,7 @@
           ]
         },
         {
-          "path": "demo/midgard-watcher/tests/public-da-client.test.ts",
+          "path": "demo/midgard-watcher/tests/storage/public-da-client.test.ts",
           "testNames": ["accepts a proof bundle whose SHA-256 matches"]
         }
       ],
@@ -5475,7 +5475,7 @@
           ]
         },
         {
-          "path": "demo/midgard-watcher/tests/public-da-client.test.ts",
+          "path": "demo/midgard-watcher/tests/storage/public-da-client.test.ts",
           "testNames": [
             "REJECTS a proof bundle whose SHA-256 does not match",
             "REJECTS a chunked proof bundle (only inline is supported)",
@@ -5526,7 +5526,7 @@
           "symbols": ["handleTraceStepByIndex"]
         },
         {
-          "path": "demo/midgard-watcher/src/public-da-client.ts",
+          "path": "demo/midgard-watcher/src/storage/public-da-client.ts",
           "symbols": ["encodeDaTraceStepByIndexRequestV1Cbor"]
         }
       ],
@@ -5610,7 +5610,7 @@
           ]
         },
         {
-          "path": "demo/midgard-watcher/tests/public-da-client.test.ts",
+          "path": "demo/midgard-watcher/tests/storage/public-da-client.test.ts",
           "testNames": [
             "accepts a trace step that fits inside the payload ceiling"
           ]
@@ -5630,7 +5630,7 @@
           ]
         },
         {
-          "path": "demo/midgard-watcher/tests/public-da-client.test.ts",
+          "path": "demo/midgard-watcher/tests/storage/public-da-client.test.ts",
           "testNames": [
             "REJECTS a trace step answering a different index",
             "REJECTS a trace step with an empty %s",
@@ -5681,7 +5681,7 @@
           "symbols": ["handleEventToStepByEvent"]
         },
         {
-          "path": "demo/midgard-watcher/src/public-da-client.ts",
+          "path": "demo/midgard-watcher/src/storage/public-da-client.ts",
           "symbols": ["encodeDaEventToStepByEventRequestV1Cbor"]
         }
       ],
@@ -5766,7 +5766,7 @@
           ]
         },
         {
-          "path": "demo/midgard-watcher/tests/public-da-client.test.ts",
+          "path": "demo/midgard-watcher/tests/storage/public-da-client.test.ts",
           "testNames": [
             "accepts an event-to-step membership answer and hashes both parts",
             "accepts a non-membership answer with a null entry"
@@ -5788,7 +5788,7 @@
           ]
         },
         {
-          "path": "demo/midgard-watcher/tests/public-da-client.test.ts",
+          "path": "demo/midgard-watcher/tests/storage/public-da-client.test.ts",
           "testNames": [
             "REJECTS an event-to-step answer echoing a different event key",
             "REJECTS an event-to-step answer with no proof bytes",

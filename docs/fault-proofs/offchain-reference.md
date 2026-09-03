@@ -77,7 +77,7 @@ the library is therefore not the same as an installed production workflow.
 
 ## Watcher application
 
-`demo/midgard-watcher/src/production-fault-proof-application-v1.ts` installs
+`demo/midgard-watcher/src/fault-proofs/production-fault-proof-application-v1.ts` installs
 25 categories:
 
 ```text

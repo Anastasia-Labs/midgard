@@ -142,7 +142,7 @@ export default tseslint.config(
     files: [
       "midgard-node/src/index.ts",
       "midgard-node-tools/src/index.ts",
-      "midgard-watcher/src/settlement-indexer.ts",
+      "midgard-watcher/src/indexers/settlement-indexer.ts",
     ],
     rules: {
       // Commander and the legacy settlement decoder necessarily expose

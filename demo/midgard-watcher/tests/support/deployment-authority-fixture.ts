@@ -50,7 +50,7 @@ import {
   WATCHER_DEPLOYMENT_RELEASE_BINDINGS_V1_SCHEMA_VERSION,
   WATCHER_SIGNED_DEPLOYMENT_IDENTITY_V1_SCHEMA_VERSION,
   type WatcherDeploymentIdentityPolicyV1,
-} from "../../src/deployment-identity.js";
+} from "../../src/runtime/deployment-identity.js";
 import {
   canonicalFraudProofCatalogueFixture,
   positionalContractScriptCborV1,

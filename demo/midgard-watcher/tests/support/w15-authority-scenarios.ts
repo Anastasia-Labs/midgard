@@ -53,31 +53,6 @@ import { CML, Data } from "@lucid-evolution/lucid";
 import { expect } from "vitest";
 
 import { blake2b } from "../../../midgard-core/node_modules/@noble/hashes/blake2.js";
-import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/config.js";
-import {
-  encodeWatcherDurableStoreV1,
-  journalWatcherProtocolUtxoTransitionV1,
-  makeWatcherDurablePayloadV1,
-  makeWatcherDurableStoreV1,
-  watcherDurableStoreBytesSha256,
-  type WatcherProtocolUtxoV1,
-} from "../../src/durable-store.js";
-import {
-  evaluateWatcherFinalityV1,
-  makeWatcherFinalityPolicyV1,
-} from "../../src/finality-engine.js";
-import {
-  closeWatcherL1TransportAttestationContextV1,
-  encodeWatcherNormalizedL1BlockV1,
-  establishWatcherExternalProviderTransportV1,
-  makeWatcherL1PublicBytesV1,
-  normalizeWatcherL1BlockV1 as normalizeWatcherL1BlockV1Raw,
-  WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
-  type WatcherAuthenticatedL1ProviderV1,
-  type WatcherL1TransportAttestationContextV1,
-  watcherL1TransportAttestationDetailsV1,
-} from "../../src/l1-adapter.js";
-import { evaluateWatcherMultiProviderConsistencyV1 as evaluateWatcherMultiProviderConsistencyV1Raw } from "../../src/multi-provider-consistency.js";
 import {
   deriveWatcherUserEventObservationV1 as deriveWatcherUserEventObservationV1Raw,
   evaluateWatcherUserEventIndexerV1 as evaluateWatcherUserEventIndexerV1Raw,
@@ -90,7 +65,32 @@ import {
   type WatcherUserEventIndexerStateV1,
   type WatcherUserEventKindV1,
   type WatcherUserEventPublicContextV1,
-} from "../../src/user-event-indexer.js";
+} from "../../src/indexers/user-event-indexer.js";
+import {
+  evaluateWatcherFinalityV1,
+  makeWatcherFinalityPolicyV1,
+} from "../../src/l1/finality-engine.js";
+import {
+  closeWatcherL1TransportAttestationContextV1,
+  encodeWatcherNormalizedL1BlockV1,
+  establishWatcherExternalProviderTransportV1,
+  makeWatcherL1PublicBytesV1,
+  normalizeWatcherL1BlockV1 as normalizeWatcherL1BlockV1Raw,
+  WATCHER_L1_BLOCK_OBSERVATION_V1_SCHEMA_VERSION,
+  type WatcherAuthenticatedL1ProviderV1,
+  type WatcherL1TransportAttestationContextV1,
+  watcherL1TransportAttestationDetailsV1,
+} from "../../src/l1/l1-adapter.js";
+import { evaluateWatcherMultiProviderConsistencyV1 as evaluateWatcherMultiProviderConsistencyV1Raw } from "../../src/l1/multi-provider-consistency.js";
+import { WATCHER_CONFIG_SCHEMA_VERSION } from "../../src/runtime/config.js";
+import {
+  encodeWatcherDurableStoreV1,
+  journalWatcherProtocolUtxoTransitionV1,
+  makeWatcherDurablePayloadV1,
+  makeWatcherDurableStoreV1,
+  watcherDurableStoreBytesSha256,
+  type WatcherProtocolUtxoV1,
+} from "../../src/storage/durable-store.js";
 import { asWireValue, h28, h32 } from "./deployment-authority-fixture.js";
 import { makeWatcherAuthorityDeploymentFixtureV1 } from "./watcher-opaque-authority-harness.js";
 
